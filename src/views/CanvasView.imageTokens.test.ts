@@ -8,6 +8,7 @@ import { canvas as canvasApi } from '../api/client';
 import { useI18n } from '../composables/useI18n';
 
 let roomStateCb: ((data: any) => void) | null = null;
+let rejectCb: ((reject: any) => void) | null = null;
 
 vi.mock('vue-router', () => ({
   useRoute: () => ({
@@ -36,7 +37,9 @@ vi.mock('../composables/useCanvasSocket', () => ({
     sendCursor: vi.fn(),
     onRemoteCanvasUpdate: vi.fn(),
     onRemoteOp: vi.fn(),
-    onReject: vi.fn(),
+    onReject: (cb: any) => {
+      rejectCb = cb;
+    },
     onAck: vi.fn(),
     clearPendingOps: vi.fn(),
     probe: vi.fn().mockResolvedValue('ok'),
@@ -95,6 +98,7 @@ describe('CanvasView image tokens integration', () => {
     vi.useFakeTimers();
     useI18n().setLocale('en');
     roomStateCb = null;
+    rejectCb = null;
     vi.clearAllMocks();
   });
 
@@ -112,6 +116,8 @@ describe('CanvasView image tokens integration', () => {
             name: 'CanvasLoader',
             props: ['initialData', 'canvasId', 'imageToken', 'readonly', 'isOwner'],
             emits: ['image-error'],
+            // What a resync calls on the canvas, so it runs to the end.
+            methods: { applyRemoteData() {}, getCanvasData: () => ({ nodes: [], edges: [] }) },
             template: '<div class="canvas-loader-stub" :data-canvas-id="canvasId" :data-image-token="imageToken"><slot /></div>',
           },
           BackButton: true,
@@ -155,14 +161,13 @@ describe('CanvasView image tokens integration', () => {
     expect(wrapper.vm.imageToken).toBe(loadToken);
   });
 
-  it('updates token when socket emits canvas-room-state', async () => {
+  // Every load, resync and room join signs a new token (a new string). Each new
+  // token changes every image's address and reloads every picture, so a token
+  // still good for a while is kept: on a canvas edited by several people the
+  // conflict resyncs used to redraw the whole board.
+  it('keeps a token still good for a while when the room state brings another', async () => {
     (canvasApi.get as any).mockResolvedValue({
-      canvas: {
-        id: canvasId,
-        title: 'My Canvas',
-        data: '{"nodes":[],"edges":[]}',
-        revision: 1,
-      },
+      canvas: { id: canvasId, title: 'My Canvas', data: '{"nodes":[],"edges":[]}', revision: 1 },
       role: 'owner',
       imageToken: 'tok-load',
       imageTokenExpiresAt: new Date(Date.now() + 3600000).toISOString(),
@@ -173,19 +178,60 @@ describe('CanvasView image tokens integration', () => {
     await wrapper.vm.$nextTick();
 
     expect(roomStateCb).toBeTruthy();
+    roomStateCb!({ canvasId, revision: 2, imageToken: 'tok-from-room-state', imageTokenExpiresAt: new Date(Date.now() + 3600000).toISOString() });
+    await wrapper.vm.$nextTick();
+    expect(wrapper.findComponent({ name: 'CanvasLoader' }).props('imageToken')).toBe('tok-load');
+  });
 
-    const socketToken = 'tok-from-socket-room-state-222';
-    roomStateCb!({
-      canvasId,
-      revision: 2,
-      imageToken: socketToken,
-      imageTokenExpiresAt: new Date(Date.now() + 3600000).toISOString(),
+  it('takes the room state token when the load brought none', async () => {
+    (canvasApi.get as any).mockResolvedValue({
+      canvas: { id: canvasId, title: 'My Canvas', data: '{"nodes":[],"edges":[]}', revision: 1 },
+      role: 'owner',
     });
 
+    const wrapper = mountView();
+    await flushPromises();
     await wrapper.vm.$nextTick();
-    const loader = wrapper.findComponent({ name: 'CanvasLoader' });
-    expect(loader.props('imageToken')).toBe(socketToken);
-    expect(wrapper.vm.imageToken).toBe(socketToken);
+
+    roomStateCb!({ canvasId, revision: 2, imageToken: 'tok-from-room-state', imageTokenExpiresAt: new Date(Date.now() + 3600000).toISOString() });
+    await wrapper.vm.$nextTick();
+    expect(wrapper.findComponent({ name: 'CanvasLoader' }).props('imageToken')).toBe('tok-from-room-state');
+  });
+
+  it('keeps the token through conflict resyncs, and takes a new one only near its end', async () => {
+    (canvasApi.get as any).mockResolvedValue({
+      canvas: { id: canvasId, title: 'My Canvas', data: '{"nodes":[],"edges":[]}', revision: 1 },
+      role: 'owner',
+      imageToken: 'tok-load',
+      imageTokenExpiresAt: new Date(Date.now() + 3600000).toISOString(),
+    });
+    let issued = 0;
+    (canvasApi.resync as any).mockImplementation(async () => ({
+      canvas: { id: canvasId, data: '{"nodes":[],"edges":[]}', revision: 2 },
+      imageToken: `tok-resync-${++issued}`,
+      imageTokenExpiresAt: new Date(Date.now() + 3600000).toISOString(),
+    }));
+
+    const wrapper = mountView();
+    await flushPromises();
+    await wrapper.vm.$nextTick();
+    const loader = () => wrapper.findComponent({ name: 'CanvasLoader' });
+
+    // The server refuses an edit that raced another person's: the canvas resyncs.
+    const conflict = (n: number) => rejectCb!({ clientOpId: `op-${n}`, reason: 'revision_mismatch', serverRevision: 2 });
+    for (let i = 0; i < 3; i += 1) {
+      conflict(i);
+      await flushPromises();
+    }
+    expect(issued).toBe(3);
+    expect(loader().props('imageToken')).toBe('tok-load');
+
+    // 52 minutes on, under ten minutes are left: the next resync's token is taken.
+    vi.setSystemTime(Date.now() + 52 * 60 * 1000);
+    conflict(4);
+    await flushPromises();
+    expect(issued).toBe(4);
+    expect(loader().props('imageToken')).toBe('tok-resync-4');
   });
 
   it('triggers one refresh on img error and retries the image, with no loops', async () => {

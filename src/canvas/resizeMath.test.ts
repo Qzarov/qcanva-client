@@ -37,22 +37,22 @@ describe('computeResizedRect', () => {
     expect(r.y + r.height).toBe(120); // bottom preserved
   });
 
-  it('stops shrinking at 144px wide and 48px high', () => {
+  it('stops shrinking at a 48×48 square', () => {
     const r = computeResizedRect({ handle: 'br', start, pointer: { x: -1000, y: -1000 }, camera: cam, cameraStart: camStart });
-    expect(r).toEqual({ x: 0, y: 0, width: 144, height: 48 });
+    expect(r).toEqual({ x: 0, y: 0, width: 48, height: 48 });
   });
 
   for (const scale of [0.5, 2]) {
     it.each([
-      ['br', -1000, -1000, { x: 0, y: 0, width: 144, height: 48 }],
-      ['tl', 1000, 1000, { x: 96, y: 72, width: 144, height: 48 }],
-      ['bl', 1000, -1000, { x: 96, y: 0, width: 144, height: 48 }],
-      ['tr', -1000, 1000, { x: 0, y: 72, width: 144, height: 48 }],
-      ['l', 1000, 100, { x: 96, y: 0, width: 144, height: 120 }],
-      ['r', -1000, 100, { x: 0, y: 0, width: 144, height: 120 }],
+      ['br', -1000, -1000, { x: 0, y: 0, width: 48, height: 48 }],
+      ['tl', 1000, 1000, { x: 192, y: 72, width: 48, height: 48 }],
+      ['bl', 1000, -1000, { x: 192, y: 0, width: 48, height: 48 }],
+      ['tr', -1000, 1000, { x: 0, y: 72, width: 48, height: 48 }],
+      ['l', 1000, 100, { x: 192, y: 0, width: 48, height: 120 }],
+      ['r', -1000, 100, { x: 0, y: 0, width: 48, height: 120 }],
       ['t', 100, 1000, { x: 0, y: 72, width: 240, height: 48 }],
       ['b', 100, -1000, { x: 0, y: 0, width: 240, height: 48 }],
-    ] as const)(`%s handle respects the 144×48 floor at zoom ${scale}`, (handle, x, y, expected) => {
+    ] as const)(`%s handle respects the 48×48 floor at zoom ${scale}`, (handle, x, y, expected) => {
       expect(computeResizedRect({ handle, start, pointer: { x, y }, camera: { ...cam, scale }, cameraStart: camStart })).toEqual(expected);
     });
   }

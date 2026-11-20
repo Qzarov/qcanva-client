@@ -98,6 +98,20 @@ async function type(wrapper: any, text: string) {
   await wrapper.vm.$nextTick();
 }
 
+/**
+ * Lets the picker's document search land: the menu opens at once from what
+ * it already knows and the server answer is pushed in after a timer (see
+ * createMentionSearchCache in mention-menu.ts), so a test that needs the
+ * documents listed waits past that timer first.
+ */
+async function settleSearch(wrapper: any) {
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  await flushPromises();
+  await wrapper.vm.$nextTick();
+}
+
+const TITLE_SEARCH = [20, { titleOnly: true }] as const;
+
 function pluginState(wrapper: any) {
   return MentionMenuPluginKey.getState(wrapper.vm.editor.state);
 }
@@ -138,13 +152,13 @@ describe('mention menu trigger', () => {
     wrapper.vm.editor.commands.focus('end');
 
     await type(wrapper, '@road');
-    await flushPromises();
+    await settleSearch(wrapper);
 
     expect(pluginState(wrapper).active).toBe(true);
     expect(wrapper.vm.mentionOpen).toBe(true);
     expect(wrapper.vm.mentionItems.map((i: any) => i.kind)).toEqual(['document', 'document', 'create']);
     expect(wrapper.vm.mentionItems.at(-1)).toEqual({ kind: 'create', query: 'road' });
-    expect(search).toHaveBeenCalledWith('road');
+    expect(search).toHaveBeenCalledWith('road', ...TITLE_SEARCH);
 
     wrapper.unmount();
   });
@@ -159,7 +173,7 @@ describe('mention menu trigger', () => {
     wrapper.vm.editor.commands.setContent('<p></p>');
     wrapper.vm.editor.commands.focus('end');
     await type(wrapper, '@road');
-    await flushPromises();
+    await settleSearch(wrapper);
     scrollIntoView.mockClear();
 
     await press(wrapper, 'ArrowDown');
@@ -195,8 +209,8 @@ describe('mention menu trigger', () => {
     expect(wrapper.vm.editor.state.doc.textContent).toBe('@');
 
     await type(wrapper, 'road');
-    await flushPromises();
-    expect(search).toHaveBeenLastCalledWith('road');
+    await settleSearch(wrapper);
+    expect(search).toHaveBeenLastCalledWith('road', ...TITLE_SEARCH);
 
     wrapper.unmount();
   });

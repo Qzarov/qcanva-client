@@ -44,6 +44,7 @@ vi.mock('../api/client', () => ({
   recentResources: { list: vi.fn().mockResolvedValue([]), markOpened: vi.fn().mockResolvedValue({}) },
   textDocuments: { create: vi.fn(), delete: vi.fn(), duplicate: vi.fn(), list: vi.fn().mockResolvedValue({ documents: [] }), publicList: vi.fn().mockResolvedValue({ documents: [] }), transferOwnership: vi.fn(), update: vi.fn() },
   isAdmin: vi.fn(() => false),
+  refreshCurrentUserRole: vi.fn().mockResolvedValue(false),
   isAuthenticated: vi.fn(() => true),
   MAX_DESCRIPTION_LENGTH: 2000,
   resourceFolders: {

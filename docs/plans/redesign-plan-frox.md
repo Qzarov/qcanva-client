@@ -6,7 +6,169 @@
 
 **Architecture:** Adopt Frox's CSS Custom Properties as design tokens without migrating to TailwindCSS. Replace ad-hoc `rgba` color literals in `style.css` with CSS variables, update layout to a sidebar+content grid, and apply Frox card/button/input patterns across all views.
 
-**Tech Stack:** Vue 3, TypeScript, Vite, plain CSS (`style.css` ~2400 lines)
+**Tech Stack:** Vue 3, TypeScript, Vite, plain CSS with an ordered global
+entrypoint (`style.css`) and domain modules under `src/styles/`
+
+## Актуальный статус рефакторинга (2026-11-09)
+
+Этот документ начинался как план визуального редизайна, но теперь также служит
+roadmap для структурного рефакторинга клиентской части. Старые пошаговые
+чекбоксы ниже сохраняются как исторический контекст исходного Frox-плана;
+текущий порядок работ фиксируется в этом разделе.
+
+### Уже сделано
+
+- Canvas: state-композиторы, загрузка embed-ресурсов, history/remote sync,
+  selection, camera/touch/drawing/edge geometry, text editor, node renderers,
+  edge/drawing layers, minimap, context menu и controls вынесены из
+  `CanvasLoader.vue`; mobile fullscreen text editor вынесен в
+  `CanvasFullscreenTextEditor`, remote cursor presentation — в
+  `CanvasRemoteCursors`, draw overlay — в `CanvasDrawCapture`, file-picker
+  bridge — в `CanvasFileInputs`, D&D interaction controller — в
+  `useCanvasDndTemplate`, template-node creation/import — в
+  `useCanvasTemplateNodes`, add-menu controller — в `useCanvasAddMenu`, node
+  presentation и markdown callouts — в `nodePresentation`, node style controls —
+  в `useCanvasNodeStyleControls`, keyboard shortcut routing — в
+  `useCanvasKeyboardShortcuts`.
+- Dashboard: selection/toolbar, recent/access/folder/shared/public/interactive
+  sections, modal layer, shared spaces и Trash вынесены из `DashboardView.vue`;
+  старые Drive query-ссылки теперь приводят в dashboard sections; upload/
+  download/feedback overlays, public/authenticated desktop headers, mobile
+  header controls и Yandex section host вынесены в отдельные компоненты.
+- Text documents: outline, history, link/mention/slash actions и editor
+  extensions вынесены из `TextDocumentView.vue`; title и link inputs используют
+  общие `UiTextarea`/`UiInput`, mobile action menu вынесено в
+  `TextDocumentMobileMenu`, backlinks-секция — в `TextDocumentBacklinks`,
+  desktop/mobile slash UI — в `TextDocumentSlashMenu`, mention picker — в
+  `TextDocumentMentionMenu`, selection bubble — в `TextDocumentBubbleMenu`,
+  topbar mobile-menu controller — в `useTextDocumentTopbarMenu`.
+- UI library: `UiButton`, `UiIconButton`, `UiModal`, `UiInput`, `UiTextarea`,
+  `UiEmptyState`, `UiMenu`, `UiSegmentedControl`, `UiBadge`, `UiToast` и
+  `UiCard` созданы и покрыты component tests. Badge-сценарии Dashboard/Admin/
+  HTML мигрированы, shell-карточки Settings/Admin используют `UiCard`, а
+  shared surfaces Canvas/Text/HTML (`history`, share panel, `AccessGate`)
+  сохраняют domain hooks поверх общего primitive.
+- Shared sidebar shell: `SharedSidebarShell` теперь владеет внешним `aside`,
+  mobile-backdrop, Escape и focus trap для `AppSidebar` и `DashboardSidebar`;
+  запоминает opener, переводит focus на close control при открытии и возвращает
+  focus после закрытия; дерево Dashboard и статическая навигация остаются в
+  своих компонентах.
+- Dashboard drag-and-drop: folder reorder/resource-drop orchestration вынесены в
+  `useDashboardFolderDrag` и `useDashboardResourceDrag`; DashboardView сохраняет
+  только правила доступа, локальное перемещение и API-команды.
+- Dashboard feed navigation: section scroll-spy, smooth jumps и cleanup scroll
+  listeners вынесены в `useDashboardFeedNavigation`.
+- Dashboard viewport guard: защита frame scroll при focus/keyboard и lifecycle
+  cleanup вынесены в `useDashboardFramePinning`.
+- Dashboard section transitions: расчёт глубины папок, направление анимации и
+  timeout cleanup вынесены в `useDashboardSectionTransition`.
+- Dashboard mobile sidebar: opener focus, body overflow, breakpoint cleanup и
+  focus restoration вынесены в `useDashboardMobileSidebar`.
+- CSS cleanup: повторяющийся glass accent gradient стал единым токеном
+  `--ui-glass-accent-tint`, который используют glass/settings/dashboard-модули.
+- CSS cleanup: повторяющийся accent shadow стал токеном
+  `--ui-glass-accent-shadow` с тем же набором потребителей.
+- CSS cleanup: shadow карточек glass стал токеном
+  `--ui-glass-card-shadow`, общий для glass/dashboard/UI-card поверхностей.
+- CSS cleanup: pill-радиусы `999px` и крупные `20px` радиусы переведены на
+  `--radius-full` и `--radius-xl` по всем domain-модулям.
+- CSS cleanup: standalone `12px` радиусы переведены на `--radius-md` там, где
+  они обозначают общий medium-radius.
+- CSS cleanup: компактные `6px` радиусы переведены на `--radius-xs` в
+  document/canvas/dashboard controls.
+- TextDocument CSS: повторяющийся mobile overlay tone вынесен в
+  `--ui-overlay-soft` и используется document/canvas overlays.
+- CSS cleanup: одинаковая popover transition вынесена в
+  `--transition-popover` для dashboard actions/dialogs.
+- CSS cleanup: повторяющийся glass inset highlight вынесен в
+  `--ui-glass-inset-highlight`.
+- CSS cleanup: mobile surface transitions вынесены в
+  `--transition-mobile-surface` и `--transition-mobile-surface-transform`.
+- CSS cleanup: shared surface transition вынесена в `--transition-surface` для
+  dashboard/canvas controls.
+- CSS cleanup: повторяющийся border transition вынесен в
+  `--transition-border` для auth/dashboard/canvas controls.
+- UI component CSS: Badge/Toast/Card/Button/IconButton/Modal и form/menu
+  primitives теперь держат scoped styles рядом с компонентами; глобальные
+  модули `15-ui-components.css`, `16-ui-form-empty.css` и
+  `17-ui-menu-segmented.css` удалены.
+- Visual smoke: актуализирован dashboard mobile selector и добавлены Darwin
+  baselines; login/dashboard/canvas/text document проходят 4/4.
+- Shared sidebar edge-cases: добавлен regression-тест Tab/Shift+Tab focus wrap
+  внутри mobile dialog; полный suite теперь 2231 тест.
+- Shared sidebar browser smoke: mobile drawer opens with focus on close,
+  Escape closes it, and focus returns to the opener; combined visual suite 5/5.
+- UI accessibility smoke: shared modal `aria-modal`/`aria-label` semantics now
+  have explicit regression coverage.
+- Final CSS audit: оставшиеся raw-radius значения различаются по domain-смыслу
+  (compact controls, badges, editor chrome) и не образуют общего рецепта для
+  нового токена.
+- Remote `dev` sync: планы, upload queue/background upload, Spaces filters и
+  admin public moderation влиты в refactored hosts; upload CSS-рецепты перенесены
+  в модульные стили, `UiModal` backdrop alignment сохранён через CSS variables.
+- `src/style.css` разложен на 15 упорядоченных global-модулей в `src/styles/`; файл
+  остался единственным global entrypoint, порядок каскада сохранён; UI-only
+  модули удалены после переноса стилей в компоненты.
+- Статический sidebar HTML Docs вынесен в `src/components/AppSidebar.vue`.
+- После каждого крупного среза проходят build и полный unit suite.
+
+### Процент выполнения текущего roadmap
+
+Проценты отражают готовность направления целиком, включая миграцию потребителей
+и проверки, а не только число созданных файлов.
+
+| Направление | Готово | Что осталось |
+|---|---:|---|
+| UI component library | **100%** | accessibility smoke завершён |
+| Shared sidebar shell | **100%** | desktop/mobile smoke завершён |
+| TextDocumentView | **100%** | runtime visual smoke завершён |
+| CanvasLoader | **100%** | закрыто |
+| DashboardView | **100%** | navigation smoke завершён |
+| Final CSS cleanup | **100%** | semantic audit завершён |
+| **Весь план** | **100%** | рефакторинг завершён |
+
+### Сводка в цифрах
+
+Строки ниже сравнивают текущий `dev` с `origin/main` до структурного
+рефакторинга. Для `DashboardView` отдельно учитываются новые remote-фичи,
+влитые позже из `origin/dev`.
+
+| Поверхность | До | Сейчас | Дельта | Что изменилось |
+|---|---:|---:|---:|---|
+| `CanvasLoader.vue` | 5743 | 4151 | **−1592 (−27.7%)** | state/sync/camera/drawing/editor/D&D разнесены по 71 canvas-файлу и компонентурам |
+| `TextDocumentView.vue` | 3798 | 2653 | **−1145 (−30.1%)** | outline/history/link/mention/slash/topbar/socket вынесены в 7 composable/component-направлений |
+| `DashboardView.vue` | 4636 | 4258 до merge / 5586 после merge | **−378 до remote-фич** | bulk/drag/feed/sidebar orchestration вынесены; remote добавил plans, Spaces filters, upload queue и moderation |
+| `HtmlDocumentView.vue` | 1017 | 1017 | 0 | поведение уже было локализовано, визуальные primitives мигрированы без раздувания view |
+| `CanvasView.vue` | 2215 | 2216 | +1 | view оставлен тонким host-слоем, основная декомпозиция в CanvasLoader/canvas-компонентах |
+| `AdminView.vue` | 815 | 865 | +50 | remote plans/analytics/public moderation добавлены компонентами, а не возвращением логики в host |
+| `SettingsView.vue` | 360 | 359 | −1 | plan surface добавлен отдельным `PlanSettingsPanel` |
+| `src/style.css` | 13430 | 20 | **−13410** | монолит заменён 15 import-only global modules; UI-only CSS переехал в scoped primitives |
+
+Дополнительные артефакты: 10 Dashboard composables, 7 TextDocument composable-направлений,
+11 UI primitives, 15 CSS-модулей, 234 test files / 2248 unit tests после merge remote.
+
+### Финальная проверка
+
+1. Unit suite: 234 файлов / 2248 тестов.
+2. Browser/visual smoke: 36 remote feature scenarios, 10 navigation/sidebar/
+   dashboard scenarios и 4 visual baseline-сценария.
+3. Build: production build проходит.
+
+### UI library guardrails
+
+- Общие компоненты используют токены из `src/styles/01-global.css` и не
+  дублируют значения из доменных модулей.
+- Каждый компонент имеет один небольшой API (`variant`, `size`, `disabled`,
+  `loading` где это применимо) и keyboard/focus/ARIA контракт.
+- Миграция идёт вертикальными срезами с тестом до удаления старой разметки.
+- Компонент считается общим только после двух реальных потребителей; иначе
+  стиль остаётся в доменном компоненте.
+
+Нормативные правила для нового кода вынесены в
+[`docs/code-conventions.md`](code-conventions.md). Они обязательны для новых
+компонентов и CSS-срезов: экран только оркестрирует секции, UI-примитивы имеют
+маленький типизированный API, глобальный CSS добавляется только в узкий
+нумерованный модуль, а каждый срез проходит accessibility- и тестовую проверку.
 
 ---
 
@@ -932,7 +1094,10 @@ git commit -m "design: update section labels, dividers, and tag pills to Frox st
 - **DaisyUI components** — not added. Too invasive without Tailwind.
 - **Light mode** — the project is dark-only. Adding light mode support is a separate future initiative.
 - **Editor UX** — Canvas editor (Excalidraw) and HTML source editor (CodeMirror) internals are not touched.
-- **Component extraction** — sidebar is duplicated in Dashboard and HtmlDocs views. Extraction to a shared `<AppSidebar>` component is a natural next step after this plan completes.
+- **Component extraction** — the static HTML Docs sidebar now lives in shared
+  `<AppSidebar>`. Dashboard keeps a specialized `<DashboardSidebar>` for its
+  folder tree and Spaces; the shared shell extraction is tracked in the current
+  refactor roadmap above.
 - **Responsive / mobile** — out of scope for this redesign pass.
 
 ---
@@ -940,7 +1105,7 @@ git commit -m "design: update section labels, dividers, and tag pills to Frox st
 ## Execution Order
 
 ```
-Phase 1 (tokens) → Phase 2 (cards/buttons/inputs) → Phase 3 (sidebar) → Phase 4 (view polish) → Phase 5 (details)
+Phase 1 (tokens) → Phase 2 (cards/buttons/inputs) → Phase 3 (sidebar) → Phase 4 (view polish) → Phase 5 (details) → current refactor follow-up (UI library → shared shell → view extraction → CSS cleanup)
 ```
 
 Each phase is independently deployable — the app will look progressively more aligned with Frox after each phase.

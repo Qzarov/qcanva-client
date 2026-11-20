@@ -425,7 +425,7 @@ describe('DriveDevicesView.vue (Q Control, read-only)', () => {
     expect(dialog.get('[data-fd-last-sync]').text()).not.toBe(t('cupFolderNoSync'));
     expect(dialog.get('[data-fd-version]').text()).toBe('0.1.0');
     expect(dialog.find('[data-fd-error]').exists()).toBe(false);
-    expect(dialog.get('[data-fd-open]').attributes('href')).toBe('/drive/f4');
+    expect(dialog.get('[data-fd-open]').attributes('href')).toBe('/dashboard?folder=f4');
     expect(dialog.get('[data-fd-open]').text()).toBe('Open in Files');
     expect(dialog.text()).not.toContain('→');
 

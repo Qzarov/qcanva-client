@@ -69,6 +69,54 @@ describe('useResourceImageTokens', () => {
     expect(tokens.imageToken.value).toBe(refreshedToken);
   });
 
+  describe('a token still good for a while is kept', () => {
+    const inMinutes = (minutes: number) => new Date(Date.now() + minutes * 60 * 1000).toISOString();
+
+    it('keeps the current token when another arrives, and the refresh timer with it', async () => {
+      (canvasApi.refreshImageToken as any).mockResolvedValue({ imageToken: 'tok-timer', imageTokenExpiresAt: inMinutes(120) });
+      const tokens = useResourceImageTokens({ getResourceId: () => 'c1', resourceType: 'canvas' });
+      tokens.setImageToken('tok-1', inMinutes(60));
+      tokens.setImageToken('tok-2', inMinutes(60));
+      tokens.setImageToken('tok-3', inMinutes(70));
+      expect(tokens.imageToken.value).toBe('tok-1');
+      // The refresh still comes 5 minutes before tok-1's end, not tok-3's.
+      await vi.advanceTimersByTimeAsync(55 * 60 * 1000);
+      expect(canvasApi.refreshImageToken).toHaveBeenCalledTimes(1);
+      expect(tokens.imageToken.value).toBe('tok-timer');
+    });
+
+    it('takes a new token when under ten minutes are left, or the expiry is unknown', () => {
+      const tokens = useResourceImageTokens({ getResourceId: () => 'c1', resourceType: 'canvas' });
+      tokens.setImageToken('tok-1', inMinutes(9));
+      tokens.setImageToken('tok-2', inMinutes(60));
+      expect(tokens.imageToken.value).toBe('tok-2');
+
+      const unknown = useResourceImageTokens({ getResourceId: () => 'c1', resourceType: 'canvas' });
+      unknown.setImageToken('tok-1');
+      unknown.setImageToken('tok-2', inMinutes(60));
+      expect(unknown.imageToken.value).toBe('tok-2');
+    });
+
+    it('takes a new token for another resource: a token is bound to one', () => {
+      let id = 'c1';
+      const tokens = useResourceImageTokens({ getResourceId: () => id, resourceType: 'canvas' });
+      tokens.setImageToken('tok-c1', inMinutes(60));
+      id = 'c2';
+      tokens.setImageToken('tok-c2', inMinutes(60));
+      expect(tokens.imageToken.value).toBe('tok-c2');
+    });
+
+    it('takes a token asked for on purpose: force, and the refresh after an image error', async () => {
+      (canvasApi.refreshImageToken as any).mockResolvedValue({ imageToken: 'tok-after-error', imageTokenExpiresAt: inMinutes(60) });
+      const tokens = useResourceImageTokens({ getResourceId: () => 'c1', resourceType: 'canvas' });
+      tokens.setImageToken('tok-1', inMinutes(60));
+      tokens.setImageToken('tok-forced', inMinutes(60), { force: true });
+      expect(tokens.imageToken.value).toBe('tok-forced');
+      await tokens.handleImageError('img-1', 'http://localhost:3001/api/canvas/files/images/abc.png');
+      expect(tokens.imageToken.value).toBe('tok-after-error');
+    });
+  });
+
   it('handles html-document: triggers refresh on <img> error and prevents retry loops', async () => {
     const htmlDocId = 'html-doc-456';
     const newToken = 'refreshed-html-token';

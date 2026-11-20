@@ -786,13 +786,13 @@ describe('DriveView', () => {
     expect(wrapper.find('[data-upload-button]').exists()).toBe(false);
   });
 
-  it('renders «Корзина» entry in the sidebar linking to /drive/trash', async () => {
+  it('renders «Корзина» entry in the sidebar linking to the dashboard trash', async () => {
     const wrapper = mountDriveView();
     await flushPromises();
 
     const trashLink = wrapper.find('[data-sidebar-trash]');
     expect(trashLink.exists()).toBe(true);
-    expect(trashLink.attributes('href')).toBe('/drive/trash');
+    expect(trashLink.attributes('href')).toBe('/dashboard?section=trash');
   });
 
   it('gives «Создать» menu items accessible names', async () => {

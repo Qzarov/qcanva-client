@@ -1,15 +1,13 @@
 <template>
   <div class="toast-container">
     <transition-group name="toast">
-      <div
+      <UiToast
         v-for="t in toasts"
         :key="t.id"
-        class="toast-item"
-        :class="'toast-' + t.type"
-      >
-        <span class="toast-message">{{ t.message }}</span>
-        <button class="toast-close" @click="dismiss(t.id)">&times;</button>
-      </div>
+        :message="t.message"
+        :type="t.type"
+        @close="dismiss(t.id)"
+      />
     </transition-group>
   </div>
 </template>
@@ -17,8 +15,10 @@
 <script lang="ts">
 import { defineComponent } from 'vue';
 import { useToast } from '../composables/useToast';
+import UiToast from './ui/UiToast.vue';
 
 export default defineComponent({
+  components: { UiToast },
   setup() {
     const { toasts } = useToast();
 
@@ -42,55 +42,6 @@ export default defineComponent({
   gap: 8px;
   pointer-events: none;
   max-width: 380px;
-}
-.toast-item {
-  pointer-events: auto;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 16px;
-  border-radius: 8px;
-  background: var(--ui-surface-elevated);
-  border: 1px solid var(--ui-border);
-  box-shadow: var(--ui-shadow);
-  font-size: 13px;
-  color: var(--ui-text);
-  backdrop-filter: blur(12px);
-}
-.toast-success {
-  border-left: 3px solid var(--ui-success);
-}
-.toast-error {
-  border-left: 3px solid var(--ui-danger);
-}
-.toast-info {
-  border-left: 3px solid var(--ui-info);
-}
-.toast-success .toast-message { color: var(--ui-success-foreground); }
-.toast-error .toast-message { color: var(--ui-danger-foreground); }
-.toast-info .toast-message { color: var(--ui-info-foreground); }
-.toast-message {
-  flex: 1;
-  line-height: 1.4;
-}
-.toast-close {
-  flex-shrink: 0;
-  width: 22px;
-  height: 22px;
-  border: none;
-  background: transparent;
-  color: var(--ui-text-secondary);
-  font-size: 16px;
-  cursor: pointer;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-}
-.toast-close:hover {
-  color: var(--ui-text);
-  background: var(--ui-surface-subtle);
 }
 /* Transition animations */
 .toast-enter-active {

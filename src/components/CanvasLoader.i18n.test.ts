@@ -5,11 +5,20 @@ import { describe, expect, it } from 'vitest';
 import { useI18n } from '../composables/useI18n';
 
 // CanvasLoader is too heavy to mount for a text sweep (CanvasView's i18n test
-// stubs it), so this guards its template source instead: the strings below
+// stubs it), so this guards its template sources instead: the strings below
 // were hardcoded English and are now messages. A static `title="Delete"` or a
 // `>Send backward<` coming back fails here.
-const source = readFileSync(resolve(__dirname, 'CanvasLoader.vue'), 'utf8');
-const template = source.slice(source.indexOf('<template>'), source.indexOf('<script'));
+const templateSources = [
+  'CanvasLoader.vue',
+  'canvas/CanvasContextMenu.vue',
+  'canvas/CanvasControls.vue',
+  'canvas/CanvasEdgeLayer.vue',
+  'canvas/CanvasDrawingLayer.vue',
+  'canvas/CanvasMinimap.vue',
+].map((file) => readFileSync(resolve(__dirname, file), 'utf8'));
+const template = templateSources
+  .map((source) => source.slice(source.indexOf('<template>'), source.indexOf('<script')))
+  .join('\n');
 
 describe('CanvasLoader i18n guard', () => {
   it('has no static English tooltip or placeholder left in its template', () => {

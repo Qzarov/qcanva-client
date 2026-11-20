@@ -12,8 +12,10 @@
   -->
   <Teleport to="body" :disabled="teleportDisabled">
     <div v-if="open" class="text-doc-share-backdrop" :class="{ 'share-backdrop-glass': glass }" @click="emit('close')"></div>
-    <section
+    <UiCard
       v-if="open"
+      as="section"
+      layout="inherit"
       class="share-panel text-doc-share-panel"
       :class="{ 'share-panel-glass': glass }"
       role="dialog"
@@ -69,14 +71,18 @@
             />
             <span>{{ t('allowPublicEditing') }}</span>
           </label>
-          <label class="share-checkbox">
+          <!-- An admin took it out of Public: locked; pressing it says why. -->
+          <label class="share-checkbox" :class="{ 'share-checkbox-locked': publicHidden }" data-share-listed @click="publicHidden && (hiddenNote = true)">
             <input
               type="checkbox"
-              :checked="listedInPublic"
-              :disabled="visibility !== 'public'"
+              :checked="listedInPublic && !publicHidden"
+              :disabled="visibility !== 'public' || publicHidden"
               @change="emit('update:listedInPublic', ($event.target as HTMLInputElement).checked)"
             />
-            <span>{{ t('showInPublic') }}</span>
+            <span class="share-checkbox-text">
+              {{ t('showInPublic') }}
+              <small v-if="publicHidden && hiddenNote" class="share-hidden-note" role="status" data-share-hidden-by-admin>{{ t('hiddenByAdmin') }}</small>
+            </span>
           </label>
           <label class="share-checkbox">
             <input v-model="passwordAccessEnabled" type="checkbox" />
@@ -123,7 +129,7 @@
         <div class="share-section">
           <div class="share-section-title">{{ t('invitePeople') }}</div>
           <div class="share-form">
-            <input v-model.trim="shareEmail" :placeholder="t('email')" type="email" />
+            <ContactEmailInput v-model.trim="shareEmail" :placeholder="t('email')" :exclude="permissions.map((p) => p.user?.email ?? '')" />
             <select v-model="shareRole">
               <option value="read">{{ t('canView') }}</option>
               <option value="edit">{{ t('canEdit') }}</option>
@@ -139,7 +145,7 @@
           </div>
         </div>
       </div>
-    </section>
+    </UiCard>
   </Teleport>
 </template>
 
@@ -147,6 +153,8 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { Check, Copy, Link2, X } from '@lucide/vue';
 import { useI18n } from '../composables/useI18n';
+import ContactEmailInput from './ContactEmailInput.vue';
+import UiCard from './ui/UiCard.vue';
 import { slugFormatIsValid } from '../sharing/slug';
 
 export type ShareVisibility = 'private' | 'authenticated' | 'public';
@@ -169,6 +177,8 @@ const props = withDefaults(defineProps<{
   visibility: ShareVisibility;
   allowPublicEdit: boolean;
   listedInPublic: boolean;
+  /** An admin took it out of Public: the owner cannot list it. */
+  publicHidden?: boolean;
   permissions: SharePermission[];
   /** Liquid Glass surface (the canvas); the document keeps its plain sheet. */
   glass?: boolean;
@@ -176,11 +186,15 @@ const props = withDefaults(defineProps<{
   teleportDisabled?: boolean;
 }>(), {
   slugPlaceholder: '',
+  publicHidden: false,
   slugError: '',
   savingSlug: false,
   glass: false,
   teleportDisabled: false,
 });
+
+/** "Hidden by an administrator", once the locked box is pressed. */
+const hiddenNote = ref(false);
 
 const emit = defineEmits<{
   close: [];

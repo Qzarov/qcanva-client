@@ -1,11 +1,10 @@
 /// <reference types="node" />
 // @vitest-environment node
 
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readGlobalCss } from '../../tests/helpers/read-global-css';
 
-const css = readFileSync(resolve(process.cwd(), 'src/style.css'), 'utf8');
+const css = readGlobalCss();
 
 function token(selector: string, name: string): string {
   const pattern = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');

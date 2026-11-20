@@ -92,6 +92,38 @@ describe('QuietTaskItem', () => {
     expect(press.defaultPrevented).toBe(true);
   });
 
+  function pressBox(box: HTMLInputElement, pointerType: string) {
+    const press = new Event('pointerdown', { bubbles: true, cancelable: true });
+    Object.defineProperty(press, 'pointerType', { value: pointerType });
+    box.dispatchEvent(press);
+  }
+
+  it('a touch tick lets go of an editor still focused from an earlier caret (no keyboard)', () => {
+    const ed = makeEditor();
+    vi.spyOn(ed.view, 'hasFocus').mockReturnValue(true);
+    const blur = vi.spyOn(ed.view.dom as HTMLElement, 'blur');
+
+    const box = checkbox(ed, 'Second');
+    pressBox(box, 'touch');
+    tick(box);
+
+    expect(blur).toHaveBeenCalledTimes(1);
+    expect(checkedStates(ed).Second).toBe(true);
+  });
+
+  it('a mouse tick keeps the editor focused where it was', () => {
+    const ed = makeEditor();
+    vi.spyOn(ed.view, 'hasFocus').mockReturnValue(true);
+    const blur = vi.spyOn(ed.view.dom as HTMLElement, 'blur');
+
+    const box = checkbox(ed, 'Second');
+    pressBox(box, 'mouse');
+    tick(box);
+
+    expect(blur).not.toHaveBeenCalled();
+    expect(checkedStates(ed).Second).toBe(true);
+  });
+
   it('leaves a read-only editor unchanged (the stock handler reverts the box)', () => {
     const ed = makeEditor(false);
     const box = checkbox(ed, 'Second');

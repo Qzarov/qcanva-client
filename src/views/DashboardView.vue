@@ -13,16 +13,21 @@
       }"
     >
       <DashboardSidebar
+        :admin="admin"
         v-if="isLoggedIn"
         :active-section="activeSection"
         :feed-section="isHomeFeed ? activeFeedSection : null"
         :width-state="sidebarWidthState"
         :mobile-open="mobileSidebarOpen"
         :folders="sidebarFolders"
+        :spaces="isLoggedIn"
+        :yandex-refresh-key="yandexRefreshKey"
         @select="onSidebarSelect"
+        @open-yandex-file="openYandexSidebarFile"
+        @create-space="createSpace"
         @toggle-width="toggleSidebarWidth"
         @close-mobile="closeMobileSidebar"
-        @create-folder="openCreateGroupModal"
+        @open-file="openSidebarFile"
         @toggle-folder="toggleTreeExpanded"
         @folder-drag-start="onSidebarFolderDragStart"
         @folder-drag-end="onFolderDragEnd"
@@ -32,51 +37,70 @@
         @folder-drop="onSidebarFolderDrop"
       />
       <div class="dashboard-central-shell">
-    <header v-if="!isLoggedIn" class="app-header app-header-public">
-      <div class="app-header-inner">
-        <div class="dashboard-brand">
-          <img src="/qcanva-logo.png" alt="QCanva" />
-          <div>
-            <h1>QCanva</h1>
-            <p v-if="!isLoggedIn" class="dash-subtitle">{{ t('publicResources') }}</p>
-          </div>
-        </div>
-        <div class="header-user-slot">
-          <template v-if="!isLoggedIn">
-            <LanguageToggle />
-            <router-link to="/login" class="btn-ghost">{{ t('login') }}</router-link>
-            <router-link to="/register" class="btn-primary">{{ t('register') }}</router-link>
-          </template>
-        </div>
-        <input
-          v-model.trim="searchQuery"
-          class="dash-search dash-search-header-mobile"
-          :placeholder="folderSearchPlaceholder"
+      <Transition name="dashboard-selection-bar">
+        <DashboardSelectionBar
+          v-if="isLoggedIn && selectedKeys.length"
+          :selected-count="selectedKeys.length"
+          :selected-size="selectedSize"
+          :all-on-screen-selected="allOnScreenSelected"
+          :bulk-delete-count="bulkDeleteCount"
+          :is-busy="isBusy"
+          :download-busy="downloadStatus.phase === 'collect' || downloadStatus.phase === 'pack'"
+          @clear="clearSelection"
+          @select-all="selectAllOnScreen"
+          @move="openBulkMoveModal"
+          @download="bulkDownload"
+          @delete="bulkDelete"
         />
-      </div>
-    </header>
-    <header v-else class="app-header dashboard-auth-header">
-      <div class="app-header-inner">
-        <button
-          type="button"
-          class="btn-ghost btn-sm dashboard-mobile-sidebar-open"
-          :aria-label="t('openNavigation')"
-          data-mobile-sidebar-open
-          @click.stop="openMobileSidebar"
-        ><Menu :size="20" aria-hidden="true" /></button>
-        <input
-          v-model.trim="searchQuery"
-          class="dash-search dash-search-header-mobile"
-          :placeholder="folderSearchPlaceholder"
+      </Transition>
+      <div
+        v-if="marquee"
+        class="dashboard-marquee"
+        :style="{ left: marquee.left + 'px', top: marquee.top + 'px', width: marquee.width + 'px', height: marquee.height + 'px' }"
+        aria-hidden="true"
+        data-marquee
+      ></div>
+      <Transition name="dashboard-upload-panel">
+        <DashboardUploadPanel
+          v-if="uploadPanelOpen && uploads.length"
+          :uploads="uploads"
+          :summary="uploadSummary"
+          @cancel="cancelUpload"
+          @collapse="uploadPanelOpen = false"
+          @hide="clearFinishedUploads"
         />
-        <!-- Tab mode: Back lands here, so the open tabs must be reachable from here too. -->
-        <TabsButton class="dashboard-tabs-button" />
-      </div>
-    </header>
+      </Transition>
+      <Transition name="dashboard-upload-badge">
+        <DashboardUploadBadge v-if="!uploadPanelOpen && uploads.length" :summary="uploadSummary" @open="uploadPanelOpen = true" />
+      </Transition>
+      <DashboardStatusOverlays
+        :download-phase="downloadStatus.phase"
+        :transfer-status-text="transferStatusText"
+        :transfer-status-percent="transferStatusPercent"
+      />
+    <DashboardPublicHeader v-if="!isLoggedIn" v-model:search-query="searchQuery" :folder-search-placeholder="folderSearchPlaceholder" />
+    <DashboardAuthHeader
+      v-else
+      v-model:search-query="searchQuery"
+      :open-control-menu="openControlMenu"
+      :content-types="contentTypes"
+      :all-tag-names="allTagNames"
+      :selected-tags="selectedTags"
+      :with-files="activeSection.kind === 'folder'"
+      :sort-mode="sortMode"
+      :folder-search-placeholder="folderSearchPlaceholder"
+      @open-sidebar="openMobileSidebar"
+      @toggle-menu="toggleToolbarMenu"
+      @update-types="contentTypes = $event"
+      @toggle-tag="toggleSelectedTag"
+      @reset-filters="clearTypeAndTagFilters"
+      @select-sort="selectSortMode"
+    />
 
     <main
       ref="dashboardMain"
       class="app-main dashboard"
+      @pointerdown="startMarquee"
       @touchstart.passive="onDashboardPullStart"
       @touchmove="onDashboardPullMove"
       @touchend="onDashboardPullEnd"
@@ -84,136 +108,37 @@
     >
     <!-- One grid/list choice for the whole dashboard: every feed section
          and every folder (the switch sits in Recents' and the folder's heading). -->
-    <div ref="dashboardShell" class="dashboard-shell" :class="{ 'dashboard-list-view': recentViewMode === 'list' }">
-    <section
-      v-if="isLoggedIn && activeSection.kind === 'recent'"
-      class="resource-control-panel"
+    <div
+      ref="dashboardShell"
+      class="dashboard-shell"
+      :class="[{ 'dashboard-list-view': recentViewMode === 'list', 'dashboard-selecting': selectedKeys.length > 0, 'dashboard-marquee-active': Boolean(marquee) }, 'dashboard-nav-' + navDirection]"
+      @click.capture="onSelectionClickCapture"
+      @pointerdown.capture="onSelectionPointerDown"
+      @pointermove.capture="onSelectionPointerMove"
+      @pointerup.capture="cancelLongPress"
+      @pointercancel.capture="cancelLongPress"
+      @contextmenu.capture="onSelectionContextMenu"
     >
-      <div class="dash-actions-secondary">
-        <button class="btn-ghost" @click.stop="openTagManager">
-          <Tags class="menu-icon" :size="17" aria-hidden="true" />
-          <span>{{ t('manageTags') }}</span>
-        </button>
-        <button class="btn-ghost" @click.stop="importFile()">
-          <Upload class="menu-icon" :size="17" aria-hidden="true" />
-          <span>{{ t('import') }}</span>
-        </button>
-        <router-link v-if="admin" to="/admin" class="btn-ghost">
-          <ShieldCheck class="menu-icon" :size="17" aria-hidden="true" />
-          <span>{{ t('admin') }}</span>
-        </router-link>
-      </div>
-    </section>
-    <input type="file" ref="fileInput" accept=".canvas,.json,.html,.htm,text/html" style="display:none" @change="onFileSelected" />
-    <div class="dash-toolbar">
-      <div class="control-menu dashboard-new-menu">
-            <button class="btn-primary" @click.stop="toggleNewMenu">
-              <Plus class="menu-icon" :size="17" aria-hidden="true" />
-              <span>{{ t('new') }}</span>
-            </button>
-            <div v-if="openControlMenu === 'new'" class="mobile-action-popover control-popover" @click.stop>
-              <label v-if="isLoggedIn && folderOptions.length" class="dashboard-new-destination">
-                <span>{{ t('createIn') }}</span>
-                <select v-model="newItemFolderId" data-new-item-folder>
-                  <option value="">{{ t('createInUnsorted') }}</option>
-                  <option
-                    v-for="option in newItemFolderOptions"
-                    :key="option.id"
-                    :value="option.id"
-                  >{{ '\u00a0\u00a0'.repeat(option.depth) }}{{ option.name }}</option>
-                </select>
-              </label>
-              <button class="card-menu-item" @click="createCanvas">
-                <FilePlus2 class="menu-icon" :size="17" aria-hidden="true" />
-                <span>{{ t('newCanvas') }}</span>
-              </button>
-              <button class="card-menu-item" @click="createHtmlDocument">
-                <FileCode2 class="menu-icon" :size="17" aria-hidden="true" />
-                <span>{{ t('htmlDocument') }}</span>
-              </button>
-              <button class="card-menu-item" @click="createTextDocument">
-                <FileText class="menu-icon" :size="17" aria-hidden="true" />
-                <span>{{ t('document') }}</span>
-              </button>
-              <button class="card-menu-item" @click="openInteractiveTemplatePicker">
-                <LayoutTemplate class="menu-icon" :size="17" aria-hidden="true" />
-                <span>{{ t('interactiveTemplate') }}</span>
-              </button>
-              <button class="card-menu-item" @click="openCreateGroupModal">
-                <FolderPlus class="menu-icon" :size="17" aria-hidden="true" />
-                <span>{{ t('group') }}</span>
-              </button>
-            </div>
-          </div>
-      <input v-model.trim="searchQuery" class="dash-search dash-search-toolbar-desktop" :placeholder="folderSearchPlaceholder" />
-      <select v-model="sortMode" class="dash-sort-select dash-sort-select-desktop">
-        <option value="updated-desc">{{ t('newest') }}</option>
-        <option value="updated-asc">{{ t('oldest') }}</option>
-        <option value="title-asc">{{ t('titleAsc') }}</option>
-        <option value="title-desc">{{ t('titleDesc') }}</option>
-      </select>
-      <div class="content-type-tabs">
-        <button :class="{ active: contentFilter === 'all' }" @click.stop="contentFilter = 'all'">{{ t('all') }}</button>
-        <button :class="{ active: contentFilter === 'canvas' }" @click.stop="contentFilter = 'canvas'">{{ t('canvas') }}</button>
-        <button :class="{ active: contentFilter === 'html-document' }" @click.stop="contentFilter = 'html-document'">HTML</button>
-        <button :class="{ active: contentFilter === 'text-document' }" @click.stop="contentFilter = 'text-document'">{{ t('docs') }}</button>
-        <button :class="{ active: contentFilter === 'interactive-template' }" @click.stop="contentFilter = 'interactive-template'">{{ t('templatesFilter') }}</button>
-      </div>
-      <div v-if="allTagNames.length" ref="tagFilterList" class="tag-filter-list tag-filter-list-desktop">
-        <button class="tag-filter" :class="{ active: selectedTags.length === 0 }" @click.stop="clearSelectedTags">{{ t('all') }}</button>
-        <button
-          v-for="tag in allTagNames"
-          :key="tag"
-          class="tag-filter"
-          :class="{ active: isTagSelected(tag) }"
-          @click.stop="toggleSelectedTag(tag)"
-        >#{{ tag }}</button>
-        <span v-if="hasTagOverflow" class="tag-filter-scroll-hint" aria-hidden="true">›</span>
-      </div>
-      <!-- Mobile: shows as many tags as actually fit in one line (selected
-           tags first), plus a "+N" for the rest - never a horizontal
-           scroll, never a hardcoded chip count. See src/dashboard/tag-fit.ts
-           for the actual fit math; recomputeMobileTagFit measures real
-           pixel widths off the hidden row below and feeds them in, re-run
-           on resize and whenever the tag list/selection changes. -->
-      <div v-if="allTagNames.length" ref="tagFilterMobileEl" class="tag-filter-list-mobile">
-        <button class="tag-filter" :class="{ active: selectedTags.length === 0 }" @click.stop="clearSelectedTags">{{ t('all') }}</button>
-        <button
-          v-for="tag in visibleMobileTags"
-          :key="tag"
-          class="tag-filter"
-          :class="{ active: isTagSelected(tag) }"
-          @click.stop="toggleSelectedTag(tag)"
-        >#{{ tag }}</button>
-        <button
-          v-if="mobileTagOverflowCount > 0"
-          type="button"
-          class="tag-filter tag-filter-more"
-          @click.stop="openTagSheet"
-        >+{{ mobileTagOverflowCount }}</button>
-        <button
-          v-if="selectedTags.length"
-          type="button"
-          class="tag-filter tag-filter-clear"
-          :title="t('clearTagFilter')"
-          :aria-label="t('clearTagFilter')"
-          @click.stop="clearSelectedTags"
-        ><X :size="13" aria-hidden="true" /></button>
-      </div>
-      <!-- Measurement-only twin of the row above: renders every possible
-           chip (off-screen, never interactive) purely so recomputeMobileTagFit
-           can read real widths for chips the visible row above isn't
-           currently rendering - the classic "shadow measurement row"
-           pattern this kind of single-line-plus-overflow layout needs,
-           since you can't measure a chip's width without laying it out
-           somewhere first. -->
-      <div v-if="allTagNames.length" ref="tagMeasureEl" class="tag-filter-list-mobile tag-filter-measure" aria-hidden="true">
-        <button ref="tagMeasureAllEl" class="tag-filter">{{ t('all') }}</button>
-        <button v-for="tag in tagsInPriorityOrder" :key="`measure-${tag}`" class="tag-filter">#{{ tag }}</button>
-        <button ref="tagMeasureMoreEl" class="tag-filter tag-filter-more">+{{ tagsInPriorityOrder.length }}</button>
-        <button ref="tagMeasureClearEl" class="tag-filter tag-filter-clear"><X :size="13" aria-hidden="true" /></button>
-      </div>
-    </div>
+    <DashboardToolbarControls
+      :show-controls="spaceId === null"
+      :filter-open="openControlMenu === 'filter:desktop'"
+      :sort-open="openControlMenu === 'sort:desktop'"
+      :content-types="contentTypes"
+      :tags="allTagNames"
+      :selected-tags="selectedTags"
+      :with-files="activeSection.kind === 'folder'"
+      :sort-mode="sortMode"
+      :search-query="searchQuery"
+      :search-placeholder="folderSearchPlaceholder"
+      @add="spaceId !== null ? spaceView?.startAdd($event) : yandexPath !== null ? yandexView?.pickFiles() : openAddDialog()"
+      @toggle-filter="toggleToolbarMenu('filter:desktop')"
+      @toggle-sort="toggleToolbarMenu('sort:desktop')"
+      @update:types="contentTypes = $event"
+      @toggle-tag="toggleSelectedTag"
+      @reset-filters="clearTypeAndTagFilters"
+      @select-sort="selectSortMode"
+      @update:search="searchQuery = $event"
+    />
 
     <!-- Floating (style.css), never in the page flow: the list must not
          shift down and back up around a refresh or an action's result. -->
@@ -231,57 +156,39 @@
       <div class="dash-section-head dashboard-recent-head">
         <h2>{{ t('recents') }}</h2>
         <div class="dashboard-recent-head-controls">
-          <div class="control-menu dash-sort-menu-mobile">
-            <button type="button" class="btn-ghost btn-sm dash-sort-button-mobile" :aria-label="t('sortBy')" :title="t('sortBy')" @click.stop="toggleMobileSortMenu('recent')">
-              <ArrowUpDown :size="15" aria-hidden="true" />
-            </button>
-            <div v-if="openControlMenu === 'mobile-sort:recent'" class="mobile-action-popover mobile-sort-popover" @click.stop>
-              <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'updated-desc' }" @click="selectSortMode('updated-desc')">
-                <Check v-if="sortMode === 'updated-desc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
-                <span>{{ t('newest') }}</span>
-              </button>
-              <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'updated-asc' }" @click="selectSortMode('updated-asc')">
-                <Check v-if="sortMode === 'updated-asc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
-                <span>{{ t('oldest') }}</span>
-              </button>
-              <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'title-asc' }" @click="selectSortMode('title-asc')">
-                <Check v-if="sortMode === 'title-asc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
-                <span>{{ t('titleAsc') }}</span>
-              </button>
-              <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'title-desc' }" @click="selectSortMode('title-desc')">
-                <Check v-if="sortMode === 'title-desc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
-                <span>{{ t('titleDesc') }}</span>
-              </button>
-            </div>
-          </div>
           <DashboardViewToggle :mode="recentViewMode" @update:mode="setRecentViewMode" />
         </div>
       </div>
-      <div
+      <p v-if="recentRefreshFailed && visibleRecent.length" class="dashboard-recents-stale" role="status" data-recent-stale>
+        {{ t('recentStale') }}
+        <button type="button" class="dash-empty-reset" @click.stop="retryRecent">{{ t('retry') }}</button>
+      </p>
+      <DashboardRecentResources
         v-if="visibleRecent.length"
-        class="dashboard-recents-layout"
-        :class="recentViewMode === 'grid' ? 'dashboard-recents-grid' : 'dashboard-recents-list'"
-        :aria-label="t('recentResources')"
-        data-recent-layout
-      >
-        <button v-for="item in visibleRecent" :key="`${item.type}-${item.id}`" class="dashboard-recent-card" type="button" @click="openRecentResource(item)">
-          <span class="resource-title-icon" :class="recentResourceIconClass(item.type)" :data-resource-icon="item.type" aria-hidden="true"></span>
-          <span class="dashboard-recent-title">{{ item.title || t('untitled') }}</span>
-          <span
-            v-if="recentFolderPath(item)"
-            class="dashboard-recent-path"
-            :title="recentFolderPath(item)"
-            data-recent-folder-path
-          ><Folder :size="12" aria-hidden="true" />{{ recentFolderPath(item) }}</span>
-          <span class="dashboard-recent-meta">{{ recentResourceTypeLabel(item.type) }} · {{ formatRecentOpenedAt(item.openedAt) }}</span>
-          <span class="dashboard-recent-meta-mobile">{{ recentResourceTypeLabel(item.type) }} · {{ formatCardDateMobile(new Date(item.openedAt).toISOString()) }}</span>
-        </button>
+        :items="visibleRecent"
+        :recent-view-mode="recentViewMode"
+        :is-logged-in="isLoggedIn"
+        :selection-key="selectionKey"
+        :is-selected="isSelected"
+        :folder-path="recentFolderPath"
+        :format-opened-at="formatRecentOpenedAt"
+        :format-mobile-date="formatCardDateMobile"
+        @open="openRecentResource"
+        @toggle="(item) => toggleSelected(selectionKey(item))"
+      />
+      <div v-else-if="recentRefreshFailed" class="dash-empty dashboard-recents-error" role="alert" data-recent-error>
+        {{ t('recentLoadFailed') }}
+        <button type="button" class="dash-empty-reset" data-recent-retry @click.stop="retryRecent">{{ t('retry') }}</button>
       </div>
       <div v-else-if="recentResources.length" class="dash-empty dashboard-recents-empty">
         {{ t('noRecentMatches') }}
         <button v-if="hasActiveFilter" type="button" class="dash-empty-reset" data-reset-filters @click.stop="resetFilters">{{ t('resetFilters') }}</button>
       </div>
-      <div v-else class="dash-empty dashboard-recents-empty">{{ t('noRecentResources') }}</div>
+      <div v-else class="dash-grid" data-feed-grid="recent">
+          <button type="button" class="dashboard-add-tile dashboard-recents-empty" data-feed-add="recent" @click.stop="openAddFromTile('recent')">
+            <span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span>
+          </button>
+      </div>
       <button
         v-if="recentShowAllAvailable"
         type="button"
@@ -293,7 +200,7 @@
         <ChevronUp v-else :size="15" aria-hidden="true" />
       </button>
 
-      <div v-if="recentFolderTiles.length" id="feed-folders" class="dash-section-head dashboard-recent-folders-head dashboard-feed-anchor" data-feed-anchor="folders">
+      <div id="feed-folders" class="dash-section-head dashboard-recent-folders-head dashboard-feed-anchor" data-feed-anchor="folders">
         <h2>{{ t('folders') }}</h2>
       </div>
       <div v-if="recentFolderTiles.length" class="dash-grid subfolder-grid" data-recent-folders>
@@ -309,6 +216,38 @@
           <span class="subfolder-card-icon" aria-hidden="true">▤</span>
           <span class="subfolder-card-name">{{ folder.name }}</span>
           <span class="subfolder-card-count">{{ folder.displayCount }}</span>
+          <span v-if="folder.latest" class="subfolder-card-date" data-folder-tile-date>{{ formatDate(folder.latest) }}</span>
+        </button>
+      </div>
+      <div v-else class="dash-grid subfolder-grid" data-recent-folders-empty>
+        <button type="button" class="dashboard-add-tile dashboard-add-tile-folder" data-feed-add="folders" @click.stop="openAddFromTile('folders')">
+          <span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span>
+        </button>
+      </div>
+
+      <!-- Shared spaces, after the folders and like them: a tile each, the
+           number of folders in it beside its last change. -->
+      <div id="feed-spaces" class="dash-section-head dashboard-recent-folders-head dashboard-feed-anchor" data-feed-anchor="spaces">
+        <h2>{{ t('spaces') }}</h2>
+      </div>
+      <div v-if="spaceTiles.length" class="dash-grid subfolder-grid" data-recent-spaces>
+        <button
+          v-for="space in spaceTiles"
+          :key="'recent-space-' + space.id"
+          type="button"
+          class="subfolder-card"
+          :data-recent-space-tile="space.id"
+          @click="selectDashboardSection({ kind: 'space', spaceId: space.id })"
+        >
+          <span class="subfolder-card-icon" aria-hidden="true"><UsersRound :size="13" /></span>
+          <span class="subfolder-card-name">{{ space.name }}</span>
+          <span class="subfolder-card-count">{{ space.sourceCount || t('emptyFolder') }}</span>
+          <span v-if="space.updatedAt" class="subfolder-card-date" data-folder-tile-date>{{ formatDate(space.updatedAt) }}</span>
+        </button>
+      </div>
+      <div v-else class="dash-grid subfolder-grid" data-recent-spaces-empty>
+        <button type="button" class="dashboard-add-tile dashboard-add-tile-folder" data-feed-add="spaces" @click.stop="createSpace">
+          <span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span>
         </button>
       </div>
     </section>
@@ -337,26 +276,13 @@
     <div v-if="loading" class="dash-loading">{{ t('loading') }}</div>
 
     <template v-else>
-      <div v-if="isLoggedIn && activeSection.kind === 'recent' && incomingRequests.length" class="dash-section access-requests-section">
-        <div class="dash-section-head">
-          <h2>{{ t('accessRequests') }}</h2>
-          <button class="btn-ghost btn-sm" @click.stop="load()" :disabled="isBusy">{{ t('refresh') }}</button>
-        </div>
-        <div class="access-request-list">
-          <div v-for="request in incomingRequests" :key="request.id" class="access-request-row">
-            <div>
-              <div class="access-request-title">{{ request.resourceTitle || request.resourceId }}</div>
-              <div class="access-request-meta">
-                {{ request.requesterEmail || request.requesterName || request.requesterId }} asks for {{ request.requestedRole }} on {{ request.resourceType === 'canvas' ? 'canvas' : request.resourceType === 'text-document' ? 'document' : 'HTML' }}
-              </div>
-            </div>
-            <div class="access-request-actions">
-              <button class="btn-ghost btn-sm" :disabled="isBusy" @click.stop="resolveAccessRequest(request.id, 'declined')">{{ t('decline') }}</button>
-              <button class="btn-primary btn-sm" :disabled="isBusy" @click.stop="resolveAccessRequest(request.id, 'approved')">{{ t('approve') }}</button>
-            </div>
-          </div>
-        </div>
-      </div>
+      <DashboardAccessRequests
+        v-if="isLoggedIn && activeSection.kind === 'recent'"
+        :requests="incomingRequests"
+        :is-busy="isBusy"
+        @refresh="load"
+        @resolve="resolveAccessRequest"
+      />
 
       <section
         v-if="isLoggedIn && activeSection.kind === 'folder' && activeFolder"
@@ -367,275 +293,134 @@
             :key="activeFolder.id"
             class="folder-manager-row"
           >
-              <div class="folder-manager-top">
-              <div class="folder-manager-main">
-                <button
-                  type="button"
-                  class="folder-back-button"
-                  :title="t('back')"
-                  :aria-label="t('back')"
-                  data-folder-back-button
-                  @click.stop="goToParentFolder"
-                ><ArrowLeft :size="16" aria-hidden="true" /></button>
-                <span class="folder-manager-title">
-                  <span class="folder-manager-name">{{ activeFolder.name }}</span>
-                  <span class="folder-manager-count">{{ activeFolder.canvasCount }} {{ t('canvas').toLowerCase() }} / {{ activeFolder.htmlDocumentCount }} HTML / {{ activeFolder.textDocumentCount || 0 }} {{ t('docs').toLowerCase() }}</span>
-                </span>
-              </div>
-              <DashboardViewToggle class="folder-view-toggle" :mode="recentViewMode" @update:mode="setRecentViewMode" />
-              <!-- Sort button in folder header -->
-              <div class="control-menu dash-sort-menu-mobile folder-header-sort">
-                <button type="button" class="btn-ghost btn-sm dash-sort-button-mobile" :aria-label="t('sortBy')" :title="t('sortBy')" @click.stop="toggleMobileSortMenu('folder')">
-                  <ArrowUpDown :size="15" aria-hidden="true" />
-                </button>
-                <div v-if="openControlMenu === 'mobile-sort:folder'" class="mobile-action-popover mobile-sort-popover" @click.stop>
-                  <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'updated-desc' }" @click="selectSortMode('updated-desc')">
-                    <Check v-if="sortMode === 'updated-desc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
-                    <span>{{ t('newest') }}</span>
-                  </button>
-                  <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'updated-asc' }" @click="selectSortMode('updated-asc')">
-                    <Check v-if="sortMode === 'updated-asc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
-                    <span>{{ t('oldest') }}</span>
-                  </button>
-                  <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'title-asc' }" @click="selectSortMode('title-asc')">
-                    <Check v-if="sortMode === 'title-asc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
-                    <span>{{ t('titleAsc') }}</span>
-                  </button>
-                  <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'title-desc' }" @click="selectSortMode('title-desc')">
-                    <Check v-if="sortMode === 'title-desc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
-                    <span>{{ t('titleDesc') }}</span>
-                  </button>
-                </div>
-              </div>
-              <!-- Веб: «+» слева от «⋯» — что создать прямо в этой папке. На мобильном скрыт:
-                   там создаёт плавающая «+», она сама подставляет открытую папку. -->
-              <div v-if="activeFolder.role === 'owner'" class="folder-manager-menu folder-create-menu">
-                <button
-                  class="folder-manager-trigger folder-create-trigger"
-                  data-folder-create-menu
-                  @click.stop="toggleFolderCreateMenu(activeFolder.id)"
-                  :title="t('new')"
-                  :aria-label="t('new')"
-                  :disabled="isBusy"
-                ><Plus :size="17" aria-hidden="true" /></button>
-                <div v-if="openControlMenu === 'folder-new:' + activeFolder.id" class="mobile-action-popover" @click.stop>
-                  <button class="card-menu-item" data-folder-create="canvas" @click="createCanvas(activeFolder.id)" :disabled="isBusy">
-                    <FilePlus2 class="menu-icon" :size="17" aria-hidden="true" /><span>{{ t('newCanvas') }}</span>
-                  </button>
-                  <button class="card-menu-item" data-folder-create="html-document" @click="createHtmlDocument(activeFolder.id)" :disabled="isBusy">
-                    <FileCode2 class="menu-icon" :size="17" aria-hidden="true" /><span>{{ t('htmlDocument') }}</span>
-                  </button>
-                  <button class="card-menu-item" data-folder-create="text-document" @click="createTextDocument(activeFolder.id)" :disabled="isBusy">
-                    <FileText class="menu-icon" :size="17" aria-hidden="true" /><span>{{ t('document') }}</span>
-                  </button>
-                  <button class="card-menu-item" data-folder-create="interactive-template" @click="openInteractiveTemplatePicker(activeFolder.id)" :disabled="isBusy">
-                    <LayoutTemplate class="menu-icon" :size="17" aria-hidden="true" /><span>{{ t('interactiveTemplate') }}</span>
-                  </button>
-                </div>
-              </div>
-              <div v-if="activeFolder.role === 'owner'" class="folder-manager-menu">
-                <button
-                  class="folder-manager-trigger"
-                  @click.stop="toggleFolderMenu(activeFolder.id)"
-                  :title="t('groupActions')"
-                  :disabled="isBusy"
-                >⋯</button>
-                <div v-if="openControlMenu === 'folder:' + activeFolder.id" class="mobile-action-popover" @click.stop>
-                  <button class="card-menu-item" @click="importToFolder(activeFolder)" :disabled="isBusy">{{ t('import') }}</button>
-                  <button class="card-menu-item" @click="openFolderShareModal(activeFolder)" :disabled="isBusy">{{ t('share') }}</button>
-                  <button
-                    v-if="activeFolder.name !== 'Unsorted'"
-                    class="card-menu-item"
-                    @click="openRenameFolderModal(activeFolder)"
-                    :disabled="isBusy"
-                  >{{ t('rename') }}</button>
-                  <button
-                    class="card-menu-item"
-                    @click="openSubfolderModal(activeFolder)"
-                    :disabled="isBusy"
-                  >{{ t('addFolder') }}</button>
-                  <button
-                    v-if="activeFolder.name !== 'Unsorted'"
-                    class="card-menu-item"
-                    data-action="move-folder-parent"
-                    @click="openFolderParentModal(activeFolder)"
-                    :disabled="isBusy"
-                  >{{ t('moveFolderInto') }}</button>
-                  <button
-                    v-if="activeFolder.name !== 'Unsorted'"
-                    class="card-menu-item danger"
-                    @click="deleteFolder(activeFolder)"
-                    :disabled="isBusy"
-                  >{{ t('delete') }}</button>
-                </div>
-              </div>
-              </div>
+              <DashboardFolderHeader
+                :active-folder="activeFolder"
+                :active-folder-file-count="activeFolderFileCount"
+                :recent-view-mode="recentViewMode"
+                :is-busy="isBusy"
+                :menu-open="openControlMenu === 'folder:' + activeFolder.id"
+                @back="goToParentFolder"
+                @update:view-mode="setRecentViewMode"
+                @add="openAddDialog({ folderId: activeFolder.id })"
+                @toggle-menu="toggleFolderMenu(activeFolder.id)"
+                @import="openAddDialog({ folderId: activeFolder.id, importKind: 'file' })"
+                @share="openFolderShareModal(activeFolder)"
+                @rename="openRenameFolderModal(activeFolder)"
+                @add-subfolder="openSubfolderModal(activeFolder)"
+                @move-parent="openFolderParentModal(activeFolder)"
+                @delete="deleteFolder(activeFolder)"
+              />
               <div ref="activeFolderBody" class="folder-manager-body" @scroll="onFolderBodyScroll">
-                <div v-if="activeSubfolders.length" class="dash-grid subfolder-grid">
-                  <button
-                    v-for="child in activeSubfolders"
-                    :key="'subfolder-' + child.id"
-                    type="button"
-                    class="subfolder-card"
-                    @click="selectFolder(child.id)"
-                  >
-                    <span class="subfolder-card-icon" aria-hidden="true">▤</span>
-                    <span class="subfolder-card-name">{{ child.name }}</span>
-                    <span class="subfolder-card-count">{{ child.count || t('emptyFolder') }}</span>
-                  </button>
-                </div>
-                <div v-if="!activeFolder.items.length && (hasActiveFilter || !activeSubfolders.length)" class="dash-empty" data-folder-empty>
-                  {{ hasActiveFilter ? t('noFilterMatches') : t('noFolderItems') }}
-                  <button v-if="hasActiveFilter" type="button" class="dash-empty-reset" data-reset-filters @click.stop="resetFilters">{{ t('resetFilters') }}</button>
-                </div>
+                <DashboardActiveSubfolders
+                  :subfolders="activeSubfolders"
+                  :active-folder-empty="activeFolderEmpty"
+                  :has-active-filter="hasActiveFilter"
+                  :is-owner="activeFolder.role === 'owner'"
+                  :format-date="formatDate"
+                  @select="selectFolder"
+                  @reset="resetFilters"
+                  @add="openAddFromTile('folder')"
+                />
                 <div class="dash-grid">
-                  <template v-for="item in activeFolder.items" :key="`${item.type}-${item.id}`">
-                  <div
-                    v-if="item.type === 'canvas'"
-                    class="canvas-card"
-                    :class="{ dragging: draggingResourceId === item.id }"
-                    draggable="false"
-                    @click="openCanvasFromCard(item.slug || item.id)"
-                  >
-                    <input
-                      v-if="renamingId === item.id"
-                      class="card-title-input"
-                      :value="item.title"
-                      @blur="finishRename($event, item)"
-                      @keydown.enter="($event.target as HTMLInputElement).blur()"
-                      @keydown.escape="renamingId = ''"
-                      @click.stop
-                      ref="renameInput"
-                    />
-                    <div v-else class="card-title card-title-with-icon" @dblclick.stop="startRename(item.id)"><span class="resource-title-icon icon-canvas" data-resource-icon="canvas" :aria-label="t('canvas')"></span><span class="card-title-text">{{ item.title || t('untitled') }}</span></div>
-                    <div class="card-meta">
-                      <span class="badge" :class="isOwnedResource(item) ? 'badge-owner' : 'badge-shared'">{{ isOwnedResource(item) ? t('owner') : (item.role || t('sharedWithMe')) }}</span>
-                      <span v-if="item.pinned" class="badge badge-pinned">{{ t('pinned') }}</span>
-                      <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
-                    </div>
-                    <div class="card-meta-mobile">
-                      <span>{{ folderItemTypeLabel(item.type) }}</span>
-                      <span> · {{ isOwnedResource(item) ? t('owner') : (item.role || t('sharedWithMe')) }}</span>
-                    </div>
-                    <div class="card-date-mobile">{{ formatCardDateMobile(item.updatedAt) }}</div>
-                    <div v-if="item.tags?.length" class="card-tags">
-                      <span
-                        v-for="tag in item.tags"
-                        :key="tag.name"
-                        class="card-tag color-tag"
-                        :style="{ '--tag-color': tag.color }"
-                      >#{{ tag.name }}</span>
-                    </div>
-                    <button v-if="isOwnedResource(item)" class="card-pin" :class="{ active: item.pinned }" @click.stop="togglePinned(item)" title="Pin canvas" :disabled="isBusy">{{ item.pinned ? '★' : '☆' }}</button>
-                    <button class="card-manage" @click.stop="toggleCardMenu(item.id, $event)" title="Canvas actions" :disabled="isBusy">⋯</button>
-                    <div v-if="openMenuCanvasId === item.id" class="card-menu" :style="cardMenuStyle" @click.stop>
-                      <button class="card-menu-item" @click="openMoveFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
-                      <template v-if="isOwnedResource(item)"><button class="card-menu-item" @click="duplicateCanvas(item)" :disabled="isBusy">{{ t('duplicate') }}</button><button class="card-menu-item" @click="openDescriptionModal(item)" :disabled="isBusy">{{ t('description') }}</button><button class="card-menu-item" @click="openTagsModal(item)" :disabled="isBusy">{{ t('editTags') }}</button><button class="card-menu-item" @click="togglePinned(item)" :disabled="isBusy">{{ item.pinned ? t('unpin') : t('pin') }}</button><button class="card-menu-item" @click="openTransferModal(item)" :disabled="isBusy">{{ t('transferOwnership') }}</button><button class="card-menu-item danger" @click="deleteCanvas(item)" :disabled="isBusy">{{ t('delete') }}</button></template>
-                    </div>
-                  </div>
-                  <article
-                    v-else-if="item.type === 'html-document'"
-                    class="canvas-card html-doc-card"
-                    :class="{ dragging: draggingResourceId === item.id }"
-                    draggable="false"
-                    @click="openHtmlDocumentFromCard(item.slug || item.id)"
-                  >
-                    <a
-                      class="card-open-link"
-                      :href="`/edit/html/${item.slug || item.id}`"
-                      :aria-label="`Open HTML document ${item.title || 'Untitled HTML'}`"
-                      @click.stop="rememberRecentResource('html-document', item.slug || item.id)"
-                    ></a>
-                    <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-html" data-resource-icon="html-document" aria-label="HTML document"></span><span class="card-title-text">{{ item.title || 'Untitled HTML' }}</span></div>
-                    <div class="card-meta">
-                      <span v-if="item.pinned" class="badge badge-pinned">Pinned</span>
-                      <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
-                    </div>
-                    <div class="card-meta-mobile">
-                      <span>{{ folderItemTypeLabel(item.type) }}</span>
-                      <span> · {{ isOwnedResource(item) ? t('owner') : (item.role || t('sharedWithMe')) }}</span>
-                    </div>
-                    <div class="card-date-mobile">{{ formatCardDateMobile(item.updatedAt) }}</div>
-                    <div v-if="item.tags?.length" class="card-tags">
-                      <span
-                        v-for="tag in item.tags"
-                        :key="tag.name"
-                        class="card-tag color-tag"
-                        :style="{ '--tag-color': tag.color }"
-                      >#{{ tag.name }}</span>
-                    </div>
-                    <button v-if="isOwnedResource(item)" class="card-pin" :class="{ active: item.pinned }" @click.stop="togglePinned(item)" title="Pin HTML" :disabled="isBusy">{{ item.pinned ? '★' : '☆' }}</button>
-                    <button class="card-manage" @click.stop="toggleCardMenu(item.id, $event)" title="HTML actions" :disabled="isBusy">⋯</button>
-                    <div v-if="openMenuCanvasId === item.id" class="card-menu" :style="cardMenuStyle" @click.stop>
-                      <button class="card-menu-item" @click="openMoveHtmlFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
-                      <template v-if="isOwnedResource(item)"><button class="card-menu-item" @click="duplicateHtmlDocument(item)" :disabled="isBusy">{{ t('duplicate') }}</button><button class="card-menu-item" @click="openDescriptionModal(item)" :disabled="isBusy">{{ t('description') }}</button><button class="card-menu-item" @click="openTagsModal(item)" :disabled="isBusy">{{ t('editTags') }}</button><button class="card-menu-item" @click="togglePinned(item)" :disabled="isBusy">{{ item.pinned ? t('unpin') : t('pin') }}</button><button class="card-menu-item" @click="openTransferModal(item)" :disabled="isBusy">{{ t('transferOwnership') }}</button><button class="card-menu-item danger" @click="deleteHtmlDocument(item)" :disabled="isBusy">{{ t('delete') }}</button></template>
-                    </div>
-                  </article>
-                  <article
-                    v-else-if="item.type === 'interactive-template'"
-                    class="canvas-card html-doc-card interactive-template-card"
-                    :data-folder-resource="`interactive-template:${item.id}`"
-                    @click="openInteractiveTemplate(item.id)"
-                  >
-                    <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-template" data-resource-icon="interactive-template" aria-label="Интерактивный шаблон"></span><span class="card-title-text">{{ item.title }}</span></div>
-                    <div class="card-meta">
-                      <span class="badge" :class="item.role === 'owner' ? 'badge-owner' : 'badge-shared'">{{ interactiveTemplateTypeLabel(item.templateType) }}</span>
-                      <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
-                    </div>
-                    <div class="card-meta-mobile">
-                      <span>{{ folderItemTypeLabel(item.type) }}</span>
-                      <span> · {{ item.role === 'owner' ? t('owner') : (item.role || t('sharedWithMe')) }}</span>
-                    </div>
-                    <div class="card-date-mobile">{{ formatCardDateMobile(item.updatedAt) }}</div>
-                    <button class="card-manage" @click.stop="toggleCardMenu(`folder:interactive-template:${item.id}`, $event)" title="Действия с шаблоном" :disabled="isBusy">⋯</button>
-                    <div v-if="openMenuCanvasId === `folder:interactive-template:${item.id}`" class="card-menu" :style="cardMenuStyle" @click.stop>
-                      <button class="card-menu-item" @click="openMoveInteractiveTemplateFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
-                      <button v-if="item.role === 'owner'" class="card-menu-item danger" @click="deleteInteractiveTemplate(item)" :disabled="isBusy">{{ t('delete') }}</button>
-                    </div>
-                  </article>
-                  <article
-                    v-else
-                    class="canvas-card html-doc-card"
-                    :class="{ dragging: draggingResourceId === item.id }"
-                    draggable="false"
-                    @click="openTextDocumentFromCard(item.slug || item.id)"
-                  >
-                    <a
-                      class="card-open-link"
-                      :href="`/docs/${item.slug || item.id}`"
-                      :aria-label="`Open document ${item.title || 'Untitled document'}`"
-                      @click.stop="rememberRecentResource('text-document', item.slug || item.id)"
-                    ></a>
-                    <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-text-doc" data-resource-icon="text-document" aria-label="Document"></span><span class="card-title-text">{{ item.title || 'Untitled document' }}</span></div>
-                    <div class="card-meta">
-                      <span v-if="item.pinned" class="badge badge-pinned">Pinned</span>
-                      <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
-                    </div>
-                    <div class="card-meta-mobile">
-                      <span>{{ folderItemTypeLabel(item.type) }}</span>
-                      <span> · {{ isOwnedResource(item) ? t('owner') : (item.role || t('sharedWithMe')) }}</span>
-                    </div>
-                    <div class="card-date-mobile">{{ formatCardDateMobile(item.updatedAt) }}</div>
-                    <div v-if="item.tags?.length" class="card-tags">
-                      <span
-                        v-for="tag in item.tags"
-                        :key="tag.name"
-                        class="card-tag color-tag"
-                        :style="{ '--tag-color': tag.color }"
-                      >#{{ tag.name }}</span>
-                    </div>
-                    <button v-if="isOwnedResource(item)" class="card-pin" :class="{ active: item.pinned }" @click.stop="togglePinned(item)" title="Pin document" :disabled="isBusy">{{ item.pinned ? '★' : '☆' }}</button>
-                    <button class="card-manage" @click.stop="toggleCardMenu(item.id, $event)" title="Document actions" :disabled="isBusy">⋯</button>
-                    <div v-if="openMenuCanvasId === item.id" class="card-menu" :style="cardMenuStyle" @click.stop>
-                      <button class="card-menu-item" @click="openMoveTextDocumentFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
-                      <template v-if="isOwnedResource(item)"><button class="card-menu-item" @click="duplicateTextDocument(item)" :disabled="isBusy">{{ t('duplicate') }}</button><button class="card-menu-item" @click="openDescriptionModal(item)" :disabled="isBusy">{{ t('description') }}</button><button class="card-menu-item" @click="openTagsModal(item)" :disabled="isBusy">{{ t('editTags') }}</button><button class="card-menu-item" @click="togglePinned(item)" :disabled="isBusy">{{ item.pinned ? t('unpin') : t('pin') }}</button><button class="card-menu-item" @click="openTransferModal(item)" :disabled="isBusy">{{ t('transferOwnership') }}</button><button class="card-menu-item danger" @click="deleteTextDocument(item)" :disabled="isBusy">{{ t('delete') }}</button></template>
-                    </div>
-                  </article>
-                  </template>
+                  <DashboardFolderResourceGrid
+                    :items="activeFolder.items"
+                    :is-logged-in="isLoggedIn"
+                    :is-busy="isBusy"
+                    :dragging-resource-id="draggingResourceId"
+                    :open-menu-canvas-id="openMenuCanvasId"
+                    :renaming-id="renamingId"
+                    :card-menu-style="cardMenuStyle"
+                    :selection-key="selectionKey"
+                    :is-selected="isSelected"
+                    :is-owned-resource="isOwnedResource"
+                    :format-date="formatDate"
+                    :format-card-date-mobile="formatCardDateMobile"
+                    :interactive-template-type-label="interactiveTemplateTypeLabel"
+                    :resource-actions="resourceActions"
+                    @open-canvas="openCanvasFromCard"
+                    @open-html="openHtmlDocumentFromCard"
+                    @open-text="openTextDocumentFromCard"
+                    @open-interactive="openInteractiveTemplate"
+                    @remember="rememberRecentResource"
+                    @start-rename="startRename"
+                    @finish-rename="finishRename"
+                    @cancel-rename="renamingId = ''"
+                    @toggle-selected="toggleSelected"
+                    @toggle-pinned="togglePinned"
+                    @toggle-menu="toggleCardMenu"
+                    @select-action="handleResourceAction"
+                  />
+                  <DashboardFolderFiles
+                    :folder-id="activeFolder.id"
+                    :query="searchQuery"
+                    :filtered-out="!typePasses(contentTypes, 'file') || selectedTags.length > 0"
+                    :sort-mode="sortMode"
+                    :refresh-key="folderFilesRefreshKey"
+                    :selectable="isLoggedIn"
+                    :selected-keys="selectedKeys"
+                    @count="activeFolderFileCount = $event"
+                    @files="folderDriveFiles = $event"
+                    @toggle-select="toggleSelected"
+                    @open-image="openDriveImage"
+                    @previews="folderDrivePreviews = $event"
+                  />
                 </div>
               </div>
           </div>
         </section>
+
+      <section
+        v-if="isLoggedIn && yandexPath !== null"
+        class="dashboard-folder-content"
+        data-dashboard-view="yandex"
+      >
+        <DashboardYandexDisk
+          ref="yandexView"
+          :path="yandexPath"
+          :query="searchQuery"
+          :sort-mode="sortMode"
+          :view-mode="recentViewMode"
+          :refresh-key="yandexRefreshKey"
+          :selected-keys="selectedKeys"
+          @navigate="openYandexPath"
+          @update:view-mode="setRecentViewMode"
+          @toggle-select="toggleSelected"
+          @items="yandexFiles = $event"
+          @upload="uploadToYandex"
+          @move="openYandexMove"
+          @changed="yandexRefreshKey += 1"
+          @feedback="setFeedback"
+          @open-image="openYandexImage"
+        />
+      </section>
+
+      <section
+        v-if="isLoggedIn && spaceId !== null"
+        class="dashboard-folder-content"
+        data-dashboard-view="space"
+      >
+        <DashboardSpace
+          ref="spaceView"
+          :space-id="spaceId"
+          :view-mode="recentViewMode"
+          :query="searchQuery"
+          :me-id="currentUser?.id || ''"
+          :folder-options="folderOptions"
+          @update:view-mode="setRecentViewMode"
+          @open="openSpaceResource"
+          @open-media="(items, start) => (mediaViewer = { items, start })"
+          @gone="leaveSpaceSection"
+          @feedback="setFeedback"
+        />
+      </section>
+
+      <section
+        v-if="isLoggedIn && activeSection.kind === 'trash'"
+        class="dashboard-folder-content"
+        data-dashboard-view="trash"
+      >
+        <DashboardTrash @restored="onTrashRestored" @feedback="setFeedback" />
+      </section>
 
       <div
         v-if="isLoggedIn && (activeSection.kind === 'shared' || isHomeFeed)"
@@ -647,81 +432,32 @@
         data-section="shared"
       >
         <div class="dash-section-head"><h2>{{ t('sharedWithMe') }}</h2></div>
-        <div class="dash-grid">
-          <template v-for="item in feedItems(sharedFiltered, 'shared')" :key="'shared-' + item.type + '-' + item.id">
-          <div
-            v-if="item.type === 'canvas'"
-            class="canvas-card"
-            @click="openCanvas(item.slug || item.id)"
-          >
-            <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-canvas" data-resource-icon="canvas" aria-label="Canvas"></span>{{ item.title || 'Untitled' }}</div>
-            <div class="card-meta">
-              <span class="badge badge-shared">{{ item.role }}</span>
-              <span v-if="item.pinned" class="badge badge-pinned">Pinned</span>
-              <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
-            </div>
-            <div v-if="item.folder" class="card-folder">{{ item.folder }}</div>
-            <div v-if="item.tags?.length" class="card-tags">
-              <span
-                v-for="tag in item.tags"
-                :key="tag.name"
-                class="card-tag color-tag"
-                :style="{ '--tag-color': tag.color }"
-              >#{{ tag.name }}</span>
-            </div>
-            <button
-              class="card-manage"
-              :data-menu-trigger="`shared:${item.type}:${item.id}`"
-              @click.stop="toggleCardMenu(`shared:${item.type}:${item.id}`, $event)"
-              title="Canvas actions"
-              :disabled="isBusy"
-            >⋯</button>
-            <div v-if="openMenuCanvasId === `shared:${item.type}:${item.id}`" class="card-menu" :data-card-menu="`shared:${item.type}:${item.id}`" :style="cardMenuStyle" @click.stop>
-              <button class="card-menu-item" data-action="move-to-folder" @click="openMoveFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
-            </div>
-          </div>
-          <article
-            v-else-if="item.type === 'html-document'"
-            class="canvas-card html-doc-card"
-            @click="openHtmlDocument(item.slug || item.id)"
-          >
-            <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-html" data-resource-icon="html-document" aria-label="HTML document"></span>{{ item.title || 'Untitled HTML' }}</div>
-            <div class="card-meta">
-              <span class="badge badge-shared">{{ item.role || t('sharedWithMe') }}</span>
-              <span v-if="item.pinned" class="badge badge-pinned">{{ t('pinned') }}</span>
-              <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
-            </div>
-            <div v-if="item.tags?.length" class="card-tags">
-              <span v-for="tag in item.tags" :key="tag.name" class="card-tag color-tag" :style="{ '--tag-color': tag.color }">#{{ tag.name }}</span>
-            </div>
-            <button class="card-manage" :data-menu-trigger="`shared:${item.type}:${item.id}`" @click.stop="toggleCardMenu(`shared:${item.type}:${item.id}`, $event)" title="HTML actions" :disabled="isBusy">⋯</button>
-            <div v-if="openMenuCanvasId === `shared:${item.type}:${item.id}`" class="card-menu" :data-card-menu="`shared:${item.type}:${item.id}`" :style="cardMenuStyle" @click.stop>
-              <button class="card-menu-item" data-action="move-to-folder" @click="openMoveHtmlFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
-            </div>
-          </article>
-          <article
-            v-else-if="item.type === 'text-document'"
-            class="canvas-card html-doc-card"
-            @click="openTextDocument(item.slug || item.id)"
-          >
-            <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-text-doc" data-resource-icon="text-document" aria-label="Document"></span>{{ item.title || 'Untitled document' }}</div>
-            <div class="card-meta">
-              <span class="badge badge-shared">{{ item.role || t('sharedWithMe') }}</span>
-              <span v-if="item.pinned" class="badge badge-pinned">{{ t('pinned') }}</span>
-              <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
-            </div>
-            <div v-if="item.tags?.length" class="card-tags">
-              <span v-for="tag in item.tags" :key="tag.name" class="card-tag color-tag" :style="{ '--tag-color': tag.color }">#{{ tag.name }}</span>
-            </div>
-            <button class="card-manage" :data-menu-trigger="`shared:${item.type}:${item.id}`" @click.stop="toggleCardMenu(`shared:${item.type}:${item.id}`, $event)" title="Document actions" :disabled="isBusy">⋯</button>
-            <div v-if="openMenuCanvasId === `shared:${item.type}:${item.id}`" class="card-menu" :data-card-menu="`shared:${item.type}:${item.id}`" :style="cardMenuStyle" @click.stop>
-              <button class="card-menu-item" data-action="move-to-folder" @click="openMoveTextDocumentFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
-            </div>
-          </article>
-          </template>
+        <div class="dash-grid" data-feed-grid="shared">
+          <DashboardFeedResourceGrid
+            :items="feedItems(sharedFiltered, 'shared')"
+            scope="shared"
+            :is-logged-in="isLoggedIn"
+            :is-busy="isBusy"
+            :open-menu-canvas-id="openMenuCanvasId"
+            :card-menu-style="cardMenuStyle"
+            :selection-key="selectionKey"
+            :is-selected="isSelected"
+            :card-folder-path="cardFolderPath"
+            :format-date="formatDate"
+            :resource-actions="resourceActions"
+            @open-canvas="openCanvas"
+            @open-html="openHtmlDocument"
+            @open-text="openTextDocument"
+            @toggle-selected="toggleSelected"
+            @toggle-menu="toggleCardMenu"
+            @select-action="handleResourceAction"
+          />
+          <button v-if="!sharedFiltered.length && !hasActiveFilter" type="button" class="dashboard-add-tile" data-feed-add="shared" data-feed-empty="shared" @click.stop="openAddFromTile('shared')">
+            <span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span>
+          </button>
         </div>
-        <div v-if="!sharedFiltered.length" class="dash-empty" data-feed-empty="shared">
-          {{ hasActiveFilter ? t('noFilterMatches') : t('noSharedResources') }}
+        <div v-if="!sharedFiltered.length && hasActiveFilter" class="dash-empty" data-feed-empty="shared">
+          {{ t('noFilterMatches') }}
           <button v-if="hasActiveFilter" type="button" class="dash-empty-reset" data-reset-filters @click.stop="resetFilters">{{ t('resetFilters') }}</button>
         </div>
         <button
@@ -748,19 +484,30 @@
         data-section="interactive-templates"
       >
         <div class="dash-section-head"><h2>{{ t('interactiveTemplate') }}</h2></div>
-        <div class="dash-grid">
-          <article v-for="item in feedItems(visibleInteractiveTemplateItems, 'interactive')" :key="item.id" class="canvas-card html-doc-card interactive-template-card" :data-template-resource="item.id" @click="openInteractiveTemplate(item.id)">
-            <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-template" data-resource-icon="interactive-template" aria-label="Интерактивный шаблон"></span>{{ item.title }}</div>
-            <div class="card-meta"><span class="badge badge-owner">{{ interactiveTemplateTypeLabel(item.templateType) }}</span><span class="card-date">{{ formatDate(item.updatedAt) }}</span></div>
-            <button class="card-manage" :data-menu-trigger="`interactive-template:${item.id}`" @click.stop="toggleCardMenu(`interactive-template:${item.id}`, $event)" title="Действия с шаблоном" :disabled="isBusy">⋯</button>
-            <div v-if="openMenuCanvasId === `interactive-template:${item.id}`" class="card-menu" :data-card-menu="`interactive-template:${item.id}`" :style="cardMenuStyle" @click.stop>
-              <button class="card-menu-item" data-action="move-to-folder" @click="openMoveInteractiveTemplateFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
-              <button v-if="item.role === 'owner'" class="card-menu-item danger" data-action="delete" @click="deleteInteractiveTemplate(item)" :disabled="isBusy">{{ t('delete') }}</button>
-            </div>
-          </article>
+        <div class="dash-grid" data-feed-grid="interactive">
+          <DashboardInteractiveFeedGrid
+            :items="feedItems(visibleInteractiveTemplateItems, 'interactive')"
+            :is-logged-in="isLoggedIn"
+            :is-busy="isBusy"
+            :open-menu-canvas-id="openMenuCanvasId"
+            :card-menu-style="cardMenuStyle"
+            :selection-key="selectionKey"
+            :is-selected="isSelected"
+            :card-folder-path="cardFolderPath"
+            :format-date="formatDate"
+            :interactive-template-type-label="interactiveTemplateTypeLabel"
+            :resource-actions="resourceActions"
+            @open="openInteractiveTemplate"
+            @toggle-selected="toggleSelected"
+            @toggle-menu="toggleCardMenu"
+            @select-action="handleResourceAction"
+          />
+          <button v-if="!visibleInteractiveTemplateItems.length && !hasActiveFilter" type="button" class="dashboard-add-tile" data-feed-add="interactive" data-feed-empty="interactive" @click.stop="openAddFromTile('interactive')">
+            <span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span>
+          </button>
         </div>
-        <div v-if="!visibleInteractiveTemplateItems.length" class="dash-empty" data-feed-empty="interactive">
-          {{ hasActiveFilter ? t('noFilterMatches') : t('noInteractiveTemplates') }}
+        <div v-if="!visibleInteractiveTemplateItems.length && hasActiveFilter" class="dash-empty" data-feed-empty="interactive">
+          {{ t('noFilterMatches') }}
           <button v-if="hasActiveFilter" type="button" class="dash-empty-reset" data-reset-filters @click.stop="resetFilters">{{ t('resetFilters') }}</button>
         </div>
         <button
@@ -791,7 +538,7 @@
         <div class="dash-section-head dashboard-public-head">
           <h2>{{ t('public') }}</h2>
           <div class="dashboard-public-head-controls">
-            <div v-if="isLoggedIn" class="dashboard-public-owner-filter" role="group" :aria-label="t('publicOwnerFilter')">
+            <div v-if="isLoggedIn" ref="publicOwnerFilterEl" class="dashboard-public-owner-filter dashboard-segmented" role="group" :aria-label="t('publicOwnerFilter')">
               <button
                 v-for="option in PUBLIC_OWNER_FILTERS"
                 :key="option"
@@ -802,110 +549,33 @@
                 @click.stop="publicOwnerFilter = option"
               >{{ t(PUBLIC_OWNER_FILTER_LABELS[option]) }}</button>
             </div>
-            <div class="control-menu dash-sort-menu-mobile">
-              <button type="button" class="btn-ghost btn-sm dash-sort-button-mobile" :aria-label="t('sortBy')" :title="t('sortBy')" @click.stop="toggleMobileSortMenu('public')">
-                <ArrowUpDown :size="15" aria-hidden="true" />
-              </button>
-              <div v-if="openControlMenu === 'mobile-sort:public'" class="mobile-action-popover mobile-sort-popover" @click.stop>
-                <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'updated-desc' }" @click="selectSortMode('updated-desc')">
-                  <Check v-if="sortMode === 'updated-desc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
-                  <span>{{ t('newest') }}</span>
-                </button>
-                <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'updated-asc' }" @click="selectSortMode('updated-asc')">
-                  <Check v-if="sortMode === 'updated-asc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
-                  <span>{{ t('oldest') }}</span>
-                </button>
-                <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'title-asc' }" @click="selectSortMode('title-asc')">
-                  <Check v-if="sortMode === 'title-asc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
-                  <span>{{ t('titleAsc') }}</span>
-                </button>
-                <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'title-desc' }" @click="selectSortMode('title-desc')">
-                  <Check v-if="sortMode === 'title-desc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
-                  <span>{{ t('titleDesc') }}</span>
-                </button>
-              </div>
-            </div>
           </div>
         </div>
-        <div class="dash-grid">
-          <template v-for="item in feedItems(publicFiltered, 'public')" :key="'public-' + item.type + '-' + item.id">
-          <div
-            v-if="item.type === 'canvas'"
-            class="canvas-card"
-            @click="openCanvas(item.slug || item.id)"
-          >
-            <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-canvas" data-resource-icon="canvas" aria-label="Canvas"></span>{{ item.title || 'Untitled' }}</div>
-            <div class="card-meta">
-              <span class="badge badge-public">{{ item.allowPublicEdit ? t('publicEdit') : t('public') }}</span>
-              <span v-if="item.pinned" class="badge badge-pinned">{{ t('pinned') }}</span>
-              <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
-            </div>
-            <div class="card-owner">{{ item.ownerName || item.ownerEmail || t('unknownOwner') }}</div>
-            <div v-if="item.folder" class="card-folder">{{ item.folder }}</div>
-            <div v-if="item.tags?.length" class="card-tags">
-              <span
-                v-for="tag in item.tags"
-                :key="tag.name"
-                class="card-tag color-tag"
-                :style="{ '--tag-color': tag.color }"
-              >#{{ tag.name }}</span>
-            </div>
-            <button class="card-manage" :data-menu-trigger="`public:${item.type}:${item.id}`" @click.stop="toggleCardMenu(`public:${item.type}:${item.id}`, $event)" title="Canvas actions" :disabled="isBusy">⋯</button>
-            <div v-if="openMenuCanvasId === `public:${item.type}:${item.id}`" class="card-menu" :data-card-menu="`public:${item.type}:${item.id}`" :style="cardMenuStyle" @click.stop>
-              <button class="card-menu-item" data-action="move-to-folder" @click="openMoveFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
-            </div>
-          </div>
-          <article
-            v-else-if="item.type === 'html-document'"
-            class="canvas-card html-doc-card"
-            @click="openHtmlDocument(item.slug || item.id)"
-          >
-            <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-html" data-resource-icon="html-document" aria-label="HTML document"></span>{{ item.title || 'Untitled HTML' }}</div>
-            <div class="card-meta">
-              <span class="badge badge-public">{{ t('public') }}</span>
-              <span v-if="item.pinned" class="badge badge-pinned">{{ t('pinned') }}</span>
-              <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
-            </div>
-            <div v-if="item.tags?.length" class="card-tags">
-              <span
-                v-for="tag in item.tags"
-                :key="tag.name"
-                class="card-tag color-tag"
-                :style="{ '--tag-color': tag.color }"
-              >#{{ tag.name }}</span>
-            </div>
-            <button class="card-manage" :data-menu-trigger="`public:${item.type}:${item.id}`" @click.stop="toggleCardMenu(`public:${item.type}:${item.id}`, $event)" title="HTML actions" :disabled="isBusy">⋯</button>
-            <div v-if="openMenuCanvasId === `public:${item.type}:${item.id}`" class="card-menu" :data-card-menu="`public:${item.type}:${item.id}`" :style="cardMenuStyle" @click.stop>
-              <button class="card-menu-item" data-action="move-to-folder" @click="openMoveHtmlFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
-            </div>
-          </article>
-          <article
-            v-else-if="item.type === 'text-document'"
-            class="canvas-card html-doc-card"
-            @click="openTextDocument(item.slug || item.id)"
-          >
-            <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-text-doc" data-resource-icon="text-document" aria-label="Document"></span>{{ item.title || 'Untitled document' }}</div>
-            <div class="card-meta">
-              <span class="badge badge-public">{{ t('public') }}</span>
-              <span v-if="item.pinned" class="badge badge-pinned">{{ t('pinned') }}</span>
-              <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
-            </div>
-            <div v-if="item.tags?.length" class="card-tags">
-              <span
-                v-for="tag in item.tags"
-                :key="tag.name"
-                class="card-tag color-tag"
-                :style="{ '--tag-color': tag.color }"
-              >#{{ tag.name }}</span>
-            </div>
-            <button class="card-manage" :data-menu-trigger="`public:${item.type}:${item.id}`" @click.stop="toggleCardMenu(`public:${item.type}:${item.id}`, $event)" title="Document actions" :disabled="isBusy">⋯</button>
-            <div v-if="openMenuCanvasId === `public:${item.type}:${item.id}`" class="card-menu" :data-card-menu="`public:${item.type}:${item.id}`" :style="cardMenuStyle" @click.stop>
-              <button class="card-menu-item" data-action="move-to-folder" @click="openMoveTextDocumentFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
-            </div>
-          </article>
-          </template>
+        <div class="dash-grid" data-feed-grid="public">
+          <DashboardFeedResourceGrid
+            :items="feedItems(publicFiltered, 'public')"
+            scope="public"
+            :is-logged-in="isLoggedIn"
+            :is-busy="isBusy"
+            :open-menu-canvas-id="openMenuCanvasId"
+            :card-menu-style="cardMenuStyle"
+            :selection-key="selectionKey"
+            :is-selected="isSelected"
+            :card-folder-path="cardFolderPath"
+            :format-date="formatDate"
+            :resource-actions="resourceActions"
+            @open-canvas="openCanvas"
+            @open-html="openHtmlDocument"
+            @open-text="openTextDocument"
+            @toggle-selected="toggleSelected"
+            @toggle-menu="toggleCardMenu"
+            @select-action="handleResourceAction"
+          />
+          <button v-if="isLoggedIn && !publicFiltered.length && !hasActiveFilter" type="button" class="dashboard-add-tile" data-feed-add="public" data-public-empty data-feed-empty="public" @click.stop="openAddFromTile('public')">
+            <span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span>
+          </button>
         </div>
-        <div v-if="!publicFiltered.length" class="dash-empty" data-public-empty data-feed-empty="public">
+        <div v-if="!publicFiltered.length && (hasActiveFilter || !isLoggedIn)" class="dash-empty" data-public-empty data-feed-empty="public">
           {{ hasActiveFilter ? t('noFilterMatches') : publicAnyOwner.length ? t('noPublicMatches') : t('noPublicResources') }}
           <button v-if="hasActiveFilter" type="button" class="dash-empty-reset" data-reset-filters @click.stop="resetFilters">{{ t('resetFilters') }}</button>
         </div>
@@ -930,88 +600,45 @@
         v-if="isLoggedIn"
         type="button"
         class="dashboard-fab"
-        :aria-label="t('new')"
-        :title="t('new')"
-        @click.stop="toggleNewMenu"
+        :aria-label="t('add')"
+        :title="t('add')"
+        @click.stop="spaceId !== null ? spaceView?.startAdd($event) : yandexPath !== null ? yandexView?.pickFiles() : openAddDialog()"
       ><Plus :size="24" aria-hidden="true" /></button>
       </div>
     </div>
 
-    <!-- Mobile tag multi-select: replaces the old popover-that-quietly-
-         appears-at-the-bottom with a proper sheet - visible backdrop, stays
-         open across multiple taps, and only ever commits to selectedTags on
-         Apply (see openTagSheet/applyTagSheet). -->
-    <div v-if="tagSheetOpen" class="dashboard-modal-backdrop dashboard-tag-sheet-backdrop" @click.self="closeTagSheet">
-      <div class="dashboard-modal dashboard-tag-sheet" role="dialog" aria-modal="true" :aria-label="t('filterByTags')">
-        <div class="dashboard-tag-sheet-grabber" aria-hidden="true"></div>
-        <div class="dashboard-modal-head">
-          <div>
-            <h3>{{ t('filterByTags') }}</h3>
-            <p class="dashboard-tag-sheet-subtitle">{{ t('selectMultipleTags') }}</p>
-          </div>
-          <button class="dashboard-modal-close" :aria-label="t('close')" @click="closeTagSheet">
-            <X :size="16" aria-hidden="true" />
-          </button>
-        </div>
-        <div class="dashboard-tag-sheet-list">
-          <button
-            v-for="tag in allTagNames"
-            :key="tag"
-            type="button"
-            class="dashboard-tag-sheet-item"
-            :class="{ active: tagSheetDraft.includes(tag) }"
-            @click="toggleDraftTag(tag)"
-          >
-            <span>#{{ tag }}</span>
-            <Check v-if="tagSheetDraft.includes(tag)" :size="14" aria-hidden="true" />
-          </button>
-        </div>
-        <div class="dashboard-modal-actions dashboard-tag-sheet-actions">
-          <button type="button" class="btn-ghost" @click="resetTagSheetDraft">{{ t('reset') }}</button>
-          <button type="button" class="btn-primary" @click="applyTagSheet">{{ t('apply') }} ({{ tagSheetDraft.length }})</button>
-        </div>
-      </div>
-    </div>
+    <DashboardModalLayer :context="modalContext" />
 
-    <div v-if="folderModal.open" class="dashboard-modal-backdrop" @click.self="closeFolderModal">
-      <div class="dashboard-modal">
-        <div class="dashboard-modal-head">
-          <h3>{{ folderModal.resourceId ? t('moveToGroupTitle') : t('createGroup') }}</h3>
-          <button class="dashboard-modal-close" @click="closeFolderModal">x</button>
-        </div>
-        <input
-          v-if="!folderModal.resourceId"
-          v-model.trim="folderModal.value"
-          class="dashboard-modal-input"
-          :placeholder="t('groupName')"
-          @input="folderModal.folderId = ''"
-          @keydown.enter.prevent="saveFolderModal"
-        />
-        <div v-if="folderModal.resourceId" class="dashboard-modal-note">{{ t('chooseFolder') }}</div>
-        <div v-if="folderModal.resourceId && folderOptions.length" class="folder-parent-list">
-          <button
-            v-for="folder in folderOptions"
-            :key="folder.id"
-            class="folder-parent-option folder-destination"
-            :class="{ active: folderModal.folderId === folder.id }"
-            :style="{ paddingLeft: 12 + folder.depth * 16 + 'px' }"
-            @click="folderModal.folderId = folder.id; folderModal.value = folder.name"
-          >
-            <span class="folder-destination-name">
-              <span v-if="folder.depth" class="folder-destination-branch" aria-hidden="true">└</span>
-              {{ folder.name }}
-            </span>
-            <span class="folder-destination-path">{{ folder.path || t('inRoot') }}</span>
-          </button>
-        </div>
-        <div class="dashboard-modal-actions dashboard-modal-actions-row" data-folder-modal-actions>
-          <button class="btn-ghost" @click="closeFolderModal" :disabled="isBusy">{{ t('cancel') }}</button>
-          <button class="btn-primary" @click="saveFolderModal" :disabled="isBusy || !canSaveFolderModal">
-            {{ actionLabel(folderModal.resourceId ? 'move-folder' : 'create-folder', folderModal.resourceId ? t('move') : t('create')) }}
-          </button>
-        </div>
-      </div>
-    </div>
+    <DashboardAddDialog
+      v-if="addDialog.open"
+      :folders="newItemFolderOptions"
+      :initial-folder-id="addDialog.folderId"
+      :initial-import="addDialog.importKind"
+      :busy="isBusy"
+      @close="closeAddDialog"
+      @create="onAddCreate"
+      @create-template="onAddCreateTemplate"
+      @import-character="onAddImportCharacter"
+      @create-folder="onAddCreateFolder"
+      @import="onAddImport"
+    />
+
+    <DashboardMediaViewer
+      v-if="mediaViewer"
+      :items="mediaViewer.items"
+      :start="mediaViewer.start"
+      @close="mediaViewer = null"
+    />
+
+    <YandexFolderPicker
+      v-if="yandexMove"
+      ref="yandexPicker"
+      :sources="yandexMove.sources"
+      :start="yandexMove.start"
+      :busy="isBusy"
+      @confirm="confirmYandexMove"
+      @close="yandexMove = null"
+    />
 
     <InteractiveTemplatePicker
       v-if="templatePickerOpen"
@@ -1021,261 +648,23 @@
       @import="importCharacter"
     />
 
-    <div v-if="subfolderModal.open" class="dashboard-modal-backdrop" @click.self="closeSubfolderModal">
-      <div class="dashboard-modal">
-        <div class="dashboard-modal-head">
-          <h3>{{ t('addFolderTitle') }}: {{ subfolderModal.parentName }}</h3>
-          <button class="dashboard-modal-close" @click="closeSubfolderModal">x</button>
-        </div>
-        <input
-          v-model.trim="subfolderModal.value"
-          class="dashboard-modal-input"
-          :placeholder="t('folderName')"
-          @keydown.enter.prevent="saveSubfolderModal"
-        />
-        <div class="dashboard-modal-actions">
-          <button class="btn-ghost" @click="closeSubfolderModal" :disabled="isBusy">{{ t('cancel') }}</button>
-          <button
-            class="btn-primary"
-            @click="saveSubfolderModal"
-            :disabled="isBusy || !subfolderModal.value.trim()"
-          >{{ actionLabel('create-subfolder', t('createFolder')) }}</button>
-        </div>
-      </div>
-    </div>
-
-    <div v-if="folderParentModal.open" class="dashboard-modal-backdrop" @click.self="closeFolderParentModal">
-      <div class="dashboard-modal">
-        <div class="dashboard-modal-head">
-          <h3>{{ t('moveFolderIntoTitle') }}: {{ folderParentModal.name }}</h3>
-          <button class="dashboard-modal-close" @click="closeFolderParentModal">x</button>
-        </div>
-        <div class="dashboard-modal-note">{{ t('moveFolderIntoNote') }}</div>
-        <div v-if="folderParentOptions.length" class="folder-parent-list">
-          <button
-            v-for="option in folderParentOptions"
-            :key="option.id"
-            class="folder-parent-option folder-destination"
-            :class="{ active: folderParentModal.targetId === option.id }"
-            :style="{ paddingLeft: 12 + option.depth * 16 + 'px' }"
-            :data-folder-parent-option="option.id"
-            @click="folderParentModal.targetId = option.id"
-          >
-            <span class="folder-destination-name">
-              <span v-if="option.depth" class="folder-destination-branch" aria-hidden="true">└</span>
-              {{ option.id === 'root' ? t('moveFolderToRoot') : option.name }}
-            </span>
-            <span v-if="option.id !== 'root'" class="folder-destination-path">{{ option.path || t('inRoot') }}</span>
-          </button>
-        </div>
-        <div v-else class="dashboard-modal-note">{{ t('moveFolderNoTargets') }}</div>
-        <div class="dashboard-modal-actions dashboard-modal-actions-row">
-          <button class="btn-ghost" @click="closeFolderParentModal" :disabled="isBusy">{{ t('cancel') }}</button>
-          <button
-            class="btn-primary"
-            data-folder-parent-save
-            @click="saveFolderParentModal"
-            :disabled="isBusy || !folderParentModal.targetId"
-          >{{ actionLabel('move-folder-parent', t('move')) }}</button>
-        </div>
-      </div>
-    </div>
-
-    <div v-if="descriptionModal.open" class="dashboard-modal-backdrop" @click.self="closeDescriptionModal">
-      <div class="dashboard-modal">
-        <div class="dashboard-modal-head">
-          <h3>{{ descriptionModal.title || t('description') }}</h3>
-          <button class="dashboard-modal-close" @click="closeDescriptionModal">x</button>
-        </div>
-        <textarea
-          v-if="descriptionModal.canEdit"
-          v-model="descriptionModal.value"
-          class="dashboard-modal-textarea"
-          :maxlength="MAX_DESCRIPTION_LENGTH"
-          :placeholder="t('descriptionPlaceholder')"
-        ></textarea>
-        <p v-else-if="descriptionModal.value" class="description-readonly">{{ descriptionModal.value }}</p>
-        <p v-else class="dashboard-modal-note">{{ t('descriptionEmpty') }}</p>
-        <p v-if="descriptionModal.canEdit" class="dashboard-modal-note">
-          {{ descriptionModal.value.length }} / {{ MAX_DESCRIPTION_LENGTH }}
-        </p>
-        <div class="dashboard-modal-actions">
-          <button class="btn-ghost" @click="closeDescriptionModal" :disabled="isBusy">
-            {{ descriptionModal.canEdit ? t('cancel') : t('close') }}
-          </button>
-          <button
-            v-if="descriptionModal.canEdit"
-            class="btn-primary"
-            @click="saveDescriptionModal"
-            :disabled="isBusy"
-          >{{ actionLabel('save-description', t('save')) }}</button>
-        </div>
-      </div>
-    </div>
-
-    <div v-if="renameFolderModal.open" class="dashboard-modal-backdrop" @click.self="closeRenameFolderModal">
-      <div class="dashboard-modal">
-        <div class="dashboard-modal-head">
-          <h3>{{ t('editGroup') }}</h3>
-          <button class="dashboard-modal-close" @click="closeRenameFolderModal">x</button>
-        </div>
-        <input
-          v-model.trim="renameFolderModal.value"
-          class="dashboard-modal-input"
-          :placeholder="t('groupName')"
-          @keydown.enter.prevent="saveRenameFolderModal"
-        />
-        <p class="dashboard-modal-note">{{ t('renameGroupNote') }}</p>
-        <div class="dashboard-modal-actions">
-          <button class="btn-ghost" @click="closeRenameFolderModal" :disabled="isBusy">{{ t('cancel') }}</button>
-          <button class="btn-primary" @click="saveRenameFolderModal" :disabled="isBusy || !renameFolderModal.value.trim()">
-            {{ actionLabel('rename-folder', t('save')) }}
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <div v-if="folderShareModal.open" class="dashboard-modal-backdrop" @click.self="closeFolderShareModal">
-      <div class="dashboard-modal">
-        <div class="dashboard-modal-head">
-          <h3>Share group</h3>
-          <button class="dashboard-modal-close" @click="closeFolderShareModal">x</button>
-        </div>
-        <p class="dashboard-modal-note">Sharing "{{ folderShareModal.name }}" grants access to all resources in this Group.</p>
-        <div class="share-section">
-          <div class="share-section-title">Invite people</div>
-          <div class="share-form">
-            <input v-model.trim="folderShareModal.email" placeholder="Email" type="email" />
-            <select v-model="folderShareModal.role">
-              <option value="read">Can view</option>
-              <option value="edit">Can edit</option>
-            </select>
-            <button @click="shareFolder" :disabled="isBusy || !folderShareModal.email.trim()">
-              {{ actionLabel('share-folder', 'Invite') }}
-            </button>
-          </div>
-          <div v-if="folderShareModal.loading" class="dashboard-modal-note">Loading access...</div>
-          <div v-else-if="!folderShareModal.permissions.length" class="dashboard-modal-note">No invited people yet.</div>
-          <div v-else class="share-list">
-            <div v-for="permission in folderShareModal.permissions" :key="permission.id || permission.userId" class="share-item">
-              <span>{{ permission.user?.email || permission.userId }}</span>
-              <span class="share-item-role">{{ permission.role === 'edit' ? 'Can edit' : 'Can view' }}</span>
-              <button @click="revokeFolderAccess(permission.userId)" :disabled="isBusy">x</button>
-            </div>
-          </div>
-        </div>
-        <div class="dashboard-modal-actions">
-          <button class="btn-ghost" @click="closeFolderShareModal" :disabled="isBusy">Close</button>
-        </div>
-      </div>
-    </div>
-
-    <div v-if="tagsModal.open" class="dashboard-modal-backdrop" @click.self="closeTagsModal">
-      <div class="dashboard-modal">
-        <div class="dashboard-modal-head">
-          <h3>Edit tags</h3>
-          <button class="dashboard-modal-close" @click="closeTagsModal">x</button>
-        </div>
-        <div v-if="tagSuggestions.length" class="tag-filter-list">
-          <button
-            v-for="tag in tagSuggestions"
-            :key="tag.name"
-            class="tag-filter color-tag"
-            :style="{ '--tag-color': tag.color }"
-            @click="addSuggestedTag(tag)"
-          >#{{ tag.name }}</button>
-        </div>
-        <div class="tag-editor-list">
-          <div v-for="(tag, index) in tagsModal.tags" :key="tag.id" class="tag-editor-row">
-            <input v-model.trim="tag.name" class="dashboard-modal-input tag-name-input" placeholder="Tag" />
-            <div class="tag-color-palette">
-              <button
-                v-for="color in tagColors"
-                :key="color"
-                class="tag-color-option"
-                :class="{ active: tag.color === color }"
-                :style="{ background: color }"
-                @click="tag.color = color"
-                :disabled="isBusy"
-              ></button>
-            </div>
-            <button class="tag-remove-btn" @click="removeTag(index)" :disabled="isBusy">x</button>
-          </div>
-        </div>
-        <button class="btn-ghost tag-add-btn" @click="addTag" :disabled="isBusy">+ Add tag</button>
-        <div class="dashboard-modal-actions">
-          <button class="btn-ghost" @click="closeTagsModal" :disabled="isBusy">Cancel</button>
-          <button class="btn-primary" @click="saveTagsModal" :disabled="isBusy">
-            {{ actionLabel('save-tags', 'Save tags') }}
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <div v-if="tagManager.open" class="dashboard-modal-backdrop" @click.self="closeTagManager">
-      <div class="dashboard-modal">
-        <div class="dashboard-modal-head">
-          <h3>Manage tags</h3>
-          <button class="dashboard-modal-close" @click="closeTagManager">x</button>
-        </div>
-        <div v-if="!tagManager.items.length" class="dashboard-modal-note">No tags yet.</div>
-        <div v-else class="tag-manager-list">
-          <div v-for="tag in tagManager.items" :key="tag.originalName" class="tag-manager-row">
-            <input v-model.trim="tag.name" class="dashboard-modal-input tag-name-input" placeholder="Tag" />
-            <div class="tag-color-palette">
-              <button
-                v-for="color in tagColors"
-                :key="color"
-                class="tag-color-option"
-                :class="{ active: tag.color === color }"
-                :style="{ background: color }"
-                @click="tag.color = color"
-                :disabled="isBusy"
-              ></button>
-            </div>
-            <span class="tag-manager-count">{{ tag.totalCount }} refs</span>
-            <button class="btn-ghost btn-sm" @click="saveManagedTag(tag)" :disabled="isBusy || !tag.name.trim()">Save</button>
-            <button class="btn-ghost btn-sm danger" @click="deleteManagedTag(tag)" :disabled="isBusy">{{ t('delete') }}</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div v-if="transferModal.open" class="dashboard-modal-backdrop" @click.self="closeTransferModal">
-      <div class="dashboard-modal">
-        <div class="dashboard-modal-head">
-          <h3>Transfer ownership</h3>
-          <button class="dashboard-modal-close" @click="closeTransferModal">x</button>
-        </div>
-        <input
-          v-model.trim="transferModal.email"
-          class="dashboard-modal-input"
-          placeholder="User email"
-          type="email"
-          @keydown.enter.prevent="saveTransferModal"
-        />
-        <p class="dashboard-modal-note">The current owner will become an editor.</p>
-        <div class="dashboard-modal-actions">
-          <button class="btn-ghost" @click="closeTransferModal" :disabled="isBusy">Cancel</button>
-          <button class="btn-primary" @click="saveTransferModal" :disabled="isBusy || !transferModal.email.trim()">
-            {{ actionLabel('transfer-ownership', 'Transfer') }}
-          </button>
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 
 <script lang="ts">
-import { ArrowLeft, ArrowUpDown, Check, ChevronDown, ChevronUp, FileCode2, FilePlus2, FileText, Folder, FolderInput, FolderPlus, LayoutTemplate, Menu, Plus, ShieldCheck, Tags, Upload, X } from '@lucide/vue';
-import { defineComponent, ref, onBeforeUnmount, onMounted, computed, nextTick, watch } from 'vue';
-import { confirmDelete } from '../composables/appDialog';
+import { ChevronDown, ChevronUp, Folder, Plus, UsersRound } from '@lucide/vue';
+import { defineComponent, ref, onBeforeUnmount, onMounted, computed, nextTick, watch, type Ref } from 'vue';
+import { alertDialog, confirmDelete, confirmDialog, promptDialog } from '../composables/appDialog';
+import { selectAll, selectRange, selectionKey, toggleSelection } from '../dashboard/selection';
+import { buildZip, canvasFileContent, safeFileName, saveBlob, splitFileName, textDocumentFileContent, uniqueFileName, type ArchiveFile } from '../dashboard/archive';
+import { DEFAULT_TAG_COLOR, genTagId, normalizeCanvas, normalizeHtmlDocument, normalizeInteractiveTemplate, normalizeResourceFolder, normalizeTextDocument } from '../dashboard/resource-normalizers';
+import { downloadDriveFile, driveApi, formatFileSize, resolveDownloadUrl, type DriveItem } from '../api/drive';
+import { useSidebarDriveFiles } from '../composables/useSidebarDriveFiles';
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
 import { markResourceOpened } from '../composables/useRecentResource';
 import { useRouter } from 'vue-router';
-import { accessRequests, canvas, getCurrentUser, htmlDocuments, interactiveTemplates, isAdmin, isAuthenticated, MAX_DESCRIPTION_LENGTH, recentResources as recentResourcesApi, resourceFolders, tags, textDocuments, type InteractiveTemplate, type ResourceFolderSummary, type ResourceTag, type ResourceTagSummary } from '../api/client';
-import { characterSheetTitle } from '../dnd/characterSheet';
+import { accessRequests, canvas, getCurrentUser, htmlDocuments, interactiveTemplates, isAdmin, isAuthenticated, MAX_DESCRIPTION_LENGTH, recentResources as recentResourcesApi, refreshCurrentUserRole, resourceFolders, tags, textDocuments, type InteractiveTemplate, type ResourceFolderSummary, type ResourceTag } from '../api/client';
 import { useI18n } from '../composables/useI18n';
 import { LAYOUT, matchesMedia } from '../composables/layoutMedia';
 import { useBackHandler } from '../composables/useBackHandler';
@@ -1283,26 +672,91 @@ import { useDocumentTitle } from '../composables/useDocumentTitle';
 import DashboardSidebar from '../components/dashboard/DashboardSidebar.vue';
 import { forgetResourceTab } from '../tabs/forget';
 import DashboardViewToggle from '../components/dashboard/DashboardViewToggle.vue';
+import DashboardResourceCard from '../components/dashboard/DashboardResourceCard.vue';
+import DashboardSelectionBar from '../components/dashboard/DashboardSelectionBar.vue';
+import DashboardToolbarControls from '../components/dashboard/DashboardToolbarControls.vue';
+import DashboardStatusOverlays from '../components/dashboard/DashboardStatusOverlays.vue';
+import DashboardRecentResources from '../components/dashboard/DashboardRecentResources.vue';
+import DashboardFolderHeader from '../components/dashboard/DashboardFolderHeader.vue';
+import DashboardActiveSubfolders from '../components/dashboard/DashboardActiveSubfolders.vue';
+import DashboardFolderResourceGrid from '../components/dashboard/DashboardFolderResourceGrid.vue';
+import DashboardFeedResourceGrid from '../components/dashboard/DashboardFeedResourceGrid.vue';
+import DashboardInteractiveFeedGrid from '../components/dashboard/DashboardInteractiveFeedGrid.vue';
+import DashboardModalLayer from '../components/dashboard/DashboardModalLayer.vue';
+import DashboardPublicHeader from '../components/dashboard/DashboardPublicHeader.vue';
+import DashboardAuthHeader from '../components/dashboard/DashboardAuthHeader.vue';
+import DashboardAccessRequests from '../components/dashboard/DashboardAccessRequests.vue';
+import type { DashboardResourceAction, DashboardResourceActionItem } from '../components/dashboard/resource-card.types';
+import { vHint } from '../directives/hint';
+import DashboardFolderFiles from '../components/dashboard/DashboardFolderFiles.vue';
+import { singleType, typePasses, type DashboardContentType } from '../dashboard/content-filter';
+import { matchesCanvas as matchesCanvasResource, matchesFolderItem as matchesFolderResource, matchesPublicItem as matchesPublicResource, sortResources } from '../dashboard/resource-filters';
+import { useFolderFileCounts } from '../composables/useFolderFileCounts';
+import { TAG_COLORS } from '../dashboard/tag-colors';
 import { FEED_FALLBACK_COLUMNS, FEED_PHONE_QUERY, feedColumnCount, feedSectionLimit, type FeedRowSection } from '../dashboard/feed-rows';
 import InteractiveTemplatePicker from '../components/dashboard/InteractiveTemplatePicker.vue';
-import type { CharacterImport } from '../dnd/importLongStoryShort';
-import TabsButton from '../components/tabs/TabsButton.vue';
-import LanguageToggle from '../components/LanguageToggle.vue';
+import DashboardAddDialog, { type AddCreateKind } from '../components/dashboard/DashboardAddDialog.vue';
+import DashboardUploadPanel, { type DashboardUpload } from '../components/dashboard/DashboardUploadPanel.vue';
+import DashboardUploadBadge from '../components/dashboard/DashboardUploadBadge.vue';
+import { useUploadSummary } from '../dashboard/upload-summary';
+import { plansApi } from '../api/plans';
+import DashboardYandexDisk from '../components/dashboard/DashboardYandexDisk.vue';
+import YandexFolderPicker from '../components/dashboard/YandexFolderPicker.vue';
+import DashboardMediaViewer, { type MediaViewerItem } from '../components/dashboard/DashboardMediaViewer.vue';
+import DashboardSpace from '../components/dashboard/DashboardSpace.vue';
+import DashboardTrash from '../components/dashboard/DashboardTrash.vue';
+import { createUploadWakeLock, runUploadQueue, type UploadJob } from '../dashboard/upload-queue';
+import { nativeUploadAvailable } from '../api/native-upload';
+import { adminApi, type PublicResourceType } from '../api/admin';
+import { spacesApi } from '../api/spaces';
+import { useSpaces } from '../composables/useSpaces';
 import {
+  downloadYandexLink,
+  fetchYandexContent,
+  joinYandexPath,
+  settleYandexOutcome,
+  uploadYandexFile,
+  yandexDisk,
+  yandexParentPath,
+  yandexPreviewUrl,
+  type YandexItem,
+} from '../api/yandexDisk';
+import { useYandexDisk } from '../composables/useYandexDisk';
+import { importTitle, type ImportKind } from '../dashboard/import-files';
+import { marked } from 'marked';
+import type { CharacterImport } from '../dnd/importLongStoryShort';
+import {
+  SIDEBAR_FOLDER_CHILD_LIMIT,
+  buildSidebarNavItems,
   readSidebarWidthState,
   writeSidebarWidthState,
+  type DashboardFileNavItem,
   type DashboardFolderNavItem,
+  type DashboardSidebarNavItem,
   type DashboardSection,
   type SidebarWidthState,
 } from '../dashboard/navigation';
+import { animateHeight, heightOfFirstChildren } from '../dashboard/motion';
+import { useSegmentThumb } from '../composables/useSegmentThumb';
 import { readRecentViewMode, writeRecentViewMode, type RecentViewMode } from '../dashboard/recent-view';
 import { descendantFolderIds, folderIdByResourceKey, folderPaths } from '../dashboard/folder-paths';
+import { childFolderCounts, folderLatestChange } from '../dashboard/folder-stats';
+import { isPictureFile, isVideoFile } from '../dashboard/thumb-kinds';
 import { formatRelativeDate } from '../dashboard/relative-date';
 import { computeVisibleTagFitCount } from '../dashboard/tag-fit';
+import { useDashboardFeedScrollSpy, type FeedSection } from '../composables/useDashboardFeedScrollSpy';
+import { useDashboardFramePinning } from '../composables/useDashboardFramePinning';
+import { useDashboardMobileSidebar } from '../composables/useDashboardMobileSidebar';
+import { useDashboardSectionTransition } from '../composables/useDashboardSectionTransition';
+import { useDashboardResourceDrag } from '../composables/useDashboardResourceDrag';
+import { useDashboardFolderDrag } from '../composables/useDashboardFolderDrag';
+import { useDashboardMarquee } from '../composables/useDashboardMarquee';
+import { useDashboardLongPress } from '../composables/useDashboardLongPress';
+import { useDashboardBulkDownload } from '../composables/useDashboardBulkDownload';
+import { useDashboardBulkDelete } from '../composables/useDashboardBulkDelete';
+import { useDashboardActionRunner } from '../composables/useDashboardActionRunner';
 
 type CanvasTag = { id: string; name: string; color: string };
-type FeedbackState = { type: 'success' | 'error'; message: string };
-type ManagedTag = ResourceTagSummary & { originalName: string };
 type CanvasRecord = {
   type: 'canvas';
   id: string;
@@ -1387,46 +841,54 @@ type RecentResourceType = FolderItem['type'];
 /** The raw open-history store: just enough to look the item up again later. */
 type RecentHistoryEntry = { id: string; routeId: string; type: RecentResourceType; title: string; openedAt: number };
 /** recentResources' joined shape - the history entry plus what filtering needs. */
-type RecentResource = RecentHistoryEntry & { tags: CanvasTag[]; folder: string };
+type RecentResource = RecentHistoryEntry & { tags: CanvasTag[]; folder: string; templateType?: InteractiveTemplate['templateType']; updatedAt?: string | null };
 type RecentResourceItem = FolderItem;
 
-const DEFAULT_TAG_COLOR = '#50d1b2';
 const DASHBOARD_CACHE_TTL_MS = 60_000;
 const DASHBOARD_PULL_THRESHOLD = 72;
 const RECENT_RESOURCES_LIMIT = 12;
-const genTagId = () => Math.random().toString(36).slice(2, 10);
 
 export default defineComponent({
+  directives: { hint: vHint },
   components: {
-    TabsButton,
     DashboardSidebar,
     DashboardViewToggle,
+    DashboardResourceCard,
+    DashboardSelectionBar,
+    DashboardToolbarControls,
+    DashboardStatusOverlays,
+    DashboardRecentResources,
+    DashboardFolderHeader,
+    DashboardActiveSubfolders,
+    DashboardFolderResourceGrid,
+    DashboardFeedResourceGrid,
+    DashboardInteractiveFeedGrid,
+    DashboardModalLayer,
+    DashboardPublicHeader,
+    DashboardAuthHeader,
+    DashboardAccessRequests,
+    DashboardFolderFiles,
+    DashboardUploadPanel,
+    DashboardUploadBadge,
+    DashboardYandexDisk,
+    YandexFolderPicker,
+    DashboardMediaViewer,
+    DashboardSpace,
+    DashboardTrash,
+    DashboardAddDialog,
     InteractiveTemplatePicker,
-    LanguageToggle,
-    ArrowLeft,
-    ArrowUpDown,
-    Check,
     ChevronDown,
     ChevronUp,
-    X,
-    FileCode2,
-    FilePlus2,
-    FileText,
     Folder,
-    FolderInput,
-    FolderPlus,
-    LayoutTemplate,
-    Menu,
     Plus,
-    ShieldCheck,
-    Tags,
-    Upload,
+    UsersRound,
   },
   setup() {
     const router = useRouter();
     const { t, locale } = useI18n();
     useDocumentTitle(computed(() => t('home')));
-    const admin = isAdmin();
+    /** Admin shows in the sidebar; checked again with the hub once the dashboard opens. */
+    const admin = ref(isAdmin());
     const isLoggedIn = isAuthenticated();
     const own = ref<CanvasRecord[]>([]);
     const shared = ref<CanvasRecord[]>([]);
@@ -1467,7 +929,13 @@ export default defineComponent({
      * separate per-surface selection state.
      */
     const selectedTags = ref<string[]>([]);
-    const contentFilter = ref<'all' | FolderItem['type']>('all');
+    /** Types shown; none chosen means all of them (see dashboard/content-filter.ts). */
+    const contentTypes = ref<DashboardContentType[]>([]);
+    /** The single-value view of contentTypes, for older callers: 'canvas' chooses just canvases, 'all' clears. */
+    const contentFilter = computed<'all' | 'mixed' | DashboardContentType>({
+      get: () => singleType(contentTypes.value),
+      set: (value) => { contentTypes.value = value === 'all' || value === 'mixed' ? [] : [value]; },
+    });
     const sortMode = ref<'updated-desc' | 'updated-asc' | 'title-asc' | 'title-desc'>('updated-desc');
     const openMenuCanvasId = ref('');
     const openControlMenu = ref('');
@@ -1486,34 +954,30 @@ export default defineComponent({
       writeRecentViewMode(storage(), mode);
     };
     const mobileSidebarOpen = ref(false);
-    const mobileSidebarOpener = ref<HTMLElement | null>(null);
-    let previousBodyOverflow: string | null = null;
     const SIDEBAR_DESKTOP_QUERY = LAYOUT.dashboardSidebarDocked;
-    let sidebarDesktopMedia: MediaQueryList | null = null;
+    const { open: openMobileSidebar, close: closeMobileSidebar } = useDashboardMobileSidebar({
+      open: mobileSidebarOpen,
+      opener: ref<HTMLElement | null>(null),
+      desktopQuery: SIDEBAR_DESKTOP_QUERY,
+    });
     // Folders are expanded by default and act as lightweight organizational
     // headers. We track only the folders the user has explicitly collapsed, so
     // any new/unseen folder shows open without a click.
     const collapsedFolderIds = ref<string[]>([]);
     const selectedFolderId = ref('');
+    /** Files shown in the open folder (DashboardFolderFiles reports them). */
+    const activeFolderFileCount = ref(0);
+    /** Files each folder holds (from the Drive), added to the folder tiles' counts. */
+    const folderFiles = useFolderFileCounts();
+    watch(selectedFolderId, () => { activeFolderFileCount.value = 0; });
     const draggingResourceId = ref('');
     const draggingResourceType = ref<FolderItem['type']>('canvas');
     const draggingResourceFolderId = ref<string | null>(null);
     const dragTargetFolder = ref('');
-    const folderDragId = ref('');
-    const folderDragOverId = ref('');
-    const resourceDrag = ref<{
-      active: boolean;
-      startX: number;
-      startY: number;
-      item: FolderItem;
-      targetFolderId: string;
-    } | null>(null);
     const suppressNextCardClick = ref(false);
-    const pendingAction = ref('');
     const incomingRequests = ref<any[]>([]);
-    const feedback = ref<FeedbackState>({ type: 'success', message: '' });
-    let feedbackTimer: ReturnType<typeof setTimeout> | null = null;
-    const tagColors = ['#50d1b2', '#44cf6e', '#53dfdd', '#e0de71', '#e9973f', '#fb464c', '#f472b6', '#94a3b8'];
+    const { pendingAction, feedback, setFeedback, runAction } = useDashboardActionRunner();
+    const tagColors = TAG_COLORS;
     const currentUser = computed(() => getCurrentUser());
     const isOwnedResource = (item: { ownerId?: string }) =>
       !item.ownerId || item.ownerId === currentUser.value?.id;
@@ -1539,6 +1003,9 @@ export default defineComponent({
       }
     };
     const recentResourceHistory = ref<RecentHistoryEntry[]>([]);
+    /** The last refresh of the open history, or of the dashboard itself, failed. */
+    const recentLoadFailed = ref(false);
+    const dashboardLoadFailed = ref(false);
     const tagFilterList = ref<HTMLElement | null>(null);
     const activeFolderBody = ref<HTMLElement | null>(null);
     const hasTagOverflow = ref(false);
@@ -1566,8 +1033,10 @@ export default defineComponent({
           title: '',
           openedAt: new Date(row.updatedAt).getTime(),
         })).sort((a, b) => b.openedAt - a.openedAt);
+        recentLoadFailed.value = false;
       } catch {
-        recentResourceHistory.value = [];
+        // Keep what was shown: a failed refresh is not "nothing opened yet".
+        recentLoadFailed.value = true;
       }
     };
     // Browser navigation should always read the current resource list. The
@@ -1625,13 +1094,15 @@ export default defineComponent({
       }
     };
 
-    const folderModal = ref<{ open: boolean; resourceId: string; resourceType: FolderItem['type']; folderId: string; value: string }>({
+    const folderModal = ref<{ open: boolean; resourceId: string; resourceType: FolderItem['type']; folderId: string; value: string; bulk?: string[] }>({
       open: false,
       resourceId: '',
       resourceType: 'canvas',
       folderId: '',
       value: '',
     });
+    /** The folder dialog moves something (one item, or the selection) rather than creating a folder. */
+    const folderModalMoves = computed(() => Boolean(folderModal.value.resourceId || folderModal.value.bulk?.length));
     const renameFolderModal = ref<{ open: boolean; folderId: string; sourceName: string; value: string }>({
       open: false,
       folderId: '',
@@ -1653,10 +1124,6 @@ export default defineComponent({
       resourceType: 'canvas',
       tags: [],
     });
-    const tagManager = ref<{ open: boolean; items: ManagedTag[] }>({
-      open: false,
-      items: [],
-    });
     const transferModal = ref<{ open: boolean; resourceId: string; resourceType: FolderItem['type']; email: string }>({
       open: false,
       resourceId: '',
@@ -1664,119 +1131,16 @@ export default defineComponent({
       email: '',
     });
 
-    const normalizeTags = (tags: unknown): CanvasTag[] => {
-      if (!Array.isArray(tags)) return [];
-      return tags
-        .map((tag) => {
-          if (typeof tag === 'string') return { id: genTagId(), name: tag, color: DEFAULT_TAG_COLOR };
-          if (tag && typeof tag === 'object' && typeof (tag as any).name === 'string') {
-            return {
-              id: genTagId(),
-              name: (tag as any).name,
-              color: typeof (tag as any).color === 'string' ? (tag as any).color : DEFAULT_TAG_COLOR,
-            };
-          }
-          return null;
-        })
-        .filter((tag): tag is CanvasTag => Boolean(tag));
-    };
-
-    const normalizeCanvas = (c: any, isOwn = false): CanvasRecord => ({
-      ...c,
-      type: 'canvas',
-      isOwn,
-      folder: c.folder || '',
-      folderId: c.folderId || null,
-      tags: normalizeTags(c.tags),
+    const resourceFilterOptions = () => ({
+      contentTypes: contentTypes.value,
+      searchQuery: searchQuery.value,
+      selectedTags: selectedTags.value,
     });
-
-    const normalizeHtmlDocument = (doc: any): HtmlDocumentRecord => ({
-      ...doc,
-      type: 'html-document',
-      folderId: doc.folderId || null,
-      pinned: Boolean(doc.pinned),
-      tags: normalizeTags(doc.tags),
-    });
-
-    const normalizeTextDocument = (doc: any): TextDocumentRecord => ({
-      ...doc,
-      type: 'text-document',
-      folderId: doc.folderId || null,
-      pinned: Boolean(doc.pinned),
-      tags: normalizeTags(doc.tags),
-    });
-
-    const normalizeInteractiveTemplate = (template: any): InteractiveTemplateRecord => ({
-      ...template,
-      title: template.templateType === 'dnd-character' ? characterSheetTitle(template.data, template.title || 'Новый персонаж') : template.title,
-      type: 'interactive-template',
-      folderId: template.folderId || null,
-      tags: normalizeTags(template.tags),
-      pinned: false,
-    });
-
-    const normalizeResourceFolder = (folder: ResourceFolderSummary): ResourceFolderSummary => {
-      const canvases = folder.items?.canvases || folder.canvases || [];
-      const htmlDocuments = folder.items?.htmlDocuments || folder.htmlDocuments || [];
-      const docs = folder.items?.textDocuments || folder.textDocuments || [];
-      const templates = folder.items?.interactiveTemplates || folder.interactiveTemplates || [];
-      return {
-        ...folder,
-        canvasCount: folder.canvasCount ?? canvases.length,
-        htmlDocumentCount: folder.htmlDocumentCount ?? htmlDocuments.length,
-        textDocumentCount: folder.textDocumentCount ?? docs.length,
-        interactiveTemplateCount: folder.interactiveTemplateCount ?? templates.length,
-        items: {
-          canvases,
-          htmlDocuments,
-          textDocuments: docs,
-          interactiveTemplates: templates,
-        },
-      };
-    };
-
-    /** OR semantics: an item matches if it carries any one of the selected tags. */
-    const matchesSelectedTags = (tags: CanvasTag[]) =>
-      selectedTags.value.length === 0 || selectedTags.value.some((selected) => tags.some((tag) => tag.name === selected));
-
-    const matchesCanvas = (c: CanvasRecord) => {
-      if (contentFilter.value !== 'all' && contentFilter.value !== 'canvas') return false;
-      const q = searchQuery.value.trim().toLowerCase();
-      const matchesQuery = !q || `${c.title || ''} ${c.folder || ''} ${c.tags.map((tag) => tag.name).join(' ')}`.toLowerCase().includes(q);
-      return matchesQuery && matchesSelectedTags(c.tags);
-    };
-
-    /**
-     * Reused for both a folder's own contents and Recent (see
-     * filteredRecentResources/recentFolderTiles below) - the `type`/`title`/
-     * `tags` shape is all either needs, so the parameter is intentionally
-     * narrower than the full FolderItem union.
-     */
-    const matchesFolderItem = (item: { type: FolderItem['type']; title: string; tags: CanvasTag[] }, folderName: string) => {
-      if (contentFilter.value !== 'all' && item.type !== contentFilter.value) return false;
-      const q = searchQuery.value.trim().toLowerCase();
-      const matchesQuery = !q || `${item.title || ''} ${folderName} ${item.tags.map((tag) => tag.name).join(' ')}`.toLowerCase().includes(q);
-      return matchesQuery && matchesSelectedTags(item.tags);
-    };
-
-    const matchesPublicItem = (item: FolderItem) => {
-      if (contentFilter.value !== 'all' && item.type !== contentFilter.value) return false;
-      const q = searchQuery.value.trim().toLowerCase();
-      const matchesQuery = !q || `${item.title || ''} Public ${item.tags.map((tag) => tag.name).join(' ')}`.toLowerCase().includes(q);
-      return matchesQuery && matchesSelectedTags(item.tags);
-    };
-
-    const sortFolderItems = (items: FolderItem[]) => [...items].sort((a, b) => {
-      if (Boolean(a.pinned) !== Boolean(b.pinned)) {
-        return a.pinned ? -1 : 1;
-      }
-      if (sortMode.value === 'title-asc' || sortMode.value === 'title-desc') {
-        const result = (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' });
-        return sortMode.value === 'title-asc' ? result : -result;
-      }
-      const result = new Date(a.updatedAt || 0).getTime() - new Date(b.updatedAt || 0).getTime();
-      return sortMode.value === 'updated-asc' ? result : -result;
-    });
+    const matchesCanvas = (item: CanvasRecord) => matchesCanvasResource(item, resourceFilterOptions());
+    const matchesFolderItem = (item: { type: FolderItem['type']; title: string; tags: CanvasTag[] }, folderName: string) =>
+      matchesFolderResource(item, folderName, resourceFilterOptions());
+    const matchesPublicItem = (item: FolderItem) => matchesPublicResource(item, resourceFilterOptions());
+    const sortFolderItems = (items: FolderItem[]) => sortResources(items, sortMode.value);
 
     const placedResourceKeys = computed(() => new Set(
       [...ownResourceFolders.value, ...sharedResourceFolders.value].flatMap((folder) => [
@@ -1812,6 +1176,8 @@ export default defineComponent({
     const PUBLIC_OWNER_FILTERS = ['all', 'mine', 'others'] as const;
     const PUBLIC_OWNER_FILTER_LABELS = { all: 'all', mine: 'publicMine', others: 'publicOthers' } as const;
     const publicOwnerFilter = ref<(typeof PUBLIC_OWNER_FILTERS)[number]>('all');
+    const publicOwnerFilterEl = ref<HTMLElement | null>(null);
+    useSegmentThumb(publicOwnerFilterEl, publicOwnerFilter);
     const matchesPublicOwner = (item: { ownerId?: string | null }) => {
       if (publicOwnerFilter.value === 'all') return true;
       const mine = !!currentUser.value?.id && item.ownerId === currentUser.value.id;
@@ -1826,6 +1192,8 @@ export default defineComponent({
     const isOwnPublic = (item: any, legacyPublic: boolean) => {
       if (!currentUser.value?.id || item.ownerId !== currentUser.value.id) return false;
       if (item.listedInPublic === false) return false;
+      // An admin took it out of Public: out for its owner too.
+      if (item.publicHidden) return false;
       if (item.visibility === 'public') return true;
       if (item.visibility === 'authenticated') return false;
       return legacyPublic;
@@ -1858,7 +1226,7 @@ export default defineComponent({
     const allTagNames = computed(() => {
       const names = new Set<string>();
       for (const item of dashboardItemsByKey.value.values()) {
-        if (contentFilter.value !== 'all' && contentFilter.value !== item.type) continue;
+        if (!typePasses(contentTypes.value, item.type)) continue;
         for (const tag of item.tags || []) names.add(tag.name);
       }
       return Array.from(names).sort();
@@ -1917,7 +1285,7 @@ export default defineComponent({
       );
     }
 
-    watch(contentFilter, () => {
+    watch(contentTypes, () => {
       selectedTags.value = selectedTags.value.filter((tag) => allTagNames.value.includes(tag));
     });
 
@@ -1951,6 +1319,7 @@ export default defineComponent({
     });
 
     const allResourceFolders = computed(() => [...ownResourceFolders.value, ...sharedResourceFolders.value]);
+    const { navDirection } = useDashboardSectionTransition({ activeSection, folders: allResourceFolders });
     // Where a resource lives, for the Recent tiles ("Work / Plans").
     const folderPathById = computed(() => folderPaths(allResourceFolders.value));
     const folderIdByKey = computed(() => folderIdByResourceKey(allResourceFolders.value));
@@ -1959,13 +1328,27 @@ export default defineComponent({
       return folderId ? folderPathById.value.get(folderId) || '' : '';
     };
     /**
+     * The folder a Shared / Public card says it is in: its path in this
+     * user's own tree when known (by the tree's index, else by the
+     * resource's own folderId), else the folder name the resource itself
+     * carries (someone else's resource in their folder).
+     */
+    const cardFolderPath = (item: { type?: string; id: string; folder?: string | null; folderId?: string | null }) =>
+      recentFolderPath({ type: item.type || '', id: item.id })
+      || (item.folderId ? folderPathById.value.get(item.folderId) || '' : '')
+      || (typeof item.folder === 'string' ? item.folder.trim() : '');
+    /**
      * Destinations for the move dialog, in tree order. Each carries its depth and
      * the path to its parent, so picking a nested folder is unambiguous.
      */
     const folderOptions = computed(() => {
+      // A folder whose parent is not among these (or comes back as '' instead
+      // of null) is a root here, as in the sidebar: it used to drop out of the
+      // list, its subfolders with it.
+      const own = new Set(ownResourceFolders.value.map((folder) => folder.id));
       const byParent = new Map<string | null, ResourceFolderSummary[]>();
       for (const folder of ownResourceFolders.value) {
-        const key = folder.parentId ?? null;
+        const key = folder.parentId && own.has(folder.parentId) ? folder.parentId : null;
         byParent.set(key, [...(byParent.get(key) || []), folder]);
       }
       const options: { id: string; name: string; depth: number; path: string }[] = [];
@@ -1984,6 +1367,7 @@ export default defineComponent({
     const folderNames = computed(() => folderOptions.value.map((folder) => folder.name));
     const canSaveFolderModal = computed(() => {
       if (!folderModal.value.open) return false;
+      if (folderModal.value.bulk?.length) return Boolean(folderModal.value.folderId);
       if (!folderModal.value.resourceId) return Boolean(folderModal.value.value.trim());
       return Boolean(folderModal.value.folderId && folderModal.value.folderId !== draggingResourceFolderId.value);
     });
@@ -2096,8 +1480,12 @@ export default defineComponent({
       const folders = allFolderSummaries.value
       .filter((folder) => {
         const isDefaultFolder = folder.name.toLowerCase() === 'default';
-        return folder.items.length
-          || (folder.role === 'owner' && (isDefaultFolder || !isTechnicalFolder(folder as FolderSummary)));
+        if (folder.items.length) return true;
+        if (folder.role === 'owner') return isDefaultFolder || !isTechnicalFolder(folder as FolderSummary);
+        // A folder shared with the user is always theirs to see - also when it
+        // holds only files (photos, videos), only subfolders, or nothing yet.
+        // `items` counts QCanva documents alone, so the old rule hid it.
+        return !isTechnicalFolder(folder as FolderSummary);
       });
 
       // A parent that is empty itself must stay visible when a descendant survived
@@ -2133,6 +1521,12 @@ export default defineComponent({
       }
       return buildFolderTree(folders);
     });
+    const activeFolderEmpty = computed(() => Boolean(
+      activeFolder.value
+      && !activeFolder.value.items.length
+      && !activeFolderFileCount.value
+      && (hasActiveFilter.value || !activeSubfolders.value.length),
+    ));
     const activeFolder = computed(() => {
       const folder = allFolderSummaries.value.find((item) => item.id === selectedFolderId.value);
       if (selectedFolderId.value === 'legacy-resource-inbox' && legacyInboxSourceItems.value.length) {
@@ -2146,7 +1540,7 @@ export default defineComponent({
         items: sortFolderItems(folder.items.filter((item) => matchesFolderItem(item, folder.name))),
       };
     });
-    const sidebarFolders = computed<DashboardFolderNavItem[]>(() => folderSummaries.value.map((folder) => ({
+    const sidebarFolderRows = computed<DashboardFolderNavItem[]>(() => folderSummaries.value.map((folder) => ({
       id: folder.id,
       name: folder.name,
       parentId: folder.parentId || null,
@@ -2154,11 +1548,77 @@ export default defineComponent({
       role: folder.role,
       technical: isTechnicalFolder(folder),
       expanded: isTreeExpanded(folder.id),
-      hasChildren: Boolean(folder.hasChildren),
+      // Files count as children too: an opened folder lists them under its subfolders.
+      hasChildren: Boolean(folder.hasChildren || folder.items.length || folderFiles.counts[folder.id]),
       draggable: canReorderFolder(folder),
       dropActive: canDropToFolder(folder) && dragTargetFolder.value === folder.id,
       reorderTarget: folderDragOverId.value === folder.id,
     })));
+    /**
+     * The tree as the sidebar shows it: an opened folder lists its
+     * subfolders, then its documents, then its Drive files (the first few,
+     * fetched when it opens; how many in all comes from the file counts).
+     */
+    const sidebarDriveFiles = useSidebarDriveFiles(SIDEBAR_FOLDER_CHILD_LIMIT);
+    const sidebarServerFolderIds = computed(() => {
+      const known = new Set(allResourceFolders.value.map((folder) => folder.id));
+      return folderSummaries.value.map((folder) => folder.id).filter((id) => known.has(id));
+    });
+    watch(sidebarServerFolderIds, (ids) => {
+      // Counts for every folder in view (so one holding only files can open);
+      // the files themselves only for the opened ones.
+      folderFiles.want(ids);
+      sidebarDriveFiles.want(ids.filter(isTreeExpanded));
+    }, { immediate: true });
+    watch(expandedTreeIds, (ids) => sidebarDriveFiles.want(ids.filter((id) => sidebarServerFolderIds.value.includes(id))));
+    const sidebarFolders = computed<DashboardSidebarNavItem[]>(() => {
+      const itemsById = new Map(folderSummaries.value.map((folder) => [folder.id, folder.items]));
+      return buildSidebarNavItems(
+        sidebarFolderRows.value,
+        (folderId) => [
+          ...(itemsById.get(folderId) || []),
+          ...(sidebarDriveFiles.files[folderId] || []).map((file) => ({
+            id: file.id,
+            title: file.name,
+            type: 'drive-file' as const,
+            fileKind: file.kind === 'photo' || file.mime?.startsWith('image/') ? 'image' as const
+              : file.kind === 'video' || file.mime?.startsWith('video/') ? 'video' as const
+                : 'file' as const,
+          })),
+        ],
+        SIDEBAR_FOLDER_CHILD_LIMIT,
+        (folderId) => (itemsById.get(folderId)?.length || 0) + (folderFiles.counts[folderId] ?? 0),
+      );
+    });
+    const openSidebarFile = async (file: DashboardFileNavItem) => {
+      if (file.type === 'drive-file' && (file.fileKind === 'image' || file.fileKind === 'video')) {
+        // As its card in the folder does: a picture or a video opens full screen.
+        mobileSidebarOpen.value = false;
+        mediaViewer.value = { items: [driveViewerItem({ id: file.id, name: file.title || t('untitled'), kind: file.fileKind })], start: 0 };
+        return;
+      }
+      if (file.type === 'drive-file') {
+        // As its card in the folder does: a Drive file downloads.
+        try {
+          await downloadDriveFile(file.id, file.title);
+        } catch (error) {
+          await alertDialog({
+            title: t('driveDownloadFailedTitle'),
+            message: error instanceof Error && error.message ? error.message : t('driveDownloadLinkFailed'),
+          });
+        }
+        return;
+      }
+      const item = folderSummaries.value
+        .find((folder) => folder.id === file.folderId)?.items
+        .find((candidate) => candidate.type === file.type && candidate.id === file.id);
+      const routeId = (item && 'slug' in item && item.slug) || file.id;
+      mobileSidebarOpen.value = false;
+      if (file.type === 'canvas') openCanvas(routeId);
+      else if (file.type === 'html-document') openHtmlDocument(routeId);
+      else if (file.type === 'text-document') openTextDocument(routeId);
+      else openInteractiveTemplate(file.id);
+    };
     const isBusy = computed(() => pendingAction.value.length > 0);
     const allDashboardResources = computed<FolderItem[]>(() => [
       ...allFolderSummaries.value.flatMap((folder) => folder.items),
@@ -2198,8 +1658,34 @@ export default defineComponent({
       [...allRecentResourceItems.value, ...allHtmlDocumentsRaw.value, ...allTextDocumentsRaw.value]
         .map((item) => [`${item.type}:${item.id}`, item] as const),
     ));
+    /**
+     * Creating counts as much as opening: the user's own items join Recent at
+     * the time they were made, so a new file is there at once, and a user who
+     * has opened nothing yet still sees what they made. Only one's own: an
+     * item of someone else's is "recent" for them only once opened.
+     */
+    const createdRecentEntries = computed<RecentHistoryEntry[]>(() => {
+      const userId = currentUser.value?.id;
+      const entries: RecentHistoryEntry[] = [];
+      for (const item of dashboardItemsByKey.value.values()) {
+        const mine = item.type === 'interactive-template'
+          ? (item as { role?: string }).role === 'owner'
+          : Boolean(userId) && item.ownerId === userId;
+        if (!mine) continue;
+        const raw = item as { createdAt?: string; updatedAt?: string };
+        const createdAt = Date.parse(raw.createdAt || raw.updatedAt || '');
+        if (!Number.isFinite(createdAt)) continue;
+        entries.push({ id: item.id, routeId: ('slug' in item && item.slug) || item.id, type: item.type, title: item.title || '', openedAt: createdAt });
+      }
+      return entries;
+    });
     const recentResources = computed<RecentResource[]>(() => {
-      return [...recentResourceHistory.value].sort((a, b) => b.openedAt - a.openedAt).flatMap((recent) => {
+      const opened = new Set(recentResourceHistory.value.map((entry) => `${entry.type}:${entry.id}`));
+      const history = [
+        ...recentResourceHistory.value,
+        ...createdRecentEntries.value.filter((entry) => !opened.has(`${entry.type}:${entry.id}`)),
+      ].sort((a, b) => b.openedAt - a.openedAt).slice(0, RECENT_RESOURCES_LIMIT);
+      return history.flatMap((recent) => {
         const item = dashboardItemsByKey.value.get(`${recent.type}:${recent.id}`);
         if (!item) return [];
         return [{
@@ -2208,6 +1694,9 @@ export default defineComponent({
           routeId: ('slug' in item && item.slug) || item.id,
           tags: item.tags || [],
           folder: ('folder' in item && item.folder) || '',
+          templateType: item.type === 'interactive-template' ? item.templateType : undefined,
+          // The card's picture is versioned by the resource's own last change.
+          updatedAt: ('updatedAt' in item && item.updatedAt) ? String(item.updatedAt) : null,
         }];
       });
     });
@@ -2240,6 +1729,7 @@ export default defineComponent({
      * section shows whole rows of it before "Show all", not a fixed 4.
      */
     const dashboardShell = ref<HTMLElement | null>(null);
+    useDashboardFramePinning();
     const feedColumns = ref(FEED_FALLBACK_COLUMNS);
     let feedResizeObserver: ResizeObserver | null = null;
     let feedPhoneMedia: MediaQueryList | null = null;
@@ -2267,6 +1757,11 @@ export default defineComponent({
       recentExpanded.value ? sortedRecentResources.value : sortedRecentResources.value.slice(0, feedLimit('recent')),
     );
     const recentShowAllAvailable = computed(() => recentTotal.value > feedLimit('recent'));
+    const recentRefreshFailed = computed(() => recentLoadFailed.value || dashboardLoadFailed.value);
+    const retryRecent = () => {
+      void load({ showLoading: false });
+      void loadRecentResources();
+    };
 
     /**
      * HOME AS ONE FEED. Shared / Interactive / Public render on Home too,
@@ -2277,127 +1772,60 @@ export default defineComponent({
      * sections stay on it even when empty (or emptied by the filters, with a
      * note saying so), so the sidebar always has somewhere to scroll to.
      */
-    const FEED_SECTION_LABELS = {
-      recent: 'recents',
-      folders: 'folders',
-      shared: 'sharedWithMe',
-      interactive: 'interactiveTemplate',
-      public: 'public',
-    } as const;
-    type FeedSection = keyof typeof FEED_SECTION_LABELS;
     const isHomeFeed = computed(() => isLoggedIn && activeSection.value.kind === 'recent');
     type ExpandableFeedSection = 'shared' | 'interactive' | 'public';
     const expandedFeedSections = ref<ExpandableFeedSection[]>([]);
     const isFeedSectionExpanded = (section: ExpandableFeedSection) => expandedFeedSections.value.includes(section);
+    /** Unfold / fold a feed block, its grid easing to the new height. */
+    const animateFeedGrid = (selector: string, collapsing: boolean, limit: number, change: () => void) => {
+      const grid = dashboardShell.value?.querySelector<HTMLElement>(selector);
+      void animateHeight(grid, change, collapsing && grid ? { collapseTo: heightOfFirstChildren(grid, limit) } : {});
+    };
     const toggleFeedSectionExpanded = (section: ExpandableFeedSection) => {
-      expandedFeedSections.value = isFeedSectionExpanded(section)
-        ? expandedFeedSections.value.filter((item) => item !== section)
-        : [...expandedFeedSections.value, section];
+      const collapsing = isFeedSectionExpanded(section);
+      animateFeedGrid(`[data-feed-grid="${section}"]`, collapsing, feedLimit(section), () => {
+        expandedFeedSections.value = collapsing
+          ? expandedFeedSections.value.filter((item) => item !== section)
+          : [...expandedFeedSections.value, section];
+      });
     };
     const feedItems = <T,>(items: T[], section: ExpandableFeedSection): T[] => (
       isHomeFeed.value && !isFeedSectionExpanded(section) ? items.slice(0, feedLimit(section)) : items
     );
+    /** The home feed's Spaces tiles: the user's spaces, narrowed by the search like the folders. */
+    const { spaces: allSpaces } = useSpaces();
+    const spaceTiles = computed(() => {
+      const needle = searchQuery.value.trim().toLocaleLowerCase();
+      return needle ? allSpaces.value.filter((space) => space.name.toLocaleLowerCase().includes(needle)) : allSpaces.value;
+    });
     const feedNavSections = computed<FeedSection[]>(() => {
       if (!isHomeFeed.value) return [];
       const sections: FeedSection[] = ['recent'];
       if (recentFolderTiles.value.length) sections.push('folders');
+      if (spaceTiles.value.length) sections.push('spaces');
       sections.push('shared', 'interactive', 'public');
       return sections;
     });
-    const activeFeedSection = ref<FeedSection>('recent');
-    // The section last jumped to from the bar. It stays current while it's
-    // in view, until the user scrolls by hand: near the end of a short feed
-    // the section jumped to may never reach the bar.
-    let feedJumpTarget: FeedSection | null = null;
-    const scrollToFeedSection = (section: FeedSection) => {
-      activeFeedSection.value = section;
-      feedJumpTarget = section;
-      document.getElementById(`feed-${section}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    };
-    /**
-     * Scroll-spy: the current section is the last one whose top has passed
-     * under the sticky bar - except at the very end of the feed, where the
-     * last sections can never reach the bar, so the last one in view wins
-     * (otherwise jumping to Public highlighted whatever sat above it).
-     */
-    let feedScroller: HTMLElement | null = null;
-    let feedSpyFrame = 0;
-    const updateActiveFeedSection = () => {
-      feedSpyFrame = 0;
-      const sections = feedNavSections.value;
-      if (!feedScroller || !sections.length) return;
-      const box = feedScroller.getBoundingClientRect();
-      // Горизонтальной полосы разделов больше нет — отсчёт от верха ленты.
-      const barBottom = box.top;
-      const atEnd = feedScroller.scrollTop + feedScroller.clientHeight >= feedScroller.scrollHeight - 2;
-      if (feedJumpTarget) {
-        const rect = document.getElementById(`feed-${feedJumpTarget}`)?.getBoundingClientRect();
-        if (rect && rect.bottom > barBottom && rect.top < box.bottom) {
-          activeFeedSection.value = feedJumpTarget;
-          return;
-        }
-        feedJumpTarget = null;
-      }
-      let current: FeedSection = sections[0]!;
-      for (const section of sections) {
-        const top = document.getElementById(`feed-${section}`)?.getBoundingClientRect().top;
-        if (top === undefined) continue;
-        if (top <= barBottom + 24 || (atEnd && top < box.bottom)) current = section;
-      }
-      activeFeedSection.value = current;
-    };
-    const onFeedManualScroll = () => { feedJumpTarget = null; };
-    const onFeedScroll = () => {
-      if (!feedSpyFrame) feedSpyFrame = requestAnimationFrame(updateActiveFeedSection);
-    };
-    // Set up once mounted: the scroll container exists then, and a watch
-    // reads its source right away while the sections it lists
-    // (recentFolderTiles...) are declared further down in this setup.
-    onMounted(() => {
-      feedScroller = (document.querySelector('.dashboard-central-shell .app-main') as HTMLElement | null)
-        ?? (document.querySelector('.app-main') as HTMLElement | null);
-      feedScroller?.addEventListener('scroll', onFeedScroll, { passive: true });
-      for (const type of ['wheel', 'touchstart', 'keydown'] as const) {
-        feedScroller?.addEventListener(type, onFeedManualScroll, { passive: true });
-      }
-      watch(feedNavSections, () => { void nextTick(updateActiveFeedSection); }, { flush: 'post' });
-    });
-    onBeforeUnmount(() => {
-      feedScroller?.removeEventListener('scroll', onFeedScroll);
-      for (const type of ['wheel', 'touchstart', 'keydown'] as const) {
-        feedScroller?.removeEventListener(type, onFeedManualScroll);
-      }
-      if (feedSpyFrame) cancelAnimationFrame(feedSpyFrame);
-    });
-    const toggleRecentExpanded = () => {
-      recentExpanded.value = !recentExpanded.value;
-    };
+    const { activeFeedSection, scrollToFeedSection } = useDashboardFeedScrollSpy(feedNavSections);
 
-    const setFeedback = (type: FeedbackState['type'], message: string) => {
-      feedback.value = { type, message };
-      if (feedbackTimer) clearTimeout(feedbackTimer);
-      feedbackTimer = setTimeout(() => {
-        feedback.value.message = '';
-      }, 2800);
+    /**
+     * The header never scrolls away. Only `.app-main` scrolls; the frame
+     * around it (the page, .app-layout, the shells) is overflow: hidden, but
+     * a browser still scrolls such a box itself: a phone does when the
+     * keyboard opens for an input (iOS Safari leaves the page scrolled after
+     * it closes), and focus() / scrollIntoView() scroll every ancestor. The
+     * header then sat above the screen with nothing to drag it back by.
+     * Whatever scrolls the frame, it goes back to the top.
+     */
+    const toggleRecentExpanded = () => {
+      const collapsing = recentExpanded.value;
+      animateFeedGrid('[data-recent-layout]', collapsing, feedLimit('recent'), () => {
+        recentExpanded.value = !collapsing;
+      });
     };
 
     const actionLabel = (action: string, idleLabel: string) =>
       pendingAction.value === action ? 'Saving...' : idleLabel;
-
-    const runAction = async <T>(action: string, task: () => Promise<T>, successMessage?: string) => {
-      pendingAction.value = action;
-      try {
-        const result = await task();
-        if (successMessage) setFeedback('success', successMessage);
-        return result;
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Request failed';
-        setFeedback('error', message);
-        throw error;
-      } finally {
-        pendingAction.value = '';
-      }
-    };
 
     const load = async ({ showLoading = !own.value.length && !publicCanvases.value.length && !ownResourceFolders.value.length } = {}) => {
       if (showLoading) loading.value = true;
@@ -2408,6 +1836,7 @@ export default defineComponent({
           const folders = await resourceFolders.list();
           ownResourceFolders.value = folders.own.map(normalizeResourceFolder);
           sharedResourceFolders.value = folders.shared.map(normalizeResourceFolder);
+          refreshFolderFileCounts();
           const folderDocumentIds = new Set(
             [...ownResourceFolders.value, ...sharedResourceFolders.value].flatMap((folder) =>
               (folder.items?.htmlDocuments || []).map((document: any) => document.id),
@@ -2468,7 +1897,9 @@ export default defineComponent({
         expandedTreeIds.value = expandedTreeIds.value.filter((id) => knownFolders.has(id));
         restoreSelectedFolder();
         writeDashboardCache();
+        dashboardLoadFailed.value = false;
       } catch (error) {
+        dashboardLoadFailed.value = true;
         if (showLoading) setFeedback('error', error instanceof Error ? error.message : 'Failed to load dashboard');
       } finally {
         if (showLoading) loading.value = false;
@@ -2528,6 +1959,12 @@ export default defineComponent({
       }
     };
 
+    /** Just created: into Recent now, from what the server answered. */
+    const rememberCreatedResource = (type: RecentResourceType, record: { id: string; slug?: string | null; title?: string | null }) => {
+      const recent: RecentHistoryEntry = { id: record.id, routeId: record.slug || record.id, type, title: record.title || '', openedAt: Date.now() };
+      recentResourceHistory.value = [recent, ...recentResourceHistory.value.filter((entry) => !(entry.type === type && entry.id === record.id))].slice(0, RECENT_RESOURCES_LIMIT);
+      markResourceOpened(type, record.id);
+    };
     const rememberRecentResource = (type: RecentResourceType, routeId: string) => {
       const item = allRecentResourceItems.value.find((resource) => resource.type === type && (resource.id === routeId || ('slug' in resource && resource.slug === routeId)));
       if (!item) return;
@@ -2578,11 +2015,11 @@ export default defineComponent({
       else if (item.type === 'text-document') openTextDocument(item.routeId);
       else openInteractiveTemplate(item.routeId);
     };
-    const recentResourceTypeLabel = (type: RecentResourceType) => type === 'canvas' ? t('canvas') : type === 'html-document' ? 'HTML' : type === 'text-document' ? t('document') : t('interactiveTemplate');
-    const recentResourceIconClass = (type: RecentResourceType) => type === 'canvas' ? 'icon-canvas' : type === 'html-document' ? 'icon-html' : type === 'text-document' ? 'icon-text-doc' : 'icon-template';
-    const formatRecentOpenedAt = (openedAt: number) => new Intl.DateTimeFormat(locale.value === 'ru' ? 'ru-RU' : 'en-US', {
-      day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
-    }).format(openedAt);
+    // Same format as every other card's date ("Oct 13, 05:15 PM"), not a
+    // numeric "11/05, 10:15 PM" of its own.
+    const formatRecentOpenedAt = (openedAt: number) => new Date(openedAt).toLocaleDateString(locale.value === 'ru' ? 'ru-RU' : 'en-US', {
+      day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+    });
     const refreshOverflowIndicators = () => {
       void nextTick(() => {
         const tagsList = tagFilterList.value;
@@ -2614,35 +2051,40 @@ export default defineComponent({
     };
 
     // `folderId` is optional; a click handler may pass its event instead.
-    const createCanvas = async (folderId?: unknown) => {
+    const createCanvas = async (folderId?: unknown, title = 'Untitled') => {
       openControlMenu.value = '';
       const targetFolderId = await resolveCreateFolderId(folderId);
-      const c = await runAction('create-canvas', () => canvas.create('Untitled', undefined, targetFolderId), 'Canvas created');
+      const c = await runAction('create-canvas', () => canvas.create(title, undefined, targetFolderId), 'Canvas created');
       if (!c) return;
+      rememberCreatedResource('canvas', c);
       router.push(`/canvas/${c.id}`);
     };
 
-    const createHtmlDocument = async (folderId?: unknown) => {
+    const createHtmlDocument = async (folderId?: unknown, title = 'Untitled HTML') => {
       openControlMenu.value = '';
       const targetFolderId = await resolveCreateFolderId(folderId);
+      // The page starts with its name as the heading.
+      const heading = title.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
       const doc = await runAction(
         'create-html-document',
-        () => htmlDocuments.create({ title: 'Untitled HTML', html: '<main><h1>Untitled HTML</h1></main>', folderId: targetFolderId }),
+        () => htmlDocuments.create({ title, html: `<main><h1>${heading}</h1></main>`, folderId: targetFolderId }),
         'HTML document created',
       );
       if (!doc) return;
+      rememberCreatedResource('html-document', doc);
       router.push(`/edit/html/${doc.id}`);
     };
 
-    const createTextDocument = async (folderId?: unknown) => {
+    const createTextDocument = async (folderId?: unknown, title = 'Untitled document') => {
       openControlMenu.value = '';
       const targetFolderId = await resolveCreateFolderId(folderId);
       const doc = await runAction(
         'create-text-document',
-        () => textDocuments.create({ title: 'Untitled document', folderId: targetFolderId }),
+        () => textDocuments.create({ title, folderId: targetFolderId }),
         'Document created',
       );
       if (!doc) return;
+      rememberCreatedResource('text-document', doc);
       openTextDocument(doc.id);
     };
 
@@ -2666,6 +2108,7 @@ export default defineComponent({
       templateFolderId.value = null;
       if (folderId) await resourceFolders.move(folderId, 'interactive-template', template.id);
       interactiveTemplateItems.value = [{ ...template, role: 'owner' }, ...interactiveTemplateItems.value];
+      rememberCreatedResource('interactive-template', template);
       openInteractiveTemplate(template.id);
     };
 
@@ -2771,7 +2214,7 @@ export default defineComponent({
       const normalizedName = name.trim() || 'Unsorted';
       const existing = ownResourceFolders.value.find((folder) => folder.name.toLowerCase() === normalizedName.toLowerCase());
       if (existing) return existing;
-      return runAction('create-folder', () => resourceFolders.create(normalizedName), `Group ${normalizedName} created`);
+      return runAction('create-folder', () => resourceFolders.create(normalizedName), `Folder ${normalizedName} created`);
     };
 
     const saveFolderModal = async () => {
@@ -2780,6 +2223,22 @@ export default defineComponent({
         ? ownResourceFolders.value.find((folder) => folder.id === folderModal.value.folderId)
         : await ensureFolderByName(folderName);
       if (!targetFolder) return;
+      if (folderModal.value.bulk?.length) {
+        const items = selectedItemsOf(folderModal.value.bulk).filter((item) => item.folderId !== targetFolder.id);
+        const driveFiles = selectedDriveFilesOf(folderModal.value.bulk).filter((file) => file.folderId !== targetFolder.id);
+        await runAction('move-folder', async () => {
+          for (const item of items) await resourceFolders.move(targetFolder.id, item.type, item.id);
+          for (const file of driveFiles) await driveApi.moveFile(file.id, targetFolder.id);
+        }, t('bulkMovedTo').replace('{folder}', targetFolder.name).replace('{n}', String(items.length + driveFiles.length)));
+        closeFolderModal();
+        clearSelection();
+        if (driveFiles.length) {
+          folderFilesRefreshKey.value += 1;
+          refreshFolderFileCounts();
+        }
+        await load();
+        return;
+      }
       if (!folderModal.value.resourceId) {
         closeFolderModal();
         await load();
@@ -2885,92 +2344,6 @@ export default defineComponent({
       return folderSummaries.value.find((folder) => folder.id === folderId && canDropToFolder(folder));
     };
 
-    const onFolderDragOver = (folder: FolderSummary) => {
-      if (!canDropToFolder(folder)) return;
-      dragTargetFolder.value = folder.id;
-      // Expand the drop target if the user had folded its subtree.
-      if (folder.hasChildren) expandTree(folder.id);
-    };
-
-    const onFolderDragLeave = (folder: FolderSummary) => {
-      if (dragTargetFolder.value === folder.id) dragTargetFolder.value = '';
-      if (folderDragOverId.value === folder.id) folderDragOverId.value = '';
-    };
-
-    const canReorderFolder = (folder: FolderSummary) =>
-      !isBusy.value
-      && folder.role === 'owner'
-      && !isTechnicalFolder(folder)
-      && ownResourceFolders.value.some((ownedFolder) => ownedFolder.id === folder.id);
-
-    const onFolderDragStart = (event: DragEvent, folder: FolderSummary) => {
-      if (!canReorderFolder(folder)) {
-        event.preventDefault();
-        return;
-      }
-      folderDragId.value = folder.id;
-      event.dataTransfer?.setData('application/x-qcanva-folder', folder.id);
-      if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
-    };
-
-    const onFolderDragEnd = () => {
-      folderDragId.value = '';
-      folderDragOverId.value = '';
-    };
-
-    const isFolderReorderDrag = (event: DragEvent) =>
-      Boolean(folderDragId.value || Array.from(event.dataTransfer?.types || []).includes('application/x-qcanva-folder'));
-
-    const onFolderDragEnter = (event: DragEvent, folder: FolderSummary) => {
-      if (isFolderReorderDrag(event)) {
-        if (canReorderFolder(folder) && folder.id !== folderDragId.value) folderDragOverId.value = folder.id;
-        return;
-      }
-      onFolderDragOver(folder);
-    };
-
-    const onFolderDragOverEvent = (event: DragEvent, folder: FolderSummary) => {
-      if (isFolderReorderDrag(event)) {
-        if (canReorderFolder(folder) && folder.id !== folderDragId.value) folderDragOverId.value = folder.id;
-        return;
-      }
-      onFolderDragOver(folder);
-    };
-
-    const reorderFolders = async (sourceId: string, targetId: string) => {
-      if (!sourceId || sourceId === targetId) return;
-      const previousFolders = ownResourceFolders.value.map((folder) => ({ ...folder }));
-      const ids = ownResourceFolders.value
-        .slice()
-        .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
-        .map((folder) => folder.id);
-      const sourceIndex = ids.indexOf(sourceId);
-      const targetIndex = ids.indexOf(targetId);
-      if (sourceIndex < 0 || targetIndex < 0) return;
-      ids.splice(sourceIndex, 1);
-      ids.splice(ids.indexOf(targetId), 0, sourceId);
-      ownResourceFolders.value = ownResourceFolders.value.map((folder) => ({
-        ...folder,
-        sortOrder: ids.indexOf(folder.id),
-      }));
-      try {
-        await resourceFolders.reorder(ids);
-      } catch (error) {
-        ownResourceFolders.value = previousFolders;
-        setFeedback('error', error instanceof Error ? error.message : 'Could not save folder order');
-      }
-    };
-
-    const onFolderDrop = async (event: DragEvent, folder: FolderSummary) => {
-      const sourceId = folderDragId.value || event.dataTransfer?.getData('application/x-qcanva-folder') || '';
-      if (sourceId) {
-        onFolderDragEnd();
-        if (canReorderFolder(folder)) await reorderFolders(sourceId, folder.id);
-        return;
-      }
-      await dropResourceToFolder(folder);
-    };
-
     const resolveSidebarFolder = (folderId: string) =>
       folderSummaries.value.find((folder) => folder.id === folderId) || null;
 
@@ -3040,114 +2413,52 @@ export default defineComponent({
       }
     };
 
-    const removeResourceDragListeners = () => {
-      window.removeEventListener('mousemove', onResourceMouseMove);
-      window.removeEventListener('mouseup', onResourceMouseUp);
-      window.removeEventListener('touchmove', onResourceTouchMove);
-      window.removeEventListener('touchend', onResourceTouchEnd);
-      window.removeEventListener('touchcancel', onResourceTouchCancel);
-    };
+    const {
+      folderDragOverId,
+      canReorderFolder,
+      onFolderDragStart,
+      onFolderDragEnd,
+      onFolderDragEnter,
+      onFolderDragOverEvent,
+      onFolderDragLeave,
+      onFolderDrop,
+    } = useDashboardFolderDrag<FolderSummary>({
+      ownFolders: ownResourceFolders as unknown as Ref<FolderSummary[]>,
+      isBusy,
+      isTechnicalFolder: (folder) => isTechnicalFolder(folder),
+      canDropResource: canDropToFolder,
+      expandTree,
+      onResourceDragOver: (folder) => {
+        dragTargetFolder.value = folder.id;
+        if (folder.hasChildren) expandTree(folder.id);
+      },
+      onResourceDragLeave: (folder) => {
+        if (dragTargetFolder.value === folder.id) dragTargetFolder.value = '';
+      },
+      dropResourceToFolder,
+      reorderFoldersApi: async (ids) => { await resourceFolders.reorder(ids); },
+      setFeedback,
+    });
 
-    const finishResourceDrag = async () => {
-      const state = resourceDrag.value;
-      resourceDrag.value = null;
-      removeResourceDragListeners();
-      if (!state?.active) {
-        endResourceDrag();
-        return;
-      }
-      suppressNextCardClick.value = true;
-      window.setTimeout(() => {
-        suppressNextCardClick.value = false;
-      }, 0);
-      const targetFolder = findDropFolder(state.targetFolderId);
-      if (targetFolder) {
-        await dropResourceToFolder(targetFolder);
-      } else {
-        endResourceDrag();
-      }
-    };
-
-    const updateResourceDrag = (clientX: number, clientY: number, event?: Event) => {
-      const state = resourceDrag.value;
-      if (!state) return;
-      const distance = Math.hypot(clientX - state.startX, clientY - state.startY);
-      if (!state.active && distance < 8) return;
-      if (!state.active) {
-        state.active = true;
-        closeCardMenu();
-        draggingResourceId.value = state.item.id;
-        draggingResourceType.value = state.item.type;
-        draggingResourceFolderId.value = state.item.folderId || null;
-      }
-      event?.preventDefault();
-      const target = document.elementsFromPoint(clientX, clientY)
-        .map((element) => element instanceof HTMLElement ? element.closest<HTMLElement>('[data-dashboard-folder]') : null)
-        .find((element): element is HTMLElement => Boolean(element));
-      const folderId = target?.dataset.dashboardFolder || '';
-      const folder = findDropFolder(folderId);
-      state.targetFolderId = folder?.id || '';
-      dragTargetFolder.value = folder?.id || '';
-      // Expand the drop target if the user had folded its subtree.
-      if (folder?.hasChildren) expandTree(folder.id);
-    };
-
-    function onResourceMouseMove(event: MouseEvent) {
-      updateResourceDrag(event.clientX, event.clientY, event);
-    }
-
-    function onResourceMouseUp() {
-      void finishResourceDrag();
-    }
-
-    function onResourceTouchMove(event: TouchEvent) {
-      const point = event.touches[0];
-      if (!point) return;
-      updateResourceDrag(point.clientX, point.clientY, event);
-    }
-
-    function onResourceTouchEnd(event: TouchEvent) {
-      const point = event.changedTouches[0];
-      if (point) updateResourceDrag(point.clientX, point.clientY, event);
-      void finishResourceDrag();
-    }
-
-    function onResourceTouchCancel() {
-      resourceDrag.value = null;
-      removeResourceDragListeners();
-      endResourceDrag();
-    }
-
-    const startResourceDrag = (clientX: number, clientY: number, item: FolderItem, sourceFolder: FolderSummary, target: HTMLElement | null) => {
-      if (isBusy.value) return;
-      if (sourceFolder.role !== 'owner' || !ownResourceFolders.value.some((folder) => folder.id === sourceFolder.id)) return;
-      if (target?.closest('button,input,a,textarea,select,[contenteditable="true"]')) return;
-      resourceDrag.value = {
-        active: false,
-        startX: clientX,
-        startY: clientY,
-        item,
-        targetFolderId: '',
-      };
-    };
-
-    const startResourceMouseDrag = (event: MouseEvent, item: FolderItem, sourceFolder: FolderSummary) => {
-      if (event.button !== 0) return;
-      startResourceDrag(event.clientX, event.clientY, item, sourceFolder, event.target as HTMLElement | null);
-      if (!resourceDrag.value) return;
-      window.addEventListener('mousemove', onResourceMouseMove);
-      window.addEventListener('mouseup', onResourceMouseUp);
-    };
-
-    const startResourceTouchDrag = (event: TouchEvent, item: FolderItem, sourceFolder: FolderSummary) => {
-      const point = event.touches[0];
-      if (!point) return;
-      startResourceDrag(point.clientX, point.clientY, item, sourceFolder, event.target as HTMLElement | null);
-      if (!resourceDrag.value) return;
-      window.addEventListener('touchmove', onResourceTouchMove, { passive: false });
-      window.addEventListener('touchend', onResourceTouchEnd);
-      window.addEventListener('touchcancel', onResourceTouchCancel);
-    };
+    const { resourceDrag, startResourceMouseDrag, startResourceTouchDrag } = useDashboardResourceDrag<FolderItem, FolderSummary>({
+      draggingResourceId,
+      draggingResourceType,
+      draggingResourceFolderId,
+      dragTargetFolder,
+      suppressNextCardClick,
+      closeCardMenu: () => closeCardMenu(),
+      endResourceDrag,
+      findDropFolder,
+      dropResourceToFolder,
+      expandTree,
+      canStart: (item, sourceFolder, target) => (
+        !isBusy.value
+        && sourceFolder.role === 'owner'
+        && ownResourceFolders.value.some((folder) => folder.id === sourceFolder.id)
+        && !target?.closest('button,input,a,textarea,select,[contenteditable="true"]')
+        && item.id.length > 0
+      ),
+    });
 
     const openRenameFolderModal = (folder: FolderSummary) => {
       closeCardMenu();
@@ -3168,7 +2479,7 @@ export default defineComponent({
       await runAction(
         'rename-folder',
         () => resourceFolders.rename(renameFolderModal.value.folderId, nextFolder),
-        `Group renamed to ${nextFolder}`,
+        `Folder renamed to ${nextFolder}`,
       );
       closeRenameFolderModal();
       await load();
@@ -3181,7 +2492,7 @@ export default defineComponent({
       await runAction(
         'delete-folder',
         () => resourceFolders.delete(folder.id),
-        `Group ${folder.name} removed`,
+        `Folder ${folder.name} removed`,
       );
       await load();
     };
@@ -3192,7 +2503,7 @@ export default defineComponent({
       try {
         folderShareModal.value.permissions = await resourceFolders.permissions(folderShareModal.value.folderId);
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Failed to load group permissions';
+        const message = error instanceof Error ? error.message : 'Failed to load folder permissions';
         setFeedback('error', message);
       } finally {
         folderShareModal.value.loading = false;
@@ -3223,7 +2534,7 @@ export default defineComponent({
       await runAction(
         'share-folder',
         () => resourceFolders.share(folderShareModal.value.folderId, email, folderShareModal.value.role),
-        `Shared group with ${email}`,
+        `Shared folder with ${email}`,
       );
       folderShareModal.value.email = '';
       await loadFolderPermissions();
@@ -3234,7 +2545,7 @@ export default defineComponent({
       await runAction(
         'revoke-folder',
         () => resourceFolders.revoke(folderShareModal.value.folderId, userId),
-        'Group access revoked',
+        'Folder access revoked',
       );
       await loadFolderPermissions();
     };
@@ -3278,43 +2589,6 @@ export default defineComponent({
           : () => textDocuments.update(tagsModal.value.resourceId, { tags });
       await runAction('save-tags', save, 'Tags saved');
       closeTagsModal();
-      await load();
-    };
-
-    const openTagManager = async () => {
-      closeCardMenu();
-      const state = await runAction('load-tags', () => tags.list());
-      tagManager.value = {
-        open: true,
-        items: (state?.tags || []).map((tag) => ({ ...tag, originalName: tag.name })),
-      };
-    };
-
-    const closeTagManager = () => {
-      tagManager.value = { open: false, items: [] };
-    };
-
-    const refreshTagManager = async () => {
-      const state = await tags.list();
-      tagManager.value.items = state.tags.map((tag) => ({ ...tag, originalName: tag.name }));
-      sharedResourceTags.value = state.tags.map(({ name, color }) => ({ name, color }));
-    };
-
-    const saveManagedTag = async (tag: ManagedTag) => {
-      await runAction(
-        `save-tag-${tag.originalName}`,
-        () => tags.update(tag.originalName, { name: tag.name, color: tag.color }),
-        'Tag updated',
-      );
-      await refreshTagManager();
-      await load();
-    };
-
-    const deleteManagedTag = async (tag: ManagedTag) => {
-      const confirmed = await confirmDelete('deleteTagTitle', tag.originalName, 'deleteTagNote');
-      if (!confirmed) return;
-      await runAction(`delete-tag-${tag.originalName}`, () => tags.delete(tag.originalName), 'Tag deleted');
-      await refreshTagManager();
       await load();
     };
 
@@ -3388,6 +2662,569 @@ export default defineComponent({
       forgetResourceTab('doc', doc.id);
       await load();
     };
+
+    /**
+     * SEVERAL ITEMS AT ONCE. A card is ticked by its box (on hover, or on
+     * every card once something is ticked), by Ctrl/Cmd-click, Shift-click
+     * for a range, or a long press on a phone; while anything is ticked a
+     * click ticks instead of opening. The bar over the dashboard then moves,
+     * pins or deletes them all.
+     */
+    const selectedKeys = ref<string[]>([]);
+    let selectionAnchor = '';
+    const isSelected = (item: { type: string; id: string }) => selectedKeys.value.includes(selectionKey(item));
+    const itemsBySelectionKey = computed(() => dashboardItemsByKey.value as ReadonlyMap<string, FolderItem>);
+    const selectedItemsOf = (keys: readonly string[]) => keys
+      .map((key) => itemsBySelectionKey.value.get(key))
+      .filter((item): item is FolderItem => Boolean(item));
+    const selectedItems = computed(() => selectedItemsOf(selectedKeys.value));
+    const ownsItem = (item: FolderItem) => (
+      item.type === 'interactive-template' ? (item as { role?: string }).role === 'owner' : isOwnedResource(item)
+    );
+    const bulkDeletable = computed(() => selectedItems.value.filter(ownsItem));
+    /**
+     * The open folder's Drive files tick like its other items (`drive-file:<id>`)
+     * and take the same actions: moved, downloaded, deleted (to the Drive's
+     * trash) - one way to handle every kind of file.
+     */
+    const folderDriveFiles = ref<DriveItem[]>([]);
+    const driveFilesByKey = computed<ReadonlyMap<string, DriveItem>>(() => new Map(folderDriveFiles.value.map((file) => [`drive-file:${file.id}`, file])));
+    const selectedDriveFilesOf = (keys: readonly string[]) => keys
+      .map((key) => driveFilesByKey.value.get(key))
+      .filter((file): file is DriveItem => Boolean(file));
+    const selectedDriveFiles = computed(() => selectedDriveFilesOf(selectedKeys.value));
+    /** A Drive file goes to the trash when the folder is one's own. */
+    const bulkDeletableDriveFiles = computed(() => (
+      activeSection.value.kind === 'folder' && activeFolder.value?.role === 'owner' ? selectedDriveFiles.value : []
+    ));
+    /**
+     * Files of the open Yandex Disk folder tick the same way (`yandex:<path>`):
+     * moved within the Disk, downloaded into the zip, deleted to its trash.
+     */
+    const yandexFiles = ref<YandexItem[]>([]);
+    const yandexRefreshKey = ref(0);
+    const yandexFilesByKey = computed<ReadonlyMap<string, YandexItem>>(() => new Map(yandexFiles.value.map((file) => [`yandex:${file.path}`, file])));
+    const selectedYandexFiles = computed(() => selectedKeys.value
+      .map((key) => yandexFilesByKey.value.get(key))
+      .filter((file): file is YandexItem => Boolean(file)));
+    const bulkDeleteCount = computed(() => bulkDeletable.value.length + bulkDeletableDriveFiles.value.length + selectedYandexFiles.value.length);
+    /** The ticked files' total size, QCanva folders and Yandex Disk alike. */
+    const selectedSize = computed(() => (
+      selectedDriveFiles.value.reduce((sum, file) => sum + (file.sizeBytes ?? 0), 0)
+      + selectedYandexFiles.value.reduce((sum, file) => sum + (file.size ?? 0), 0)
+    ));
+    /** Cards on screen that can be ticked, in screen order. */
+    const selectableOnScreen = () => Array.from(
+      dashboardShell.value?.querySelectorAll<HTMLElement>('[data-select-key]') || [],
+    ).map((card) => card.dataset.selectKey!).filter(Boolean);
+    const allOnScreenSelected = ref(false);
+    watch(selectedKeys, () => {
+      void nextTick(() => {
+        const onScreen = selectableOnScreen();
+        allOnScreenSelected.value = onScreen.length > 0 && onScreen.every((key) => selectedKeys.value.includes(key));
+      });
+    });
+    const clearSelection = () => {
+      selectedKeys.value = [];
+      selectionAnchor = '';
+    };
+    const toggleSelected = (key: string) => {
+      selectedKeys.value = toggleSelection(selectedKeys.value, key);
+      selectionAnchor = key;
+    };
+    const selectAllOnScreen = () => {
+      selectedKeys.value = selectAll(selectedKeys.value, selectableOnScreen());
+    };
+    // Another section, another folder: the selection was of what is gone.
+    watch(activeSection, clearSelection);
+    // After a reload, whatever no longer exists drops out.
+    watch([itemsBySelectionKey, driveFilesByKey, yandexFilesByKey], ([items, files, yandex]) => {
+      const known = (key: string) => items.has(key) || files.has(key) || yandex.has(key);
+      if (selectedKeys.value.some((key) => !known(key))) {
+        selectedKeys.value = selectedKeys.value.filter(known);
+      }
+    });
+
+    const { marquee, startMarquee } = useDashboardMarquee({ enabled: isLoggedIn, dashboardShell, selectedKeys });
+    const { cancelLongPress, onSelectionPointerDown, onSelectionPointerMove, onSelectionContextMenu, consumeSwallowNextClick } = useDashboardLongPress({
+      enabled: isLoggedIn,
+      toggleSelected,
+    });
+    const onSelectionClickCapture = (event: MouseEvent) => {
+      if (consumeSwallowNextClick()) {
+        // The click that ends a long press must not open the card it ticked.
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+      if (!isLoggedIn) return;
+      const target = event.target as HTMLElement | null;
+      const card = target?.closest<HTMLElement>('[data-select-key]');
+      if (!card) return;
+      const onBox = Boolean(target?.closest('[data-select-box]'));
+      const withModifier = event.metaKey || event.ctrlKey || event.shiftKey;
+      if (!onBox && !withModifier && !selectedKeys.value.length) return;
+      // The card's own menu and rename field keep working.
+      if (!onBox && target?.closest('.card-manage, .card-menu, .card-title-input')) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const key = card.dataset.selectKey!;
+      if (event.shiftKey && selectionAnchor) {
+        selectedKeys.value = selectRange(selectedKeys.value, selectableOnScreen(), selectionAnchor, key);
+      } else {
+        toggleSelected(key);
+      }
+    };
+    const onSelectionKeydown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || !selectedKeys.value.length) return;
+      if (folderModal.value.open || openControlMenu.value || openMenuCanvasId.value) return;
+      clearSelection();
+    };
+    onMounted(() => window.addEventListener('keydown', onSelectionKeydown));
+    onBeforeUnmount(() => {
+      window.removeEventListener('keydown', onSelectionKeydown);
+    });
+    // Android's Back clears the selection before it leaves the folder.
+    useBackHandler(() => {
+      if (!selectedKeys.value.length) return false;
+      clearSelection();
+      return true;
+    });
+
+    const openBulkMoveModal = () => {
+      if (selectedYandexFiles.value.length) {
+        openYandexMove(selectedYandexFiles.value.map((file) => file.path));
+        return;
+      }
+      closeCardMenu();
+      openControlMenu.value = '';
+      draggingResourceFolderId.value = null;
+      folderModal.value = {
+        open: true,
+        resourceId: '',
+        resourceType: 'canvas',
+        folderId: '',
+        value: '',
+        bulk: [...selectedKeys.value],
+      };
+    };
+    /**
+     * Download the selection as one zip. Each item is fetched in turn (the
+     * status bar counts them), then packed; one that fails is left out and
+     * counted, the rest still download.
+     */
+    const archiveFileOf = async (item: FolderItem, taken: Set<string>): Promise<ArchiveFile> => {
+      const title = item.title || t('untitled');
+      const base = safeFileName(title, t('untitled'));
+      if (item.type === 'canvas') {
+        const res = await canvas.get(item.id);
+        return { name: uniqueFileName(base, 'canvas', taken), content: canvasFileContent(res.canvas?.data) };
+      }
+      if (item.type === 'html-document') {
+        const res = await htmlDocuments.get(item.id);
+        return { name: uniqueFileName(base, 'html', taken), content: res.document?.html || '' };
+      }
+      if (item.type === 'text-document') {
+        const res = await textDocuments.get(item.id);
+        return { name: uniqueFileName(base, 'html', taken), content: textDocumentFileContent(title, res.document?.snapshot?.html || '') };
+      }
+      const template = await interactiveTemplates.get(item.id);
+      return {
+        name: uniqueFileName(base, 'json', taken),
+        content: JSON.stringify({ title: template.title, templateType: template.templateType, data: template.data }, null, 2),
+      };
+    };
+    /** A Drive file goes into the zip as it is, fetched by its download link. */
+    const archiveFileOfDrive = async (file: DriveItem, taken: Set<string>): Promise<ArchiveFile> => {
+      const { url } = await driveApi.getDownloadLink(file.id);
+      const response = await fetch(resolveDownloadUrl(url));
+      if (!response.ok) throw new Error(`${response.status}`);
+      const [base, extension] = splitFileName(file.name);
+      return { name: uniqueFileName(safeFileName(base, t('untitled')), extension, taken), content: new Uint8Array(await response.arrayBuffer()) };
+    };
+    const { downloadStatus, bulkDownload } = useDashboardBulkDownload({
+      selectedItems,
+      selectedDriveFiles,
+      selectedYandexFiles,
+      archiveItem: archiveFileOf,
+      archiveDriveFile: archiveFileOfDrive,
+      archiveYandexFile: async (file: YandexItem, taken: Set<string>) => {
+        const [base, extension] = splitFileName(file.name);
+        return { name: uniqueFileName(safeFileName(base, t('untitled')), extension, taken), content: await fetchYandexContent(file.path) };
+      },
+      buildZip,
+      saveBlob,
+      clearSelection,
+    });
+
+    // ----- Spaces: the user's Yandex Disk as a dashboard section
+    const yandexView = ref<InstanceType<typeof DashboardYandexDisk> | null>(null);
+    const yandexPicker = ref<InstanceType<typeof YandexFolderPicker> | null>(null);
+    const yandexPath = computed(() => (activeSection.value.kind === 'yandex' ? activeSection.value.path : null));
+    const yandexMove = ref<{ sources: string[]; start: string } | null>(null);
+    const { load: loadYandexStatus } = useYandexDisk();
+    const openYandexPath = (path: string) => {
+      selectDashboardSection({ kind: 'yandex', path });
+    };
+    const openYandexMove = (sources: string[]) => {
+      closeCardMenu();
+      const first = sources[0];
+      if (!first) return;
+      yandexMove.value = { sources, start: yandexParentPath(first) };
+    };
+    const confirmYandexMove = async (target: string) => {
+      const move = yandexMove.value;
+      if (!move) return;
+      let moved = false;
+      try {
+        await runAction('yandex-move', async () => {
+          for (const source of move.sources) {
+            const name = source.slice(source.lastIndexOf('/') + 1);
+            if (yandexParentPath(source) === target) continue;
+            await settleYandexOutcome(await yandexDisk.move(source, joinYandexPath(target, name)));
+          }
+        }, t('bulkMovedTo')
+          .replace('{folder}', target === '/' ? t('yandexDisk') : target.slice(target.lastIndexOf('/') + 1))
+          .replace('{n}', String(move.sources.length)));
+        moved = true;
+      } catch {
+        // runAction already showed why.
+      }
+      yandexPicker.value?.close();
+      if (!moved) return;
+      clearSelection();
+      yandexRefreshKey.value += 1;
+      // The open folder itself moved: follow it.
+      const open = yandexPath.value;
+      const followed = open && move.sources.find((source) => open === source || open.startsWith(`${source}/`));
+      if (open && followed) openYandexPath(joinYandexPath(target, followed.slice(followed.lastIndexOf('/') + 1)) + open.slice(followed.length));
+    };
+    // ----- shared spaces: a section of their own
+    const spaceView = ref<InstanceType<typeof DashboardSpace> | null>(null);
+    const spaceId = computed(() => (activeSection.value.kind === 'space' ? activeSection.value.spaceId : null));
+    const { load: loadSpaces } = useSpaces();
+    onMounted(() => { if (isLoggedIn) void loadSpaces(); });
+    const createSpace = async () => {
+      // Asked first: no typing a name for a plan that will refuse it.
+      const allowed = await plansApi.mine().then((info) => info.plan?.canCreateSpaces !== false).catch(() => true);
+      if (!allowed) {
+        setFeedback('error', t('planErrorSpaces'));
+        return;
+      }
+      const name = (await promptDialog({
+        title: t('spaceNew'),
+        placeholder: t('spaceNamePlaceholder'),
+        confirmLabel: t('create'),
+        cancelLabel: t('cancel'),
+      }))?.trim();
+      if (!name) return;
+      try {
+        const space = await spacesApi.create(name);
+        await loadSpaces(true);
+        selectDashboardSection({ kind: 'space', spaceId: space.id });
+      } catch (error) {
+        setFeedback('error', error instanceof Error && error.message ? error.message : t('spaceActionFailed'));
+      }
+    };
+    /** A QCanva document of a space opens as any does. */
+    const openSpaceResource = (kind: string, id: string) => {
+      if (kind === 'canvas') openCanvas(id);
+      else if (kind === 'text-document') openTextDocument(id);
+      else if (kind === 'html-document') openHtmlDocument(id);
+      else openInteractiveTemplate(id);
+    };
+    /**
+     * A link into the dashboard: `?section=trash` opens the trash and
+     * `?folder=<id>` a folder - the old Q Space pages (/drive/trash,
+     * /drive/<folder>) land here. Read once, then dropped from the address.
+     */
+    const takeAddressSection = () => {
+      if (!isLoggedIn) return;
+      const query = router.currentRoute?.value?.query ?? {};
+      const section = typeof query.section === 'string' ? query.section : '';
+      const folder = typeof query.folder === 'string' ? query.folder : '';
+      if (!section && !folder) return;
+      if (section === 'trash') selectDashboardSection({ kind: 'trash' });
+      else if (folder) selectFolder(folder);
+      const { section: _section, folder: _folder, ...rest } = query;
+      void router.replace({ query: rest });
+    };
+
+    /**
+     * An admin takes a resource out of the Public directory: it leaves the
+     * section at once, for its owner's lists too. The link still opens it.
+     */
+    const hideFromPublic = async (item: { type: string; id: string; title?: string | null }) => {
+      closeCardMenu();
+      const type = item.type as PublicResourceType;
+      if (type !== 'canvas' && type !== 'text-document' && type !== 'html-document') return;
+      const confirmed = await confirmDialog({
+        title: t('hideFromPublicTitle').replace('{name}', item.title || t('untitled')),
+        confirmLabel: t('hideFromPublicConfirm'),
+        cancelLabel: t('cancel'),
+        danger: true,
+      });
+      if (!confirmed) return;
+      try {
+        await adminApi.hideFromPublic(type, item.id);
+        const drop = <T extends { id: string }>(list: { value: T[] }) => { list.value = list.value.filter((other) => other.id !== item.id); };
+        const mark = <T extends { id: string }>(list: { value: T[] }) => {
+          list.value = list.value.map((other) => (other.id === item.id ? { ...other, publicHidden: true } : other));
+        };
+        if (type === 'canvas') { drop(publicCanvases); mark(own); }
+        else if (type === 'html-document') { drop(publicHtmlDocuments); mark(allHtmlDocumentsRaw); }
+        else { drop(publicTextDocuments); mark(allTextDocumentsRaw); }
+        setFeedback('success', t('hiddenFromPublic'));
+      } catch (error) {
+        setFeedback('error', error instanceof Error && error.message ? error.message : t('hideFromPublicFailed'));
+      }
+    };
+
+    /** A file back from the trash: its folder shows it again. */
+    const onTrashRestored = () => {
+      setFeedback('success', t('driveRestored'));
+      void load({ showLoading: false });
+      refreshFolderFileCounts();
+    };
+
+    /** The space is gone for this user (deleted, or they left): back home. */
+    const leaveSpaceSection = () => {
+      void loadSpaces(true);
+      selectDashboardSection({ kind: 'recent' });
+    };
+
+    // ----- pictures and videos full screen: the folder's, from the one clicked
+    const mediaViewer = ref<{ items: MediaViewerItem[]; start: number } | null>(null);
+    const yandexViewerItem = (file: YandexItem): MediaViewerItem => ({
+      key: `yandex:${file.path}`,
+      name: file.name,
+      kind: file.mediaType === 'video' ? 'video' : 'image',
+      date: file.modifiedAt,
+      preview: yandexPreviewUrl(file),
+      loadFull: async () => (await yandexDisk.downloadLink(file.path)).href,
+      download: () => downloadYandexFile(file),
+    });
+    /** Card pictures the folder's files found (hub-made for HEIC, RAW, videos): the viewer starts on them. */
+    const folderDrivePreviews = ref<Readonly<Record<string, string>>>({});
+    const driveViewerItem = (file: { id: string; name: string; updatedAt?: string | null; kind?: 'image' | 'video' }): MediaViewerItem => ({
+      key: `drive-file:${file.id}`,
+      name: file.name,
+      kind: file.kind ?? 'image',
+      date: file.updatedAt ?? null,
+      preview: folderDrivePreviews.value[file.id] ?? null,
+      loadFull: async () => resolveDownloadUrl((await driveApi.getDownloadLink(file.id)).url),
+      download: async () => {
+        try {
+          await downloadDriveFile(file.id, file.name);
+        } catch (error) {
+          setFeedback('error', error instanceof Error && error.message ? error.message : t('driveDownloadLinkFailed'));
+        }
+      },
+    });
+    const isDriveMedia = (file: DriveItem) => isPictureFile(file) || isVideoFile(file);
+    const isYandexMedia = (item: YandexItem) => item.mediaType === 'image' || item.mediaType === 'video';
+    /** A picture or a video of a Yandex folder: the folder's pictures and videos, from it. */
+    const openYandexImage = (file: YandexItem) => {
+      const media = yandexFiles.value.filter(isYandexMedia);
+      const list = media.some((item) => item.path === file.path) ? media : [file];
+      mediaViewer.value = { items: list.map(yandexViewerItem), start: list.findIndex((item) => item.path === file.path) };
+    };
+    /** A picture or a video of a QCanva folder: the folder's pictures and videos, from it. */
+    const openDriveImage = (file: DriveItem) => {
+      const media = folderDriveFiles.value.filter(isDriveMedia);
+      const list = media.some((item) => item.id === file.id) ? media : [file];
+      mediaViewer.value = {
+        items: list.map((item) => driveViewerItem({ ...item, kind: isVideoFile(item) ? 'video' : 'image' })),
+        start: list.findIndex((item) => item.id === file.id),
+      };
+    };
+    /** A file of the sidebar's Yandex tree: a picture or a video opens, anything else downloads. */
+    const openYandexSidebarFile = (item: YandexItem) => {
+      mobileSidebarOpen.value = false;
+      if (isYandexMedia(item)) mediaViewer.value = { items: [yandexViewerItem(item)], start: 0 };
+      else void downloadYandexFile(item);
+    };
+    const downloadYandexFile = async (item: YandexItem) => {
+      try {
+        const { href } = await yandexDisk.downloadLink(item.path);
+        downloadYandexLink(href, item.name);
+      } catch (error) {
+        setFeedback('error', error instanceof Error && error.message ? error.message : t('driveDownloadLinkFailed'));
+      }
+    };
+    /** Uploads to the Yandex folder go through the same panel as the Drive's. */
+    const uploadToYandex = async (files: File[], path: string) => {
+      const batch = files.map((file) => ({
+        id: `up-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        file,
+        name: file.name,
+        size: file.size,
+        progress: 0,
+        status: 'uploading' as const,
+      }));
+      uploads.value = [...batch.map(({ file: _file, ...row }) => row), ...uploads.value];
+      uploadPanelOpen.value = true;
+      await runDashboardUploads(batch.map(({ id, file }) => ({
+        id,
+        start: () => uploadYandexFile(joinYandexPath(path, file.name), file, (percent) => setUploadProgress(id, percent)),
+      })));
+      yandexRefreshKey.value += 1;
+    };
+    /** Back from Yandex's consent page: `?space=yandex&yandex=connected|error`. */
+    const takeYandexReturn = () => {
+      if (typeof window === 'undefined') return;
+      const url = new URL(window.location.href);
+      const space = url.searchParams.get('space');
+      const result = url.searchParams.get('yandex');
+      if (space !== 'yandex' && !result) return;
+      if (isLoggedIn) activeSection.value = { kind: 'yandex', path: '/' };
+      if (result === 'connected') setFeedback('success', t('yandexConnected'));
+      else if (result === 'error') setFeedback('error', url.searchParams.get('reason') === 'denied' ? t('yandexConnectDenied') : t('yandexConnectFailed'));
+      void loadYandexStatus(true);
+      for (const key of ['space', 'yandex', 'reason']) url.searchParams.delete(key);
+      const query = Object.fromEntries(url.searchParams.entries());
+      if (typeof router?.replace === 'function') void router.replace({ query });
+      else window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+    };
+
+    /**
+     * Upload files from the device into a folder's Drive (dashboard folders
+     * and Drive folders are the same folders): the folder asked for (a
+     * folder's own "+"), else the Add menu's "Create in", else Unsorted, as
+     * for anything created. The status bar follows all of them by bytes.
+     */
+    const folderFilesRefreshKey = ref(0);
+    /** Uploads, newest first: each file its own progress, cancel and outcome (DashboardUploadPanel). */
+    const uploads = ref<Array<DashboardUpload & { abort?: () => void }>>([]);
+    const uploadPanelOpen = ref(false);
+    /** "n/m" and the ring of the panel and its badge, taken every half second while files run. */
+    const uploadSummary = useUploadSummary(uploads);
+    /** Nothing runs any more: the finished files go, and the badge with them. */
+    const clearFinishedUploads = () => {
+      uploads.value = uploads.value.filter((item) => item.status === 'uploading');
+      uploadPanelOpen.value = false;
+    };
+    const cancelUpload =(id: string) => {
+      const upload = uploads.value.find((item) => item.id === id);
+      if (!upload || upload.status !== 'uploading') return;
+      upload.status = 'cancelled';
+      upload.abort?.();
+    };
+    /**
+     * Every upload of the panel (QCanva's and Yandex Disk's): three at a time,
+     * a dropped one started again once the page is back (upload-queue.ts),
+     * and the screen kept on while any runs - a dark phone freezes them.
+     */
+    const uploadRowOf = (id: string) => uploads.value.find((item) => item.id === id);
+    const setUploadProgress = (id: string, percent: number) => {
+      const row = uploadRowOf(id);
+      if (row && row.status === 'uploading') row.progress = Math.round(percent);
+    };
+    const uploadWakeLock = createUploadWakeLock(() => uploads.value.some((item) => item.status === 'uploading'));
+    watch(() => uploads.value.some((item) => item.status === 'uploading'), () => { void uploadWakeLock.sync(); });
+    onBeforeUnmount(() => uploadWakeLock.dispose());
+    // In the Android app every file goes to the app's own queue at once (it runs
+    // three at a time, in the background too); a page frozen in the background
+    // could not hand over the rest later.
+    const runDashboardUploads = (jobs: UploadJob[]) => runUploadQueue(jobs, {
+      concurrency: nativeUploadAvailable() ? jobs.length : 3,
+      isCancelled: (id) => uploadRowOf(id)?.status === 'cancelled',
+      onAttempt: (id, attempt) => {
+        const row = uploadRowOf(id);
+        if (!row) return;
+        row.abort = () => attempt.abort();
+        row.progress = 0;
+      },
+      onDone: (id) => {
+        const row = uploadRowOf(id);
+        if (row && row.status === 'uploading') {
+          row.progress = 100;
+          row.status = 'done';
+        }
+      },
+      onError: (id, error) => {
+        const row = uploadRowOf(id);
+        if (!row || row.status === 'cancelled') return;
+        row.status = 'error';
+        row.errorMessage = error instanceof Error && error.message ? error.message : t('driveUploadFailed');
+      },
+    });
+    const uploadFiles = async (files: File[], explicitFolderId?: string) => {
+      const folderId = await resolveCreateFolderId(explicitFolderId);
+      if (!folderId) return;
+      const batch = files.map((file) => ({
+        id: `up-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        file,
+        name: file.name,
+        size: file.size,
+        progress: 0,
+        status: 'uploading' as const,
+      }));
+      uploads.value = [...batch.map(({ file: _file, ...row }) => row), ...uploads.value];
+      uploadPanelOpen.value = true;
+      await runDashboardUploads(batch.map(({ id, file }) => ({
+        id,
+        start: () => driveApi.uploadFile(folderId, file, (percent) => setUploadProgress(id, percent)),
+      })));
+      folderFilesRefreshKey.value += 1;
+      refreshFolderFileCounts();
+    };
+
+    const transferStatusText = computed(() => {
+      const status = downloadStatus.value;
+      if (status.phase === 'collect') return t('downloadCollecting').replace('{done}', String(status.done)).replace('{total}', String(status.total));
+      if (status.phase === 'pack') return t('downloadPacking');
+      if (status.phase === 'done') return status.failed ? t('downloadDonePartly').replace('{n}', String(status.failed)) : t('downloadDone');
+      return t('downloadFailed');
+    });
+    const transferStatusPercent = computed(() => {
+      const status = downloadStatus.value;
+      if (status.phase === 'done' || status.phase === 'error') return 100;
+      return status.phase === 'pack' ? 95 : Math.round(status.done / Math.max(1, status.total) * 90);
+    });
+
+    const { bulkDelete } = useDashboardBulkDelete<FolderItem, DriveItem, YandexItem>({
+      getItems: () => bulkDeletable.value,
+      getDriveFiles: () => bulkDeletableDriveFiles.value,
+      getYandexFiles: () => selectedYandexFiles.value,
+      getSkippedCount: () => selectedItems.value.length + selectedDriveFiles.value.length - bulkDeletable.value.length - bulkDeletableDriveFiles.value.length,
+      confirm: async ({ items, driveFiles, yandex, skipped }) => confirmDialog({
+        title: t('bulkDeleteTitle').replace('{n}', String(items + driveFiles + yandex)),
+        message: skipped ? t('bulkDeleteSkipped').replace('{n}', String(skipped)) : undefined,
+        confirmLabel: t('delete'),
+        danger: true,
+      }),
+      runAction: (task) => runAction('bulk-delete', task, t('bulkDeleted').replace('{n}', String(bulkDeleteCount.value))).then(() => undefined),
+      deleteItem: async (item) => {
+        if (item.type === 'canvas') {
+          await canvas.delete(item.id);
+          forgetResourceTab('canvas', item.id);
+        } else if (item.type === 'html-document') {
+          await htmlDocuments.delete(item.id);
+          forgetResourceTab('html', item.id);
+        } else if (item.type === 'text-document') {
+          await textDocuments.delete(item.id);
+          forgetResourceTab('doc', item.id);
+        } else {
+          await interactiveTemplates.delete(item.id);
+          forgetResourceTab('template', item.id);
+        }
+      },
+      trashDriveFile: (file) => driveApi.trashFile(file.id),
+      removeYandexFile: (file) => yandexDisk.remove(file.path).then(settleYandexOutcome),
+      afterSuccess: async ({ items, driveFiles, yandex }) => {
+        if (yandex.length) yandexRefreshKey.value += 1;
+        if (driveFiles.length) {
+          folderFilesRefreshKey.value += 1;
+          refreshFolderFileCounts();
+        }
+        const deleted = new Set(items.map(selectionKey));
+        own.value = own.value.filter((item) => !deleted.has(selectionKey(item)));
+        interactiveTemplateItems.value = interactiveTemplateItems.value.filter((item) => !deleted.has(selectionKey({ type: 'interactive-template', id: item.id })));
+        clearSelection();
+        await load();
+      },
+    });
 
     const togglePinned = async (item: FolderItem) => {
       closeCardMenu();
@@ -3503,22 +3340,165 @@ export default defineComponent({
       cardMenuStyle.value = null;
     };
 
-    const toggleNewMenu = () => {
-      closeSidebarAccountMenu();
-      openMenuCanvasId.value = '';
-      const opening = openControlMenu.value !== 'new';
-      openControlMenu.value = opening ? 'new' : '';
-      if (!opening) return;
-      // Default destination: the (own, non-technical) folder you're in.
-      const current = activeSection.value.kind === 'folder' ? activeFolder.value : null;
-      newItemFolderId.value = current && newItemFolderOptions.value.some((o) => o.id === current.id) ? current.id : '';
+    type ResourceMenuContext = 'owned' | 'shared' | 'public' | 'interactive';
+
+    const resourceActions = (item: FolderItem, context: ResourceMenuContext): DashboardResourceActionItem[] => {
+      if (context === 'shared') {
+        return [{ key: 'move-to-folder', label: t('moveToGroup') }];
+      }
+      if (context === 'public') {
+        return [
+          { key: 'move-to-folder', label: t('moveToGroup') },
+          { key: 'hide-from-public', label: t('hideFromPublic'), visible: admin.value, danger: true },
+        ];
+      }
+      if (context === 'interactive') {
+        return [
+          { key: 'move-to-folder', label: t('moveToGroup') },
+          { key: 'delete', label: t('delete'), visible: item.role === 'owner', danger: true },
+        ];
+      }
+      return [
+        { key: 'move-to-folder', label: t('moveToGroup') },
+        { key: 'duplicate', label: t('duplicate') },
+        { key: 'description', label: t('description') },
+        { key: 'tags', label: t('editTags') },
+        { key: 'pin', label: item.pinned ? t('unpin') : t('pin') },
+        { key: 'transfer', label: t('transferOwnership') },
+        { key: 'delete', label: t('delete'), danger: true },
+      ];
     };
 
-    const toggleFolderCreateMenu = (folderId: string) => {
+    const handleResourceAction = async (item: FolderItem, action: DashboardResourceAction) => {
+      switch (action) {
+        case 'move-to-folder':
+          if (item.type === 'canvas') openMoveFolderModal(item);
+          else if (item.type === 'html-document') openMoveHtmlFolderModal(item);
+          else if (item.type === 'text-document') openMoveTextDocumentFolderModal(item);
+          else openMoveInteractiveTemplateFolderModal(item);
+          return;
+        case 'duplicate':
+          if (item.type === 'canvas') await duplicateCanvas(item);
+          else if (item.type === 'html-document') await duplicateHtmlDocument(item);
+          else if (item.type === 'text-document') await duplicateTextDocument(item);
+          return;
+        case 'description':
+          openDescriptionModal(item);
+          return;
+        case 'tags':
+          openTagsModal(item);
+          return;
+        case 'pin':
+          if (item.type !== 'interactive-template') await togglePinned(item);
+          return;
+        case 'transfer':
+          openTransferModal(item);
+          return;
+        case 'delete':
+          if (item.type === 'canvas') await deleteCanvas(item);
+          else if (item.type === 'html-document') await deleteHtmlDocument(item);
+          else if (item.type === 'text-document') await deleteTextDocument(item);
+          else await deleteInteractiveTemplate(item);
+          return;
+        case 'hide-from-public':
+          await hideFromPublic(item);
+          return;
+      }
+    };
+
+    /**
+     * "+ Add" is a dialog: make something new, or bring files in - having
+     * said what they are, so a wrong file is caught (DashboardAddDialog).
+     * It opens on the folder you are in, or the one whose "+" was pressed.
+     */
+    const addDialog = ref<{ open: boolean; folderId: string; importKind?: ImportKind }>({ open: false, folderId: '' });
+    const openAddDialog = (options: { folderId?: string; importKind?: ImportKind } = {}) => {
       closeSidebarAccountMenu();
       openMenuCanvasId.value = '';
-      const key = `folder-new:${folderId}`;
-      openControlMenu.value = openControlMenu.value === key ? '' : key;
+      openControlMenu.value = '';
+      const current = activeSection.value.kind === 'folder' ? activeFolder.value : null;
+      const fallback = current && newItemFolderOptions.value.some((option) => option.id === current.id) ? current.id : '';
+      addDialog.value = { open: true, folderId: options.folderId ?? fallback, importKind: options.importKind };
+      // A folder made in the Drive (or elsewhere) since the dashboard loaded:
+      // the folders alone, quietly - no "Updating list" for opening a dialog.
+      if (isLoggedIn) void refreshFoldersQuietly();
+    };
+    const refreshFoldersQuietly = async () => {
+      try {
+        const folders = await resourceFolders.list();
+        ownResourceFolders.value = folders.own.map(normalizeResourceFolder);
+        sharedResourceFolders.value = folders.shared.map(normalizeResourceFolder);
+      } catch {
+        // The list already shown stays: the dialog still works with it.
+      }
+    };
+    const closeAddDialog = () => {
+      addDialog.value = { open: false, folderId: '' };
+    };
+    /** Made with the name given in the dialog. */
+    const onAddCreate = (kind: AddCreateKind, folderId: string, title: string) => {
+      closeAddDialog();
+      newItemFolderId.value = folderId;
+      const target = folderId || undefined;
+      if (kind === 'canvas') return void createCanvas(target, title);
+      if (kind === 'html-document') return void createHtmlDocument(target, title);
+      return void createTextDocument(target, title);
+    };
+    /** A template of a kind chosen in the dialog's own Template step, into Where. */
+    const onAddCreateTemplate = (templateType: InteractiveTemplate['templateType'], folderId: string) => {
+      closeAddDialog();
+      templateFolderId.value = folderId || null;
+      void createInteractiveTemplate(templateType);
+    };
+    /** A character from a file: the template picker has the reading and the review of it. */
+    const onAddImportCharacter = (folderId: string) => {
+      closeAddDialog();
+      openInteractiveTemplatePicker(folderId || undefined);
+    };
+    /** A folder named in the dialog's Folder step: inside Where, or at the top. */
+    const onAddCreateFolder = async (name: string, folderId: string) => {
+      closeAddDialog();
+      const created = await runAction('create-folder', () => resourceFolders.create(name, folderId || null), `Folder ${name} created`);
+      if (created) await load({ showLoading: false });
+    };
+    /** Files the dialog checked: to the Drive, or each one a canvas / an HTML document. */
+    const onAddImport = async (kind: ImportKind, files: File[], folderId: string) => {
+      closeAddDialog();
+      newItemFolderId.value = folderId;
+      if (kind === 'file') return uploadFiles(files, folderId || undefined);
+      const opened: string[] = [];
+      try {
+        const target = await resolveCreateFolderId(folderId || undefined);
+        for (const file of files) {
+          const title = importTitle(file.name);
+          const text = await file.text();
+          if (kind === 'html') {
+            const doc = await runAction('import-html-document', () => htmlDocuments.create({ title, html: text, folderId: target }), `Imported ${title}`);
+            if (doc) opened.push(`/edit/html/${doc.id}`);
+          } else if (kind === 'markdown') {
+            const doc = await runAction('import-text-document', async () => {
+              const created = await textDocuments.create({ title, folderId: target });
+              await textDocuments.replaceContent(created.id, { html: marked.parse(text, { async: false }) as string });
+              return created;
+            }, `Imported ${title}`);
+            if (doc) opened.push(`/docs/${doc.slug || doc.id}`);
+          } else {
+            const created = await runAction('import-canvas', () => canvas.create(title, JSON.stringify(JSON.parse(text)), target), `Imported ${title}`);
+            if (created) opened.push(`/canvas/${created.id}`);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to import file:', error);
+      }
+      if (opened.length === 1) router.push(opened[0]!);
+      else if (opened.length) await load({ showLoading: false });
+    };
+
+    /** "+ Add" in an empty section: a folder for Folders, the template picker for Templates, else the Add dialog. */
+    const openAddFromTile = (section: 'recent' | 'folders' | 'shared' | 'interactive' | 'public' | 'folder') => {
+      if (section === 'folders') return openCreateGroupModal();
+      if (section === 'interactive') return openInteractiveTemplatePicker();
+      openAddDialog();
     };
 
     const toggleFolderMenu = (folderId: string) => {
@@ -3541,6 +3521,18 @@ export default defineComponent({
       openMenuCanvasId.value = '';
       const key = `mobile-sort:${where}`;
       openControlMenu.value = openControlMenu.value === key ? '' : key;
+    };
+
+    /** The toolbar's filter and sort menus, one open at a time like every control menu. */
+    const toggleToolbarMenu = (key: string) => {
+      closeSidebarAccountMenu();
+      openMenuCanvasId.value = '';
+      openControlMenu.value = openControlMenu.value === key ? '' : key;
+    };
+    /** "Reset" in the filter menu: types and tags; the search stays as typed. */
+    const clearTypeAndTagFilters = () => {
+      contentTypes.value = [];
+      selectedTags.value = [];
     };
 
     const selectSortMode = (mode: typeof sortMode.value) => {
@@ -3601,6 +3593,10 @@ export default defineComponent({
       value: '',
     });
 
+    /** Subfolders count as one item each in a folder's tile; the tile also shows its subtree's last change. */
+    const subfolderCounts = computed(() => childFolderCounts(allResourceFolders.value.map(({ id, parentId }) => ({ id, parentId }))));
+    const folderLatest = computed(() => folderLatestChange(allFolderSummaries.value));
+
     /** Direct children of the folder currently open, shown ahead of its items. */
     const activeSubfolders = computed(() => {
       const parentId = activeFolder.value?.id;
@@ -3614,17 +3610,20 @@ export default defineComponent({
             (folder.canvasCount || 0) +
             (folder.htmlDocumentCount || 0) +
             (folder.textDocumentCount || 0) +
-            (folder.interactiveTemplateCount || 0),
+            (folder.interactiveTemplateCount || 0) +
+            (folderFiles.counts[folder.id] ?? 0) +
+            (subfolderCounts.value.get(folder.id) ?? 0),
+          latest: folderLatest.value.get(folder.id) ?? null,
         }))
         .sort((a, b) => a.name.localeCompare(b.name));
     });
 
     /** True once any of search/type/tags actually narrows the result set. */
-    const hasActiveFilter = computed(() => Boolean(searchQuery.value.trim() || selectedTags.value.length || contentFilter.value !== 'all'));
+    const hasActiveFilter = computed(() => Boolean(searchQuery.value.trim() || selectedTags.value.length || contentTypes.value.length));
     const resetFilters = () => {
       searchQuery.value = '';
       selectedTags.value = [];
-      contentFilter.value = 'all';
+      contentTypes.value = [];
     };
 
     /**
@@ -3642,27 +3641,58 @@ export default defineComponent({
      * textDocuments), so a tag filter would silently zero out every canvas
      * and HTML doc in every folder without this - see dashboardItemsByKey.
      */
+    /**
+     * Whether files count in a folder tile: they have no tags, and their
+     * names are not known until the folder opens, so a search or a tag
+     * filter leaves them out; a type filter keeps them only with "Files".
+     */
+    const filesCounted = computed(() => !searchQuery.value.trim() && !selectedTags.value.length && typePasses(contentTypes.value, 'file'));
+    // A top folder for this user: no parent, or one they cannot see - a folder
+    // shared from inside someone else's has a parentId the user has no folder for.
+    const visibleFolderIds = computed(() => new Set(allResourceFolders.value.map((folder) => folder.id)));
     const recentFolderTiles = computed(() => allFolderSummaries.value
-      .filter((folder) => !(folder.parentId ?? null))
+      .filter((folder) => !folder.parentId || !visibleFolderIds.value.has(folder.parentId))
       .map((folder) => {
         const totalCount = folder.items.length;
         const matchingCount = folder.items.filter((item) => {
           const enriched = dashboardItemsByKey.value.get(`${item.type}:${item.id}`) || item;
           return matchesFolderItem(enriched, folder.name);
         }).length;
-        const count = hasActiveFilter.value ? matchingCount : totalCount;
+        const files = filesCounted.value ? (folderFiles.counts[folder.id] ?? 0) : 0;
+        // A subfolder is one item; under a filter only one whose name matches the search counts.
+        const needle = searchQuery.value.trim().toLocaleLowerCase();
+        const subfolders = !hasActiveFilter.value
+          ? (subfolderCounts.value.get(folder.id) ?? 0)
+          : (needle && !selectedTags.value.length && !contentTypes.value.length
+            ? allResourceFolders.value.filter((child) => child.parentId === folder.id && child.name.toLocaleLowerCase().includes(needle)).length
+            : 0);
+        const count = (hasActiveFilter.value ? matchingCount : totalCount) + files + subfolders;
         return {
           id: folder.id,
           name: folder.name,
           count,
+          latest: folderLatest.value.get(folder.id) ?? null,
           // A folder that's genuinely empty reads as "Empty"; one that's
           // empty only because of the active filter shows a literal "0" -
           // "Empty" would wrongly suggest nothing was ever put in it.
           displayCount: count === 0 ? (hasActiveFilter.value ? '0' : t('emptyFolder')) : String(count),
-          zeroMatch: hasActiveFilter.value && matchingCount === 0,
+          zeroMatch: hasActiveFilter.value && count === 0,
         };
       })
       .sort((a, b) => a.name.localeCompare(b.name)));
+
+    const countedFolderIds = computed(() => [
+      ...allFolderSummaries.value.filter((folder) => !(folder.parentId ?? null)).map((folder) => folder.id),
+      ...activeSubfolders.value.map((folder) => folder.id),
+    ]);
+    watch(countedFolderIds, (ids) => folderFiles.want(ids), { immediate: true });
+    /** After a reload: files may have come or gone since. */
+    const refreshFolderFileCounts = () => {
+      folderFiles.forget();
+      folderFiles.want([...countedFolderIds.value, ...sidebarServerFolderIds.value]);
+      sidebarDriveFiles.forget();
+      sidebarDriveFiles.want(sidebarServerFolderIds.value.filter(isTreeExpanded));
+    };
 
     const openSubfolderModal = (folder: FolderSummary) => {
       openControlMenu.value = '';
@@ -3892,7 +3922,7 @@ export default defineComponent({
      * own - the feed always shows them all, one under the other, empty or
      * not. A guest has no feed: their dashboard is Public itself.
      */
-    const FEED_SIDEBAR_SECTIONS = ['recent', 'shared', 'interactive', 'public'] as const;
+    const FEED_SIDEBAR_SECTIONS = ['recent', 'spaces', 'shared', 'interactive', 'public'] as const;
     const onSidebarSelect = async (section: DashboardSection) => {
       if (section.kind === 'drive') {
         router.push('/drive');
@@ -3927,116 +3957,6 @@ export default defineComponent({
       writeSidebarWidthState(storage(), sidebarWidthState.value);
     };
 
-    const openMobileSidebar = (event?: Event) => {
-      const eventTarget = event?.currentTarget;
-      mobileSidebarOpener.value = eventTarget instanceof HTMLElement
-        ? eventTarget
-        : typeof document !== 'undefined' && document.activeElement instanceof HTMLElement
-          ? document.activeElement
-          : null;
-      mobileSidebarOpen.value = true;
-    };
-
-    const closeMobileSidebar = () => {
-      mobileSidebarOpen.value = false;
-    };
-
-    const focusWithoutScroll = (element: HTMLElement) => {
-      try {
-        element.focus({ preventScroll: true });
-      } catch {
-        element.focus();
-      }
-    };
-
-    const isVisibleFocusTarget = (element: HTMLElement | null): element is HTMLElement => {
-      if (!element?.isConnected || element.tabIndex < 0 || element.getAttribute('aria-hidden') === 'true') return false;
-      let current: HTMLElement | null = element;
-      while (current) {
-        if (current.hidden || current.getAttribute('aria-hidden') === 'true') return false;
-        const style = window.getComputedStyle(current);
-        if (style.display === 'none' || style.visibility === 'hidden') return false;
-        current = current.parentElement;
-      }
-      return true;
-    };
-
-    const restoreSidebarCloseFocus = () => {
-      const opener = mobileSidebarOpener.value;
-      if (isVisibleFocusTarget(opener)) {
-        focusWithoutScroll(opener);
-        return;
-      }
-      const fallback = [
-        document.querySelector<HTMLElement>('.dashboard-sidebar [aria-current="page"]'),
-        document.querySelector<HTMLElement>('.dashboard-sidebar [data-home-disclosure]'),
-        document.querySelector<HTMLElement>('.dashboard-sidebar [data-sidebar-width-toggle]'),
-        document.querySelector<HTMLElement>('.dashboard [data-dashboard-view]'),
-      ].find(isVisibleFocusTarget) ?? null;
-      if (isVisibleFocusTarget(fallback)) focusWithoutScroll(fallback);
-    };
-
-    const restoreBodyOverflow = () => {
-      if (typeof document === 'undefined' || previousBodyOverflow === null) return;
-      document.body.style.overflow = previousBodyOverflow;
-      previousBodyOverflow = null;
-    };
-
-    const getSidebarDesktopMedia = () => {
-      try {
-        return typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-          ? window.matchMedia(SIDEBAR_DESKTOP_QUERY)
-          : null;
-      } catch {
-        return null;
-      }
-    };
-
-    const closeMobileSidebarOnDesktop = () => {
-      if (sidebarDesktopMedia?.matches) closeMobileSidebar();
-    };
-
-    const addSidebarDesktopListener = (media: MediaQueryList) => {
-      if (typeof media.addEventListener === 'function') {
-        media.addEventListener('change', closeMobileSidebarOnDesktop);
-      } else if (typeof media.addListener === 'function') {
-        media.addListener(closeMobileSidebarOnDesktop);
-      }
-    };
-
-    const removeSidebarDesktopListener = () => {
-      if (!sidebarDesktopMedia) return;
-      if (typeof sidebarDesktopMedia.removeEventListener === 'function') {
-        sidebarDesktopMedia.removeEventListener('change', closeMobileSidebarOnDesktop);
-      } else if (typeof sidebarDesktopMedia.removeListener === 'function') {
-        sidebarDesktopMedia.removeListener(closeMobileSidebarOnDesktop);
-      }
-      sidebarDesktopMedia = null;
-    };
-
-    watch(mobileSidebarOpen, async (open, _previous, onCleanup) => {
-      if (typeof document === 'undefined') return;
-      let cancelled = false;
-      onCleanup(() => {
-        cancelled = true;
-      });
-
-      if (open) {
-        if (previousBodyOverflow === null) previousBodyOverflow = document.body.style.overflow;
-        document.body.style.overflow = 'hidden';
-        await nextTick();
-        if (!cancelled && mobileSidebarOpen.value) {
-          const closeButton = document.querySelector<HTMLElement>('.dashboard-sidebar.mobile-open [data-sidebar-close]');
-          if (closeButton) focusWithoutScroll(closeButton);
-        }
-        return;
-      }
-
-      restoreBodyOverflow();
-      await nextTick();
-      if (!cancelled && !mobileSidebarOpen.value) restoreSidebarCloseFocus();
-    });
-
     const onAppClickCapture = (event: MouseEvent) => {
       const target = event.target as HTMLElement | null;
       if (target?.closest('[data-account-menu-trigger]')) closeControlMenusForAccount();
@@ -4057,8 +3977,6 @@ export default defineComponent({
     // "Yesterday · 18:42") instead of formatDate's always-absolute one.
     const formatCardDateMobile = (d: string) => formatRelativeDate(d, locale.value);
 
-    const folderItemTypeLabel = (type: FolderItem['type']) =>
-      type === 'canvas' ? t('canvas') : type === 'html-document' ? 'HTML' : type === 'text-document' ? t('docs') : t('interactiveTemplate');
 
     const folderSearchPlaceholder = computed(() => {
       if (activeSection.value.kind === 'folder' && activeFolder.value) {
@@ -4067,61 +3985,10 @@ export default defineComponent({
       return t('search');
     });
 
-    const fileInput = ref<HTMLInputElement | null>(null);
-    const importFolderId = ref<string | null>(null);
-
-    const importFile = (folderId: string | null = null) => {
-      importFolderId.value = folderId;
-      openControlMenu.value = '';
-      fileInput.value?.click();
-    };
-    const importToFolder = (folder: FolderSummary) => importFile(folder.id);
-
-    const onFileSelected = async (e: Event) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (!file) return;
-      try {
-        const text = await file.text();
-        const isHtml = /\.html?$/i.test(file.name) || file.type === 'text/html';
-        const title = file.name.replace(/\.(canvas|json|html?|htm)$/i, '') || 'Imported';
-        const targetFolderId = importFolderId.value || (await ensureFolderByName('Unsorted'))?.id;
-        if (isHtml) {
-          const doc = await runAction(
-            'import-html-document',
-            () => htmlDocuments.create({ title, html: text, folderId: targetFolderId }),
-            `Imported ${title}`,
-          );
-          if (!doc) return;
-          router.push(`/edit/html/${doc.id}`);
-          return;
-        }
-
-        const data = JSON.parse(text);
-        const c = await runAction(
-          'import-canvas',
-          () => canvas.create(title, JSON.stringify(data), targetFolderId),
-          `Imported ${title}`,
-        );
-        if (!c) return;
-        router.push(`/canvas/${c.id}`);
-      } catch (err) {
-        setFeedback('error', err instanceof Error ? err.message : 'Failed to import file');
-        console.error('Failed to import file:', err);
-      } finally {
-        importFolderId.value = null;
-        (e.target as HTMLInputElement).value = '';
-      }
-    };
-
     const renamingId = ref('');
-    const renameInput = ref<HTMLInputElement[]>([]);
 
     const startRename = (id: string) => {
       renamingId.value = id;
-      nextTick(() => {
-        renameInput.value?.[0]?.focus();
-        renameInput.value?.[0]?.select();
-      });
     };
 
     const finishRename = async (e: Event, c: CanvasRecord) => {
@@ -4148,6 +4015,8 @@ export default defineComponent({
 
     onMounted(() => {
       void loadRecentResources();
+      // The role is stored at sign-in; one given or taken since shows now.
+      void refreshCurrentUserRole().then((changed) => { if (changed) admin.value = isAdmin(); });
       document.addEventListener('visibilitychange', onDashboardVisible);
       if (Capacitor.isNativePlatform()) {
         void CapacitorApp.addListener('appStateChange', ({ isActive }) => {
@@ -4161,11 +4030,8 @@ export default defineComponent({
       // Even a fresh native snapshot is refreshed quietly, so moving a
       // document between a dashboard visit and a return can never hide it.
       void load({ showLoading: !cached.found });
-      sidebarDesktopMedia = getSidebarDesktopMedia();
-      if (sidebarDesktopMedia) {
-        addSidebarDesktopListener(sidebarDesktopMedia);
-        closeMobileSidebarOnDesktop();
-      }
+      takeYandexReturn();
+      takeAddressSection();
       window.addEventListener('resize', refreshOverflowIndicators);
       refreshOverflowIndicators();
     });
@@ -4174,12 +4040,86 @@ export default defineComponent({
       document.removeEventListener('visibilitychange', onDashboardVisible);
       void appStateListener?.remove();
       appStateListener = null;
-      removeSidebarDesktopListener();
       window.removeEventListener('resize', refreshOverflowIndicators);
-      restoreBodyOverflow();
     });
 
+    const modalContext = {
+      t,
+      isBusy,
+      actionLabel,
+      MAX_DESCRIPTION_LENGTH,
+      tagSheetOpen,
+      closeTagSheet,
+      allTagNames,
+      tagSheetDraft,
+      toggleDraftTag,
+      resetTagSheetDraft,
+      applyTagSheet,
+      folderModal,
+      closeFolderModal,
+      folderModalMoves,
+      folderOptions,
+      canSaveFolderModal,
+      saveFolderModal,
+      subfolderModal,
+      closeSubfolderModal,
+      saveSubfolderModal,
+      folderParentModal,
+      folderParentOptions,
+      closeFolderParentModal,
+      saveFolderParentModal,
+      descriptionModal,
+      closeDescriptionModal,
+      saveDescriptionModal,
+      renameFolderModal,
+      closeRenameFolderModal,
+      saveRenameFolderModal,
+      folderShareModal,
+      closeFolderShareModal,
+      shareFolder,
+      revokeFolderAccess,
+      tagsModal,
+      tagSuggestions,
+      addSuggestedTag,
+      tagColors,
+      removeTag,
+      addTag,
+      closeTagsModal,
+      saveTagsModal,
+      transferModal,
+      closeTransferModal,
+      saveTransferModal,
+    };
+
     return {
+      modalContext,
+      yandexView,
+      yandexPicker,
+      yandexRefreshKey,
+      yandexPath,
+      yandexMove,
+      yandexFiles,
+      openYandexPath,
+      openYandexMove,
+      confirmYandexMove,
+      downloadYandexFile,
+      openYandexSidebarFile,
+      openYandexImage,
+      openDriveImage,
+      mediaViewer,
+      folderDrivePreviews,
+      spaceView,
+      spaceId,
+      createSpace,
+      openSpaceResource,
+      leaveSpaceSection,
+      onTrashRestored,
+      hideFromPublic,
+      currentUser,
+      uploadToYandex,
+      setFeedback,
+      selectedSize,
+      formatFileSize,
       admin,
       t,
       isLoggedIn,
@@ -4194,9 +4134,8 @@ export default defineComponent({
       recentViewMode,
       setRecentViewMode,
       openRecentResource,
+      openSidebarFile,
       rememberRecentResource,
-      recentResourceTypeLabel,
-      recentResourceIconClass,
       formatRecentOpenedAt,
       tagFilterList,
       activeFolderBody,
@@ -4238,13 +4177,16 @@ export default defineComponent({
       toggleMobileSortMenu,
       selectSortMode,
       folderSearchPlaceholder,
-      folderItemTypeLabel,
       formatCardDateMobile,
       folderOptions,
       folderNames,
       searchQuery,
       selectedTags,
       contentFilter,
+      contentTypes,
+      typePasses,
+      toggleToolbarMenu,
+      clearTypeAndTagFilters,
       sortMode,
       feedback,
       isBusy,
@@ -4276,11 +4218,11 @@ export default defineComponent({
       renameFolderModal,
       folderShareModal,
       tagsModal,
-      tagManager,
       transferModal,
       folderSummaries,
       activeFolder,
       selectedFolderId,
+      activeFolderFileCount,
       incomingRequests,
       createCanvas,
       createHtmlDocument,
@@ -4303,11 +4245,57 @@ export default defineComponent({
       feedLimit,
       feedColumns,
       dashboardShell,
+      navDirection,
+      uploads,
+      uploadPanelOpen,
+      uploadSummary,
+      clearFinishedUploads,
+      cancelUpload,
+      folderDriveFiles,
+      bulkDeleteCount,
+      addDialog,
+      openAddDialog,
+      closeAddDialog,
+      onAddCreate,
+      onAddCreateTemplate,
+      onAddImportCharacter,
+      onAddCreateFolder,
+      onAddImport,
+      folderFilesRefreshKey,
+      transferStatusText,
+      transferStatusPercent,
+      marquee,
+      startMarquee,
+      recentRefreshFailed,
+      recentResourceHistory,
+      retryRecent,
+      folderModalMoves,
+      selectedKeys,
+      isSelected,
+      selectionKey,
+      bulkDeletable,
+      allOnScreenSelected,
+      clearSelection,
+      toggleSelected,
+      selectAllOnScreen,
+      onSelectionPointerDown,
+      onSelectionPointerMove,
+      cancelLongPress,
+      onSelectionClickCapture,
+      onSelectionContextMenu,
+      openBulkMoveModal,
+      bulkDownload,
+      downloadStatus,
+      bulkDelete,
+      publicOwnerFilterEl,
+      openAddFromTile,
+      activeFolderEmpty,
       isFeedSectionExpanded,
       toggleFeedSectionExpanded,
       resetFilters,
       hasActiveFilter,
       feedNavSections,
+      spaceTiles,
       activeFeedSection,
       scrollToFeedSection,
       newItemFolderId,
@@ -4318,6 +4306,8 @@ export default defineComponent({
       closeFolderParentModal,
       saveFolderParentModal,
       recentFolderPath,
+      cardFolderPath,
+      folderPathById,
       goToParentFolder,
       openMoveHtmlFolderModal,
       openMoveInteractiveTemplateFolderModal,
@@ -4346,7 +4336,6 @@ export default defineComponent({
       startResourceMouseDrag,
       startResourceTouchDrag,
       endResourceDrag,
-      onFolderDragOver,
       onFolderDragLeave,
       onFolderDragStart,
       onFolderDragEnd,
@@ -4380,10 +4369,6 @@ export default defineComponent({
       addSuggestedTag,
       removeTag,
       saveTagsModal,
-      openTagManager,
-      closeTagManager,
-      saveManagedTag,
-      deleteManagedTag,
       openTransferModal,
       closeTransferModal,
       saveTransferModal,
@@ -4392,10 +4377,10 @@ export default defineComponent({
       selectFolder,
       isTechnicalFolder,
       toggleCardMenu,
+      resourceActions,
+      handleResourceAction,
       closeCardMenu,
-      toggleNewMenu,
       toggleFolderMenu,
-      toggleFolderCreateMenu,
       openCanvas,
       openCanvasFromCard,
       duplicateCanvas,
@@ -4405,13 +4390,8 @@ export default defineComponent({
       togglePinned,
       formatDate,
       renamingId,
-      renameInput,
       startRename,
       finishRename,
-      fileInput,
-      importFile,
-      importToFolder,
-      onFileSelected,
       resolveAccessRequest,
     };
   },

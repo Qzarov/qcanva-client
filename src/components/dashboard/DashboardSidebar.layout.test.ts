@@ -1,10 +1,9 @@
 // @vitest-environment jsdom
 import { mount } from '@vue/test-utils';
 import { defineComponent } from 'vue';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import DashboardSidebar from './DashboardSidebar.vue';
+import { readGlobalCss } from '../../../tests/helpers/read-global-css';
 
 let stylesheet: HTMLStyleElement;
 
@@ -48,7 +47,7 @@ function mountLayout(collapsed = false, mobileOpen = false) {
 describe('dashboard sidebar layout contract', () => {
   beforeAll(() => {
     stylesheet = document.createElement('style');
-    stylesheet.textContent = readFileSync(resolve(process.cwd(), 'src/style.css'), 'utf8');
+    stylesheet.textContent = readGlobalCss();
     document.head.append(stylesheet);
   });
 

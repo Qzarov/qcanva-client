@@ -33,10 +33,15 @@ import {
 } from '../utils/deviceStatus';
 import { buildSafetyNotices } from '../utils/safetySummary';
 
+const props = defineProps<{
+  /** Inside Settings (the Devices section): no page header or scroll of its own. */
+  embedded?: boolean;
+}>();
+
 const { t, locale } = useI18n();
 const toast = useToast();
 
-useDocumentTitle(computed(() => `${t('cupTitle')} — ${t('drive')}`));
+if (!props.embedded) useDocumentTitle(computed(() => `${t('cupTitle')} — ${t('drive')}`));
 
 /** Q Control shows whether files are safe and what each device keeps; the only write is removing a device. */
 const REFRESH_INTERVAL_MS = 10_000;
@@ -627,9 +632,9 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="drive-devices-page">
+  <div class="drive-devices-page" :class="{ embedded }" data-devices-view>
     <div class="drive-devices-container">
-      <header class="drive-devices-header">
+      <header v-if="!embedded" class="drive-devices-header">
         <router-link
           to="/drive"
           class="drive-back-btn"
@@ -1044,6 +1049,17 @@ onBeforeUnmount(() => {
   box-sizing: border-box;
   overflow-y: auto;
   font-variant-numeric: tabular-nums;
+}
+
+/* In Settings: the settings page scrolls and draws the heading. */
+.drive-devices-page.embedded {
+  height: auto;
+  overflow: visible;
+  background: transparent;
+}
+.drive-devices-page.embedded .drive-devices-container {
+  max-width: none;
+  padding: 0;
 }
 
 .drive-devices-container {

@@ -57,6 +57,7 @@ vi.mock('../api/client', () => ({
     update: vi.fn().mockResolvedValue({ id: 'doc-1', pinned: true }),
   },
   isAdmin: vi.fn(() => false),
+  refreshCurrentUserRole: vi.fn().mockResolvedValue(false),
   isAuthenticated: vi.fn(() => true),
   MAX_DESCRIPTION_LENGTH: 2000,
   resourceFolders: {
@@ -87,6 +88,15 @@ vi.mock('../api/client', () => ({
 // Back handler registered (module-level registry), which would otherwise
 // answer Back presses in later tests.
 enableAutoUnmount(afterEach);
+
+/** In the Add dialog: a tile, then the name it asks for, then Create. */
+async function createNamed(wrapper: any, kind: string, name: string) {
+  await wrapper.get(`[data-add-create="${kind}"]`).trigger('click');
+  await nextTick();
+  await wrapper.get('[data-add-name]').setValue(name);
+  await wrapper.get('[data-add-name-create]').trigger('submit');
+  await flushPromises();
+}
 
 function mountDashboard(options: MountingOptions<any> = {}) {
   return mount(DashboardView, {
@@ -195,7 +205,9 @@ describe('dashboard sidebar navigation', () => {
 
     expect(wrapper.find('[data-dashboard-view="shared"]').exists()).toBe(false);
     expect(wrapper.get('[data-dashboard-view="recent"]').isVisible()).toBe(true);
-    expect(wrapper.get('[data-feed-empty="shared"]').text()).toBe('Nothing has been shared with you yet.');
+    // An empty section offers just "+ Add" in its grid, no caption saying it is empty.
+    expect(wrapper.get('[data-feed-empty="shared"]').text()).toBe('Add');
+    expect(wrapper.get('[data-feed-section="shared"]').text()).not.toContain('Nothing has been shared with you yet.');
   });
 
   it('scrolls the home feed to a sidebar section that has content, instead of opening a page', async () => {
@@ -286,6 +298,28 @@ describe('dashboard sidebar navigation', () => {
     expect(tileNames.some((text) => text.includes('Unsorted'))).toBe(true);
   });
 
+  it('a card in a subfolder shows its tags on the date line and no folder, no badge for my own', async () => {
+    vi.mocked(resourceFolders.list).mockResolvedValue({
+      own: [
+        { id: 'folder-w', name: 'Work', role: 'owner', parentId: null, canvases: [], htmlDocuments: [] },
+        { id: 'folder-p', name: 'Plans', role: 'owner', parentId: 'folder-w', canvases: [{ id: 'canvas-9', title: 'Roadmap', folderId: 'folder-p', role: 'owner', updatedAt: '2026-11-01T00:00:00Z', tags: [{ name: 'plan', color: '#50d1b2' }] }], htmlDocuments: [] },
+      ],
+      shared: [],
+    } as never);
+    const wrapper = mountDashboard();
+    await flushPromises();
+    (wrapper.vm as any).selectFolder('folder-p');
+    await nextTick();
+
+    const card = wrapper.findAll('.canvas-card').find((el) => el.find('.card-title-text').exists() && el.get('.card-title-text').text() === 'Roadmap')!;
+    expect(card).toBeTruthy();
+    expect(card.findAll('.card-meta > *').map((el) => el.classes()[0])).toEqual(['card-tags', 'card-date']);
+    expect(card.get('.card-meta .card-tags').text()).toBe('#plan');
+    expect(card.find('[data-card-folder]').exists()).toBe(false);
+    expect(card.find('.card-title .badge').exists()).toBe(false);
+    expect(card.find('.badge-owner').exists()).toBe(false);
+  });
+
   it('opens a folder from a tile on the Recent page', async () => {
     const wrapper = mountDashboard();
     await flushPromises();
@@ -370,9 +404,9 @@ describe('dashboard sidebar navigation', () => {
     await flushPromises();
 
     const order = wrapper.findAll('[data-feed-section]').map((el) => el.attributes('data-feed-section'));
-    // Interactive is empty, yet stays in the feed with its empty note.
+    // Interactive is empty, yet stays in the feed with its "+ Add" tile.
     expect(order).toEqual(['recent', 'shared', 'interactive', 'public']);
-    expect(wrapper.get('[data-feed-empty="interactive"]').text()).toBe('No interactive templates yet.');
+    expect(wrapper.get('[data-feed-empty="interactive"]').text()).toBe('Add');
     const shared = wrapper.get('[data-feed-section="shared"]');
     const cards = (el: any) => el.findAll('.dash-grid > *').length;
     expect(cards(shared)).toBe(4);
@@ -388,6 +422,66 @@ describe('dashboard sidebar navigation', () => {
     expect(showAll.text()).toContain('Show less');
     await showAll.trigger('click');
     expect(cards(wrapper.get('[data-feed-section="shared"]'))).toBe(4);
+  });
+
+  it('a Public card shows "edit", its folder with an icon in the date row, and no author', async () => {
+    withDefaultFolders();
+    vi.mocked(canvas.list).mockResolvedValueOnce({
+      own: [],
+      shared: [],
+      public: [
+        { id: 'pub-1', title: 'Open board', folder: 'Team', allowPublicEdit: true, ownerName: 'Someone Else', updatedAt: '2026-11-01T00:00:00Z', tags: [] },
+        { id: 'pub-2', title: 'Read-only board', allowPublicEdit: false, updatedAt: '2026-10-01T00:00:00Z', tags: [] },
+      ],
+      welcome: null,
+    } as never);
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    const cards = wrapper.findAll('[data-feed-section="public"] .canvas-card');
+    const card = cards[0]!;
+    // "edit" sits at the right of the title; a read-only public one has no tag at all.
+    expect(card.get('.card-title .badge-public').text()).toBe('edit');
+    expect(cards[1]!.find('.badge').exists()).toBe(false);
+    const folder = card.get('.card-meta [data-card-folder]');
+    expect(folder.text()).toBe('Team');
+    expect(folder.find('svg').exists()).toBe(true);
+    // Folder first, then the date.
+    expect(card.findAll('.card-meta > *').map((el) => el.classes()[0])).toEqual(['card-folder', 'card-date']);
+    expect(card.text()).not.toContain('Someone Else');
+    expect(card.find('.card-owner').exists()).toBe(false);
+  });
+
+  it('a Shared card puts the access at the right of its title, then folder and date under it', async () => {
+    withDefaultFolders();
+    vi.mocked(canvas.list).mockResolvedValueOnce({
+      own: [],
+      shared: [{ id: 'sh-1', title: 'Team board', folder: 'Team', role: 'edit', updatedAt: '2026-11-01T00:00:00Z', tags: [], ownerId: 'someone-else' }],
+      public: [],
+      welcome: null,
+    } as never);
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    const card = wrapper.get('[data-feed-section="shared"] .canvas-card');
+    expect(card.get('.card-title .card-title-text').text()).toBe('Team board');
+    expect(card.get('.card-title .badge-shared').text()).toBe('edit');
+    expect(card.find('.card-meta .badge').exists()).toBe(false);
+    expect(card.findAll('.card-meta > *').map((el) => el.classes()[0])).toEqual(['card-folder', 'card-date']);
+  });
+
+  it('an interactive template card says which folder it is in', async () => {
+    vi.mocked(resourceFolders.list).mockResolvedValue({
+      own: [{ id: 'folder-g', name: 'Games', role: 'owner', parentId: null, canvases: [], htmlDocuments: [], interactiveTemplates: [{ id: 'hero', title: 'Лира' }] }],
+      shared: [],
+    } as never);
+    vi.mocked(interactiveTemplates.list).mockResolvedValueOnce({ templates: [
+      { id: 'hero', title: 'Лира', templateType: 'dnd-character', folderId: 'folder-g', data: {}, createdAt: '', updatedAt: '2026-11-01T00:00:00Z' },
+    ] } as never);
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    expect(wrapper.get('[data-template-resource="hero"] [data-card-folder]').text()).toBe('Games');
   });
 
   it('shows one row of cards per feed section and four rows of Public, sized to the grid', async () => {
@@ -445,19 +539,20 @@ describe('dashboard sidebar navigation', () => {
     // «⋯» — только управление папкой: пункты создания переехали в «+».
     expect(wrapper.find('[data-folder-create]').exists()).toBe(false);
 
+    // «+» папки — окно «Добавить», эта папка уже выбрана.
     await wrapper.get('[data-folder-create-menu]').trigger('click');
     await nextTick();
-    await wrapper.get('[data-folder-create="text-document"]').trigger('click');
-    await flushPromises();
-    expect(textDocuments.create).toHaveBeenLastCalledWith(expect.objectContaining({ folderId: 'folder-b' }));
+    expect((wrapper.get('[data-add-folder]').element as HTMLSelectElement).value).toBe('folder-b');
+    await createNamed(wrapper, 'text-document', 'Notes');
+    expect(wrapper.find('[data-add-dialog]').exists()).toBe(false);
+    expect(textDocuments.create).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Notes', folderId: 'folder-b' }));
     await wrapper.get('[data-folder-create-menu]').trigger('click');
     await nextTick();
-    await wrapper.get('[data-folder-create="canvas"]').trigger('click');
-    await flushPromises();
-    expect(canvas.create).toHaveBeenLastCalledWith(expect.anything(), undefined, 'folder-b');
+    await createNamed(wrapper, 'canvas', 'Board');
+    expect(canvas.create).toHaveBeenLastCalledWith('Board', undefined, 'folder-b');
   });
 
-  it('lets the New menu pick the destination folder, defaulting to the folder you are in', async () => {
+  it('lets the Add dialog pick the destination folder, defaulting to the folder you are in', async () => {
     withDefaultFolders();
     const wrapper = mountDashboard();
     await flushPromises();
@@ -465,27 +560,25 @@ describe('dashboard sidebar navigation', () => {
     vm.selectFolder('folder-c');
     await nextTick();
 
-    vm.toggleNewMenu();
+    vm.openAddDialog();
     await nextTick();
-    const picker = wrapper.get('[data-new-item-folder]');
+    const picker = wrapper.get('[data-add-folder]');
     expect((picker.element as HTMLSelectElement).value).toBe('folder-c');
 
     await picker.setValue('folder-b');
-    vm.createTextDocument();
-    await flushPromises();
+    await createNamed(wrapper, 'text-document', 'Plan');
     expect(textDocuments.create).toHaveBeenLastCalledWith(expect.objectContaining({ folderId: 'folder-b' }));
   });
 
-  it('keeps creating into Unsorted from the New menu when you are not inside a folder', async () => {
+  it('keeps creating into Unsorted from the Add dialog when you are not inside a folder', async () => {
     withDefaultFolders();
     const wrapper = mountDashboard();
     await flushPromises();
     const vm = wrapper.vm as any;
-    vm.toggleNewMenu();
+    vm.openAddDialog();
     await nextTick();
-    expect((wrapper.get('[data-new-item-folder]').element as HTMLSelectElement).value).toBe('');
-    vm.createTextDocument();
-    await flushPromises();
+    expect((wrapper.get('[data-add-folder]').element as HTMLSelectElement).value).toBe('');
+    await createNamed(wrapper, 'text-document', 'Plan');
     // folder-a is the mocked "Unsorted".
     expect(textDocuments.create).toHaveBeenLastCalledWith(expect.objectContaining({ folderId: 'folder-a' }));
   });
@@ -631,8 +724,12 @@ describe('dashboard sidebar navigation', () => {
     const wrapper = mountDashboard();
     await flushPromises();
     await wrapper.get('[data-dashboard-section="interactive"]').trigger('click');
+    // Each kind wears its own icon (a sheet, a board) in place of a plate naming it.
     expect(wrapper.get('[data-template-resource="hero"] .card-title').text()).toBe('Лира');
+    expect(wrapper.get('[data-template-resource="hero"] .resource-icon').attributes('data-resource-kind')).toBe('sheet');
     expect(wrapper.get('[data-template-resource="board"] .card-title').text()).toBe('Планы');
+    expect(wrapper.get('[data-template-resource="board"] .resource-icon').attributes('data-resource-kind')).toBe('board');
+    expect(wrapper.find('[data-template-resource="hero"] .badge').exists()).toBe(false);
     (wrapper.vm as any).searchQuery = 'Лира';
     await nextTick();
     expect(wrapper.find('[data-template-resource="hero"]').exists()).toBe(true);
@@ -678,7 +775,7 @@ describe('dashboard sidebar navigation', () => {
 
     await wrapper.get('[data-folder-create-menu]').trigger('click');
     await nextTick();
-    await wrapper.get('[data-folder-create="interactive-template"]').trigger('click');
+    await wrapper.get('[data-add-create="interactive-template"]').trigger('click');
     await nextTick();
     await wrapper.get('[data-template-type="trello-board"]').trigger('click');
     await flushPromises();
@@ -780,6 +877,8 @@ describe('dashboard sidebar navigation', () => {
     await nextTick();
     const empty = wrapper.get('[data-feed-empty="interactive"]');
     expect(empty.text()).toContain('Nothing matches the current filters.');
+    // Emptied by the filters, not empty: no "+ Add" there.
+    expect(wrapper.find('[data-feed-add="interactive"]').exists()).toBe(false);
 
     await empty.get('[data-reset-filters]').trigger('click');
     expect(vm.contentFilter).toBe('all');
@@ -820,20 +919,27 @@ describe('dashboard sidebar navigation', () => {
     expect(folderIds()).toEqual(before);
   });
 
-  it('opens one sort popover per sort button on the feed', async () => {
-    vi.mocked(textDocuments.publicList).mockResolvedValueOnce({
-      documents: [{ id: 'doc-theirs', title: 'Their public doc', ownerId: 'user-9', visibility: 'public' }],
-    } as never);
+  it('sorts from one icon in the toolbar: its menu picks the order, one menu open at a time', async () => {
     const wrapper = mountDashboard();
     await flushPromises();
+    const vm = wrapper.vm as any;
+    // The sections no longer carry sort buttons of their own.
+    expect(wrapper.findAll('.dash-sort-button-mobile')).toHaveLength(0);
+    expect(wrapper.find('.dash-sort-select').exists()).toBe(false);
 
-    await wrapper.get('[data-feed-section="recent"] .dash-sort-button-mobile').trigger('click');
-    expect(wrapper.findAll('.mobile-sort-popover')).toHaveLength(1);
-    expect(wrapper.find('[data-feed-section="recent"] .mobile-sort-popover').exists()).toBe(true);
+    const desktopSort = wrapper.get('.dashboard-toolbar-desktop[data-sort-menu-trigger], .dashboard-toolbar-desktop [data-sort-menu-trigger]');
+    await desktopSort.trigger('click');
+    expect(wrapper.findAll('[data-sort-menu]')).toHaveLength(1);
+    expect(wrapper.get('[data-sort-option="updated-desc"]').attributes('aria-checked')).toBe('true');
+    await wrapper.get('[data-sort-option="title-asc"]').trigger('click');
+    expect(vm.sortMode).toBe('title-asc');
+    expect(wrapper.find('[data-sort-menu]').exists()).toBe(false);
 
-    await wrapper.get('[data-section="public"] .dash-sort-button-mobile').trigger('click');
-    expect(wrapper.findAll('.mobile-sort-popover')).toHaveLength(1);
-    expect(wrapper.find('[data-section="public"] .mobile-sort-popover').exists()).toBe(true);
+    // The filter menu and the sort menu do not stay open together.
+    await wrapper.get('.dashboard-toolbar-desktop [data-filter-menu-trigger], .dashboard-toolbar-desktop[data-filter-menu-trigger]').trigger('click');
+    await desktopSort.trigger('click');
+    expect(wrapper.find('[data-filter-menu]').exists()).toBe(false);
+    expect(wrapper.find('[data-sort-menu]').exists()).toBe(true);
   });
 
   it('keeps Public and its Mine/Others switch in the feed when "Mine" has nothing', async () => {
@@ -851,7 +957,7 @@ describe('dashboard sidebar navigation', () => {
     // Still the feed, still a Public section with its switch - only empty.
     expect((wrapper.vm as any).activeSection).toEqual({ kind: 'recent' });
     expect(wrapper.get('[data-section="public"]').text()).not.toContain('Their public doc');
-    expect(wrapper.get('[data-public-empty]').text()).toBe('No public resources match this filter.');
+    expect(wrapper.get('[data-public-empty]').text()).toBe('Add');
     expect((wrapper.vm as any).feedNavSections).toContain('public');
 
     await wrapper.get('[data-public-owner-filter="all"]').trigger('click');
@@ -941,14 +1047,16 @@ describe('dashboard sidebar navigation', () => {
     vi.mocked(textDocuments.publicList).mockResolvedValue({ documents: [] } as never);
   });
 
-  it('puts the Public sort control on the Public heading row', async () => {
+  it('keeps the Public heading to its title and switch: the order is the toolbar\'s', async () => {
     const wrapper = mountDashboard();
     await flushPromises();
     await wrapper.get('[data-dashboard-section="public"]').trigger('click');
     await flushPromises();
     const head = wrapper.get('[data-section="public"] .dash-section-head');
     expect(head.find('h2').exists()).toBe(true);
-    expect(head.find('.dash-sort-button-mobile').exists()).toBe(true);
+    expect(head.find('[data-sort-menu-trigger]').exists()).toBe(false);
+    // One sort icon for a computer and one for a phone's header, nothing else.
+    expect(wrapper.findAll('[data-sort-menu-trigger]')).toHaveLength(2);
   });
 
   it('filters interactive templates by search and resource type', async () => {
@@ -1174,20 +1282,54 @@ describe('DashboardView groups', () => {
     withDefaultFolders();
   });
 
-  it('keeps the account and legacy control popovers mutually exclusive', async () => {
+  it('opens the Add dialog from the Add button, and the account menu closes for it', async () => {
     const wrapper = mountDashboard();
     await flushPromises();
 
-    await wrapper.get('.dashboard-new-menu > button').trigger('click');
-    expect(wrapper.find('.dashboard-new-menu .control-popover').exists()).toBe(true);
-
     await wrapper.get('[data-account-menu-trigger]').trigger('click');
     expect(wrapper.find('[data-account-menu]').exists()).toBe(true);
-    expect(wrapper.find('.dashboard-new-menu .control-popover').exists()).toBe(false);
 
-    await wrapper.get('.dashboard-new-menu > button').trigger('click');
-    expect(wrapper.find('.dashboard-new-menu .control-popover').exists()).toBe(true);
+    await wrapper.get('[data-add-button]').trigger('click');
+    expect(wrapper.find('[data-add-dialog]').exists()).toBe(true);
     expect(wrapper.find('[data-account-menu]').exists()).toBe(false);
+    // Create and Upload are tabs: short names, no captions.
+    expect(wrapper.findAll('[data-add-create]').map((tile) => tile.text())).toEqual(['Canvas', 'Document', 'HTML', 'Template', 'Folder']);
+    // Nothing is made without a name: a tile opens the name field, Create waits for it.
+    await wrapper.get('[data-add-create="html-document"]').trigger('click');
+    await nextTick();
+    expect(wrapper.get('[data-add-name-create]').attributes('disabled')).toBeDefined();
+    expect(htmlDocuments.create).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-add-import]').exists()).toBe(false);
+    await wrapper.get('[data-add-tab="upload"]').trigger('click');
+    expect(wrapper.findAll('[data-add-import]').map((tile) => tile.attributes('data-add-import'))).toEqual(['file', 'canvas', 'markdown', 'html', 'folder']);
+    expect(wrapper.findAll('[data-add-import]').map((tile) => tile.find('strong').text())).toEqual(['File', 'Canvas', 'Document', 'HTML', 'Folder']);
+    // Uploading a folder is shown but not yet usable.
+    const folderUpload = wrapper.get('[data-add-import="folder"]');
+    expect(folderUpload.attributes('disabled')).toBeDefined();
+    expect(folderUpload.text()).toContain('In development');
+    expect(wrapper.find('.dashboard-new-menu .control-popover').exists()).toBe(false);
+  });
+
+  it('lists every own folder as a destination, one whose parent is missing too, and reads them afresh on open', async () => {
+    vi.mocked(resourceFolders.list).mockResolvedValue({
+      own: [
+        { id: 'root-folder', name: 'Projects', role: 'owner', parentId: null, canvases: [], htmlDocuments: [], textDocuments: [] },
+        { id: 'stray', name: 'Models', role: 'owner', parentId: 'gone-parent', canvases: [], htmlDocuments: [], textDocuments: [] },
+        { id: 'stray-child', name: 'Prints', role: 'owner', parentId: 'stray', canvases: [], htmlDocuments: [], textDocuments: [] },
+      ],
+      shared: [],
+    } as never);
+    const wrapper = mountDashboard();
+    await flushPromises();
+    const vm = wrapper.vm as any;
+    expect(vm.folderOptions.map((option: any) => option.name)).toEqual(['Models', 'Prints', 'Projects']);
+
+    const calls = vi.mocked(resourceFolders.list).mock.calls.length;
+    vm.openAddDialog();
+    await flushPromises();
+    expect(vi.mocked(resourceFolders.list).mock.calls.length).toBeGreaterThan(calls);
+    const names = wrapper.findAll('[data-add-folder] option').map((option) => option.text().trim());
+    expect(names).toEqual(expect.arrayContaining(['Models', 'Prints', 'Projects']));
   });
 
   it('creates a group without creating or opening a canvas', async () => {
@@ -1797,7 +1939,7 @@ describe('DashboardView groups', () => {
       expect(cards[0]?.text()).toContain('Archive');
 
       // Rendered ahead of the folder's own items, not merely present.
-      const html = wrapper.html();
+      const html = wrapper.get('[data-dashboard-view="folder"]').html();
       const subfolderAt = html.indexOf('subfolder-card');
       const itemAt = html.indexOf('Doc 1');
       expect(subfolderAt).toBeGreaterThan(-1);
@@ -2436,7 +2578,7 @@ describe('mobile Dashboard filters: Recent, folder counters, tag sheet', () => {
     expect(wrapper.findAll('.dashboard-recent-title').map((el) => el.text())).toEqual(['Both Tags', 'One Tag']);
   });
 
-  it('shows every tag as its own chip on mobile too, selected or not', async () => {
+  it('lists every tag in the filter menu, selected or not, and toggles them there', async () => {
     vi.mocked(canvas.list).mockResolvedValueOnce({
       own: [
         { id: 'r-canvas-a', title: 'A', tags: [tagFixture('architecture')] },
@@ -2448,72 +2590,51 @@ describe('mobile Dashboard filters: Recent, folder counters, tag sheet', () => {
     const wrapper = mountDashboard();
     await flushPromises();
     const vm = wrapper.vm as any;
+    // No row of tag chips on the page itself any more.
+    expect(wrapper.find('.tag-filter-list-desktop').exists()).toBe(false);
+    expect(wrapper.find('.tag-filter-list-mobile').exists()).toBe(false);
 
-    // Nothing selected yet - both tags must still appear as chips in the
-    // mobile row, not just an "all" chip (front task: mobile used to
-    // collapse every unselected tag into a single "+N", showing none of
-    // them individually until that sheet was opened). jsdom measures every
-    // chip's width as 0 (no real layout engine), which is exactly the
-    // "haven't measured yet" case computeVisibleTagFitCount treats as
-    // "show everything" rather than flashing an empty row - a real,
-    // deliberate fallback, not a jsdom workaround (see tag-fit.ts).
-    expect(vm.selectedTags).toEqual([]);
-    const mobileChipText = wrapper.findAll('.tag-filter-list-mobile:not(.tag-filter-measure) .tag-filter').map((el) => el.text());
-    expect(mobileChipText).toContain('#architecture');
-    expect(mobileChipText).toContain('#dev');
+    await wrapper.get('.dashboard-toolbar-desktop [data-filter-menu-trigger], .dashboard-toolbar-desktop[data-filter-menu-trigger]').trigger('click');
+    const chips = () => wrapper.findAll('[data-filter-menu] [data-filter-tag]');
+    expect(chips().map((el) => el.text())).toEqual(['#architecture', '#dev']);
+    await wrapper.get('[data-filter-tag="dev"]').trigger('click');
+    expect(vm.selectedTags).toEqual(['dev']);
+    expect(wrapper.get('[data-filter-tag="dev"]').attributes('aria-pressed')).toBe('true');
+    // Both still listed: a selected tag does not hide the others.
+    expect(chips()).toHaveLength(2);
+    expect(wrapper.get('.dashboard-toolbar-desktop [data-filter-count], .dashboard-toolbar-desktop[data-filter-count]').text()).toBe('1');
   });
 
-  it('shows only as many tags as fit in one line plus a +N, once real widths are known', async () => {
-    vi.mocked(canvas.list).mockResolvedValueOnce({
-      own: [
-        { id: 'r-canvas-a', title: 'A', tags: [tagFixture('alpha')] },
-        { id: 'r-canvas-b', title: 'B', tags: [tagFixture('bravo')] },
-        { id: 'r-canvas-c', title: 'C', tags: [tagFixture('charlie')] },
-        { id: 'r-canvas-d', title: 'D', tags: [tagFixture('delta')] },
-      ],
-      shared: [], public: [], welcome: null,
-    } as never);
-
+  it('filters by several types at once from the filter menu, with Files only in a folder, and resets', async () => {
     const wrapper = mountDashboard();
     await flushPromises();
+    const vm = wrapper.vm as any;
+    expect(wrapper.find('.content-type-tabs').exists()).toBe(false);
 
-    // Simulate a real, narrow layout: every chip measures 60px, the visible
-    // row is 220px wide - room for the "All" chip (60) plus about two tag
-    // chips (60 each) before the "+N" badge (60) is needed, matching
-    // computeVisibleTagFitCount's own already-unit-tested arithmetic.
-    const visibleRow = wrapper.find('.tag-filter-list-mobile:not(.tag-filter-measure)');
-    Object.defineProperty(visibleRow.element, 'clientWidth', { value: 220, configurable: true });
-    for (const el of wrapper.findAll('.tag-filter-measure .tag-filter')) {
-      el.element.getBoundingClientRect = () => ({ width: 60, height: 0, top: 0, left: 0, right: 0, bottom: 0, x: 0, y: 0, toJSON() { return this; } });
-    }
-    (wrapper.vm as any).recomputeMobileTagFit();
+    const trigger = () => wrapper.get('.dashboard-toolbar-desktop [data-filter-menu-trigger], .dashboard-toolbar-desktop[data-filter-menu-trigger]');
+    await trigger().trigger('click');
+    const types = () => wrapper.findAll('[data-filter-menu] [data-filter-type]').map((el) => el.attributes('data-filter-type'));
+    expect(types()).toEqual(['canvas', 'html-document', 'text-document', 'interactive-template']);
+
+    await wrapper.get('[data-filter-type="canvas"] input').setValue(true);
+    await wrapper.get('[data-filter-type="text-document"] input').setValue(true);
+    expect(vm.contentTypes).toEqual(['canvas', 'text-document']);
+    expect(vm.contentFilter).toBe('mixed');
+    expect(vm.hasActiveFilter).toBe(true);
+
+    await wrapper.get('[data-filter-reset]').trigger('click');
+    expect(vm.contentTypes).toEqual([]);
+    expect(vm.contentFilter).toBe('all');
+
+    // The single-value view still sets one type, as older callers do.
+    vm.contentFilter = 'html-document';
+    expect(vm.contentTypes).toEqual(['html-document']);
+
+    // In a folder the menu offers its files too.
+    vm.selectFolder(vm.sidebarFolders[0].id);
     await flushPromises();
-
-    const visibleChips = wrapper.findAll('.tag-filter-list-mobile:not(.tag-filter-measure) .tag-filter');
-    const visibleTagChips = visibleChips.filter((el) => el.text().startsWith('#'));
-    const overflowBadge = visibleChips.find((el) => el.text().startsWith('+'));
-    expect(visibleTagChips.length).toBeLessThan(4);
-    expect(overflowBadge).toBeTruthy();
-    expect(overflowBadge?.text()).toBe(`+${4 - visibleTagChips.length}`);
-  });
-
-  it('renders the type filters as exactly five equal-width buttons in one row', async () => {
-    // The actual viewport-fit behavior (flex:1;min-width:0;width:100%, see
-    // style.css) is CSS-only and unverifiable in jsdom (no real layout
-    // engine) - confirmed live instead, at 320/360/390/430px, with zero
-    // page-level horizontal overflow at every width. What's checked here,
-    // reliably, is the structural shape those CSS rules depend on: exactly
-    // four buttons, direct children of .content-type-tabs, one per
-    // contentFilter value - a regression guard against a future change
-    // silently adding/removing a tab (breaking the "four EQUAL columns"
-    // assumption) or nesting them a level deeper (breaking the CSS
-    // selector's ` > button` reach, if it depends on that).
-    const wrapper = mountDashboard();
-    await flushPromises();
-
-    const tabs = wrapper.findAll('.content-type-tabs > button');
-    expect(tabs).toHaveLength(5);
-    expect(tabs.map((el) => el.text())).toEqual(['All', 'Canvas', 'HTML', 'Docs', 'Templates']);
+    if (!wrapper.find('[data-filter-menu]').exists()) await trigger().trigger('click');
+    expect(types()).toContain('file');
   });
 
   it('sorts Recent by the shared sortMode - title and updated, both directions', async () => {
@@ -2582,6 +2703,70 @@ describe('mobile Dashboard filters: Recent, folder counters, tag sheet', () => {
     expect(wrapper.findAll('.dashboard-recent-title').map((el) => el.text())).toEqual(['Roadmap Draft']);
   });
 
+  it('says Recent could not be refreshed instead of showing it as empty', async () => {
+    vi.mocked(recentResources.list).mockRejectedValueOnce(new Error('offline'));
+    const wrapper = mountDashboard();
+    await flushPromises();
+    const { t } = useI18n();
+
+    expect(wrapper.get('[data-recent-error]').text()).toContain(t('recentLoadFailed'));
+    expect(wrapper.find('[data-feed-add="recent"]').exists()).toBe(false);
+
+    // Retry: this time it answers, with nothing opened yet.
+    await wrapper.get('[data-recent-retry]').trigger('click');
+    await flushPromises();
+    expect(wrapper.find('[data-recent-error]').exists()).toBe(false);
+    expect(wrapper.find('[data-feed-add="recent"]').exists()).toBe(true);
+  });
+
+  it('keeps the last Recent when a refresh fails, and says it may be out of date', async () => {
+    vi.mocked(canvas.list).mockResolvedValue({
+      own: [{ id: 'kept', title: 'Kept Canvas', ownerId: 'someone-else' }], shared: [], public: [], welcome: null,
+    } as never);
+    vi.mocked(recentResources.list).mockResolvedValueOnce([
+      { resourceId: 'kept', resourceType: 'canvas', updatedAt: '2026-01-01T00:00:00.000Z' },
+    ] as never);
+    const wrapper = mountDashboard();
+    await flushPromises();
+    const vm = wrapper.vm as any;
+
+    vi.mocked(recentResources.list).mockRejectedValueOnce(new Error('offline'));
+    await vm.retryRecent();
+    await flushPromises();
+    expect(wrapper.findAll('.dashboard-recent-title').map((el) => el.text())).toEqual(['Kept Canvas']);
+    expect(wrapper.find('[data-recent-stale]').exists()).toBe(true);
+    vi.mocked(canvas.list).mockResolvedValue({ own: [], shared: [], public: [], welcome: null } as never);
+  });
+
+  it('counts what the user created: Recent shows it when nothing has been opened', async () => {
+    vi.mocked(canvas.list).mockResolvedValueOnce({
+      own: [
+        { id: 'older', title: 'Older Canvas', ownerId: 'user-1', createdAt: '2026-01-01T00:00:00.000Z' },
+        { id: 'newer', title: 'Newer Canvas', ownerId: 'user-1', createdAt: '2026-02-01T00:00:00.000Z' },
+        // Someone else's: recent for this user only once opened.
+        { id: 'theirs', title: 'Their Canvas', ownerId: 'user-9', createdAt: '2026-03-01T00:00:00.000Z' },
+      ],
+      shared: [], public: [], welcome: null,
+    } as never);
+    vi.mocked(recentResources.list).mockResolvedValueOnce([] as never);
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    expect(wrapper.findAll('.dashboard-recent-title').map((el) => el.text())).toEqual(['Newer Canvas', 'Older Canvas']);
+  });
+
+  it('puts a file into Recent the moment it is created', async () => {
+    vi.mocked(textDocuments.create).mockResolvedValueOnce({ id: 'fresh-doc', title: 'Untitled document' } as never);
+    const wrapper = mountDashboard();
+    await flushPromises();
+    const vm = wrapper.vm as any;
+
+    await vm.createTextDocument('folder-1');
+    await flushPromises();
+    expect(vm.recentResourceHistory[0]).toMatchObject({ id: 'fresh-doc', type: 'text-document' });
+    expect(recentResources.markOpened).toHaveBeenCalledWith('text-document', 'fresh-doc');
+  });
+
   it('distinguishes "no recent items at all" from "filters matched nothing"', async () => {
     vi.mocked(recentResources.list).mockResolvedValueOnce([] as never);
 
@@ -2589,7 +2774,7 @@ describe('mobile Dashboard filters: Recent, folder counters, tag sheet', () => {
     await flushPromises();
     const { t } = useI18n();
 
-    expect(wrapper.get('.dashboard-recents-empty').text()).toBe(t('noRecentResources'));
+    expect(wrapper.get('.dashboard-recents-empty').text()).toBe(t('add'));
 
     vi.mocked(canvas.list).mockResolvedValueOnce({
       own: [{ id: 'z-canvas-1', title: 'Only Canvas' }],
@@ -2811,7 +2996,8 @@ describe('mobile Dashboard filters: Recent, folder counters, tag sheet', () => {
     // The tag exists (allTagNames), and is rendered as a selectable chip -
     // this is the bug: it used to be silently dropped.
     expect(vm.allTagNames).toContain('nicheTag');
-    expect(wrapper.findAll('.tag-filter-list-desktop .tag-filter').some((el) => el.text() === '#nicheTag')).toBe(true);
+    await wrapper.get('.dashboard-toolbar-desktop [data-filter-menu-trigger], .dashboard-toolbar-desktop[data-filter-menu-trigger]').trigger('click');
+    expect(wrapper.findAll('[data-filter-menu] [data-filter-tag]').some((el) => el.text() === '#nicheTag')).toBe(true);
 
     // Baseline: Recent shows the one item that's actually in its history.
     expect(wrapper.findAll('.dashboard-recent-title').map((el) => el.text())).toEqual(['Other Item']);
