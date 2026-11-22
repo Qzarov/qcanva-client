@@ -58,6 +58,7 @@
 | Полнотекстовый поиск по названию, группе и тегам | в интерфейсе | `src/views/DashboardView.vue` | `—` |
 | Переключение отображения ресурсов (плитка / список) | в интерфейсе | `src/components/dashboard/DashboardViewToggle.vue` | `—` |
 | Импорт файлов `.canvas`, `.json`, `.html`, `.htm` | в интерфейсе | `src/views/DashboardView.vue` | `POST /api/canvas`, `POST /api/html-documents` |
+| Загрузка файлов перетаскиванием (Drag & Drop) на Home и внутри папок | в интерфейсе | `src/views/DashboardView.vue`, `src/composables/useDriveDropzone.ts` | `POST /api/drive/folders/:folderId/files` |
 | Жест Pull-to-refresh для обновления кэша дашборда | в интерфейсе | `src/views/DashboardView.vue` | `—` |
 | Рассмотрение входящих запросов доступа (одобрение / отказ) | в интерфейсе | `src/views/DashboardView.vue` | `GET /api/access-requests/incoming`, `PUT /api/access-requests/:id` |
 
