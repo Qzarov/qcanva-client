@@ -3018,3 +3018,102 @@ describe('mobile Dashboard filters: Recent, folder counters, tag sheet', () => {
     expect(wrapper.get('.dashboard-recents-empty').text()).toContain(t('noRecentMatches'));
   });
 });
+
+describe('Home/Spaces Yandex Disk display', () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    dashboardRoute.query = {};
+    localStorage.clear();
+    useI18n().setLocale('en');
+    withDefaultFolders();
+    vi.mocked(interactiveTemplates.list).mockResolvedValue({ templates: [] });
+    const { resetYandexDiskStatus } = await import('../composables/useYandexDisk');
+    const { resetSpaces } = await import('../composables/useSpaces');
+    resetYandexDiskStatus();
+    resetSpaces();
+  });
+
+  afterEach(async () => {
+    const { resetYandexDiskStatus } = await import('../composables/useYandexDisk');
+    const { resetSpaces } = await import('../composables/useSpaces');
+    resetYandexDiskStatus();
+    resetSpaces();
+    document.body.style.overflow = '';
+    document.body.innerHTML = '';
+  });
+
+  it('displays connected Yandex Disk in Home/Spaces with item count and account name, and opens Yandex Disk on click', async () => {
+    const { yandexDisk } = await import('../api/yandexDisk');
+    const { useYandexDisk } = await import('../composables/useYandexDisk');
+    const { useSpaces } = await import('../composables/useSpaces');
+
+    const listSpy = vi.spyOn(yandexDisk, 'list').mockResolvedValue({
+      item: { path: '/', name: 'disk', type: 'dir', size: null, mime: null, mediaType: null, md5: null, createdAt: null, modifiedAt: null, publicUrl: null, previewUrl: null },
+      items: [],
+      total: 12,
+      offset: 0,
+      limit: 1,
+    });
+
+    useYandexDisk().status.value = {
+      enabled: true,
+      connected: true,
+      reconnectRequired: false,
+      login: 'ivan',
+      displayName: 'Ivan Petrov',
+      email: 'ivan@yandex.ru',
+      avatarUrl: null,
+    };
+    useSpaces().spaces.value = [
+      { id: 'space-1', name: 'Family', role: 'owner', ownerId: 'user-1', memberCount: 2, sourceCount: 3, updatedAt: '2026-11-07T10:00:00Z' },
+    ];
+    useSpaces().loaded.value = true;
+
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    const yandexTile = wrapper.get('[data-recent-space-tile="yandex"]');
+    expect(yandexTile.get('.subfolder-card-name').text()).toBe('Yandex Disk');
+    expect(yandexTile.get('[data-recent-yandex-count]').text()).toBe('12');
+    expect(yandexTile.get('[data-recent-yandex-account]').text()).toBe('Ivan Petrov');
+    expect(wrapper.get('[data-recent-space-tile="space-1"] .subfolder-card-name').text()).toBe('Family');
+
+    await yandexTile.trigger('click');
+    await flushPromises();
+
+    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'yandex', path: '/' });
+    expect(wrapper.find('[data-dashboard-view="yandex"]').exists()).toBe(true);
+    listSpy.mockRestore();
+  });
+
+  it('displays disconnected Yandex Disk in Home/Spaces with Connect/Reconnect status and filters by searchQuery', async () => {
+    const { useYandexDisk } = await import('../composables/useYandexDisk');
+    const { useSpaces } = await import('../composables/useSpaces');
+
+    useYandexDisk().status.value = {
+      enabled: true,
+      connected: false,
+      reconnectRequired: true,
+      login: null,
+      displayName: null,
+    };
+    useSpaces().spaces.value = [];
+    useSpaces().loaded.value = true;
+
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    const yandexTile = wrapper.get('[data-recent-space-tile="yandex"]');
+    expect(yandexTile.get('.subfolder-card-name').text()).toBe('Yandex Disk');
+    expect(yandexTile.get('[data-recent-yandex-status]').text()).toBe('Connect again');
+
+    const vm = wrapper.vm as any;
+    vm.searchQuery = 'yandex';
+    await nextTick();
+    expect(wrapper.find('[data-recent-space-tile="yandex"]').exists()).toBe(true);
+
+    vm.searchQuery = 'unmatched-space-query';
+    await nextTick();
+    expect(wrapper.find('[data-recent-space-tile="yandex"]').exists()).toBe(false);
+  });
+});
