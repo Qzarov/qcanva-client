@@ -1,7 +1,7 @@
 <template>
-  <!-- Spaces: where files live. Q Space is ours; Yandex Disk is the user's
-       own, connected through Yandex ID. More will come. Like Home: the row
-       opens the feed's Spaces section, only the chevron folds the list. -->
+  <!-- Spaces: Yandex Disk (connected through Yandex ID) and the shared spaces
+       the user is in. Like Home: the row opens the feed's Spaces section,
+       only the chevron folds the list. -->
   <div class="dashboard-sidebar-home-row dashboard-sidebar-spaces-row">
     <button
       type="button"
@@ -41,21 +41,6 @@
           @enter="heightTransitionHooks.onEnter"
           @leave="heightTransitionHooks.onLeave"
         >
-          <div key="space:q" class="dashboard-sidebar-folder-row" :style="indent(0)">
-            <span class="dashboard-sidebar-folder-toggle-spacer" aria-hidden="true"></span>
-            <button
-              type="button"
-              class="btn-ghost dashboard-sidebar-folder"
-              :aria-label="t('qSpace')"
-              :title="compact ? t('qSpace') : undefined"
-              data-space="q"
-              @click="emit('select', { kind: 'drive' })"
-            >
-              <span class="dashboard-sidebar-icon" aria-hidden="true"><HardDrive :size="18" /></span>
-              <span class="dashboard-sidebar-label dashboard-sidebar-folder-name">{{ t('qSpace') }}</span>
-            </button>
-          </div>
-
           <div v-if="status?.enabled" key="space:yandex" class="dashboard-sidebar-folder-row" :style="indent(0)">
             <button
               v-if="status.connected"
@@ -187,7 +172,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch, type CSSProperties } from 'vue';
-import { ChevronDown, Cloud, File as FileIcon, Folder, HardDrive, Image as ImageIcon, Layers, Plus, UsersRound, Video } from '@lucide/vue';
+import { ChevronDown, Cloud, File as FileIcon, Folder, Image as ImageIcon, Layers, Plus, UsersRound, Video } from '@lucide/vue';
 import { useSpaces } from '../../composables/useSpaces';
 import { yandexDisk, type YandexItem } from '../../api/yandexDisk';
 import { heightTransitionHooks } from '../../dashboard/motion';

@@ -273,7 +273,7 @@ const props = defineProps<{
   folders: readonly DashboardSidebarNavItem[];
   /** The user is an admin: the Admin page closes the list. */
   admin?: boolean;
-  /** Signed in: the Spaces block (Q Space, Yandex Disk) is shown. */
+  /** Signed in: the Spaces block (Yandex Disk, shared spaces) is shown. */
   spaces?: boolean;
   /** Bumped after the dashboard changed the Yandex Disk. */
   yandexRefreshKey?: number;
