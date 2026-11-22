@@ -123,11 +123,23 @@
               role="button"
               tabindex="0"
               :data-space-item="item.key"
+              :data-select-key="selectKeyOf(item)"
+              :data-selected="isSelected(item) || undefined"
               @click="open(item)"
               @keydown.enter.prevent="open(item)"
             >
               <ResourceThumb :kind="thumbKind(item)" :id="item.id!" :version="item.updatedAt" />
               <div class="card-title card-title-with-icon">
+                <span
+                  class="card-select"
+                  data-select-box
+                  role="checkbox"
+                  tabindex="0"
+                  :aria-checked="isSelected(item)"
+                  :aria-label="t('selectItem')"
+                  @keydown.enter.prevent.stop="emit('toggle-select', selectKeyOf(item))"
+                  @keydown.space.prevent.stop="emit('toggle-select', selectKeyOf(item))"
+                ><Check :size="12" aria-hidden="true" /></span>
                 <ResourceIcon :kind="item.kind" :template-type="templateType(item)" />
                 <span class="card-title-text">{{ item.name || t('untitled') }}</span>
               </div>
@@ -144,11 +156,23 @@
               role="button"
               tabindex="0"
               :data-space-item="item.key"
+              :data-select-key="selectKeyOf(item)"
+              :data-selected="isSelected(item) || undefined"
               v-file-info="infoOf(item)"
               @click="open(item)"
               @keydown.enter.prevent="open(item)"
             >
               <div class="card-title card-title-with-icon">
+                <span
+                  class="card-select"
+                  data-select-box
+                  role="checkbox"
+                  tabindex="0"
+                  :aria-checked="isSelected(item)"
+                  :aria-label="t('selectItem')"
+                  @keydown.enter.prevent.stop="emit('toggle-select', selectKeyOf(item))"
+                  @keydown.space.prevent.stop="emit('toggle-select', selectKeyOf(item))"
+                ><Check :size="12" aria-hidden="true" /></span>
                 <span class="folder-file-kind" aria-hidden="true">
                   <Video v-if="isVideo(item)" :size="16" />
                   <ImageIcon v-else-if="isPicture(item)" :size="16" />
@@ -251,6 +275,8 @@ const props = defineProps<{
   meId: string;
   /** The user's own QCanva folders, for "add a folder". */
   folderOptions: ReadonlyArray<{ id: string; name: string; depth: number; path: string }>;
+  /** Keys ticked on the dashboard (`item.key` for feed items). */
+  selectedKeys?: readonly string[];
 }>();
 const emit = defineEmits<{
   'update:viewMode': [mode: ViewMode];
@@ -258,6 +284,11 @@ const emit = defineEmits<{
   open: [kind: string, id: string];
   /** Pictures full screen, from the one clicked. */
   'open-media': [items: MediaViewerItem[], start: number];
+  'toggle-select': [key: string];
+  /** The feed items on screen, for the dashboard's selection actions. */
+  items: [items: SpaceFeedItem[]];
+  /** The loaded space details (including role), for permission checks. */
+  space: [space: SpaceDetails | null];
   /** The user is no longer in the space (left it, or deleted it). */
   gone: [];
   feedback: [type: 'success' | 'error', message: string];
@@ -313,6 +344,10 @@ const shown = computed(() => {
   const needle = (props.query || '').trim().toLocaleLowerCase();
   return needle ? items.value.filter((item) => item.name.toLocaleLowerCase().includes(needle)) : items.value;
 });
+const selectKeyOf = (item: SpaceFeedItem) => item.key;
+const isSelected = (item: SpaceFeedItem) => Boolean(props.selectedKeys?.includes(item.key));
+watch(shown, (list) => emit('items', list), { immediate: true });
+watch(space, (details) => emit('space', details), { immediate: true });
 
 const isDocument = (item: SpaceFeedItem) => item.origin === 'qspace' && item.kind !== 'file';
 const fileLike = (item: SpaceFeedItem) => ({ name: item.name, mime: item.mime, kind: item.mediaType === 'video' ? 'video' : item.mediaType === 'image' ? 'photo' : undefined });
@@ -376,7 +411,7 @@ async function load(quiet = false) {
     error.value = errorText(err, t('spaceLoadFailed'));
   }
 }
-const reload = () => { void load(); };
+const reload = () => load();
 
 /**
  * A Yandex folder just added (or not read yet) is read by the hub in the
@@ -712,6 +747,8 @@ onBeforeUnmount(() => {
   document.removeEventListener('click', closeMenu);
   if (previewTimer) clearTimeout(previewTimer);
   if (readPoll) clearTimeout(readPoll);
+  emit('items', []);
+  emit('space', null);
 });
 
 defineExpose({ reload, startAdd });

@@ -43,6 +43,7 @@
           :selected-count="selectedKeys.length"
           :selected-size="selectedSize"
           :all-on-screen-selected="allOnScreenSelected"
+          :can-move="canBulkMove"
           :bulk-delete-count="bulkDeleteCount"
           :is-busy="isBusy"
           :download-busy="downloadStatus.phase === 'collect' || downloadStatus.phase === 'pack'"
@@ -406,9 +407,13 @@
           :query="searchQuery"
           :me-id="currentUser?.id || ''"
           :folder-options="folderOptions"
+          :selected-keys="selectedKeys"
           @update:view-mode="setRecentViewMode"
           @open="openSpaceResource"
           @open-media="(items, start) => (mediaViewer = { items, start })"
+          @toggle-select="toggleSelected"
+          @items="spaceFeedItems = $event"
+          @space="activeSpace = $event"
           @gone="leaveSpaceSection"
           @feedback="setFeedback"
         />
@@ -708,7 +713,12 @@ import DashboardTrash from '../components/dashboard/DashboardTrash.vue';
 import { createUploadWakeLock, runUploadQueue, type UploadJob } from '../dashboard/upload-queue';
 import { nativeUploadAvailable } from '../api/native-upload';
 import { adminApi, type PublicResourceType } from '../api/admin';
-import { spacesApi } from '../api/spaces';
+import { spacesApi, type SpaceDetails, type SpaceFeedItem } from '../api/spaces';
+import {
+  partitionDeletableSpaceItems,
+  partitionMovableSpaceItems,
+  toFolderResourceType,
+} from '../dashboard/space-selection';
 import { useSpaces } from '../composables/useSpaces';
 import {
   downloadYandexLink,
@@ -1094,7 +1104,7 @@ export default defineComponent({
       }
     };
 
-    const folderModal = ref<{ open: boolean; resourceId: string; resourceType: FolderItem['type']; folderId: string; value: string; bulk?: string[] }>({
+    const folderModal = ref<{ open: boolean; resourceId: string; resourceType: FolderItem['type']; folderId: string; value: string; bulk?: string[]; bulkSkipped?: number }>({
       open: false,
       resourceId: '',
       resourceType: 'canvas',
@@ -2224,6 +2234,44 @@ export default defineComponent({
         : await ensureFolderByName(folderName);
       if (!targetFolder) return;
       if (folderModal.value.bulk?.length) {
+        const spaceItems = selectedSpaceItemsOf(folderModal.value.bulk);
+        if (spaceItems.length) {
+          const { movable } = partitionMovableSpaceItems(spaceItems, activeSpace.value?.role, currentUser.value?.id || '');
+          if (!movable.length) {
+            closeFolderModal();
+            return;
+          }
+          const docItemsToMove = movable
+            .filter((item) => item.kind !== 'file' && item.id)
+            .filter((item) => dashboardItemsByKey.value.get(`${toFolderResourceType(item.kind)}:${item.id}`)?.folderId !== targetFolder.id);
+          const fileItemsToMove = movable.filter((item) => item.kind === 'file' && item.id);
+          let moved = false;
+          try {
+            await runAction('move-folder', async () => {
+              for (const item of docItemsToMove) {
+                await resourceFolders.move(targetFolder.id, toFolderResourceType(item.kind), item.id!);
+              }
+              for (const item of fileItemsToMove) {
+                await driveApi.moveFile(item.id!, targetFolder.id);
+              }
+            }, t('bulkMovedTo').replace('{folder}', targetFolder.name).replace('{n}', String(docItemsToMove.length + fileItemsToMove.length)));
+            moved = true;
+          } catch {
+            // runAction already displayed the error toast.
+          }
+          if (!moved) {
+            await Promise.all([load(), spaceView.value?.reload()]);
+            return;
+          }
+          closeFolderModal();
+          clearSelection();
+          if (fileItemsToMove.length) {
+            folderFilesRefreshKey.value += 1;
+            refreshFolderFileCounts();
+          }
+          await Promise.all([load(), spaceView.value?.reload(), loadSpaces(true)]);
+          return;
+        }
         const items = selectedItemsOf(folderModal.value.bulk).filter((item) => item.folderId !== targetFolder.id);
         const driveFiles = selectedDriveFilesOf(folderModal.value.bulk).filter((file) => file.folderId !== targetFolder.id);
         await runAction('move-folder', async () => {
@@ -2681,7 +2729,41 @@ export default defineComponent({
     const ownsItem = (item: FolderItem) => (
       item.type === 'interactive-template' ? (item as { role?: string }).role === 'owner' : isOwnedResource(item)
     );
-    const bulkDeletable = computed(() => selectedItems.value.filter(ownsItem));
+    /**
+     * Feed items of the open Shared Space (`spaceFeedItems`) tick the same way:
+     * any item can be downloaded as part of a zip, while only own QCanva items
+     * can be moved or deleted (and never by a read-only viewer).
+     */
+    const spaceFeedItems = ref<SpaceFeedItem[]>([]);
+    const activeSpace = ref<SpaceDetails | null>(null);
+    const spaceItemsByKey = computed<ReadonlyMap<string, SpaceFeedItem>>(() => (
+      activeSection.value.kind === 'space'
+        ? new Map(spaceFeedItems.value.map((item) => [item.key, item]))
+        : new Map()
+    ));
+    const selectedSpaceItemsOf = (keys: readonly string[]) => keys
+      .map((key) => spaceItemsByKey.value.get(key))
+      .filter((item): item is SpaceFeedItem => Boolean(item));
+    const selectedSpaceItems = computed(() => selectedSpaceItemsOf(selectedKeys.value));
+    const spaceMovable = computed(() => (
+      activeSection.value.kind === 'space'
+        ? partitionMovableSpaceItems(selectedSpaceItems.value, activeSpace.value?.role, currentUser.value?.id || '')
+        : { movable: [], skipped: 0 }
+    ));
+    const spaceDeletable = computed(() => (
+      activeSection.value.kind === 'space'
+        ? partitionDeletableSpaceItems(selectedSpaceItems.value, activeSpace.value?.role, currentUser.value?.id || '')
+        : { docs: [], files: [], skipped: 0 }
+    ));
+    const bulkDeletable = computed(() => (
+      activeSection.value.kind === 'space'
+        ? spaceDeletable.value.docs.map((item) => ({
+          type: toFolderResourceType(item.kind),
+          id: item.id!,
+          title: item.name,
+        }) as FolderItem)
+        : selectedItems.value.filter(ownsItem)
+    ));
     /**
      * The open folder's Drive files tick like its other items (`drive-file:<id>`)
      * and take the same actions: moved, downloaded, deleted (to the Drive's
@@ -2694,9 +2776,15 @@ export default defineComponent({
       .filter((file): file is DriveItem => Boolean(file));
     const selectedDriveFiles = computed(() => selectedDriveFilesOf(selectedKeys.value));
     /** A Drive file goes to the trash when the folder is one's own. */
-    const bulkDeletableDriveFiles = computed(() => (
-      activeSection.value.kind === 'folder' && activeFolder.value?.role === 'owner' ? selectedDriveFiles.value : []
-    ));
+    const bulkDeletableDriveFiles = computed(() => {
+      if (activeSection.value.kind === 'space') {
+        return spaceDeletable.value.files.map((item) => ({
+          id: item.id!,
+          name: item.name,
+        }) as DriveItem);
+      }
+      return activeSection.value.kind === 'folder' && activeFolder.value?.role === 'owner' ? selectedDriveFiles.value : [];
+    });
     /**
      * Files of the open Yandex Disk folder tick the same way (`yandex:<path>`):
      * moved within the Disk, downloaded into the zip, deleted to its trash.
@@ -2707,18 +2795,24 @@ export default defineComponent({
     const selectedYandexFiles = computed(() => selectedKeys.value
       .map((key) => yandexFilesByKey.value.get(key))
       .filter((file): file is YandexItem => Boolean(file)));
+    const canBulkMove = computed(() => (
+      activeSection.value.kind === 'space'
+        ? spaceMovable.value.movable.length > 0 && folderOptions.value.length > 0
+        : true
+    ));
     const bulkDeleteCount = computed(() => bulkDeletable.value.length + bulkDeletableDriveFiles.value.length + selectedYandexFiles.value.length);
-    /** The ticked files' total size, QCanva folders and Yandex Disk alike. */
+    /** The ticked files' total size, QCanva folders, Spaces and Yandex Disk alike. */
     const selectedSize = computed(() => (
       selectedDriveFiles.value.reduce((sum, file) => sum + (file.sizeBytes ?? 0), 0)
       + selectedYandexFiles.value.reduce((sum, file) => sum + (file.size ?? 0), 0)
+      + selectedSpaceItems.value.reduce((sum, item) => sum + (item.size ?? 0), 0)
     ));
     /** Cards on screen that can be ticked, in screen order. */
     const selectableOnScreen = () => Array.from(
       dashboardShell.value?.querySelectorAll<HTMLElement>('[data-select-key]') || [],
     ).map((card) => card.dataset.selectKey!).filter(Boolean);
     const allOnScreenSelected = ref(false);
-    watch(selectedKeys, () => {
+    watch([selectedKeys, spaceFeedItems], () => {
       void nextTick(() => {
         const onScreen = selectableOnScreen();
         allOnScreenSelected.value = onScreen.length > 0 && onScreen.every((key) => selectedKeys.value.includes(key));
@@ -2736,10 +2830,16 @@ export default defineComponent({
       selectedKeys.value = selectAll(selectedKeys.value, selectableOnScreen());
     };
     // Another section, another folder: the selection was of what is gone.
-    watch(activeSection, clearSelection);
+    watch(activeSection, (next) => {
+      clearSelection();
+      if (next.kind !== 'space') {
+        spaceFeedItems.value = [];
+        activeSpace.value = null;
+      }
+    });
     // After a reload, whatever no longer exists drops out.
-    watch([itemsBySelectionKey, driveFilesByKey, yandexFilesByKey], ([items, files, yandex]) => {
-      const known = (key: string) => items.has(key) || files.has(key) || yandex.has(key);
+    watch([itemsBySelectionKey, driveFilesByKey, yandexFilesByKey, spaceItemsByKey], ([items, files, yandex, spaceItems]) => {
+      const known = (key: string) => items.has(key) || files.has(key) || yandex.has(key) || spaceItems.has(key);
       if (selectedKeys.value.some((key) => !known(key))) {
         selectedKeys.value = selectedKeys.value.filter(known);
       }
@@ -2792,6 +2892,23 @@ export default defineComponent({
     });
 
     const openBulkMoveModal = () => {
+      if (activeSection.value.kind === 'space') {
+        const { movable, skipped } = spaceMovable.value;
+        if (!movable.length || !folderOptions.value.length) return;
+        closeCardMenu();
+        openControlMenu.value = '';
+        draggingResourceFolderId.value = null;
+        folderModal.value = {
+          open: true,
+          resourceId: '',
+          resourceType: 'canvas',
+          folderId: '',
+          value: '',
+          bulk: movable.map((item) => item.key),
+          bulkSkipped: skipped,
+        };
+        return;
+      }
       if (selectedYandexFiles.value.length) {
         openYandexMove(selectedYandexFiles.value.map((file) => file.path));
         return;
@@ -2842,16 +2959,33 @@ export default defineComponent({
       const [base, extension] = splitFileName(file.name);
       return { name: uniqueFileName(safeFileName(base, t('untitled')), extension, taken), content: new Uint8Array(await response.arrayBuffer()) };
     };
+    const archiveSpaceItem = async (item: SpaceFeedItem, taken: Set<string>): Promise<ArchiveFile> => {
+      if (item.origin === 'yandex') {
+        if (!spaceId.value || !item.path) throw new Error('Missing Yandex item path');
+        const { href } = await spacesApi.yandexDownload(spaceId.value, item.sourceId, item.path);
+        const response = await fetch(href);
+        if (!response.ok) throw new Error(`${response.status}`);
+        const [base, extension] = splitFileName(item.name);
+        return { name: uniqueFileName(safeFileName(base, t('untitled')), extension, taken), content: new Uint8Array(await response.arrayBuffer()) };
+      }
+      if (!item.id) throw new Error('Missing item id');
+      if (item.kind === 'file') {
+        return archiveFileOfDrive({ id: item.id, name: item.name } as DriveItem, taken);
+      }
+      return archiveFileOf({ type: toFolderResourceType(item.kind), id: item.id, title: item.name } as FolderItem, taken);
+    };
     const { downloadStatus, bulkDownload } = useDashboardBulkDownload({
       selectedItems,
       selectedDriveFiles,
       selectedYandexFiles,
+      selectedSpaceItems,
       archiveItem: archiveFileOf,
       archiveDriveFile: archiveFileOfDrive,
       archiveYandexFile: async (file: YandexItem, taken: Set<string>) => {
         const [base, extension] = splitFileName(file.name);
         return { name: uniqueFileName(safeFileName(base, t('untitled')), extension, taken), content: await fetchYandexContent(file.path) };
       },
+      archiveSpaceItem,
       buildZip,
       saveBlob,
       clearSelection,
@@ -3187,7 +3321,7 @@ export default defineComponent({
       getItems: () => bulkDeletable.value,
       getDriveFiles: () => bulkDeletableDriveFiles.value,
       getYandexFiles: () => selectedYandexFiles.value,
-      getSkippedCount: () => selectedItems.value.length + selectedDriveFiles.value.length - bulkDeletable.value.length - bulkDeletableDriveFiles.value.length,
+      getSkippedCount: () => selectedItems.value.length + selectedDriveFiles.value.length + selectedSpaceItems.value.length - bulkDeletable.value.length - bulkDeletableDriveFiles.value.length,
       confirm: async ({ items, driveFiles, yandex, skipped }) => confirmDialog({
         title: t('bulkDeleteTitle').replace('{n}', String(items + driveFiles + yandex)),
         message: skipped ? t('bulkDeleteSkipped').replace('{n}', String(skipped)) : undefined,
@@ -3222,7 +3356,11 @@ export default defineComponent({
         own.value = own.value.filter((item) => !deleted.has(selectionKey(item)));
         interactiveTemplateItems.value = interactiveTemplateItems.value.filter((item) => !deleted.has(selectionKey({ type: 'interactive-template', id: item.id })));
         clearSelection();
-        await load();
+        if (activeSection.value.kind === 'space') {
+          await Promise.all([load(), spaceView.value?.reload(), loadSpaces(true)]);
+        } else {
+          await load();
+        }
       },
     });
 
@@ -4110,6 +4248,9 @@ export default defineComponent({
       folderDrivePreviews,
       spaceView,
       spaceId,
+      spaceFeedItems,
+      activeSpace,
+      canBulkMove,
       createSpace,
       openSpaceResource,
       leaveSpaceSection,

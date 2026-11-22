@@ -41,6 +41,7 @@
 | Переименование папки ресурсов | в интерфейсе | `src/views/DashboardView.vue` | `PUT /api/resource-folders/:id` |
 | Удаление папки ресурсов | в интерфейсе | `src/views/DashboardView.vue` | `DELETE /api/resource-folders/:id` |
 | Перемещение ресурса между папками (модальное окно и DnD) | в интерфейсе | `src/views/DashboardView.vue` | `PUT /api/resource-folders/:id/resources` |
+| Множественное выделение и групповые действия (перемещение, скачивание архивом, удаление) в Spaces с учётом ролей (`owner` / `editor` / `viewer`) и владения | в интерфейсе | `src/components/dashboard/DashboardSpace.vue`, `src/dashboard/space-selection.ts`, `src/views/DashboardView.vue` | `PUT /api/resource-folders/:id/resources`, `PATCH /api/drive/files/:id` |
 | Изменение порядка сортировки папок перетаскиванием | в интерфейсе | `src/views/DashboardView.vue` | `PUT /api/resource-folders/order` |
 | Приглашение пользователя к папке ресурсов | в интерфейсе | `src/views/DashboardView.vue` | `POST /api/resource-folders/:id/share` |
 | Отзыв доступа к папке ресурсов | в интерфейсе | `src/views/DashboardView.vue` | `DELETE /api/resource-folders/:id/share` |
