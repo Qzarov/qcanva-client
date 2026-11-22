@@ -27,7 +27,18 @@ const FORBIDDEN_TAGS = new Set([
   'frameset',
 ]);
 
-const UNSAFE_URL_RE = /^\s*(?:javascript|vbscript|data\s*:\s*text\/html)\s*:/i;
+const SAFE_DATA_IMAGE_RE = /^data:image\/(?:png|jpeg|jpg|gif|webp);base64,/i;
+
+function isUnsafeUrl(value: string, attrName: string): boolean {
+  const normalized = value.replace(/[\u0000-\u0020\u007f]+/g, '').toLowerCase();
+  if (normalized.startsWith('javascript:') || normalized.startsWith('vbscript:')) {
+    return true;
+  }
+  if (normalized.startsWith('data:')) {
+    return !(attrName === 'src' && SAFE_DATA_IMAGE_RE.test(normalized));
+  }
+  return false;
+}
 
 const CALLOUT_LABELS: Record<string, { icon: string; tone: string }> = {
   note: { icon: 'ℹ️', tone: 'info' },
@@ -94,7 +105,7 @@ export function renderMarkdownDocument(markdown: string): RenderedMarkdownDocume
         el.removeAttribute(attr.name);
         continue;
       }
-      if ((name === 'href' || name === 'src' || name === 'xlink:href' || name === 'action') && UNSAFE_URL_RE.test(attr.value)) {
+      if ((name === 'href' || name === 'src' || name === 'xlink:href' || name === 'action') && isUnsafeUrl(attr.value, name)) {
         if (name === 'href') {
           el.setAttribute(attr.name, '#');
         } else {

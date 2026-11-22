@@ -3076,7 +3076,9 @@ export default defineComponent({
     // ----- Markdown files: opened as a document in the viewer instead of downloading
     const markdownViewer = ref<MarkdownViewerItem | null>(null);
     const openMarkdownAsTextDocument = async (content: string, title: string, targetFolderId?: string | null) => {
-      const folderId = await resolveCreateFolderId(targetFolderId || activeFolder.value?.id || undefined);
+      const candidate = targetFolderId || (activeSection.value.kind === 'folder' ? activeFolder.value?.id : undefined);
+      const ownedFolderId = candidate && ownResourceFolders.value.some((f) => f.id === candidate) ? candidate : undefined;
+      const folderId = await resolveCreateFolderId(ownedFolderId);
       const created = await textDocuments.create({ title, folderId });
       await textDocuments.replaceContent(created.id, { html: marked.parse(content, { async: false }) as string });
       rememberCreatedResource('text-document', created);
@@ -3120,7 +3122,7 @@ export default defineComponent({
         download: () => downloadYandexFile(file),
         save: async (content: string) => {
           const blob = new File([content], file.name, { type: 'text/markdown' });
-          await uploadYandexFile(file.path, blob).promise;
+          await uploadYandexFile(file.path, blob, { overwrite: true }).promise;
           yandexRefreshKey.value += 1;
           setFeedback('success', t('markdownSaved'));
         },

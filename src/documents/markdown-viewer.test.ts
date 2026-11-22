@@ -84,6 +84,12 @@ describe('renderMarkdownDocument', () => {
       '<iframe src="https://evil.example"></iframe>',
       '<img src="https://example.com/a.png" onerror="alert(1)" onload="alert(2)">',
       '[Bad Link](javascript:alert(1))',
+      '<a href="java\tscript:alert(1)">Tab JS</a>',
+      '<a href="java\nscript:alert(2)">Newline JS</a>',
+      '<a href="data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==">Data HTML</a>',
+      '<a href="data:image/png;base64,AAAA">Data PNG Link</a>',
+      '<img src="data:image/svg+xml;base64,PHN2Zy8+">',
+      '<img src="data:image/png;base64,iVBORw0KGgo=" alt="safe raster">',
       '[Good Link](https://qzarov.pro/docs)',
     ].join('\n\n');
 
@@ -93,6 +99,12 @@ describe('renderMarkdownDocument', () => {
     expect(result.html).not.toContain('onerror');
     expect(result.html).not.toContain('onload');
     expect(result.html).not.toContain('javascript:');
+    expect(result.html).not.toContain('java\tscript');
+    expect(result.html).not.toContain('java\nscript');
+    expect(result.html).not.toContain('data:text/html');
+    expect(result.html).not.toContain('data:image/svg+xml');
+    expect(result.html).not.toContain('href="data:image/png');
+    expect(result.html).toContain('src="data:image/png;base64,iVBORw0KGgo="');
     expect(result.html).toContain('href="#"');
     expect(result.html).toContain('href="https://qzarov.pro/docs" target="_blank" rel="noopener noreferrer"');
   });

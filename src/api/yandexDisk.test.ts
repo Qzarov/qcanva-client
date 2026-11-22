@@ -11,6 +11,7 @@ import {
   isYandexReconnectError,
   joinYandexPath,
   settleYandexOutcome,
+  uploadYandexFile,
   yandexCrumbs,
   yandexDisk,
   yandexParentPath,
@@ -65,5 +66,44 @@ describe('Yandex Disk calls', () => {
     expect(isYandexReconnectError(new ApiError(409, 'x', { code: 'yandex_not_connected' }))).toBe(true);
     expect(isYandexReconnectError(new ApiError(409, 'x', { code: 'yandex_DiskPathPointsToExistentDirectoryError' }))).toBe(false);
     expect(isYandexReconnectError(new Error('x'))).toBe(false);
+  });
+
+  it('sends overwrite=true query param on uploadYandexFile when requested', async () => {
+    const opened: Array<{ method: string; url: string }> = [];
+    const OriginalXhr = window.XMLHttpRequest;
+    class FakeXhr {
+      status = 200;
+      responseText = JSON.stringify({ path: '/notes.md', name: 'notes.md', type: 'file' });
+      upload: Record<string, unknown> = {};
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      onabort: (() => void) | null = null;
+      open(method: string, url: string) {
+        opened.push({ method, url });
+      }
+      setRequestHeader() {}
+      send() {
+        this.onload?.();
+      }
+      abort() {}
+    }
+    window.XMLHttpRequest = FakeXhr as unknown as typeof XMLHttpRequest;
+    try {
+      const file = new File(['# Updated'], 'notes.md', { type: 'text/markdown' });
+      await uploadYandexFile('/notes.md', file, { overwrite: true }).promise;
+      await uploadYandexFile('/notes.md', file).promise;
+    } finally {
+      window.XMLHttpRequest = OriginalXhr;
+    }
+
+    expect(opened).toHaveLength(2);
+    const overwriteUrl = new URL(opened[0]!.url, 'http://x');
+    expect(opened[0]!.method).toBe('PUT');
+    expect(overwriteUrl.searchParams.get('path')).toBe('/notes.md');
+    expect(overwriteUrl.searchParams.get('overwrite')).toBe('true');
+
+    const defaultUrl = new URL(opened[1]!.url, 'http://x');
+    expect(defaultUrl.searchParams.get('path')).toBe('/notes.md');
+    expect(defaultUrl.searchParams.get('overwrite')).toBeNull();
   });
 });

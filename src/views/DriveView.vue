@@ -212,7 +212,10 @@ const markdownViewerItem = computed<MarkdownViewerItem | null>(() => {
     },
     download: () => onDownloadFile(item),
     openAsDocument: async (content: string, title: string) => {
-      const targetFolderId = item.folderId ?? (currentFolderId.value === 'root' ? null : currentFolderId.value);
+      const canCreateInFolder = folderInfo.value?.folder.role === 'owner';
+      const targetFolderId = canCreateInFolder
+        ? (item.folderId ?? (currentFolderId.value === 'root' ? null : currentFolderId.value))
+        : null;
       const created = await textDocuments.create({ title, folderId: targetFolderId });
       await textDocuments.replaceContent?.(created.id, { html: marked.parse(content, { async: false }) as string });
       router.push(`/docs/${created.slug || created.id}`);
