@@ -129,6 +129,7 @@
                 <span class="dashboard-sidebar-icon" aria-hidden="true">
                   <Video v-if="row.item.mediaType === 'video'" :size="16" />
                   <ImageIcon v-else-if="row.item.mediaType === 'image'" :size="16" />
+                  <ResourceIcon v-else-if="isMarkdownFile(row.item)" kind="text-document" :size="16" />
                   <FileIcon v-else :size="16" />
                 </span>
                 <span class="dashboard-sidebar-label dashboard-sidebar-folder-name">{{ row.name }}</span>
@@ -192,8 +193,10 @@ import { useSpaces } from '../../composables/useSpaces';
 import { yandexDisk, type YandexItem } from '../../api/yandexDisk';
 import { heightTransitionHooks } from '../../dashboard/motion';
 import { SIDEBAR_FOLDER_CHILD_LIMIT, type DashboardSection } from '../../dashboard/navigation';
+import { isMarkdownFile } from '../../dashboard/thumb-kinds';
 import { useI18n } from '../../composables/useI18n';
 import { useYandexDisk } from '../../composables/useYandexDisk';
+import ResourceIcon from '../ResourceIcon.vue';
 
 const props = defineProps<{
   activeSection: DashboardSection;

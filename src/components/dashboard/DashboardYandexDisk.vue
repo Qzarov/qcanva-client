@@ -137,14 +137,15 @@
               v-for="file in shownFiles"
               :key="file.path"
               class="canvas-card folder-file-card"
-              :class="{ 'has-preview': withPicture(file) || Boolean(previewOf(file)) }"
+              :class="{ 'has-preview': withPicture(file) || Boolean(previewOf(file)), 'is-markdown-doc': isMarkdown(file) }"
               role="button"
               tabindex="0"
               :data-yandex-file="file.path"
+              :data-file-kind="isMarkdown(file) ? 'markdown' : undefined"
               :data-select-key="keyOf(file)"
               :data-selected="selectedKeys?.includes(keyOf(file)) || undefined"
               v-file-info="infoOf(file)"
-              :aria-label="`${t('folderFileDownload')}: ${file.name}`"
+              :aria-label="`${isMarkdown(file) ? t('openDocument') : t('folderFileDownload')}: ${file.name}`"
               @click="open(file)"
               @keydown.enter.prevent="open(file)"
             >
@@ -162,6 +163,7 @@
                 <span class="folder-file-kind" aria-hidden="true">
                   <Video v-if="file.mediaType === 'video'" :size="16" />
                   <ImageIcon v-else-if="file.mediaType === 'image'" :size="16" />
+                  <ResourceIcon v-else-if="isMarkdown(file)" kind="text-document" :size="16" />
                   <FileIcon v-else :size="16" />
                 </span>
                 <!-- A long name breaks before its extension, not inside a word. -->
@@ -221,11 +223,12 @@ import {
   type YandexSort,
 } from '../../api/yandexDisk';
 import { getFileExtension } from '../../api/drive';
-import { isDocumentWithPicture } from '../../dashboard/thumb-kinds';
+import { isDocumentWithPicture, isMarkdownFile } from '../../dashboard/thumb-kinds';
 import { alertDialog, confirmDialog, promptDialog } from '../../composables/appDialog';
 import { useI18n } from '../../composables/useI18n';
 import { useYandexDisk } from '../../composables/useYandexDisk';
 import { vFileInfo } from '../../directives/fileInfo';
+import ResourceIcon from '../ResourceIcon.vue';
 import FilePlaceholder from './FilePlaceholder.vue';
 import { fileInfo, formatFileDateTime, nameParts } from '../../dashboard/file-info';
 import DashboardViewToggle from './DashboardViewToggle.vue';
@@ -250,6 +253,8 @@ const emit = defineEmits<{
   upload: [files: File[], path: string];
   /** A picture or a video was clicked: the dashboard shows it full screen. */
   'open-image': [file: YandexItem];
+  /** A Markdown file was clicked: the dashboard opens it as a document. */
+  'open-markdown': [file: YandexItem];
   move: [paths: string[]];
   /** Something changed on the Disk: the sidebar tree reads again. */
   changed: [];
@@ -272,6 +277,7 @@ const brokenPreviews = reactive(new Set<string>());
 
 const keyOf = (item: YandexItem) => `yandex:${item.path}`;
 const isMedia = (item: YandexItem) => item.mediaType === 'image' || item.mediaType === 'video';
+const isMarkdown = (item: YandexItem) => !isMedia(item) && isMarkdownFile({ name: item.name, mime: item.mime });
 /** A picture square: pictures, videos, PDFs, EPUBs and text files (Yandex's preview, or the drawn one). */
 const withPicture = (item: YandexItem) => isMedia(item) || isDocumentWithPicture({ name: item.name, mime: item.mime });
 const infoOf = (item: YandexItem) => fileInfo({
@@ -456,9 +462,11 @@ const closeMenu = (event: MouseEvent) => {
   if (!(event.target as HTMLElement | null)?.closest('.folder-manager-menu, .card-menu, .card-manage')) menu.value = '';
 };
 
-/** A picture or a video opens in the viewer; any other file downloads. */
+/** A picture or a video opens in the viewer; a Markdown file opens as a document; any other file downloads. */
 function open(file: YandexItem) {
+  menu.value = '';
   if (file.mediaType === 'image' || file.mediaType === 'video') emit('open-image', file);
+  else if (isMarkdown(file)) emit('open-markdown', file);
   else void download(file);
 }
 

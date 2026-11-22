@@ -353,7 +353,8 @@
                   <DashboardFolderFiles
                     :folder-id="activeFolder.id"
                     :query="searchQuery"
-                    :filtered-out="!typePasses(contentTypes, 'file') || selectedTags.length > 0"
+                    :filtered-out="(!typePasses(contentTypes, 'file') && !typePasses(contentTypes, 'text-document')) || selectedTags.length > 0"
+                    :markdown-only="!typePasses(contentTypes, 'file') && typePasses(contentTypes, 'text-document')"
                     :sort-mode="sortMode"
                     :refresh-key="folderFilesRefreshKey"
                     :selectable="isLoggedIn"
@@ -362,6 +363,7 @@
                     @files="folderDriveFiles = $event"
                     @toggle-select="toggleSelected"
                     @open-image="openDriveImage"
+                    @open-markdown="openDriveMarkdown"
                     @previews="folderDrivePreviews = $event"
                   />
                 </div>
@@ -391,6 +393,7 @@
           @changed="yandexRefreshKey += 1"
           @feedback="setFeedback"
           @open-image="openYandexImage"
+          @open-markdown="openYandexMarkdown"
         />
       </section>
 
@@ -409,6 +412,7 @@
           @update:view-mode="setRecentViewMode"
           @open="openSpaceResource"
           @open-media="(items, start) => (mediaViewer = { items, start })"
+          @open-markdown="openSpaceMarkdown"
           @gone="leaveSpaceSection"
           @feedback="setFeedback"
         />
@@ -630,6 +634,12 @@
       @close="mediaViewer = null"
     />
 
+    <MarkdownDocumentViewer
+      v-if="markdownViewer"
+      :item="markdownViewer"
+      @close="markdownViewer = null"
+    />
+
     <YandexFolderPicker
       v-if="yandexMove"
       ref="yandexPicker"
@@ -703,6 +713,8 @@ import { plansApi } from '../api/plans';
 import DashboardYandexDisk from '../components/dashboard/DashboardYandexDisk.vue';
 import YandexFolderPicker from '../components/dashboard/YandexFolderPicker.vue';
 import DashboardMediaViewer, { type MediaViewerItem } from '../components/dashboard/DashboardMediaViewer.vue';
+import MarkdownDocumentViewer, { type MarkdownViewerItem } from '../components/MarkdownDocumentViewer.vue';
+import { fetchMarkdownTextFromUrl } from '../documents/markdown-viewer';
 import DashboardSpace from '../components/dashboard/DashboardSpace.vue';
 import DashboardTrash from '../components/dashboard/DashboardTrash.vue';
 import { createUploadWakeLock, runUploadQueue, type UploadJob } from '../dashboard/upload-queue';
@@ -741,7 +753,7 @@ import { useSegmentThumb } from '../composables/useSegmentThumb';
 import { readRecentViewMode, writeRecentViewMode, type RecentViewMode } from '../dashboard/recent-view';
 import { descendantFolderIds, folderIdByResourceKey, folderPaths } from '../dashboard/folder-paths';
 import { childFolderCounts, folderLatestChange } from '../dashboard/folder-stats';
-import { isPictureFile, isVideoFile } from '../dashboard/thumb-kinds';
+import { isMarkdownFile, isPictureFile, isVideoFile } from '../dashboard/thumb-kinds';
 import { formatRelativeDate } from '../dashboard/relative-date';
 import { computeVisibleTagFitCount } from '../dashboard/tag-fit';
 import { useDashboardFeedScrollSpy, type FeedSection } from '../composables/useDashboardFeedScrollSpy';
@@ -873,6 +885,7 @@ export default defineComponent({
     DashboardYandexDisk,
     YandexFolderPicker,
     DashboardMediaViewer,
+    MarkdownDocumentViewer,
     DashboardSpace,
     DashboardTrash,
     DashboardAddDialog,
@@ -1583,7 +1596,8 @@ export default defineComponent({
             type: 'drive-file' as const,
             fileKind: file.kind === 'photo' || file.mime?.startsWith('image/') ? 'image' as const
               : file.kind === 'video' || file.mime?.startsWith('video/') ? 'video' as const
-                : 'file' as const,
+                : isMarkdownFile(file) ? 'markdown' as const
+                  : 'file' as const,
           })),
         ],
         SIDEBAR_FOLDER_CHILD_LIMIT,
@@ -1595,6 +1609,11 @@ export default defineComponent({
         // As its card in the folder does: a picture or a video opens full screen.
         mobileSidebarOpen.value = false;
         mediaViewer.value = { items: [driveViewerItem({ id: file.id, name: file.title || t('untitled'), kind: file.fileKind })], start: 0 };
+        return;
+      }
+      if (file.type === 'drive-file' && (file.fileKind === 'markdown' || isMarkdownFile({ name: file.title }))) {
+        mobileSidebarOpen.value = false;
+        openDriveMarkdown({ id: file.id, name: file.title || t('untitled'), folderId: file.folderId });
         return;
       }
       if (file.type === 'drive-file') {
@@ -3038,10 +3057,11 @@ export default defineComponent({
         start: list.findIndex((item) => item.id === file.id),
       };
     };
-    /** A file of the sidebar's Yandex tree: a picture or a video opens, anything else downloads. */
+    /** A file of the sidebar's Yandex tree: a picture or a video opens, a Markdown file opens as a document, anything else downloads. */
     const openYandexSidebarFile = (item: YandexItem) => {
       mobileSidebarOpen.value = false;
       if (isYandexMedia(item)) mediaViewer.value = { items: [yandexViewerItem(item)], start: 0 };
+      else if (isMarkdownFile(item)) openYandexMarkdown(item);
       else void downloadYandexFile(item);
     };
     const downloadYandexFile = async (item: YandexItem) => {
@@ -3051,6 +3071,71 @@ export default defineComponent({
       } catch (error) {
         setFeedback('error', error instanceof Error && error.message ? error.message : t('driveDownloadLinkFailed'));
       }
+    };
+
+    // ----- Markdown files: opened as a document in the viewer instead of downloading
+    const markdownViewer = ref<MarkdownViewerItem | null>(null);
+    const openMarkdownAsTextDocument = async (content: string, title: string, targetFolderId?: string | null) => {
+      const folderId = await resolveCreateFolderId(targetFolderId || activeFolder.value?.id || undefined);
+      const created = await textDocuments.create({ title, folderId });
+      await textDocuments.replaceContent(created.id, { html: marked.parse(content, { async: false }) as string });
+      rememberCreatedResource('text-document', created);
+      router.push(`/docs/${created.slug || created.id}`);
+    };
+    const openDriveMarkdown = (file: { id: string; name: string; updatedAt?: string | null; folderId?: string | null }) => {
+      markdownViewer.value = {
+        key: `drive-file:${file.id}`,
+        name: file.name,
+        date: file.updatedAt ?? null,
+        loadText: async () => {
+          const { url } = await driveApi.getDownloadLink(file.id);
+          return fetchMarkdownTextFromUrl(resolveDownloadUrl(url));
+        },
+        download: async () => {
+          try {
+            await downloadDriveFile(file.id, file.name);
+          } catch (error) {
+            setFeedback('error', error instanceof Error && error.message ? error.message : t('driveDownloadLinkFailed'));
+          }
+        },
+        ...(isLoggedIn
+          ? { openAsDocument: (content: string, title: string) => openMarkdownAsTextDocument(content, title, file.folderId) }
+          : {}),
+      };
+    };
+    const openYandexMarkdown = (file: YandexItem) => {
+      markdownViewer.value = {
+        key: `yandex:${file.path}`,
+        name: file.name,
+        date: file.modifiedAt,
+        loadText: async () => {
+          try {
+            const bytes = await fetchYandexContent(file.path);
+            return new TextDecoder('utf-8').decode(bytes).replace(/^\uFEFF/, '');
+          } catch {
+            const { href } = await yandexDisk.downloadLink(file.path);
+            return fetchMarkdownTextFromUrl(href, { referrerPolicy: 'no-referrer' });
+          }
+        },
+        download: () => downloadYandexFile(file),
+        save: async (content: string) => {
+          const blob = new File([content], file.name, { type: 'text/markdown' });
+          await uploadYandexFile(file.path, blob).promise;
+          yandexRefreshKey.value += 1;
+          setFeedback('success', t('markdownSaved'));
+        },
+        ...(isLoggedIn
+          ? { openAsDocument: (content: string, title: string) => openMarkdownAsTextDocument(content, title) }
+          : {}),
+      };
+    };
+    const openSpaceMarkdown = (item: MarkdownViewerItem) => {
+      markdownViewer.value = {
+        ...item,
+        ...(isLoggedIn && !item.openAsDocument
+          ? { openAsDocument: (content: string, title: string) => openMarkdownAsTextDocument(content, title) }
+          : {}),
+      };
     };
     /** Uploads to the Yandex folder go through the same panel as the Drive's. */
     const uploadToYandex = async (files: File[], path: string) => {
@@ -4106,7 +4191,11 @@ export default defineComponent({
       openYandexSidebarFile,
       openYandexImage,
       openDriveImage,
+      openYandexMarkdown,
+      openDriveMarkdown,
+      openSpaceMarkdown,
       mediaViewer,
+      markdownViewer,
       folderDrivePreviews,
       spaceView,
       spaceId,

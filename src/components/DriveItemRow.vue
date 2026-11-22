@@ -1,10 +1,10 @@
 <template>
-  <div class="drive-list-row" :class="`drive-row-${item.kind}`" :data-drive-item="item.id" :data-item-kind="item.kind" tabindex="0" role="button" @click="emit('open')" @keydown.enter="emit('open')">
+  <div class="drive-list-row" :class="[`drive-row-${item.kind}`, { 'drive-row-markdown': isMarkdownItem(item) }]" :data-drive-item="item.id" :data-item-kind="item.kind" :data-file-kind="isMarkdownItem(item) ? 'markdown' : undefined" tabindex="0" role="button" @click="emit('open')" @keydown.enter="emit('open')">
     <div class="drive-row-icon-col">
       <Folder v-if="item.kind === 'folder'" :size="20" class="drive-folder-inline-icon" aria-hidden="true" />
       <Video v-else-if="isVideoItem(item)" :size="20" class="drive-file-inline-icon" aria-hidden="true" />
       <Image v-else-if="isImageItem(item)" :size="20" class="drive-file-inline-icon" aria-hidden="true" />
-      <ResourceIcon v-else-if="item.kind !== 'file'" :kind="item.kind" :size="20" aria-hidden="true" />
+      <ResourceIcon v-else-if="item.kind !== 'file' || isMarkdownItem(item)" :kind="isMarkdownItem(item) ? 'text-document' : item.kind" :size="20" aria-hidden="true" />
       <span v-else class="drive-ext-badge">{{ getFileExtension(item.name) }}</span>
     </div>
     <div class="drive-row-name-col"><span class="drive-row-name">{{ item.name }}</span></div>
@@ -21,6 +21,7 @@ import { Folder, Image, Video } from '@lucide/vue';
 import ResourceIcon from './ResourceIcon.vue';
 import DriveItemActionsMenu from './DriveItemActionsMenu.vue';
 import { formatFileSize, getFileExtension, type DriveItem } from '../api/drive';
+import { isMarkdownFile } from '../dashboard/thumb-kinds';
 import { useI18n } from '../composables/useI18n';
 
 defineProps<{ item: DriveItem; menuActive: boolean; phoneActive: boolean; phonePathAvailable: boolean }>();
@@ -29,6 +30,7 @@ const { t, locale } = useI18n();
 const isFileKind = (item: DriveItem) => item.kind === 'file' || item.kind === 'photo' || item.kind === 'video';
 const isImageItem = (item: DriveItem) => item.kind === 'photo' || (item.kind === 'file' && !!item.mime?.startsWith('image/'));
 const isVideoItem = (item: DriveItem) => item.kind === 'video' || (item.kind === 'file' && !!item.mime?.startsWith('video/'));
+const isMarkdownItem = (item: DriveItem) => item.kind === 'file' && !isImageItem(item) && !isVideoItem(item) && isMarkdownFile(item);
 const getKindLabel = (kind: DriveItem['kind']) => ({ folder: t('driveFolder'), canvas: t('driveCanvas'), 'text-document': t('driveDocument'), 'html-document': 'HTML', board: t('driveBoard'), sheet: t('driveSheet'), file: t('driveFile'), photo: t('drivePhoto'), video: t('driveVideo') }[kind] || t('driveFile'));
 const formatDate = (iso?: string | null) => { if (!iso) return ''; try { return new Date(iso).toLocaleDateString(locale.value === 'ru' ? 'ru-RU' : 'en-US', { day: 'numeric', month: 'short' }); } catch { return iso; } };
 </script>

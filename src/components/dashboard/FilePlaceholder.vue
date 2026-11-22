@@ -19,6 +19,7 @@
     <span class="file-placeholder-icon" aria-hidden="true">
       <Video v-if="kind === 'video'" :size="18" />
       <ImageIcon v-else-if="kind === 'picture'" :size="18" />
+      <FileText v-else-if="isMarkdown" :size="18" />
       <FileIcon v-else :size="18" />
     </span>
   </span>
@@ -26,9 +27,11 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { File as FileIcon, Image as ImageIcon, Video } from '@lucide/vue';
+import { File as FileIcon, FileText, Image as ImageIcon, Video } from '@lucide/vue';
+import { isMarkdownFile } from '../../dashboard/thumb-kinds';
 
 const props = defineProps<{ name: string; kind: 'picture' | 'video' | 'file' }>();
+const isMarkdown = computed(() => props.kind === 'file' && isMarkdownFile({ name: props.name }));
 
 /** A small number from the name, so every file keeps its own tilt and loop. */
 const seed = computed(() => {

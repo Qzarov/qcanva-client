@@ -140,10 +140,11 @@
             <article
               v-else
               class="canvas-card folder-file-card"
-              :class="{ 'has-preview': withPicture(item) }"
+              :class="{ 'has-preview': withPicture(item), 'is-markdown-doc': isMarkdown(item) }"
               role="button"
               tabindex="0"
               :data-space-item="item.key"
+              :data-file-kind="isMarkdown(item) ? 'markdown' : undefined"
               v-file-info="infoOf(item)"
               @click="open(item)"
               @keydown.enter.prevent="open(item)"
@@ -152,6 +153,7 @@
                 <span class="folder-file-kind" aria-hidden="true">
                   <Video v-if="isVideo(item)" :size="16" />
                   <ImageIcon v-else-if="isPicture(item)" :size="16" />
+                  <ResourceIcon v-else-if="isMarkdown(item)" kind="text-document" :size="16" />
                   <FileIcon v-else :size="16" />
                 </span>
                 <span class="card-title-text folder-file-name">{{ nameParts(item.name).base }}<wbr />{{ nameParts(item.name).ext }}</span>
@@ -166,6 +168,21 @@
                 <FilePlaceholder v-else :name="item.name" :kind="isVideo(item) ? 'video' : isPicture(item) ? 'picture' : 'file'" />
                 <span v-if="isVideo(item) && previewOf(item)" class="folder-file-play"><Play :size="14" aria-hidden="true" /></span>
               </span>
+              <button
+                v-if="isMarkdown(item)"
+                type="button"
+                class="card-manage"
+                :title="t('groupActions')"
+                :aria-label="t('groupActions')"
+                :data-space-file-menu="item.key"
+                @click.stop="toggleMenu('file:' + item.key)"
+              >⋯</button>
+              <Transition name="card-menu-pop">
+                <div v-if="menu === 'file:' + item.key" class="card-menu" :data-space-file-actions="item.key" @click.stop>
+                  <button type="button" class="card-menu-item" data-action="open" @click.stop="menu = ''; open(item)">{{ t('openDocument') }}</button>
+                  <button type="button" class="card-menu-item" data-action="download" @click.stop="menu = ''; download(item)">{{ t('download') }}</button>
+                </div>
+              </Transition>
             </article>
           </template>
         </div>
@@ -231,7 +248,9 @@ import { useSpaces } from '../../composables/useSpaces';
 import { useYandexDisk } from '../../composables/useYandexDisk';
 import { vFileInfo } from '../../directives/fileInfo';
 import { fileInfo, nameParts } from '../../dashboard/file-info';
-import { hasCardPicture, isPictureFile, isVideoFile } from '../../dashboard/thumb-kinds';
+import { hasCardPicture, isMarkdownFile, isPictureFile, isVideoFile } from '../../dashboard/thumb-kinds';
+import { fetchMarkdownTextFromUrl } from '../../documents/markdown-viewer';
+import type { MarkdownViewerItem } from '../MarkdownDocumentViewer.vue';
 import ResourceIcon from '../ResourceIcon.vue';
 import ResourceThumb from './ResourceThumb.vue';
 import DashboardViewToggle from './DashboardViewToggle.vue';
@@ -258,6 +277,8 @@ const emit = defineEmits<{
   open: [kind: string, id: string];
   /** Pictures full screen, from the one clicked. */
   'open-media': [items: MediaViewerItem[], start: number];
+  /** A Markdown file of the space: opened as a document in the viewer. */
+  'open-markdown': [item: MarkdownViewerItem];
   /** The user is no longer in the space (left it, or deleted it). */
   gone: [];
   feedback: [type: 'success' | 'error', message: string];
@@ -318,6 +339,7 @@ const isDocument = (item: SpaceFeedItem) => item.origin === 'qspace' && item.kin
 const fileLike = (item: SpaceFeedItem) => ({ name: item.name, mime: item.mime, kind: item.mediaType === 'video' ? 'video' : item.mediaType === 'image' ? 'photo' : undefined });
 const isVideo = (item: SpaceFeedItem) => isVideoFile(fileLike(item));
 const isPicture = (item: SpaceFeedItem) => isPictureFile(fileLike(item));
+const isMarkdown = (item: SpaceFeedItem) => item.kind === 'file' && isMarkdownFile(fileLike(item));
 /** A picture square: pictures, videos, PDFs, EPUBs and text files - and any file Yandex made a preview of. */
 const withPicture = (item: SpaceFeedItem) => item.kind === 'file' && (hasCardPicture(fileLike(item)) || Boolean(item.origin === 'yandex' && item.previewUrl));
 const thumbKind = (item: SpaceFeedItem) => (item.kind === 'board' || item.kind === 'sheet' ? 'interactive-template' : item.kind);
@@ -490,6 +512,7 @@ function resetFilters() {
 
 // ----- opening
 async function open(item: SpaceFeedItem) {
+  menu.value = '';
   if (isDocument(item) && item.id) {
     emit('open', item.kind, item.id);
     return;
@@ -500,8 +523,25 @@ async function open(item: SpaceFeedItem) {
     emit('open-media', media.map(viewerItem), Math.max(0, media.findIndex((other) => other.key === item.key)));
     return;
   }
+  if (isMarkdown(item)) {
+    emit('open-markdown', markdownViewerItem(item));
+    return;
+  }
   await download(item);
 }
+
+const markdownViewerItem = (item: SpaceFeedItem): MarkdownViewerItem => ({
+  key: item.key,
+  name: item.name,
+  date: item.updatedAt,
+  loadText: async () => {
+    const url = item.origin === 'yandex'
+      ? (await spacesApi.yandexDownload(props.spaceId, item.sourceId, item.path!)).href
+      : resolveDownloadUrl((await driveApi.getDownloadLink(item.id!)).url);
+    return fetchMarkdownTextFromUrl(url, item.origin === 'yandex' ? { referrerPolicy: 'no-referrer' } : undefined);
+  },
+  download: () => download(item),
+});
 
 const viewerItem = (item: SpaceFeedItem): MediaViewerItem => ({
   key: item.key,
@@ -534,7 +574,7 @@ function toggleMenu(name: string) {
 }
 const closeMenu = (event: MouseEvent) => {
   const target = event.target as HTMLElement | null;
-  if (!target?.closest('.folder-manager-menu, [data-space-add-menu]')) menu.value = '';
+  if (!target?.closest('.folder-manager-menu, [data-space-add-menu], .card-menu, .card-manage')) menu.value = '';
 };
 /** Where the add choice opens: under what was pressed (a phone makes it a bottom sheet). */
 const addMenuStyle = ref<Record<string, string>>({});

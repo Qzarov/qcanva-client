@@ -34,6 +34,15 @@ export function isPictureFile(file: FileLike): boolean {
  * first page, an EPUB's cover, the start of a text file.
  */
 const DOC_PICTURE_EXT = new Set(['pdf', 'epub', 'txt', 'md', 'markdown', 'log']);
+const MARKDOWN_EXT = new Set(['md', 'markdown']);
+
+export function isMarkdownFile(file: FileLike): boolean {
+  if (file.kind && file.kind !== 'file') return false;
+  if (MARKDOWN_EXT.has(extension(file.name))) return true;
+  const mime = (file.mime ?? '').toLowerCase();
+  return mime === 'text/markdown' || mime === 'text/x-markdown';
+}
+
 export function isDocumentWithPicture(file: FileLike): boolean {
   if (DOC_PICTURE_EXT.has(extension(file.name))) return true;
   return file.mime === 'application/pdf' || file.mime === 'application/epub+zip';
