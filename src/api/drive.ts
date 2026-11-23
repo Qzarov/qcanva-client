@@ -152,6 +152,13 @@ export interface DriveDeviceSyncStatus {
   rejected?: DriveRejectedItem[] | null;
 }
 
+export interface DriveNodeCapabilities {
+  storage?: boolean;
+  mediaPrep?: boolean;
+  transcode?: boolean;
+  mlCompute?: boolean;
+}
+
 type GeneratedDevice = ItemOf<HubResponse<'/api/drive/devices', 'get'>['nodes']>;
 
 /** A storage device of the owner, as the hub lists it (revoked devices are never listed). */
@@ -169,6 +176,8 @@ export type DriveDevice = Override<
     /** Sync status fields need the hub with the device status (Qzarov/canvas-server-back#41). */
     syncStatus?: DriveDeviceSyncStatus | null; // расходится со схемой хаба: Record<string, never> | null
     folders?: DriveDeviceFolder[]; // расходится со схемой хаба: GeneratedDevice['folders']
+    /** Optional on older hubs; individual capability flags may be omitted until reported. */
+    capabilities?: DriveNodeCapabilities; // расходится со схемой хаба: свойства без required стали обязательными при --properties-required-by-default
   }
 >;
 

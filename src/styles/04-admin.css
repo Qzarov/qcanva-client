@@ -1049,6 +1049,14 @@
     min-width: 0;
   }
 
+  .public-downloads-link {
+    padding-inline: 10px;
+  }
+
+  .public-downloads-label {
+    display: none;
+  }
+
   .app-main.dashboard {
     padding: 16px 12px calc(24px + env(safe-area-inset-bottom));
   }

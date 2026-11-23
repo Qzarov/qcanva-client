@@ -234,6 +234,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/settings/media": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["AdminController_getMediaSettings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["AdminController_updateMediaSettings"];
+        trace?: never;
+    };
     "/api/admin/stats": {
         parameters: {
             query?: never;
@@ -942,7 +958,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** A device registers or updates its iroh endpointId and optional relayUrl. */
+        /** A device registers or updates its iroh endpointId/relayUrl and/or capabilities. */
         patch: operations["DriveController_updateDeviceSelf"];
         trace?: never;
     };
@@ -989,7 +1005,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Device reports its sync status for the owner's Q Control. Device auth only. */
+        /** Device reports its sync status (and optional capabilities) for the owner's Q Control. Device auth only. */
         put: operations["DriveController_putDeviceSelfStatus"];
         post?: never;
         delete?: never;
@@ -1264,54 +1280,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/drive/media/thumb-tokens": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["MediaThumbsController_tokens"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/drive/media/{assetId}/link": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put: operations["MediaThumbsController_link"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/drive/media/{assetId}/thumb": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["MediaThumbsController_view"];
-        put: operations["MediaThumbsController_upload"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/drive/nodes": {
         parameters: {
             query?: never;
@@ -1361,134 +1329,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/drive/photos/bucket": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["PhotosController_bucket"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/drive/photos/buckets": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["PhotosController_buckets"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/drive/photos/files/{fileId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch: operations["PhotosController_edit"];
-        trace?: never;
-    };
-    "/api/drive/photos/libraries": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["PhotosController_libraries"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/drive/photos/libraries/{libraryId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put: operations["PhotosController_configure"];
-        post?: never;
-        delete: operations["PhotosController_remove"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/drive/photos/libraries/{libraryId}/sync": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["PhotosController_sync"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/drive/photos/people": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["PhotosController_people"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/drive/photos/search": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["PhotosController_search"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/drive/replicas": {
         parameters: {
             query?: never;
@@ -1499,6 +1339,26 @@ export interface paths {
         get?: never;
         /** A device reports whether it holds a blob's bytes. */
         put: operations["DriveController_replica"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/drive/replicas/batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Many replica reports in one request: `{ replicas: [<body of PUT /replicas>,
+         *     ...] }`, 1..500 items. Bad items are listed in `rejected`, the rest applied.
+         */
+        put: operations["DriveController_replicasBatch"];
         post?: never;
         delete?: never;
         options?: never;
@@ -4371,6 +4231,67 @@ export interface operations {
             };
         };
     };
+    AdminController_getMediaSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        hubMediaFallbackEnabled: boolean;
+                        /** @enum {string} */
+                        hubMediaFallbackEnabledSource: "db" | "env" | "default";
+                        hubMediaFallbackGraceMinutes: number;
+                        hubMediaFallbackGraceMinutesDefault: number;
+                        /** @enum {string} */
+                        hubMediaFallbackGraceMinutesSource: "db" | "env" | "default";
+                    };
+                };
+            };
+        };
+    };
+    AdminController_updateMediaSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    hubMediaFallbackEnabled: boolean | null;
+                    hubMediaFallbackGraceMinutes: number | null;
+                };
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        hubMediaFallbackEnabled: boolean;
+                        /** @enum {string} */
+                        hubMediaFallbackEnabledSource: "db" | "env" | "default";
+                        hubMediaFallbackGraceMinutes: number;
+                        hubMediaFallbackGraceMinutesDefault: number;
+                        /** @enum {string} */
+                        hubMediaFallbackGraceMinutesSource: "db" | "env" | "default";
+                    };
+                };
+            };
+        };
+    };
     AdminController_stats: {
         parameters: {
             query?: never;
@@ -5640,6 +5561,12 @@ export interface operations {
                 content: {
                     "application/json": {
                         nodes: {
+                            capabilities: {
+                                mediaPrep: boolean;
+                                mlCompute: boolean;
+                                storage: boolean;
+                                transcode: boolean;
+                            };
                             createdAt: string;
                             defaultMode: string;
                             endpointId: string | null;
@@ -5676,6 +5603,12 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    capabilities?: {
+                        mediaPrep: boolean;
+                        mlCompute: boolean;
+                        storage: boolean;
+                        transcode: boolean;
+                    };
                     code: string;
                     folderId?: string;
                     kind?: string;
@@ -5790,6 +5723,12 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    capabilities: {
+                        mediaPrep: boolean;
+                        mlCompute: boolean;
+                        storage: boolean;
+                        transcode: boolean;
+                    };
                     endpointId: string;
                     relayUrl: string | null;
                 };
@@ -5802,6 +5741,12 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        capabilities: {
+                            mediaPrep: boolean;
+                            mlCompute: boolean;
+                            storage: boolean;
+                            transcode: boolean;
+                        };
                         endpointId: string | null;
                         id: string;
                         kind: string;
@@ -5905,6 +5850,12 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    capabilities?: {
+                        mediaPrep: boolean;
+                        mlCompute: boolean;
+                        storage: boolean;
+                        transcode: boolean;
+                    };
                     lastError?: string | null;
                     lastSyncAt?: string | null;
                     pendingBytes: number;
@@ -5974,6 +5925,12 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        capabilities: {
+                            mediaPrep: boolean;
+                            mlCompute: boolean;
+                            storage: boolean;
+                            transcode: boolean;
+                        };
                         createdAt: string;
                         defaultMode: string;
                         endpointId: string | null;
@@ -6639,127 +6596,6 @@ export interface operations {
             };
         };
     };
-    MediaThumbsController_tokens: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    assetIds: string[];
-                };
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        expiresAt: string | null;
-                        tokens: {
-                            [key: string]: string;
-                        };
-                    };
-                };
-            };
-        };
-    };
-    MediaThumbsController_link: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                assetId: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    fileId: string;
-                };
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        assetId: string;
-                        fileId: string;
-                    };
-                };
-            };
-        };
-    };
-    MediaThumbsController_view: {
-        parameters: {
-            query?: {
-                t?: unknown;
-                size?: unknown;
-            };
-            header?: never;
-            path: {
-                assetId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "image/jpeg": string;
-                    "image/webp": string;
-                };
-            };
-        };
-    };
-    MediaThumbsController_upload: {
-        parameters: {
-            query: {
-                size: string;
-            };
-            header?: never;
-            path: {
-                assetId: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "image/jpeg": string;
-                "image/webp": string;
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        assetId: string;
-                        bytes: number;
-                        contentType: string;
-                        etag: string;
-                        size: string;
-                        unchanged: boolean;
-                        updatedAt: string;
-                    };
-                };
-            };
-        };
-    };
     DevicesController_list: {
         parameters: {
             query?: never;
@@ -6776,6 +6612,12 @@ export interface operations {
                 content: {
                     "application/json": {
                         nodes: {
+                            capabilities: {
+                                mediaPrep: boolean;
+                                mlCompute: boolean;
+                                storage: boolean;
+                                transcode: boolean;
+                            };
                             createdAt: string;
                             defaultMode: string;
                             endpointId: string | null;
@@ -6812,6 +6654,12 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    capabilities?: {
+                        mediaPrep: boolean;
+                        mlCompute: boolean;
+                        storage: boolean;
+                        transcode: boolean;
+                    };
                     folderId?: string | null;
                     /** @enum {string} */
                     kind: "home" | "pc" | "phone";
@@ -6828,6 +6676,12 @@ export interface operations {
                     "application/json": {
                         deviceToken: string;
                         node: {
+                            capabilities: {
+                                mediaPrep: boolean;
+                                mlCompute: boolean;
+                                storage: boolean;
+                                transcode: boolean;
+                            };
                             createdAt: string;
                             defaultMode: string;
                             endpointId: string | null;
@@ -6893,6 +6747,12 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        capabilities: {
+                            mediaPrep: boolean;
+                            mlCompute: boolean;
+                            storage: boolean;
+                            transcode: boolean;
+                        };
                         createdAt: string;
                         defaultMode: string;
                         endpointId: string | null;
@@ -6942,305 +6802,6 @@ export interface operations {
             };
         };
     };
-    PhotosController_bucket: {
-        parameters: {
-            query: {
-                month: string;
-                folderId?: string;
-                personId?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        items: {
-                            assetId: string;
-                            description: string | null;
-                            durationSec: number | null;
-                            favorite: boolean;
-                            fileId: string;
-                            folderId: string | null;
-                            height: number | null;
-                            kind: string;
-                            mime: string | null;
-                            name: string;
-                            previewUrl: string | null;
-                            processed: boolean;
-                            rating: number | null;
-                            takenAt: string;
-                            thumbUrl: string | null;
-                            width: number | null;
-                        }[];
-                        month: string;
-                    };
-                };
-            };
-        };
-    };
-    PhotosController_buckets: {
-        parameters: {
-            query?: {
-                folderId?: string;
-                personId?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        buckets: {
-                            count: number;
-                            month: string;
-                        }[];
-                    };
-                };
-            };
-        };
-    };
-    PhotosController_edit: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                fileId: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    description: string | null;
-                    favorite: boolean;
-                    rating: number | null;
-                };
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        description: string | null;
-                        favorite: boolean | null;
-                        fileId: string;
-                        rating: number | null;
-                        updatedAt: string;
-                    };
-                };
-            };
-        };
-    };
-    PhotosController_libraries: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        libraries: {
-                            assetCursor: string | null;
-                            libraryId: string;
-                            linked: number;
-                            mountPrefix: string;
-                            nodeId: string;
-                            offline: number;
-                            orphans: number;
-                            reconciledAt: string | null;
-                            treeRevision: number;
-                            updatedAt: string;
-                        }[];
-                    };
-                };
-            };
-        };
-    };
-    PhotosController_configure: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                libraryId: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    mountPrefix: string;
-                    nodeId: string;
-                };
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        changed: boolean;
-                        libraryId: string;
-                        mountPrefix: string;
-                        nodeId: string;
-                    };
-                };
-            };
-        };
-    };
-    PhotosController_remove: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                libraryId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        libraryId: string;
-                        removed: boolean;
-                    };
-                };
-            };
-        };
-    };
-    PhotosController_sync: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                libraryId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        libraries: number;
-                        linked: number;
-                        offline: number;
-                        orphans: number;
-                        replaced: number;
-                        scanned: number;
-                        unlinked: number;
-                    };
-                };
-            };
-        };
-    };
-    PhotosController_people: {
-        parameters: {
-            query?: {
-                folderId?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        people: {
-                            assetCount: number;
-                            id: string;
-                            name: string | null;
-                            thumbUrl: string;
-                        }[];
-                    };
-                };
-            };
-        };
-    };
-    PhotosController_search: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    cursor?: string | null;
-                    folderId?: string | null;
-                    limit?: number;
-                    query: string;
-                };
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        items: {
-                            assetId: string;
-                            description: string | null;
-                            durationSec: number | null;
-                            favorite: boolean;
-                            fileId: string;
-                            folderId: string | null;
-                            height: number | null;
-                            kind: string;
-                            mime: string | null;
-                            name: string;
-                            previewUrl: string | null;
-                            processed: boolean;
-                            rating: number | null;
-                            takenAt: string;
-                            thumbUrl: string | null;
-                            width: number | null;
-                        }[];
-                        nextCursor: string | null;
-                    };
-                };
-            };
-        };
-    };
     DriveController_replica: {
         parameters: {
             query?: never;
@@ -7267,6 +6828,43 @@ export interface operations {
                         hash: string;
                         nodeId: string;
                         state: string;
+                    };
+                };
+            };
+        };
+    };
+    DriveController_replicasBatch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    replicas: {
+                        hash: string;
+                        nodeId?: string;
+                        /** @enum {string} */
+                        state: "present" | "verified" | "evicted";
+                    }[];
+                };
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        applied: number;
+                        ok: boolean;
+                        rejected: {
+                            error: string;
+                            index: number;
+                        }[];
                     };
                 };
             };

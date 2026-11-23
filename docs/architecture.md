@@ -1,4 +1,5 @@
 > Сверено с `q-space` @ da505c9, 2026-11-23.
+> Сверено с `q-space` @ da505c9 + `feat/clients-download-page`, 2026-11-23.
 
 # Архитектура веб-клиента QCanva (qcanva-client)
 
@@ -33,6 +34,7 @@
 | `/mcp` | — | *Redirect* на `/settings?section=mcp` | Публичный редирект для MCP-клиентов |
 | `/admin` | `admin` | `src/views/AdminView.vue` | `meta: { requiresAuth: true }` — клиент пускает любого вошедшего; роль admin/superadmin проверяет хаб (`AdminGuard`), иначе запросы страницы получают 403 |
 | `/plugins` | `plugins` | `src/views/PluginsView.vue` | `meta: { requiresAuth: true }` |
+| `/downloads` | `downloads` | `src/views/DownloadsView.vue` | Публичный (доступен гостям и вошедшим пользователям) |
 | `/canvas/:id` | `canvas` | `src/views/CanvasView.vue` | Публичный (проверка прав и AccessGate внутри) |
 
 ### Хуки маршрутизатора и ремонтирование
@@ -61,6 +63,7 @@
 - `src/views/InteractiveTemplateView.vue`: интерактивный лист персонажа D&D 5e с режимами Setup и Play, дайсроллером и привязкой к канвасу.
 - `src/views/AdminView.vue`: консоль администратора для управления пользователями, квотами хранилища и доступом к истории канвасов.
 - `src/views/PluginsView.vue`: информационное представление об управлении плагинами непосредственно внутри ресурсов.
+- `src/views/DownloadsView.vue`: витрина скачивания клиентов Q Space (`/downloads`) для Linux (`qspace-agent` с `latest.json`, `install.sh` и прямыми бинарниками `x86_64`/`aarch64`), Android (прямой APK при наличии `VITE_ANDROID_APK_URL` или GitHub Releases) и планируемых десктопных сборок (Windows / macOS).
 - `src/views/CanvasView.vue`: бесконечный совместный холст (whiteboard) с узлами, стрелками, рисованием, линейкой и встроенным чатом.
 
 ### Ключевые компоненты (`src/components/`)
@@ -157,6 +160,7 @@
 |---|---|---|
 | [`src/api/client.ts`](../src/api/client.ts) | Базовый транспорт, авторизация, канвасы, документы, теги, папки, MCP | `request()`, `auth`, `resourceFolders`, `canvas`, `htmlDocuments`, `textDocuments`, `interactiveTemplates`, `plugins`, `accessRequests`, `tags`, `mcpTokens`, `recentResources`, `uploadImage()` |
 | [`src/api/drive.ts`](../src/api/drive.ts) | Диск Q Disk, файлы, папки, корзина, безопасность Q Control, устройства | `driveApi`, `uploadFile()`, `downloadDriveFile()`, `resolveDownloadUrl()`, утилиты размеров и реплик |
+| [`src/api/downloads.ts`](../src/api/downloads.ts) | Публичная раздача сборок `qspace-agent` и ссылка на Android APK | `fetchAgentManifest()`, `parseAgentManifest()`, `agentInstallCommand()`, `agentBinaryUrl()`, `getAndroidApkUrl()` |
 | [`src/api/photos.ts`](../src/api/photos.ts) | Фото: лента, поиск, альбомы, сведения о фото, предпочтения вида, токены миниатюр | `photosApi`, `hubPhotosApi`, `renditionUrl()`, `isSearchUnavailable()`, `isPhotosEnabled()` |
 | [`src/api/photos.mock.ts`](../src/api/photos.mock.ts) | Генератор мок-данных фото для разработки и тестов без хаба | `createPhotosMock()`, `renditionUrlMock()` |
 | [`src/api/admin.ts`](../src/api/admin.ts) | Консоль администратора: лимиты файлов, квоты хранилища | `adminRequest()`, `adminApi` |
@@ -227,6 +231,7 @@
 | `VITE_ALLOW_HUB_OVERRIDE` | [`src/api/hubOverride.ts`](../src/api/hubOverride.ts), [`capacitor.config.ts`](../capacitor.config.ts) | При значении `1` включает UI смены адреса хаба в настройках и разрешает Mixed Content (HTTP) в WebView Android для отладки на стендах |
 | `VITE_PHOTOS_ENABLED` | [`src/api/photos.ts`](../src/api/photos.ts) | Фича-флаг: при значении `1` включает раздел «Фото» и переключатель «Файлы/Фото» на Диске |
 | `VITE_PHOTOS_MOCK` | [`src/api/photos.ts`](../src/api/photos.ts) | Мок-флаг: при значении `1` подставляет локальные сгенерированные фото, папки и альбомы вместо API фото хаба |
+| `VITE_ANDROID_APK_URL` | [`src/api/downloads.ts`](../src/api/downloads.ts) | Необязательный прямой URL APK-файла Android для кнопки скачивания на `/downloads` (иначе показывается ссылка на GitHub Releases) |
 
 ---
 

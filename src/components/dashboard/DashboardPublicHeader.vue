@@ -10,6 +10,16 @@
       </div>
       <div class="header-user-slot">
         <LanguageToggle />
+        <router-link
+          to="/downloads"
+          class="btn-ghost public-downloads-link"
+          :aria-label="t('downloadsNavLabel')"
+          :title="t('downloadsNavLabel')"
+          data-public-downloads
+        >
+          <Download :size="16" aria-hidden="true" />
+          <span class="public-downloads-label">{{ t('downloadsNavShort') }}</span>
+        </router-link>
         <router-link to="/login" class="btn-ghost">{{ t('login') }}</router-link>
         <router-link to="/register" class="btn-primary">{{ t('register') }}</router-link>
       </div>
@@ -23,6 +33,7 @@
 </template>
 
 <script setup lang="ts">
+import { Download } from '@lucide/vue';
 import LanguageToggle from '../LanguageToggle.vue';
 import { useI18n } from '../../composables/useI18n';
 

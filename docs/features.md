@@ -1,4 +1,4 @@
-> Сверено с `q-space` @ da505c9, 2026-11-23.
+> Сверено с `q-space` @ da505c9 + `feat/clients-download-page`, 2026-11-23.
 
 # Функциональная карта веб-клиента QCanva (qcanva-client)
 
@@ -64,6 +64,7 @@
 | Жест Pull-to-refresh для обновления кэша дашборда | в интерфейсе | `src/views/DashboardView.vue` | `—` |
 | Рассмотрение входящих запросов доступа (одобрение / отказ) | в интерфейсе | `src/views/DashboardView.vue` | `GET /api/access-requests/incoming`, `PUT /api/access-requests/:id` |
 | Раздел «Пространства» (`Home/Spaces` и боковое меню): плитки и строки подключённого Яндекс Диска и общих пространств (без отдельного пункта Q Space) | в интерфейсе | `src/views/DashboardView.vue`, `src/components/dashboard/DashboardSidebarSpaces.vue`, `src/components/dashboard/DashboardSpace.vue`, `src/components/dashboard/DashboardYandexDisk.vue` | `GET /api/integrations/yandex`, `GET /api/yandex-disk/items`, `GET /api/spaces`, `POST /api/spaces` |
+| Фильтрация ленты общего пространства по папкам, типам файлов (включая категорию «Книги» с `.pdf`), расширениям, владельцам и участникам | в интерфейсе | `src/components/dashboard/DashboardSpace.vue`, `src/components/dashboard/SpaceFilterDialog.vue`, `src/dashboard/space-feed-types.ts` | `GET /api/spaces/:id/feed`, `GET /api/spaces/feed-types` |
 
 ---
 
@@ -247,6 +248,7 @@
 | Отзыв / отключение устройства от хранилища Q Space | в интерфейсе | `src/components/DriveDeviceRemoveDialog.vue` | `DELETE /api/drive/devices/:id` |
 | Просмотр списка утерянных файлов (Lost files без онлайн-копий) | в интерфейсе | `src/views/DriveDevicesView.vue` | `GET /api/drive/safety/lost` |
 | Массовое перемещение утерянных файлов в корзину | в интерфейсе | `src/views/DriveDevicesView.vue` | `POST /api/drive/safety/lost/trash` |
+| Страница скачивания клиентов (`/downloads`): hero-обзор, динамический манифест `qspace-agent` для Linux (`install.sh`, `x86_64`/`aarch64`, SHA-256), Android APK / GitHub Releases, статусы «Скоро» для Windows и macOS, ссылки из сайдбара, меню аккаунта, публичной шапки и лендинга | в интерфейсе | `src/views/DownloadsView.vue`, `src/api/downloads.ts`, `src/components/dashboard/DashboardSidebar.vue`, `src/components/AccountMenu.vue`, `src/components/dashboard/DashboardPublicHeader.vue`, `src/views/LandingView.vue` | `GET /downloads/qspace-agent/latest.json`, `GET /downloads/qspace-agent/install.sh`, `GET /downloads/qspace-agent/:name` |
 
 ---
 
@@ -286,6 +288,7 @@
 | Список всех канвасов и управление политикой доступа к истории | в интерфейсе | `src/views/AdminView.vue` | `GET /api/admin/canvases`, `PUT /api/admin/canvases/:canvasId/history-access` |
 | Настройка максимального размера загружаемого файла | в интерфейсе | `src/views/AdminView.vue` | `GET /api/admin/settings`, `PUT /api/admin/settings` |
 | Настройка лимита емкости диска сервера | в интерфейсе | `src/views/AdminView.vue` | `GET /api/admin/settings`, `PUT /api/admin/settings` |
+| Переключатель фоллбека обработки медиа на хабе для пользователей без `media-worker` и период ожидания домашнего узла | в интерфейсе | `src/views/AdminView.vue`, `src/api/admin.ts` | `GET /api/admin/settings/media`, `PATCH /api/admin/settings/media` |
 
 ---
 

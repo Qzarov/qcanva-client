@@ -339,6 +339,20 @@
   padding-top: 12px;
   border-top: 1px solid var(--ui-border);
 }
+.dashboard-sidebar .dashboard-sidebar-downloads {
+  text-decoration: none;
+  border-color: color-mix(in srgb, var(--ui-glass-border) 80%, transparent);
+  background: var(--ui-surface-subtle);
+  color: var(--ui-text);
+}
+.dashboard-sidebar .dashboard-sidebar-downloads .dashboard-sidebar-icon {
+  color: var(--ui-accent-strong);
+}
+.dashboard-sidebar .dashboard-sidebar-downloads:hover {
+  border-color: var(--ui-glass-accent-border);
+  background: var(--ui-brand-soft);
+  color: var(--ui-text);
+}
 .dashboard-sidebar-version {
   font-size: 11px;
   color: var(--ui-text-secondary);
@@ -556,6 +570,12 @@
   align-items: center;
   gap: 8px;
   min-width: 0;
+}
+.public-downloads-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-decoration: none;
 }
 .dash-actions-secondary {
   display: flex;

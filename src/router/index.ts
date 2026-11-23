@@ -97,6 +97,11 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      path: '/downloads',
+      name: 'downloads',
+      component: () => import('../views/DownloadsView.vue'),
+    },
+    {
       path: '/canvas/:id',
       name: 'canvas',
       component: () => import('../views/CanvasView.vue'),
