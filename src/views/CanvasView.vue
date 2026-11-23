@@ -757,6 +757,7 @@ import {useCanvasRuler} from '../composables/useCanvasRuler';
 import CanvasRulerSettings from '../components/CanvasRulerSettings.vue';
 import type {RulerSettings} from '../canvas/ruler';
 import { resolveSyncStatus, useCalmSaving } from '../composables/useCalmSyncStatus';
+import { useSyncActivity } from '../composables/useActivityJournal';
 import { usePlugins } from '../composables/usePlugins';
 import { useChatNodeAttach } from '../composables/useChatNodeAttach';
 import { useToast } from '../composables/useToast';
@@ -1127,6 +1128,12 @@ export default defineComponent({
       const kind = resolveSyncStatus({ failed: !!syncIssue.value, offline: !wsConnected.value, saving: saving.value || pendingOpsCount.value > 0 || isResyncing.value });
       if (kind === 'synced' && realtimeOpsUnavailable.value) return { kind: 'saving' as const, label: t('syncSaving') };
       return { kind, label: t(kind === 'synced' ? 'textSaved' : SYNC_STATUS_LABEL_KEYS[kind]) };
+    });
+    useSyncActivity({
+      groupKey: `sync:canvas:${canvasId}`,
+      title: () => title.value || t('activityJournalSyncCanvasTitle'),
+      status: () => syncStatus.value.kind,
+      detail: () => syncBadgeTitle.value,
     });
 
     const otherUsers = computed(() => {

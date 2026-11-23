@@ -95,9 +95,9 @@
         </DriveContentState>
       </section>
 
-      <!-- Upload Panel (Bottom-right desktop, bottom-sheet mobile) -->
+      <!-- Upload Panel (Bottom-right desktop, bottom-sheet mobile; hidden when ActivityJournal is mounted) -->
       <DriveUploadPanel
-        v-if="uploadPanelVisible && uploads.length > 0"
+        v-if="!journalActive && uploadPanelVisible && uploads.length > 0"
         :uploads="uploads"
         @cancel="cancelUpload"
         @hide="uploadPanelVisible = false"
@@ -232,7 +232,7 @@ const { photosEnabled, activeTab, setTab, openPhotoInFolder, onItemClick, naviga
   },
 });
 
-const { uploads, uploadPanelVisible, onFilesSelected, handleFilesUpload, cancelUpload } = useDriveUpload({
+const { uploads, uploadPanelVisible, journalActive, onFilesSelected, handleFilesUpload, cancelUpload } = useDriveUpload({
   folderId: currentFolderId,
   loadCurrentFolder,
 });

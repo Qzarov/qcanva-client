@@ -1,3 +1,4 @@
+> Сверено с `q-space` @ da505c9, 2026-11-23.
 > Сверено с `q-space` @ da505c9 + `feat/clients-download-page`, 2026-11-23.
 
 # Архитектура веб-клиента QCanva (qcanva-client)
@@ -69,6 +70,7 @@
 
 - `src/components/AccessGate.vue`: экран ввода пароля или отправки заявки владельцу при блокировке 401/403.
 - `src/components/AccessRequestDialog.vue`: модальный диалог отправки запроса на чтение или редактирование закрытого ресурса.
+- `src/components/ActivityJournal.vue`: глобальный плавающий виджет журнала фоновых процессов в правом нижнем углу (компактная пилюля со счётчиком и общим прогрессом, раскрывающийся список задач загрузки, скачивания, массовых операций, синхронизации и обработки медиа с кнопками отмены и очистки); подавляет дублирующие локальные панели (`DashboardUploadPanel`, `DashboardUploadBadge`, `DashboardStatusOverlays`, `DriveUploadPanel`).
 - `src/components/AccountMenu.vue`: меню профиля пользователя с переключением темы, переходом в настройки и выходом.
 - `src/components/AppDialogHost.vue`: глобальный хост очереди модальных окон приложения (alert, confirm, prompt).
 - `src/components/BackButton.vue`: кнопка возврата на предыдущий экран с индикатором открытых вкладок.
@@ -143,6 +145,8 @@
 9. **Кэш подписанных токенов миниатюр фото** — [`src/api/photos.ts`](../src/api/photos.ts):
    - Кэш токенов: `const tokenCache = new Map<string, { token: string; expiresAt: number }>()` (пачки до 500 хэшей, запас 60 с).
    - Кеширует временные токены для отображения картинок Immich через защищённые URL без отправки Bearer-заголовка в `<img src>`.
+10. **Журнал фоновых процессов** — [`src/composables/useActivityJournal.ts`](../src/composables/useActivityJournal.ts):
+   - Модульный реестр задач `tasks = ref<ActivityTask[]>([])` (`upload`, `download`, `bulk`, `sync`, `media`) с прогрессом `0..100` или `null` (indeterminate), статусами (`running` / `done` / `error` / `cancelled`), взвешенным общим прогрессом активной волны, отменой (`cancelTask` / `AbortController`) и мостом `useSyncActivity()` для редакторов.
 
 ---
 

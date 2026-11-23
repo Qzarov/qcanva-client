@@ -320,6 +320,7 @@ import type { HtmlVisualOp } from '../html/visualHtmlOps';
 import { useI18n } from '../composables/useI18n';
 import { markResourceOpened } from '../composables/useRecentResource';
 import { resolveSyncStatus, useCalmSaving } from '../composables/useCalmSyncStatus';
+import { useSyncActivity } from '../composables/useActivityJournal';
 import { useResourceImageTokens } from '../composables/useResourceImageTokens';
 import { mapHtmlImageUrls } from '../canvas/imageUrls';
 import BackButton from '../components/BackButton.vue';
@@ -470,6 +471,12 @@ export default defineComponent({
       clearPendingOps,
     } = useHtmlSocket(resolvedId);
     const htmlSavingVisible = useCalmSaving(() => saving.value || pendingOpsCount.value > 0);
+    useSyncActivity({
+      groupKey: `sync:html:${id}`,
+      title: () => title.value || t('activityJournalSyncHtmlTitle'),
+      status: () => resolveSyncStatus({ failed: !!syncIssue.value, offline: !htmlWsConnected.value, saving: htmlSavingVisible.value }),
+      detail: () => htmlSyncTitle.value,
+    });
 
     async function load() {
       try {

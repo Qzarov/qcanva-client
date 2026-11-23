@@ -128,10 +128,11 @@ export function downloadYandexLink(href: string, filename?: string): void {
 }
 
 /** The file's bytes through the hub (for the zip of a selection). */
-export async function fetchYandexContent(path: string): Promise<Uint8Array> {
+export async function fetchYandexContent(path: string, signal?: AbortSignal): Promise<Uint8Array> {
   const token = getAccessToken();
   const res = await fetch(`${(API_BASE || '').replace(/\/+$/, '')}/yandex-disk/content${q({ path })}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
+    ...(signal ? { signal } : {}),
   });
   if (!res.ok) throw new ApiError(res.status, `HTTP ${res.status}`);
   return new Uint8Array(await res.arrayBuffer());

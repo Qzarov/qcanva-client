@@ -103,6 +103,7 @@ import { vFileInfo } from '../../directives/fileInfo';
 import ResourceIcon from '../ResourceIcon.vue';
 import FilePlaceholder from './FilePlaceholder.vue';
 import { fileInfo, formatFileDateTime, nameParts } from '../../dashboard/file-info';
+import { useActivityJournal } from '../../composables/useActivityJournal';
 import { useI18n } from '../../composables/useI18n';
 
 type SortMode = 'updated-desc' | 'updated-asc' | 'title-asc' | 'title-desc';
@@ -136,6 +137,11 @@ const emit = defineEmits<{
   'open-markdown': [file: DriveItem];
 }>();
 const { t, locale } = useI18n();
+const journal = useActivityJournal();
+const mediaGroupKey = () => `media:thumbs:${props.folderId}`;
+let mediaPendingTotal = 0;
+let mediaTrackingActive = false;
+let mediaCancelled = false;
 
 /** Files of a folder shown here; the rest are a link away, in the Drive. */
 const PAGE = 200;
@@ -232,6 +238,12 @@ function resetPreviews() {
   if (retryTimer) clearTimeout(retryTimer);
   batchTimer = null;
   retryTimer = null;
+  if (mediaTrackingActive) {
+    journal.removeGroupTask(mediaGroupKey(), { runningOnly: true });
+    mediaTrackingActive = false;
+  }
+  mediaPendingTotal = 0;
+  mediaCancelled = false;
   requested.clear();
   observer?.disconnect();
   observed.clear();
@@ -295,6 +307,11 @@ async function flushThumbs() {
     links = (await driveApi.getThumbLinks(batch.map((file) => file.id)))?.links ?? {};
   } catch (error) {
     if (forLoad !== loadId) return;
+    if (mediaTrackingActive) {
+      journal.removeGroupTask(mediaGroupKey(), { runningOnly: true });
+      mediaTrackingActive = false;
+    }
+    if (mediaCancelled) return;
     if ((error as { status?: number } | null)?.status === 404) hubThumbs = false;
     batch.forEach(showOriginal);
     return;
@@ -311,13 +328,46 @@ async function flushThumbs() {
       if (!previews[file.id] && canShowOriginal(file)) showOriginal(file);
     } else if (!previews[file.id]) showOriginal(file);
   }
+  if (mediaCancelled) return;
   if (again.length) {
+    mediaPendingTotal = Math.max(mediaPendingTotal, again.length);
+    mediaTrackingActive = true;
+    const done = Math.max(0, mediaPendingTotal - again.length);
+    const progress = mediaPendingTotal > 0 ? Math.round((done / mediaPendingTotal) * 100) : null;
+    const groupKey = mediaGroupKey();
+    journal.upsertGroupTask(groupKey, {
+      kind: 'media',
+      title: t('activityJournalMediaTitle'),
+      detail: t('activityJournalMediaPending').replace('{n}', String(again.length)),
+      progress,
+      status: 'running',
+      cancellable: true,
+      cancel: () => {
+        mediaCancelled = true;
+        if (retryTimer) {
+          clearTimeout(retryTimer);
+          retryTimer = null;
+        }
+        waiting.clear();
+        mediaTrackingActive = false;
+      },
+    });
     if (retryTimer) clearTimeout(retryTimer);
     retryTimer = setTimeout(() => {
       retryTimer = null;
       for (const file of again) waiting.set(file.id, file);
       void flushThumbs();
     }, THUMB_RETRY_MS);
+  } else if (mediaTrackingActive) {
+    mediaTrackingActive = false;
+    journal.upsertGroupTask(mediaGroupKey(), {
+      kind: 'media',
+      title: t('activityJournalMediaTitle'),
+      detail: t('activityJournalMediaReady'),
+      progress: 100,
+      status: 'done',
+      cancellable: false,
+    });
   }
 }
 
@@ -373,6 +423,10 @@ onBeforeUnmount(() => {
   document.removeEventListener('click', closeMenu);
   if (batchTimer) clearTimeout(batchTimer);
   if (retryTimer) clearTimeout(retryTimer);
+  if (mediaTrackingActive) {
+    journal.removeGroupTask(mediaGroupKey(), { runningOnly: true });
+    mediaTrackingActive = false;
+  }
   observer?.disconnect();
 });
 

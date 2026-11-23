@@ -75,7 +75,7 @@
       ></div>
       <Transition name="dashboard-upload-panel">
         <DashboardUploadPanel
-          v-if="uploadPanelOpen && uploads.length"
+          v-if="!journalActive && uploadPanelOpen && uploads.length"
           :uploads="uploads"
           :summary="uploadSummary"
           @cancel="cancelUpload"
@@ -84,9 +84,10 @@
         />
       </Transition>
       <Transition name="dashboard-upload-badge">
-        <DashboardUploadBadge v-if="!uploadPanelOpen && uploads.length" :summary="uploadSummary" @open="uploadPanelOpen = true" />
+        <DashboardUploadBadge v-if="!journalActive && !uploadPanelOpen && uploads.length" :summary="uploadSummary" @open="uploadPanelOpen = true" />
       </Transition>
       <DashboardStatusOverlays
+        v-if="!journalActive"
         :download-phase="downloadStatus.phase"
         :transfer-status-text="transferStatusText"
         :transfer-status-percent="transferStatusPercent"
@@ -806,6 +807,7 @@ import { useDashboardBulkDownload } from '../composables/useDashboardBulkDownloa
 import { useDashboardBulkDelete } from '../composables/useDashboardBulkDelete';
 import { useDashboardActionRunner } from '../composables/useDashboardActionRunner';
 import { useDriveDropzone } from '../composables/useDriveDropzone';
+import { useActivityJournal } from '../composables/useActivityJournal';
 
 type CanvasTag = { id: string; name: string; color: string };
 type CanvasRecord = {
@@ -1031,6 +1033,8 @@ export default defineComponent({
     const suppressNextCardClick = ref(false);
     const incomingRequests = ref<any[]>([]);
     const { pendingAction, feedback, setFeedback, runAction } = useDashboardActionRunner();
+    const activityJournal = useActivityJournal();
+    const journalActive = activityJournal.isActive;
     const tagColors = TAG_COLORS;
     const currentUser = computed(() => getCurrentUser());
     const isOwnedResource = (item: { ownerId?: string }) =>
@@ -2294,6 +2298,51 @@ export default defineComponent({
       return runAction('create-folder', () => resourceFolders.create(normalizedName), `Folder ${normalizedName} created`);
     };
 
+    const runBulkMoveWithJournal = async (targetFolderName: string, ops: Array<() => Promise<unknown>>) => {
+      const total = ops.length;
+      if (!total) return;
+      let done = 0;
+      let cancelled = false;
+      let taskId = '';
+      const detail = () => `${targetFolderName} · ${t('activityJournalBulkProgress').replace('{done}', String(done)).replace('{total}', String(total))}`;
+      taskId = activityJournal.startTask({
+        kind: 'bulk',
+        title: t('activityJournalBulkMoveTitle').replace('{n}', String(total)),
+        detail: detail(),
+        progress: 0,
+        cancellable: true,
+        cancel: () => {
+          cancelled = true;
+          if (taskId) activityJournal.cancelTask(taskId);
+        },
+      });
+      try {
+        await runAction('move-folder', async () => {
+          for (const op of ops) {
+            if (cancelled) break;
+            await op();
+            done += 1;
+            if (!cancelled) {
+              activityJournal.updateTask(taskId, {
+                progress: Math.round((done / total) * 100),
+                detail: detail(),
+              });
+            }
+          }
+        });
+        if (!cancelled) {
+          setFeedback('success', t('bulkMovedTo').replace('{folder}', targetFolderName).replace('{n}', String(total)));
+          activityJournal.completeTask(taskId, detail());
+        }
+      } catch (error) {
+        if (!cancelled) {
+          const msg = error instanceof Error && error.message ? error.message : undefined;
+          activityJournal.failTask(taskId, msg);
+        }
+        throw error;
+      }
+    };
+
     const saveFolderModal = async () => {
       const folderName = folderModal.value.value.trim();
       const targetFolder = folderModal.value.folderId
@@ -2313,15 +2362,12 @@ export default defineComponent({
             .filter((item) => dashboardItemsByKey.value.get(`${toFolderResourceType(item.kind)}:${item.id}`)?.folderId !== targetFolder.id);
           const fileItemsToMove = movable.filter((item) => item.kind === 'file' && item.id);
           let moved = false;
+          const moveOps: Array<() => Promise<unknown>> = [
+            ...docItemsToMove.map((item) => () => resourceFolders.move(targetFolder.id, toFolderResourceType(item.kind), item.id!)),
+            ...fileItemsToMove.map((item) => () => driveApi.moveFile(item.id!, targetFolder.id)),
+          ];
           try {
-            await runAction('move-folder', async () => {
-              for (const item of docItemsToMove) {
-                await resourceFolders.move(targetFolder.id, toFolderResourceType(item.kind), item.id!);
-              }
-              for (const item of fileItemsToMove) {
-                await driveApi.moveFile(item.id!, targetFolder.id);
-              }
-            }, t('bulkMovedTo').replace('{folder}', targetFolder.name).replace('{n}', String(docItemsToMove.length + fileItemsToMove.length)));
+            await runBulkMoveWithJournal(targetFolder.name, moveOps);
             moved = true;
           } catch {
             // runAction already displayed the error toast.
@@ -2341,10 +2387,11 @@ export default defineComponent({
         }
         const items = selectedItemsOf(folderModal.value.bulk).filter((item) => item.folderId !== targetFolder.id);
         const driveFiles = selectedDriveFilesOf(folderModal.value.bulk).filter((file) => file.folderId !== targetFolder.id);
-        await runAction('move-folder', async () => {
-          for (const item of items) await resourceFolders.move(targetFolder.id, item.type, item.id);
-          for (const file of driveFiles) await driveApi.moveFile(file.id, targetFolder.id);
-        }, t('bulkMovedTo').replace('{folder}', targetFolder.name).replace('{n}', String(items.length + driveFiles.length)));
+        const moveOps: Array<() => Promise<unknown>> = [
+          ...items.map((item) => () => resourceFolders.move(targetFolder.id, item.type, item.id)),
+          ...driveFiles.map((file) => () => driveApi.moveFile(file.id, targetFolder.id)),
+        ];
+        await runBulkMoveWithJournal(targetFolder.name, moveOps);
         closeFolderModal();
         clearSelection();
         if (driveFiles.length) {
@@ -3020,25 +3067,25 @@ export default defineComponent({
       };
     };
     /** A Drive file goes into the zip as it is, fetched by its download link. */
-    const archiveFileOfDrive = async (file: DriveItem, taken: Set<string>): Promise<ArchiveFile> => {
+    const archiveFileOfDrive = async (file: DriveItem, taken: Set<string>, signal?: AbortSignal): Promise<ArchiveFile> => {
       const { url } = await driveApi.getDownloadLink(file.id);
-      const response = await fetch(resolveDownloadUrl(url));
+      const response = await fetch(resolveDownloadUrl(url), signal ? { signal } : undefined);
       if (!response.ok) throw new Error(`${response.status}`);
       const [base, extension] = splitFileName(file.name);
       return { name: uniqueFileName(safeFileName(base, t('untitled')), extension, taken), content: new Uint8Array(await response.arrayBuffer()) };
     };
-    const archiveSpaceItem = async (item: SpaceFeedItem, taken: Set<string>): Promise<ArchiveFile> => {
+    const archiveSpaceItem = async (item: SpaceFeedItem, taken: Set<string>, signal?: AbortSignal): Promise<ArchiveFile> => {
       if (item.origin === 'yandex') {
         if (!spaceId.value || !item.path) throw new Error('Missing Yandex item path');
         const { href } = await spacesApi.yandexDownload(spaceId.value, item.sourceId, item.path);
-        const response = await fetch(href);
+        const response = await fetch(href, signal ? { signal } : undefined);
         if (!response.ok) throw new Error(`${response.status}`);
         const [base, extension] = splitFileName(item.name);
         return { name: uniqueFileName(safeFileName(base, t('untitled')), extension, taken), content: new Uint8Array(await response.arrayBuffer()) };
       }
       if (!item.id) throw new Error('Missing item id');
       if (item.kind === 'file') {
-        return archiveFileOfDrive({ id: item.id, name: item.name } as DriveItem, taken);
+        return archiveFileOfDrive({ id: item.id, name: item.name } as DriveItem, taken, signal);
       }
       return archiveFileOf({ type: toFolderResourceType(item.kind), id: item.id, title: item.name } as FolderItem, taken);
     };
@@ -3049,9 +3096,9 @@ export default defineComponent({
       selectedSpaceItems,
       archiveItem: archiveFileOf,
       archiveDriveFile: archiveFileOfDrive,
-      archiveYandexFile: async (file: YandexItem, taken: Set<string>) => {
+      archiveYandexFile: async (file: YandexItem, taken: Set<string>, signal?: AbortSignal) => {
         const [base, extension] = splitFileName(file.name);
-        return { name: uniqueFileName(safeFileName(base, t('untitled')), extension, taken), content: await fetchYandexContent(file.path) };
+        return { name: uniqueFileName(safeFileName(base, t('untitled')), extension, taken), content: await fetchYandexContent(file.path, signal) };
       },
       archiveSpaceItem,
       buildZip,
@@ -3349,6 +3396,26 @@ export default defineComponent({
           : {}),
       };
     };
+    const uploadTaskIds = new Map<string, string>();
+    const uploadByteDetail = (size: number, percent: number) => {
+      const loaded = Math.round(size * Math.min(100, Math.max(0, percent)) / 100);
+      return `${formatFileSize(loaded)} / ${formatFileSize(size)}`;
+    };
+    const registerUploadBatch = (batch: Array<{ id: string; name: string; size: number }>) => {
+      for (const item of batch) {
+        const taskId = activityJournal.startTask({
+          kind: 'upload',
+          title: item.name,
+          detail: uploadByteDetail(item.size, 0),
+          progress: 0,
+          weight: Math.max(1, item.size),
+          cancellable: true,
+          cancel: () => cancelUpload(item.id),
+        });
+        uploadTaskIds.set(item.id, taskId);
+      }
+    };
+
     /** Uploads to the Yandex folder go through the same panel as the Drive's. */
     const uploadToYandex = async (files: File[], path: string) => {
       const batch = files.map((file) => ({
@@ -3360,6 +3427,7 @@ export default defineComponent({
         status: 'uploading' as const,
       }));
       uploads.value = [...batch.map(({ file: _file, ...row }) => row), ...uploads.value];
+      registerUploadBatch(batch);
       uploadPanelOpen.value = true;
       await runDashboardUploads(batch.map(({ id, file }) => ({
         id,
@@ -3398,6 +3466,15 @@ export default defineComponent({
     const uploadSummary = useUploadSummary(uploads);
     /** Nothing runs any more: the finished files go, and the badge with them. */
     const clearFinishedUploads = () => {
+      for (const item of uploads.value) {
+        if (item.status !== 'uploading') {
+          const taskId = uploadTaskIds.get(item.id);
+          if (taskId) {
+            activityJournal.removeTask(taskId);
+            uploadTaskIds.delete(item.id);
+          }
+        }
+      }
       uploads.value = uploads.value.filter((item) => item.status === 'uploading');
       uploadPanelOpen.value = false;
     };
@@ -3406,6 +3483,8 @@ export default defineComponent({
       if (!upload || upload.status !== 'uploading') return;
       upload.status = 'cancelled';
       upload.abort?.();
+      const taskId = uploadTaskIds.get(id);
+      if (taskId) activityJournal.cancelTask(taskId);
     };
     /**
      * Every upload of the panel (QCanva's and Yandex Disk's): three at a time,
@@ -3415,7 +3494,17 @@ export default defineComponent({
     const uploadRowOf = (id: string) => uploads.value.find((item) => item.id === id);
     const setUploadProgress = (id: string, percent: number) => {
       const row = uploadRowOf(id);
-      if (row && row.status === 'uploading') row.progress = Math.round(percent);
+      if (row && row.status === 'uploading') {
+        const rounded = Math.round(percent);
+        row.progress = rounded;
+        const taskId = uploadTaskIds.get(id);
+        if (taskId) {
+          activityJournal.updateTask(taskId, {
+            progress: rounded,
+            detail: uploadByteDetail(row.size, rounded),
+          });
+        }
+      }
     };
     const uploadWakeLock = createUploadWakeLock(() => uploads.value.some((item) => item.status === 'uploading'));
     watch(() => uploads.value.some((item) => item.status === 'uploading'), () => { void uploadWakeLock.sync(); });
@@ -3431,12 +3520,21 @@ export default defineComponent({
         if (!row) return;
         row.abort = () => attempt.abort();
         row.progress = 0;
+        const taskId = uploadTaskIds.get(id);
+        if (taskId) {
+          activityJournal.updateTask(taskId, {
+            progress: 0,
+            detail: uploadByteDetail(row.size, 0),
+          });
+        }
       },
       onDone: (id) => {
         const row = uploadRowOf(id);
         if (row && row.status === 'uploading') {
           row.progress = 100;
           row.status = 'done';
+          const taskId = uploadTaskIds.get(id);
+          if (taskId) activityJournal.completeTask(taskId, formatFileSize(row.size));
         }
       },
       onError: (id, error) => {
@@ -3444,6 +3542,8 @@ export default defineComponent({
         if (!row || row.status === 'cancelled') return;
         row.status = 'error';
         row.errorMessage = error instanceof Error && error.message ? error.message : t('driveUploadFailed');
+        const taskId = uploadTaskIds.get(id);
+        if (taskId) activityJournal.failTask(taskId, row.errorMessage);
       },
     });
     const uploadFiles = async (files: File[], explicitFolderId?: string) => {
@@ -3462,6 +3562,7 @@ export default defineComponent({
         status: 'uploading' as const,
       }));
       uploads.value = [...batch.map(({ file: _file, ...row }) => row), ...uploads.value];
+      registerUploadBatch(batch);
       uploadPanelOpen.value = true;
       await runDashboardUploads(batch.map(({ id, file }) => ({
         id,
@@ -4633,6 +4734,7 @@ export default defineComponent({
       onAddCreateFolder,
       onAddImport,
       folderFilesRefreshKey,
+      journalActive,
       transferStatusText,
       transferStatusPercent,
       marquee,

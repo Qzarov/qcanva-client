@@ -60,6 +60,7 @@
 | Переключение отображения ресурсов (плитка / список) | в интерфейсе | `src/components/dashboard/DashboardViewToggle.vue` | `—` |
 | Импорт файлов `.canvas`, `.json`, `.html`, `.htm` | в интерфейсе | `src/views/DashboardView.vue` | `POST /api/canvas`, `POST /api/html-documents` |
 | Загрузка файлов перетаскиванием (Drag & Drop) на Home и внутри папок | в интерфейсе | `src/views/DashboardView.vue`, `src/composables/useDriveDropzone.ts` | `POST /api/drive/folders/:folderId/files` |
+| Плавающий журнал фоновых процессов в правом нижнем углу (загрузки на Диск и Яндекс Диск, массовое скачивание/перемещение/удаление, синхронизация и обработка превью) с прогрессом, раскрытием и отменой | в интерфейсе | `src/components/ActivityJournal.vue`, `src/composables/useActivityJournal.ts`, `src/App.vue` | `—` |
 | Жест Pull-to-refresh для обновления кэша дашборда | в интерфейсе | `src/views/DashboardView.vue` | `—` |
 | Рассмотрение входящих запросов доступа (одобрение / отказ) | в интерфейсе | `src/views/DashboardView.vue` | `GET /api/access-requests/incoming`, `PUT /api/access-requests/:id` |
 | Раздел «Пространства» (`Home/Spaces` и боковое меню): плитки и строки подключённого Яндекс Диска и общих пространств (без отдельного пункта Q Space) | в интерфейсе | `src/views/DashboardView.vue`, `src/components/dashboard/DashboardSidebarSpaces.vue`, `src/components/dashboard/DashboardSpace.vue`, `src/components/dashboard/DashboardYandexDisk.vue` | `GET /api/integrations/yandex`, `GET /api/yandex-disk/items`, `GET /api/spaces`, `POST /api/spaces` |
@@ -78,7 +79,7 @@
 | Поиск по текущей папке или по всему диску | в интерфейсе | `src/views/DriveView.vue` | `GET /api/drive/search` |
 | Загрузка файлов через системный диалог выбора | в интерфейсе | `src/views/DriveView.vue` | `POST /api/drive/folders/:folderId/files` |
 | Загрузка файлов перетаскиванием (Drag & Drop) на окно | в интерфейсе | `src/views/DriveView.vue` | `POST /api/drive/folders/:folderId/files` |
-| Плавающая панель прогресса загрузок с возможностью отмены | в интерфейсе | `src/views/DriveView.vue` | `—` |
+| Плавающая панель прогресса загрузок с возможностью отмены (через глобальный `ActivityJournal`, либо `DriveUploadPanel` в изоляции) | в интерфейсе | `src/components/ActivityJournal.vue`, `src/views/DriveView.vue` | `—` |
 | Создание новой папки диска | в интерфейсе | `src/views/DriveView.vue` | `POST /api/resource-folders` |
 | Переименование файла на диске | в интерфейсе | `src/views/DriveView.vue` | `PATCH /api/drive/files/:id` |
 | Скачивание файла по временной подписанной ссылке | в интерфейсе | `src/views/DriveView.vue` | `POST /api/drive/files/:id/download-link` |
