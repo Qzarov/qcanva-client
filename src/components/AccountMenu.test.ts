@@ -62,7 +62,9 @@ describe('AccountMenu', () => {
     });
     await wrapper.get('[data-account-menu-trigger]').trigger('click');
     expect(wrapper.text()).not.toContain('Plugins');
+    expect(wrapper.text()).toContain('Download apps');
     expect(wrapper.text()).toContain('Settings');
+    expect(wrapper.find('[data-account-menu-downloads]').exists()).toBe(true);
     expect(wrapper.find('[data-account-menu-sign-out]').exists()).toBe(true);
   });
 

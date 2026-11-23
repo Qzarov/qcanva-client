@@ -39,6 +39,7 @@ function mountLayout(collapsed = false, mobileOpen = false) {
       stubs: {
         LanguageToggle: true,
         AccountMenu: true,
+        RouterLink: { props: ['to'], template: '<a :href="typeof to === \'string\' ? to : \'\'"><slot /></a>' },
       },
     },
   });

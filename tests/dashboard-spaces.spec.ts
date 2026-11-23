@@ -57,22 +57,28 @@ async function serveSpaces(page: Page, opts: { role?: 'owner' | 'editor' | 'view
     // A viewer adds no folders: every one in the space is someone else's.
     const sources = role === 'viewer' ? defaultSources().map((source) => ({ ...source, addedBy: { id: 'user-2', name: 'Аня' } })) : defaultSources();
     if (path === '/spaces/feed-types') return json({ types: [
-      { type: 'canva', extensions: [] }, { type: 'document', extensions: ['pdf', 'docx', 'txt'] }, { type: 'book', extensions: ['epub', 'djvu'] },
+      { type: 'canva', extensions: [] }, { type: 'document', extensions: ['pdf', 'docx', 'txt'] }, { type: 'book', extensions: ['epub', 'djvu', 'pdf'] },
       { type: 'image', extensions: ['jpg', 'png'] }, { type: 'video', extensions: ['mp4'] }, { type: 'audio', extensions: ['mp3'] }, { type: 'other', extensions: [] },
     ] });
     if (path === '/spaces/space-1' && request.method() === 'GET') return json({ ...spaceDetails(role, sources), owners: [{ id: 'user-1', name: 'Me' }, { id: 'user-2', name: 'Аня' }] });
     if (path === '/spaces/space-1/feed') {
       const list = (name: string) => (url.searchParams.get(name) || '').split(',').filter(Boolean);
       const [sources, types, adders, exts, owners] = [list('sourceIds'), list('types'), list('addedBy'), list('exts'), list('owners')];
-      const typeOf = (item: (typeof FEED)[number]) => (item.kind !== 'file' ? 'canva' : item.name.endsWith('.pdf') ? 'document' : item.mime.startsWith('image/') ? 'image' : 'other');
+      const isPdf = (item: (typeof FEED)[number]) => item.kind === 'file' && (item.name.toLowerCase().endsWith('.pdf') || item.mime === 'application/pdf');
+      const typeOf = (item: (typeof FEED)[number]) => (item.kind !== 'file' ? 'canva' : isPdf(item) ? 'document' : item.mime.startsWith('image/') ? 'image' : 'other');
+      const matchesTypes = (item: (typeof FEED)[number]) => types.includes(typeOf(item)) || (types.includes('book') && isPdf(item));
       const extOf = (item: (typeof FEED)[number]) => (item.kind === 'file' ? item.name.split('.').pop()!.toLowerCase() : '');
       const others = FEED.filter((item) => (!sources.length || sources.includes(item.sourceId))
         && (!owners.length || owners.includes(item.addedBy.id))
         && (!adders.length || adders.includes(item.addedBy.id)));
-      const items = others.filter((item) => (!types.length && !exts.length) || types.includes(typeOf(item)) || exts.includes(extOf(item)));
+      const items = others.filter((item) => (!types.length && !exts.length) || matchesTypes(item) || exts.includes(extOf(item)));
       // As the hub: each kind's count under the other filters, the kinds aside.
       const typeCounts: Record<string, number> = {};
-      for (const item of others) typeCounts[typeOf(item)] = (typeCounts[typeOf(item)] ?? 0) + 1;
+      for (const item of others) {
+        const kind = typeOf(item);
+        typeCounts[kind] = (typeCounts[kind] ?? 0) + 1;
+        if (kind !== 'book' && isPdf(item)) typeCounts.book = (typeCounts.book ?? 0) + 1;
+      }
       return json({ items, offset: 0, limit: 60, nextOffset: null, typeCounts });
     }
     if (path === '/spaces/space-1/sources' && request.method() === 'POST') return json(spaceDetails(role));
@@ -418,10 +424,18 @@ test('the folders are tiles above the feed, several picked at once; filters show
 
   await page.locator('[data-space-filter-trigger]').click();
   const menu = page.locator('[data-space-filter-menu]');
-  // A kind tile tells what it takes on hover; a kind with nothing in it says 0.
+  // A kind tile tells what it takes on hover; PDFs count toward both documents and books, and an empty kind says 0.
   await menu.locator('[data-space-filter-type="document"]').hover();
   await expect(page.locator('.ui-hint')).toContainText('pdf, docx, txt');
-  await expect(menu.locator('[data-space-filter-type="book"] [data-space-filter-type-count]')).toHaveText('0');
+  await menu.locator('[data-space-filter-type="book"]').hover();
+  await expect(page.locator('.ui-hint')).toContainText('epub, djvu, pdf');
+  await expect(menu.locator('[data-space-filter-type="book"] [data-space-filter-type-count]')).toHaveText('1');
+  await expect(menu.locator('[data-space-filter-type="audio"] [data-space-filter-type-count]')).toHaveText('0');
+  await menu.locator('[data-space-filter-type="book"]').click();
+  await expect(feed).toHaveCount(1);
+  await expect(page.locator('[data-space-item="q:file:f-pdf"]')).toBeVisible();
+  await menu.locator('[data-space-filter-type="book"]').click();
+  await expect(feed).toHaveCount(3);
 
   // Whose: several people.
   await menu.locator('[data-space-filter-owner="user-2"]').click();
