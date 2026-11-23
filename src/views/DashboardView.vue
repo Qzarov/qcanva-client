@@ -36,7 +36,19 @@
         @folder-drag-leave="onSidebarFolderDragLeave"
         @folder-drop="onSidebarFolderDrop"
       />
-      <div class="dashboard-central-shell">
+      <div
+        class="dashboard-central-shell"
+        data-dashboard-dropzone
+        @dragenter="onExternalDragEnter"
+        @dragover="onExternalDragOver"
+        @dragleave="onExternalDragLeave"
+        @drop="onExternalDrop"
+      >
+      <DriveUploadOverlay
+        :active="isExternalDraggingOver"
+        :label="externalDropLabel"
+        :show-input="false"
+      />
       <Transition name="dashboard-selection-bar">
         <DashboardSelectionBar
           v-if="isLoggedIn && selectedKeys.length"
@@ -698,6 +710,7 @@ import InteractiveTemplatePicker from '../components/dashboard/InteractiveTempla
 import DashboardAddDialog, { type AddCreateKind } from '../components/dashboard/DashboardAddDialog.vue';
 import DashboardUploadPanel, { type DashboardUpload } from '../components/dashboard/DashboardUploadPanel.vue';
 import DashboardUploadBadge from '../components/dashboard/DashboardUploadBadge.vue';
+import DriveUploadOverlay from '../components/DriveUploadOverlay.vue';
 import { useUploadSummary } from '../dashboard/upload-summary';
 import { plansApi } from '../api/plans';
 import DashboardYandexDisk from '../components/dashboard/DashboardYandexDisk.vue';
@@ -755,6 +768,7 @@ import { useDashboardLongPress } from '../composables/useDashboardLongPress';
 import { useDashboardBulkDownload } from '../composables/useDashboardBulkDownload';
 import { useDashboardBulkDelete } from '../composables/useDashboardBulkDelete';
 import { useDashboardActionRunner } from '../composables/useDashboardActionRunner';
+import { useDriveDropzone } from '../composables/useDriveDropzone';
 
 type CanvasTag = { id: string; name: string; color: string };
 type CanvasRecord = {
@@ -870,6 +884,7 @@ export default defineComponent({
     DashboardFolderFiles,
     DashboardUploadPanel,
     DashboardUploadBadge,
+    DriveUploadOverlay,
     DashboardYandexDisk,
     YandexFolderPicker,
     DashboardMediaViewer,
@@ -2414,6 +2429,7 @@ export default defineComponent({
     };
 
     const {
+      folderDragId,
       folderDragOverId,
       canReorderFolder,
       onFolderDragStart,
@@ -3150,8 +3166,12 @@ export default defineComponent({
       },
     });
     const uploadFiles = async (files: File[], explicitFolderId?: string) => {
+      if (!files.length) return;
       const folderId = await resolveCreateFolderId(explicitFolderId);
       if (!folderId) return;
+      if (!ownResourceFolders.value.some((folder) => folder.id === folderId)) {
+        await refreshFoldersQuietly();
+      }
       const batch = files.map((file) => ({
         id: `up-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
         file,
@@ -3493,6 +3513,59 @@ export default defineComponent({
       if (opened.length === 1) router.push(opened[0]!);
       else if (opened.length) await load({ showLoading: false });
     };
+
+    const canDropToActiveFolder = computed(() => Boolean(
+      activeSection.value.kind === 'folder'
+      && activeFolder.value
+      && activeFolder.value.role === 'owner'
+      && ownResourceFolders.value.some((folder) => folder.id === activeFolder.value!.id),
+    ));
+
+    const canDropExternalFiles = computed(() => Boolean(
+      isLoggedIn
+      && !addDialog.value.open
+      && !templatePickerOpen.value
+      && !mediaViewer.value
+      && !yandexMove.value
+      && (isHomeFeed.value || canDropToActiveFolder.value),
+    ));
+
+    const externalDropLabel = computed(() => (
+      canDropToActiveFolder.value && activeFolder.value
+        ? t('dashboardDropFilesIntoFolder').replace('{folder}', activeFolder.value.name)
+        : t('driveDropFilesHere')
+    ));
+
+    const isInternalDashboardDrag = (event: DragEvent) => Boolean(
+      draggingResourceId.value
+      || folderDragId.value
+      || Array.from(event.dataTransfer?.types || []).includes('application/x-qcanva-folder'),
+    );
+
+    const uploadDroppedFiles = async (files: File[]) => {
+      if (!files.length || !canDropExternalFiles.value) return;
+      if (canDropToActiveFolder.value && activeFolder.value) {
+        await uploadFiles(files, activeFolder.value.id);
+        return;
+      }
+      if (isHomeFeed.value) {
+        const rootFolder = await ensureFolderByName('Unsorted');
+        if (!rootFolder?.id) return;
+        await uploadFiles(files, rootFolder.id);
+      }
+    };
+
+    const {
+      isDraggingOver: isExternalDraggingOver,
+      onDragEnter: onExternalDragEnter,
+      onDragOver: onExternalDragOver,
+      onDragLeave: onExternalDragLeave,
+      onDrop: onExternalDrop,
+    } = useDriveDropzone({
+      enabled: canDropExternalFiles,
+      ignoreEvent: isInternalDashboardDrag,
+      handleFilesUpload: uploadDroppedFiles,
+    });
 
     /** "+ Add" in an empty section: a folder for Folders, the template picker for Templates, else the Add dialog. */
     const openAddFromTile = (section: 'recent' | 'folders' | 'shared' | 'interactive' | 'public' | 'folder') => {
@@ -4251,6 +4324,12 @@ export default defineComponent({
       uploadSummary,
       clearFinishedUploads,
       cancelUpload,
+      isExternalDraggingOver,
+      externalDropLabel,
+      onExternalDragEnter,
+      onExternalDragOver,
+      onExternalDragLeave,
+      onExternalDrop,
       folderDriveFiles,
       bulkDeleteCount,
       addDialog,
