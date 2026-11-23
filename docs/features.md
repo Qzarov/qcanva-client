@@ -285,6 +285,7 @@
 | Список всех канвасов и управление политикой доступа к истории | в интерфейсе | `src/views/AdminView.vue` | `GET /api/admin/canvases`, `PUT /api/admin/canvases/:canvasId/history-access` |
 | Настройка максимального размера загружаемого файла | в интерфейсе | `src/views/AdminView.vue` | `GET /api/admin/settings`, `PUT /api/admin/settings` |
 | Настройка лимита емкости диска сервера | в интерфейсе | `src/views/AdminView.vue` | `GET /api/admin/settings`, `PUT /api/admin/settings` |
+| Переключатель фоллбека обработки медиа на хабе для пользователей без `media-worker` и период ожидания домашнего узла | в интерфейсе | `src/views/AdminView.vue`, `src/api/admin.ts` | `GET /api/admin/settings/media`, `PATCH /api/admin/settings/media` |
 
 ---
 
