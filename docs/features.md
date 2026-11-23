@@ -63,6 +63,7 @@
 | Жест Pull-to-refresh для обновления кэша дашборда | в интерфейсе | `src/views/DashboardView.vue` | `—` |
 | Рассмотрение входящих запросов доступа (одобрение / отказ) | в интерфейсе | `src/views/DashboardView.vue` | `GET /api/access-requests/incoming`, `PUT /api/access-requests/:id` |
 | Раздел «Пространства» (`Home/Spaces` и боковое меню): плитки и строки подключённого Яндекс Диска и общих пространств (без отдельного пункта Q Space) | в интерфейсе | `src/views/DashboardView.vue`, `src/components/dashboard/DashboardSidebarSpaces.vue`, `src/components/dashboard/DashboardSpace.vue`, `src/components/dashboard/DashboardYandexDisk.vue` | `GET /api/integrations/yandex`, `GET /api/yandex-disk/items`, `GET /api/spaces`, `POST /api/spaces` |
+| Фильтрация ленты общего пространства по папкам, типам файлов (включая категорию «Книги» с `.pdf`), расширениям, владельцам и участникам | в интерфейсе | `src/components/dashboard/DashboardSpace.vue`, `src/components/dashboard/SpaceFilterDialog.vue`, `src/dashboard/space-feed-types.ts` | `GET /api/spaces/:id/feed`, `GET /api/spaces/feed-types` |
 
 ---
 
