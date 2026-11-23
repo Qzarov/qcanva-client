@@ -1,6 +1,12 @@
 import { API_BASE, ApiError, onAuthCleared, request } from './client';
 import { resolveDownloadUrl } from './drive';
 import { createPhotosMock, renditionUrlMock, type PhotosMockApi, type PhotosMockDrive } from './photos.mock';
+import {
+  uploadClientMediaMeta as uploadClientMediaMetaImpl,
+  uploadClientPreviewForFile as uploadClientPreviewForFileImpl,
+  uploadClientPreviewForItems as uploadClientPreviewForItemsImpl,
+  uploadClientThumbnail,
+} from './clientMediaUpload';
 
 export type SortKey = 'date' | 'folder' | 'album' | 'size';
 export type SubKey = 'name' | 'size' | 'created' | 'added';
@@ -477,6 +483,22 @@ export async function renditionUrl(
   const token = await fetchRenditionToken(hash);
   const path = `/api/media/${encodeURIComponent(hash)}/rendition?size=${encodeURIComponent(size)}&t=${encodeURIComponent(token)}`;
   return resolveDownloadUrl(path, API_BASE);
+}
+
+export { uploadClientThumbnail };
+export const uploadClientMediaMeta = uploadClientMediaMetaImpl;
+
+export async function uploadClientPreviewForFile(file: File, hash: string): Promise<boolean> {
+  if (isPhotosMock()) return false;
+  return uploadClientPreviewForFileImpl(file, hash);
+}
+
+export async function uploadClientPreviewForItems(
+  files: File | File[],
+  items?: Array<{ name?: string; hash?: string }>,
+): Promise<void> {
+  if (isPhotosMock()) return;
+  return uploadClientPreviewForItemsImpl(files, items);
 }
 
 export const photosApi: PhotosApi = {

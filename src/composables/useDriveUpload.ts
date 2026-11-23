@@ -1,5 +1,6 @@
 import { ref, type ComputedRef } from 'vue';
 import { driveApi, formatFileSize } from '../api/drive';
+import { uploadClientPreviewForItems } from '../api/clientMediaUpload';
 import type { DriveUploadItem } from '../components/DriveUploadPanel.vue';
 import { useActivityJournal } from './useActivityJournal';
 import { useI18n } from './useI18n';
@@ -62,7 +63,8 @@ export function useDriveUpload(options: {
           }
         });
         item.abort = () => handle.abort();
-        await handle.promise;
+        const result = await handle.promise;
+        void uploadClientPreviewForItems(item.file, result?.items);
         const found = uploads.value.find((upload) => upload.id === item.id);
         if (found && found.status !== 'cancelled') {
           found.progress = 100;

@@ -162,6 +162,8 @@
 | [`src/api/drive.ts`](../src/api/drive.ts) | Диск Q Disk, файлы, папки, корзина, безопасность Q Control, устройства | `driveApi`, `uploadFile()`, `downloadDriveFile()`, `resolveDownloadUrl()`, утилиты размеров и реплик |
 | [`src/api/downloads.ts`](../src/api/downloads.ts) | Публичная раздача сборок `qspace-agent` и ссылка на Android APK | `fetchAgentManifest()`, `parseAgentManifest()`, `agentInstallCommand()`, `agentBinaryUrl()`, `getAndroidApkUrl()` |
 | [`src/api/photos.ts`](../src/api/photos.ts) | Фото: лента, поиск, альбомы, сведения о фото, предпочтения вида, токены миниатюр | `photosApi`, `hubPhotosApi`, `renditionUrl()`, `isSearchUnavailable()`, `isPhotosEnabled()` |
+| [`src/api/clientMediaUpload.ts`](../src/api/clientMediaUpload.ts) | Фоновая загрузка клиентских миниатюр и базовых метаданных после `uploadFile()` | `uploadClientThumbnail()`, `uploadClientMediaMeta()`, `uploadClientPreviewForFile()`, `uploadClientPreviewForItems()` |
+| [`src/utils/clientMediaPreview.ts`](../src/utils/clientMediaPreview.ts) | Чистый TS-генератор ~250px миниатюр (Canvas) и парсер базового JPEG EXIF / длительности видео | `generateClientMediaPreview()`, `parseJpegExif()`, `isSupportedClientMedia()` |
 | [`src/api/photos.mock.ts`](../src/api/photos.mock.ts) | Генератор мок-данных фото для разработки и тестов без хаба | `createPhotosMock()`, `renditionUrlMock()` |
 | [`src/api/admin.ts`](../src/api/admin.ts) | Консоль администратора: лимиты файлов, квоты хранилища | `adminRequest()`, `adminApi` |
 | [`src/api/hubOverride.ts`](../src/api/hubOverride.ts) | Отладочный резолв адреса хаба и WebSocket-ориджина | `resolveApiBase()`, `resolveWsOrigin()`, `isHubOverrideAllowed()`, `normalizeHubOverride()` |
