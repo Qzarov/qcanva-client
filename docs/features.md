@@ -1,4 +1,4 @@
-> Сверено с `q-space` @ 16e5ad1, 2026-11-22.
+> Сверено с `q-space` @ da505c9 + `feat/clients-download-page`, 2026-11-23.
 
 # Функциональная карта веб-клиента QCanva (qcanva-client)
 
@@ -246,6 +246,7 @@
 | Отзыв / отключение устройства от хранилища Q Space | в интерфейсе | `src/components/DriveDeviceRemoveDialog.vue` | `DELETE /api/drive/devices/:id` |
 | Просмотр списка утерянных файлов (Lost files без онлайн-копий) | в интерфейсе | `src/views/DriveDevicesView.vue` | `GET /api/drive/safety/lost` |
 | Массовое перемещение утерянных файлов в корзину | в интерфейсе | `src/views/DriveDevicesView.vue` | `POST /api/drive/safety/lost/trash` |
+| Страница скачивания клиентов (`/downloads`): hero-обзор, динамический манифест `qspace-agent` для Linux (`install.sh`, `x86_64`/`aarch64`, SHA-256), Android APK / GitHub Releases, статусы «Скоро» для Windows и macOS, ссылки из сайдбара, меню аккаунта, публичной шапки и лендинга | в интерфейсе | `src/views/DownloadsView.vue`, `src/api/downloads.ts`, `src/components/dashboard/DashboardSidebar.vue`, `src/components/AccountMenu.vue`, `src/components/dashboard/DashboardPublicHeader.vue`, `src/views/LandingView.vue` | `GET /downloads/qspace-agent/latest.json`, `GET /downloads/qspace-agent/install.sh`, `GET /downloads/qspace-agent/:name` |
 
 ---
 

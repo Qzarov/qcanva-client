@@ -71,6 +71,7 @@ function mountSidebar(props: Record<string, unknown> = {}, attachTo?: Element) {
       stubs: {
         LanguageToggle: true,
         AccountMenu: true,
+        RouterLink: { props: ['to'], template: '<a :href="typeof to === \'string\' ? to : (to?.path || \'\')"><slot /></a>' },
       },
     },
   });
@@ -402,5 +403,17 @@ describe('DashboardSidebar', () => {
 
     resetYandexDiskStatus();
     resetSpaces();
+  });
+
+  it('renders a prominent Download apps link in the sidebar footer for both expanded and collapsed modes', () => {
+    const expanded = mountSidebar();
+    const link = expanded.get('[data-sidebar-downloads]');
+    expect(link.attributes('href')).toBe('/downloads');
+    expect(link.text()).toContain('Download apps');
+
+    const collapsed = mountSidebar({ widthState: 'collapsed' });
+    const collapsedLink = collapsed.get('[data-sidebar-downloads]');
+    expect(collapsedLink.attributes('aria-label')).toBe('Download apps');
+    expect(collapsedLink.attributes('title')).toBe('Download apps');
   });
 });
