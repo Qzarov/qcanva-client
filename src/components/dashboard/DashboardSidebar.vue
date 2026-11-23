@@ -99,6 +99,7 @@
                       <template v-if="folder.type === 'drive-file'">
                         <Video v-if="folder.fileKind === 'video'" :size="16" />
                         <ImageIcon v-else-if="folder.fileKind === 'image'" :size="16" />
+                        <ResourceIcon v-else-if="folder.fileKind === 'markdown'" kind="text-document" :size="16" />
                         <FileIcon v-else :size="16" />
                       </template>
                       <ResourceIcon v-else :kind="folder.type" :template-type="folder.templateType" />

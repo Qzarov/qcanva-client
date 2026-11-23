@@ -26,9 +26,9 @@ export interface DashboardFolderNavItem {
   reorderTarget: boolean;
 }
 
-/** A document of the folder, or a file kept in its Drive (picture, video, anything else). */
+/** A document of the folder, or a file kept in its Drive (picture, video, Markdown document, anything else). */
 export type DashboardFileNavType = 'canvas' | 'html-document' | 'text-document' | 'interactive-template' | 'drive-file';
-export type DashboardDriveFileKind = 'image' | 'video' | 'file';
+export type DashboardDriveFileKind = 'image' | 'video' | 'markdown' | 'file';
 
 /** A file inside an opened folder of the sidebar tree. */
 export interface DashboardFileNavItem {

@@ -4,7 +4,7 @@
 
 <script lang="ts">
 import { defineComponent, computed } from "vue";
-import { marked } from "marked";
+import { renderMarkdownDocument } from "../documents/markdown-viewer";
 
 export default defineComponent({
   name: "MarkdownRenderer",
@@ -16,7 +16,7 @@ export default defineComponent({
   },
   setup(props) {
     const renderedMarkdown = computed(() => {
-      return marked(props.markdown);
+      return renderMarkdownDocument(props.markdown).html;
     });
 
     return {

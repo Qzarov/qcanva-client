@@ -2,6 +2,7 @@ import { computed, ref, watch, type ComputedRef } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { isPhotosEnabled } from '../api/photos';
 import type { DriveBreadcrumb, DriveItem } from '../api/drive';
+import { isMarkdownFile } from '../dashboard/thumb-kinds';
 
 export type DriveTab = 'files' | 'photos';
 
@@ -9,6 +10,7 @@ export function useDriveNavigation(options: {
   currentFolderId: ComputedRef<string>;
   folderPath: ComputedRef<DriveBreadcrumb[]>;
   onDownloadFile: (item: DriveItem) => Promise<void>;
+  onOpenMarkdown?: (item: DriveItem) => void | Promise<void>;
 }) {
   const route = useRoute();
   const router = useRouter();
@@ -45,6 +47,12 @@ export function useDriveNavigation(options: {
       case 'board':
       case 'sheet': router.push(`/templates/${item.id}`); break;
       case 'file':
+        if (options.onOpenMarkdown && isMarkdownFile(item)) {
+          await options.onOpenMarkdown(item);
+          break;
+        }
+        await options.onDownloadFile(item);
+        break;
       case 'photo':
       case 'video': await options.onDownloadFile(item); break;
     }

@@ -80,6 +80,7 @@
 - `src/components/DriveFileProperties.vue`: панель свойств файла с хешем SHA-256, метаданными, репликами и действиями телефона.
 - `src/components/HubOverrideField.vue`: отладочное поле ввода для переключения URL хаба во время выполнения.
 - `src/components/LanguageToggle.vue`: компактная кнопка переключения языка интерфейса (RU / EN).
+- `src/components/MarkdownDocumentViewer.vue`: полноэкранный просмотрщик и редактор `.md`-файлов (оформленный в стиле `TextDocumentView.vue`) с санитизированным рендерингом Markdown (`src/documents/markdown-viewer.ts`), оглавлением, переключением «Просмотр / Исходный код», сохранением на Яндекс Диск, скачиванием и переводом в совместный текстовый документ.
 - `src/components/ResourceSharePanel.vue`: панель доступа (видимость, пароль, slug, приглашения соавторов) для канвасов и текстовых документов; HTML-документы используют свою панель в `src/views/HtmlDocumentView.vue`.
 - `src/components/ThemeMenu.vue`: плавающее меню быстрого выбора темы оформления для публичных экранов.
 - `src/components/ThemeSelector.vue`: селектор темы оформления (Светлая, Тёмная, Системная).

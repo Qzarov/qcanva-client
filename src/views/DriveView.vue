@@ -110,15 +110,27 @@
         :drive-path="itemDrivePath(propertiesItem)"
         @close="propertiesItem = null"
       />
+
+      <MarkdownDocumentViewer
+        v-if="markdownViewerItem"
+        :item="markdownViewerItem"
+        @close="markdownItem = null"
+      />
     </main>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import { useRouter } from 'vue-router';
+import { marked } from 'marked';
+import { textDocuments } from '../api/client';
+import { driveApi, resolveDownloadUrl, type DriveItem } from '../api/drive';
 import { useDocumentTitle } from '../composables/useDocumentTitle';
 import { useI18n } from '../composables/useI18n';
 import DriveFileProperties from '../components/DriveFileProperties.vue';
+import MarkdownDocumentViewer, { type MarkdownViewerItem } from '../components/MarkdownDocumentViewer.vue';
+import { fetchMarkdownTextFromUrl } from '../documents/markdown-viewer';
 import DriveUploadPanel from '../components/DriveUploadPanel.vue';
 import DriveUploadOverlay from '../components/DriveUploadOverlay.vue';
 import DriveHeader from '../components/DriveHeader.vue';
@@ -185,10 +197,39 @@ const { phoneActive, itemDrivePath, onPhoneFetch, onPhoneEvict, ensureLoaded: en
   activeFileMenuId,
 });
 
+const router = useRouter();
+const markdownItem = ref<DriveItem | null>(null);
+const markdownViewerItem = computed<MarkdownViewerItem | null>(() => {
+  const item = markdownItem.value;
+  if (!item) return null;
+  return {
+    key: `drive-file:${item.id}`,
+    name: item.name,
+    date: item.updatedAt || item.sortDate,
+    loadText: async () => {
+      const res = await driveApi.getDownloadLink(item.id);
+      return fetchMarkdownTextFromUrl(resolveDownloadUrl(res.url));
+    },
+    download: () => onDownloadFile(item),
+    openAsDocument: async (content: string, title: string) => {
+      const canCreateInFolder = folderInfo.value?.folder.role === 'owner';
+      const targetFolderId = canCreateInFolder
+        ? (item.folderId ?? (currentFolderId.value === 'root' ? null : currentFolderId.value))
+        : null;
+      const created = await textDocuments.create({ title, folderId: targetFolderId });
+      await textDocuments.replaceContent?.(created.id, { html: marked.parse(content, { async: false }) as string });
+      router.push(`/docs/${created.slug || created.id}`);
+    },
+  };
+});
+
 const { photosEnabled, activeTab, setTab, openPhotoInFolder, onItemClick, navigateToFolder, goBack } = useDriveNavigation({
   currentFolderId,
   folderPath: computed(() => folderInfo.value?.path || []),
   onDownloadFile,
+  onOpenMarkdown: (item) => {
+    markdownItem.value = item;
+  },
 });
 
 const { uploads, uploadPanelVisible, onFilesSelected, handleFilesUpload, cancelUpload } = useDriveUpload({

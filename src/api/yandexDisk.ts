@@ -149,25 +149,36 @@ export const yandexCrumbs = (path: string) => {
 };
 
 export type YandexUploadHandle = { promise: Promise<YandexItem>; abort: () => void };
+export type YandexUploadOptions = {
+  onProgress?: (percent: number) => void;
+  overwrite?: boolean;
+};
 
 /**
  * Uploads one file to `path` (the full target path) with progress, streamed
  * through the hub. In the Android app it goes through the app's background
  * queue (native-upload.ts), on with the app left or the screen off.
  */
-export function uploadYandexFile(path: string, file: File, onProgress?: (percent: number) => void): YandexUploadHandle {
+export function uploadYandexFile(
+  path: string,
+  file: File,
+  onProgressOrOptions?: ((percent: number) => void) | YandexUploadOptions,
+): YandexUploadHandle {
+  const onProgress = typeof onProgressOrOptions === 'function' ? onProgressOrOptions : onProgressOrOptions?.onProgress;
+  const overwrite = typeof onProgressOrOptions === 'object' ? Boolean(onProgressOrOptions?.overwrite) : false;
+  const url = `${(API_BASE || '').replace(/\/+$/, '')}/yandex-disk/files${q({ path, overwrite: overwrite ? true : undefined })}`;
   const token = getAccessToken();
   return uploadNativelyOr(
     file,
     {
-      url: `${(API_BASE || '').replace(/\/+$/, '')}/yandex-disk/files${q({ path })}`,
+      url,
       method: 'PUT',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       mode: 'raw',
       contentType: file.type || 'application/octet-stream',
     },
     (status, text) => parseYandexUploadAnswer(status, text),
-    () => xhrUploadYandexFile(path, file, onProgress),
+    () => xhrUploadYandexFile(url, file, onProgress),
     onProgress,
     () => new ApiError(0, useI18n().t('driveUploadCancelled')),
   );
@@ -186,12 +197,12 @@ function parseYandexUploadAnswer(status: number, text: string): YandexItem {
   throw new ApiError(status, message, body);
 }
 
-function xhrUploadYandexFile(path: string, file: File, onProgress?: (percent: number) => void): YandexUploadHandle {
+function xhrUploadYandexFile(url: string, file: File, onProgress?: (percent: number) => void): YandexUploadHandle {
   // Not CapacitorHttp's: it would read the whole file into memory (upload-xhr.ts).
   const xhr = createUploadXhr();
   const promise = new Promise<YandexItem>((resolve, reject) => {
     const { t } = useI18n();
-    xhr.open('PUT', `${(API_BASE || '').replace(/\/+$/, '')}/yandex-disk/files${q({ path })}`, true);
+    xhr.open('PUT', url, true);
     const token = getAccessToken();
     if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
     xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');

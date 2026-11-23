@@ -84,6 +84,7 @@ vi.mock('../api/client', async (importOriginal) => {
     },
     textDocuments: {
       create: vi.fn(),
+      replaceContent: vi.fn(),
     },
   };
 });
@@ -838,6 +839,74 @@ describe('DriveView', () => {
     expect(clickedHref).toBe('http://localhost:3001/api/drive/files/file-doc-1?token=token-123');
     expect(clickedHref).not.toContain('/api/api');
     clickSpy.mockRestore();
+  });
+
+  it('displays .md files like documents, opens them in MarkdownDocumentViewer on click instead of downloading, and preserves download in the actions menu', async () => {
+    route.params = { folderId: 'folder-altay' };
+    vi.mocked(driveApi.getFolder).mockResolvedValue(mockSubfolder);
+    vi.mocked(driveApi.getFolderItems).mockResolvedValue({
+      items: [
+        {
+          kind: 'file',
+          id: 'file-md-1',
+          name: 'Маршрут Алтай.md',
+          mime: 'text/markdown',
+          sizeBytes: 1024,
+          sortDate: '2026-10-15T10:00:00Z',
+          updatedAt: '2026-10-15T10:00:00Z',
+          ownerId: 'user-1',
+          folderId: 'folder-altay',
+        },
+      ],
+      nextCursor: null,
+    });
+    vi.mocked(driveApi.getDownloadLink).mockResolvedValue({
+      url: '/api/drive/files/file-md-1?token=md-token-1',
+      expiresAt: '2026-10-16T12:00:00Z',
+    });
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response('# День 1\n\nПрилёт в Горно-Алтайск.', { status: 200 }),
+    );
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+
+    const wrapper = mountDriveView();
+    await flushPromises();
+
+    const mdCard = wrapper.get('[data-drive-item="file-md-1"]');
+    expect(mdCard.attributes('data-file-kind')).toBe('markdown');
+    expect(mdCard.find('.drive-card-doc-mock').exists()).toBe(true);
+    expect(mdCard.find('[data-resource-kind="text-document"]').exists()).toBe(true);
+
+    // Clicking the card opens the in-app Markdown viewer without downloading
+    await mdCard.trigger('click');
+    await flushPromises();
+
+    expect(clickSpy).not.toHaveBeenCalled();
+    expect(fetchSpy).toHaveBeenCalledWith('http://localhost:3001/api/drive/files/file-md-1?token=md-token-1', undefined);
+    const viewer = wrapper.get('[data-markdown-viewer]');
+    expect(viewer.get('[data-md-title]').text()).toBe('Маршрут Алтай');
+    expect(viewer.get('[data-md-content]').text()).toContain('Прилёт в Горно-Алтайск.');
+
+    // "Open as document" converts the Markdown into a text-document and navigates to /docs/:id
+    vi.mocked(textDocuments.create).mockResolvedValueOnce({ id: 'doc-from-md', title: 'Маршрут Алтай' });
+    vi.mocked(textDocuments.replaceContent).mockResolvedValueOnce({ id: 'doc-from-md' } as any);
+    await viewer.get('[data-md-open-as-doc]').trigger('click');
+    await flushPromises();
+    expect(textDocuments.create).toHaveBeenCalledWith({ title: 'Маршрут Алтай', folderId: 'folder-altay' });
+    expect(textDocuments.replaceContent).toHaveBeenCalledWith('doc-from-md', {
+      html: expect.stringContaining('День 1'),
+    });
+    expect(push).toHaveBeenCalledWith('/docs/doc-from-md');
+    expect(wrapper.find('[data-markdown-viewer]').exists()).toBe(false);
+
+    // Download via the card's ⋯ actions menu still triggers a browser download
+    await wrapper.get('[data-file-menu-btn="file-md-1"]').trigger('click');
+    await wrapper.get('[data-action="download"]').trigger('click');
+    await flushPromises();
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+
+    clickSpy.mockRestore();
+    fetchSpy.mockRestore();
   });
 
   it('file menu has accessible names, renames via promptDialog and PATCH, and trashes via confirmDialog and DELETE', async () => {

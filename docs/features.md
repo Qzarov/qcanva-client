@@ -81,6 +81,7 @@
 | Создание новой папки диска | в интерфейсе | `src/views/DriveView.vue` | `POST /api/resource-folders` |
 | Переименование файла на диске | в интерфейсе | `src/views/DriveView.vue` | `PATCH /api/drive/files/:id` |
 | Скачивание файла по временной подписанной ссылке | в интерфейсе | `src/views/DriveView.vue` | `POST /api/drive/files/:id/download-link` |
+| Просмотр и работа с `.md`-файлами как с документами (рендеринг Markdown, оглавление, просмотр/правка исходного текста, конвертация в текстовый документ, скачивание через меню действий и просмотрщик) в папках, на Диске, в Spaces и на Яндекс Диске | в интерфейсе | `src/components/MarkdownDocumentViewer.vue`, `src/documents/markdown-viewer.ts`, `src/components/dashboard/DashboardFolderFiles.vue`, `src/components/dashboard/DashboardSpace.vue`, `src/components/dashboard/DashboardYandexDisk.vue`, `src/views/DriveView.vue` | `POST /api/drive/files/:id/download-link`, `GET /api/yandex-disk/content`, `PUT /api/yandex-disk/files`, `POST /api/text-documents`, `PUT /api/text-documents/:id/content` |
 | Просмотр свойств файла (хеш SHA-256, тип, реплики хранения) | в интерфейсе | `src/components/DriveFileProperties.vue` | `GET /api/drive/files/:id/meta`, `GET /api/drive/devices` |
 | Перемещение файла в корзину | в интерфейсе | `src/views/DriveView.vue` | `DELETE /api/drive/files/:id` |
 | Просмотр удалённых файлов в корзине | в интерфейсе | `src/components/dashboard/DashboardTrash.vue` | `GET /api/drive/trash` |

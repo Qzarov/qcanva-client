@@ -7,14 +7,15 @@
     :key="file.id"
     :ref="(el) => watchVisible(el as Element | null, file)"
     class="canvas-card folder-file-card"
-    :class="{ 'has-preview': withPicture(file) }"
+    :class="{ 'has-preview': withPicture(file), 'is-markdown-doc': isMarkdown(file) }"
     role="button"
     tabindex="0"
     :data-folder-file="file.id"
+    :data-file-kind="isMarkdown(file) ? 'markdown' : undefined"
     :data-select-key="selectable ? 'drive-file:' + file.id : undefined"
     :data-selected="selectedKeys?.includes('drive-file:' + file.id) || undefined"
     v-file-info="infoOf(file)"
-    :aria-label="`${t('folderFileDownload')}: ${file.name}`"
+    :aria-label="`${isMarkdown(file) ? t('openDocument') : t('folderFileDownload')}: ${file.name}`"
     @click="open(file)"
     @keydown.enter.prevent="open(file)"
     @keydown.space.prevent="open(file)"
@@ -35,6 +36,7 @@
       <span class="folder-file-kind" aria-hidden="true">
         <Video v-if="isVideo(file)" :size="16" />
         <ImageIcon v-else-if="isImage(file)" :size="16" />
+        <ResourceIcon v-else-if="isMarkdown(file)" kind="text-document" :size="16" />
         <FileIcon v-else :size="16" />
       </span>
       <!-- A long name breaks before its extension, not inside a word. -->
@@ -59,6 +61,21 @@
       <FilePlaceholder v-else :name="file.name" :kind="isVideo(file) ? 'video' : isImage(file) ? 'picture' : 'file'" />
       <span v-if="isVideo(file) && previews[file.id]" class="folder-file-play" data-folder-file-play><Play :size="14" aria-hidden="true" /></span>
     </span>
+    <button
+      v-if="isMarkdown(file)"
+      type="button"
+      class="card-manage"
+      :title="t('groupActions')"
+      :aria-label="t('groupActions')"
+      :data-folder-file-menu="file.id"
+      @click.stop="toggleMenu(file.id)"
+    >⋯</button>
+    <Transition name="card-menu-pop">
+      <div v-if="menuId === file.id" class="card-menu" :data-folder-file-actions="file.id" @click.stop>
+        <button type="button" class="card-menu-item" data-action="open" @click.stop="openFromMenu(file)">{{ t('openDocument') }}</button>
+        <button type="button" class="card-menu-item" data-action="download" @click.stop="downloadFromMenu(file)">{{ t('download') }}</button>
+      </div>
+    </Transition>
   </article>
   <p v-if="failed" class="folder-files-note" role="alert" data-folder-files-error>{{ t('folderFilesLoadFailed') }}</p>
   <router-link
@@ -70,7 +87,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { Check, File as FileIcon, Image as ImageIcon, Play, Video } from '@lucide/vue';
 import {
   driveApi,
@@ -80,9 +97,10 @@ import {
   type DriveItem,
   type DriveThumbLink,
 } from '../../api/drive';
-import { isBrowserImage, isPictureFile, isVideoFile, hasCardPicture } from '../../dashboard/thumb-kinds';
+import { isBrowserImage, isMarkdownFile, isPictureFile, isVideoFile, hasCardPicture } from '../../dashboard/thumb-kinds';
 import { alertDialog } from '../../composables/appDialog';
 import { vFileInfo } from '../../directives/fileInfo';
+import ResourceIcon from '../ResourceIcon.vue';
 import FilePlaceholder from './FilePlaceholder.vue';
 import { fileInfo, formatFileDateTime, nameParts } from '../../dashboard/file-info';
 import { useI18n } from '../../composables/useI18n';
@@ -95,6 +113,8 @@ const props = defineProps<{
   query?: string;
   /** A type or tag filter is on: files have neither, so none of them match. */
   filteredOut?: boolean;
+  /** Only Markdown files pass (e.g. when the Documents filter is checked without Files). */
+  markdownOnly?: boolean;
   sortMode?: SortMode;
   /** Bumped by the dashboard after an upload into this folder: read the files again. */
   refreshKey?: number;
@@ -112,6 +132,8 @@ const emit = defineEmits<{
   previews: [previews: Readonly<Record<string, string>>];
   /** A picture or a video was clicked: the dashboard shows it full screen. */
   'open-image': [file: DriveItem];
+  /** A Markdown file was clicked: the dashboard opens it as a document. */
+  'open-markdown': [file: DriveItem];
 }>();
 const { t, locale } = useI18n();
 
@@ -125,11 +147,13 @@ const PREVIEW_CONCURRENCY = 4;
 const files = ref<DriveItem[]>([]);
 const hasMore = ref(false);
 const failed = ref(false);
+const menuId = ref<string | null>(null);
 
 // By type or by extension: a HEIC or a RAW often comes as application/octet-stream.
 const isImage = (file: DriveItem) => isPictureFile(file);
 const isVideo = (file: DriveItem) => isVideoFile(file);
 const isMedia = (file: DriveItem) => isImage(file) || isVideo(file);
+const isMarkdown = (file: DriveItem) => isMarkdownFile(file);
 /** A picture square: pictures, videos, PDFs, EPUBs and text files (the hub draws those too). */
 const withPicture = (file: DriveItem) => hasCardPicture(file);
 const infoOf = (file: DriveItem) => fileInfo({
@@ -143,8 +167,9 @@ const infoOf = (file: DriveItem) => fileInfo({
 
 const shown = computed(() => {
   if (props.filteredOut) return [];
+  const baseList = props.markdownOnly ? files.value.filter(isMarkdown) : files.value;
   const needle = (props.query || '').trim().toLocaleLowerCase();
-  const matching = needle ? files.value.filter((file) => file.name.toLocaleLowerCase().includes(needle)) : files.value;
+  const matching = needle ? baseList.filter((file) => file.name.toLocaleLowerCase().includes(needle)) : baseList;
   const sort = props.sortMode || 'updated-desc';
   return [...matching].sort((a, b) => {
     if (sort === 'title-asc' || sort === 'title-desc') {
@@ -329,8 +354,23 @@ function dropPreview(id: string) {
 
 watch(previews, (value) => emit('previews', { ...value }), { deep: true });
 
+function toggleMenu(id: string) {
+  menuId.value = menuId.value === id ? null : id;
+}
+
+const closeMenu = (event: MouseEvent) => {
+  if (!(event.target as HTMLElement | null)?.closest('.card-menu, .card-manage')) {
+    menuId.value = null;
+  }
+};
+
+onMounted(() => {
+  document.addEventListener('click', closeMenu);
+});
+
 onBeforeUnmount(() => {
   loadId += 1;
+  document.removeEventListener('click', closeMenu);
   if (batchTimer) clearTimeout(batchTimer);
   if (retryTimer) clearTimeout(retryTimer);
   observer?.disconnect();
@@ -340,10 +380,22 @@ onBeforeUnmount(() => {
 watch(() => props.folderId, (folderId) => { void load(folderId); }, { immediate: true });
 watch(() => props.refreshKey, () => { void load(props.folderId); });
 
-/** A picture or a video opens in the viewer; any other file downloads. */
+/** A picture or a video opens in the viewer; a Markdown file opens as a document; any other file downloads. */
 function open(file: DriveItem) {
+  menuId.value = null;
   if (isImage(file) || isVideo(file)) emit('open-image', file);
+  else if (isMarkdown(file)) emit('open-markdown', file);
   else void download(file);
+}
+
+function openFromMenu(file: DriveItem) {
+  menuId.value = null;
+  open(file);
+}
+
+function downloadFromMenu(file: DriveItem) {
+  menuId.value = null;
+  void download(file);
 }
 
 async function download(file: DriveItem) {

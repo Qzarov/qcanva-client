@@ -1,18 +1,19 @@
 <template>
   <div
     class="drive-card"
-    :class="`drive-card-${item.kind}`"
+    :class="[`drive-card-${item.kind}`, { 'drive-card-markdown': isMarkdownItem(item) }]"
     :data-drive-item="item.id"
     :data-item-kind="item.kind"
+    :data-file-kind="isMarkdownItem(item) ? 'markdown' : undefined"
     tabindex="0"
     role="button"
     @click="emit('open')"
     @keydown.enter="emit('open')"
   >
-    <div class="drive-card-preview" :class="`preview-${item.kind}`">
+    <div class="drive-card-preview" :class="isMarkdownItem(item) ? 'preview-text-document' : `preview-${item.kind}`">
       <Folder v-if="item.kind === 'folder'" :size="44" class="drive-folder-svg" aria-hidden="true" />
       <div v-else-if="item.kind === 'canvas'" class="drive-card-canvas-mock" aria-hidden="true"><div class="canvas-node n1"></div><div class="canvas-node n2"></div><div class="canvas-line"></div></div>
-      <div v-else-if="item.kind === 'text-document'" class="drive-card-doc-mock" aria-hidden="true"><div class="doc-line l-head"></div><div class="doc-line l1"></div><div class="doc-line l2"></div><div class="doc-line l3"></div></div>
+      <div v-else-if="item.kind === 'text-document' || isMarkdownItem(item)" class="drive-card-doc-mock" aria-hidden="true"><div class="doc-line l-head"></div><div class="doc-line l1"></div><div class="doc-line l2"></div><div class="doc-line l3"></div><span v-if="isMarkdownItem(item)" class="drive-ext-badge drive-ext-badge-doc">{{ getFileExtension(item.name) }}</span></div>
       <div v-else-if="item.kind === 'html-document'" class="drive-card-html-mock" aria-hidden="true"><Code :size="32" aria-hidden="true" /></div>
       <div v-else-if="item.kind === 'board' || item.kind === 'sheet'" class="drive-card-board-mock" aria-hidden="true"><div class="board-col"><div class="board-card"></div></div><div class="board-col"><div class="board-card"></div><div class="board-card"></div></div></div>
       <div v-else-if="isMediaItem(item)" class="drive-card-file-mock" aria-hidden="true"><Video v-if="isVideoItem(item)" :size="38" class="drive-media-icon" /><Image v-else :size="38" class="drive-media-icon" /></div>
@@ -24,7 +25,7 @@
         <Folder v-if="item.kind === 'folder'" :size="16" class="drive-folder-inline-icon" aria-hidden="true" />
         <Video v-else-if="isVideoItem(item)" :size="16" class="drive-file-inline-icon" aria-hidden="true" />
         <Image v-else-if="isImageItem(item)" :size="16" class="drive-file-inline-icon" aria-hidden="true" />
-        <ResourceIcon v-else-if="item.kind !== 'file'" :kind="item.kind" :size="16" aria-hidden="true" />
+        <ResourceIcon v-else-if="item.kind !== 'file' || isMarkdownItem(item)" :kind="isMarkdownItem(item) ? 'text-document' : item.kind" :size="16" aria-hidden="true" />
         <span v-else class="drive-ext-badge drive-ext-badge-sm">{{ getFileExtension(item.name) }}</span>
         <span class="drive-card-name" :title="item.name">{{ item.name }}</span>
         <DriveItemActionsMenu
@@ -56,6 +57,7 @@ import { Code, File, Folder, Image, Video } from '@lucide/vue';
 import ResourceIcon from './ResourceIcon.vue';
 import DriveItemActionsMenu from './DriveItemActionsMenu.vue';
 import { formatFileSize, getFileExtension, type DriveItem } from '../api/drive';
+import { isMarkdownFile } from '../dashboard/thumb-kinds';
 import { useI18n } from '../composables/useI18n';
 
 defineProps<{ item: DriveItem; menuActive: boolean; phoneActive: boolean; phonePathAvailable: boolean }>();
@@ -66,6 +68,7 @@ const isFileKind = (item: DriveItem) => item.kind === 'file' || item.kind === 'p
 const isImageItem = (item: DriveItem) => item.kind === 'photo' || (item.kind === 'file' && !!item.mime?.startsWith('image/'));
 const isVideoItem = (item: DriveItem) => item.kind === 'video' || (item.kind === 'file' && !!item.mime?.startsWith('video/'));
 const isMediaItem = (item: DriveItem) => isImageItem(item) || isVideoItem(item);
+const isMarkdownItem = (item: DriveItem) => item.kind === 'file' && !isMediaItem(item) && isMarkdownFile(item);
 const getKindLabel = (kind: DriveItem['kind']) => {
   const labels: Record<string, string> = { folder: t('driveFolder'), canvas: t('driveCanvas'), 'text-document': t('driveDocument'), 'html-document': 'HTML', board: t('driveBoard'), sheet: t('driveSheet'), file: t('driveFile'), photo: t('drivePhoto'), video: t('driveVideo') };
   return labels[kind] || t('driveFile');
@@ -93,6 +96,7 @@ const formatDate = (iso?: string | null) => {
 
 .drive-ext-badge-sm { font-size: 10px; padding: 1px 4px; }
 .drive-ext-badge-preview { margin-top: 6px; font-size: 12px; padding: 2px 8px; }
+.drive-ext-badge-doc { position: absolute; right: 12px; bottom: 10px; font-size: 10px; padding: 1px 5px; }
 .drive-file-inline-icon { color: var(--ui-accent-strong, #8cff8c); flex-shrink: 0; }
 .drive-media-icon { color: var(--ui-accent-strong, #8cff8c); opacity: 0.85; }
 

@@ -28,6 +28,7 @@ const locale = ref<UiLocale>(initialLocale());
  */
 export const messages = {
   ru: {
+    markdownOpenAsDoc: 'Открыть как документ', markdownOpenAsDocFailed: 'Не удалось создать документ', markdownEmpty: 'Документ пуст', markdownLoadFailed: 'Не удалось загрузить документ', markdownSaved: 'Документ сохранён', markdownSaveFailed: 'Не удалось сохранить документ', openDocument: 'Открыть документ',
     spaceAllTypes: 'Все типы', spaceTypes: 'Типы',
     spaceTypeBook: 'Книги', spaceFilterOwner: 'Владелец', spaceFilterAdvanced: 'Дополнительно', spaceFilterExtensions: 'Расширения файлов', spaceFilterExtensionsPlaceholder: 'pdf, mp4, h3m', spaceAllFolders: 'Все папки', spaceFeed: 'Лента',
     spaceFilterAddedBy: 'Добавил папку', spaceTypeCanva: 'Документы QCanva', spaceTypeDocument: 'Документы', spaceTypeImage: 'Фото', spaceTypeVideo: 'Видео', spaceTypeAudio: 'Аудио', spaceTypeOther: 'Другое',
@@ -882,6 +883,7 @@ export const messages = {
     adminStorageCapacitySaveFailed: 'Не удалось сохранить ёмкость',
   },
   en: {
+    markdownOpenAsDoc: 'Open as document', markdownOpenAsDocFailed: 'Could not create document', markdownEmpty: 'Document is empty', markdownLoadFailed: 'Could not load document', markdownSaved: 'Document saved', markdownSaveFailed: 'Could not save document', openDocument: 'Open document',
     spaceAllTypes: 'All kinds', spaceTypes: 'Kinds',
     spaceTypeBook: 'Books', spaceFilterOwner: 'Owner', spaceFilterAdvanced: 'More', spaceFilterExtensions: 'File extensions', spaceFilterExtensionsPlaceholder: 'pdf, mp4, h3m', spaceAllFolders: 'All folders', spaceFeed: 'Feed',
     spaceFilterAddedBy: 'Added the folder', spaceTypeCanva: 'QCanva documents', spaceTypeDocument: 'Documents', spaceTypeImage: 'Photos', spaceTypeVideo: 'Videos', spaceTypeAudio: 'Audio', spaceTypeOther: 'Other',
