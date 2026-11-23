@@ -514,6 +514,7 @@ import {
 } from '../documents/document-capacity';
 import { CAPACITY_OVERRIDE_META } from '../text-documents/capacity-guard';
 import { resolveSyncStatus, useCalmSaving } from '../composables/useCalmSyncStatus';
+import { useActivityJournal, useSyncActivity } from '../composables/useActivityJournal';
 import { canMoveCurrentTableLine, moveCurrentTableLine, type TableAxis } from '../text-documents/table-move';
 import { yUndoPluginKey } from 'y-prosemirror';
 import { TextSelection } from '@tiptap/pm/state';
@@ -730,16 +731,29 @@ export default defineComponent({
 
     const imageInput = ref<HTMLInputElement | null>(null);
     const uploadingImage = ref(false);
+    const activityJournal = useActivityJournal();
 
     const insertImages = async (files: File[]) => {
       if (!canEditContent.value || !files.length) return;
       uploadingImage.value = true;
       try {
         for (const file of files) {
-          // Upload first: a local blob URL would be meaningless to collaborators.
-          const { url } = await uploadImage(file);
-          if (!url) throw new Error(t('noImageUrlFromServer'));
-          editor.value?.chain().focus().setImage({ src: url, alt: file.name }).run();
+          const taskId = activityJournal.startTask({
+            kind: 'upload',
+            title: file.name || t('activityJournalImageUploadTitle'),
+            progress: null,
+            cancellable: false,
+          });
+          try {
+            // Upload first: a local blob URL would be meaningless to collaborators.
+            const { url } = await uploadImage(file);
+            if (!url) throw new Error(t('noImageUrlFromServer'));
+            activityJournal.completeTask(taskId);
+            editor.value?.chain().focus().setImage({ src: url, alt: file.name }).run();
+          } catch (uploadErr: any) {
+            activityJournal.failTask(taskId, uploadErr?.message || t('failedUploadImage'));
+            throw uploadErr;
+          }
         }
       } catch (err: any) {
         showToast(err?.message || t('failedUploadImage'), 'error');
@@ -1829,6 +1843,12 @@ export default defineComponent({
     watch(() => pendingUpdatesCount.value, (count) => tab.setUnsent(count > 0), { immediate: true });
 
     const savingVisible = useCalmSaving(() => pendingUpdatesCount.value > 0);
+    useSyncActivity({
+      groupKey: `sync:doc:${id}`,
+      title: () => title.value || t('activityJournalSyncDocTitle'),
+      status: () => syncStatus.value.kind,
+      detail: () => syncStatusTitle.value,
+    });
 
     function syncEditorEditable() {
       if (loading.value) return;

@@ -1,7 +1,9 @@
 import { computed, reactive, ref } from 'vue';
 import type { PluginListenerHandle } from '@capacitor/core';
 import { API_BASE, getAccessToken } from '../api/client';
-import type { MessageKey } from './useI18n';
+import { formatFileSize } from '../api/drive';
+import { useActivityJournal } from './useActivityJournal';
+import { useI18n, type MessageKey } from './useI18n';
 import {
   qspaceAgent,
   type AgentAvailability,
@@ -194,6 +196,41 @@ function scheduleStatus(delay = 400) {
   }, delay);
 }
 
+const PHONE_SYNC_GROUP_KEY = 'phone-node:sync';
+let phoneSyncTracked = false;
+
+function syncPhoneDownloadsToJournal() {
+  const journal = useActivityJournal();
+  const { t } = useI18n();
+  if (liveDownloads.size > 0) {
+    let doneBytes = 0;
+    let totalBytes = 0;
+    for (const item of liveDownloads.values()) {
+      doneBytes += item.doneBytes;
+      totalBytes += item.totalBytes;
+    }
+    const progress = totalBytes > 0 ? Math.round((doneBytes / totalBytes) * 100) : null;
+    phoneSyncTracked = true;
+    journal.upsertGroupTask(PHONE_SYNC_GROUP_KEY, {
+      kind: 'sync',
+      title: t('activityJournalPhoneSyncTitle'),
+      detail: totalBytes > 0 ? `${formatFileSize(doneBytes)} / ${formatFileSize(totalBytes)}` : undefined,
+      progress,
+      status: 'running',
+      cancellable: false,
+    });
+  } else if (phoneSyncTracked) {
+    phoneSyncTracked = false;
+    journal.upsertGroupTask(PHONE_SYNC_GROUP_KEY, {
+      kind: 'sync',
+      title: t('activityJournalPhoneSyncTitle'),
+      progress: 100,
+      status: 'done',
+      cancellable: false,
+    });
+  }
+}
+
 function onEvent(event: NodeEvent) {
   switch (event.type) {
     case 'state':
@@ -204,6 +241,9 @@ function onEvent(event: NodeEvent) {
       break;
     case 'cycleFinished':
       lastCycle.value = event.summary;
+      if (phoneSyncTracked && liveDownloads.size === 0) {
+        syncPhoneDownloadsToJournal();
+      }
       scheduleStatus(0);
       break;
     case 'paused':
@@ -226,13 +266,26 @@ function onEvent(event: NodeEvent) {
         doneBytes: event.doneBytes,
         totalBytes: event.totalBytes,
       });
+      syncPhoneDownloadsToJournal();
       break;
     case 'downloadFinished':
       liveDownloads.delete(event.hash);
+      syncPhoneDownloadsToJournal();
       scheduleStatus();
       break;
     case 'error':
       if (snapshot.value) snapshot.value = { ...snapshot.value, lastError: event.message };
+      if (phoneSyncTracked) {
+        phoneSyncTracked = false;
+        useActivityJournal().upsertGroupTask(PHONE_SYNC_GROUP_KEY, {
+          kind: 'sync',
+          title: useI18n().t('activityJournalPhoneSyncTitle'),
+          detail: event.message,
+          progress: null,
+          status: 'error',
+          cancellable: false,
+        });
+      }
       break;
   }
 }
@@ -300,13 +353,39 @@ async function enable(options: { root?: string; reconnect?: boolean } = {}): Pro
 async function disable(): Promise<void> {
   await qspaceAgent.stop();
   liveDownloads.clear();
+  phoneSyncTracked = false;
+  useActivityJournal().removeGroupTask(PHONE_SYNC_GROUP_KEY, { runningOnly: true });
   await refreshAvailability();
   await refreshStatus();
 }
 
 async function syncNow(): Promise<void> {
-  await qspaceAgent.syncNow();
-  scheduleStatus();
+  phoneSyncTracked = true;
+  useActivityJournal().upsertGroupTask(PHONE_SYNC_GROUP_KEY, {
+    kind: 'sync',
+    title: useI18n().t('activityJournalPhoneSyncTitle'),
+    progress: null,
+    status: 'running',
+    cancellable: false,
+  });
+  try {
+    await qspaceAgent.syncNow();
+    if (liveDownloads.size === 0) {
+      syncPhoneDownloadsToJournal();
+    }
+    scheduleStatus();
+  } catch (err) {
+    phoneSyncTracked = false;
+    useActivityJournal().upsertGroupTask(PHONE_SYNC_GROUP_KEY, {
+      kind: 'sync',
+      title: useI18n().t('activityJournalPhoneSyncTitle'),
+      detail: phoneErrorText(err, useI18n().t),
+      progress: null,
+      status: 'error',
+      cancellable: false,
+    });
+    throw err;
+  }
 }
 
 async function togglePause(): Promise<void> {
@@ -353,6 +432,8 @@ export function resetPhoneNodeState() {
   lastCycle.value = null;
   registeredHubUrl.value = readStoredPhoneHubUrl();
   liveDownloads.clear();
+  phoneSyncTracked = false;
+  useActivityJournal().removeGroupTask(PHONE_SYNC_GROUP_KEY);
   loading = null;
   listener = null;
   subscribers = 0;

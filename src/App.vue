@@ -15,6 +15,7 @@
   <router-view v-else v-slot="{ Component, route }">
     <component :is="Component" :key="viewKeyFor(route)" />
   </router-view>
+  <ActivityJournal />
   <ToastContainer />
   <AppDialogHost />
 </template>
@@ -23,6 +24,7 @@
 import { computed, defineComponent, provide, type Component } from 'vue';
 import { useRoute, type RouteLocationNormalizedLoaded } from 'vue-router';
 import { createTabContext, TAB_CONTEXT } from './tabs/tabContext';
+import ActivityJournal from './components/ActivityJournal.vue';
 import ToastContainer from './components/ToastContainer.vue';
 import AppDialogHost from './components/AppDialogHost.vue';
 import { viewKeyFor } from './router/view-remount';
@@ -47,7 +49,7 @@ const Passthrough: Component = {
 };
 
 export default defineComponent({
-  components: { ToastContainer, AppDialogHost },
+  components: { ActivityJournal, ToastContainer, AppDialogHost },
   setup() {
     const tabMode = tabsEnabled();
     if (tabMode) installScrollMemory();
