@@ -8,13 +8,15 @@ export type DashboardDownloadStatus = {
   failed: number;
 };
 
-export function useDashboardBulkDownload<TItem, TDrive, TYandex>(options: {
+export function useDashboardBulkDownload<TItem, TDrive, TYandex, TSpace = never>(options: {
   selectedItems: Ref<readonly TItem[]>;
   selectedDriveFiles: Ref<readonly TDrive[]>;
   selectedYandexFiles: Ref<readonly TYandex[]>;
+  selectedSpaceItems?: Ref<readonly TSpace[]>;
   archiveItem: (item: TItem, taken: Set<string>) => Promise<ArchiveFile>;
   archiveDriveFile: (file: TDrive, taken: Set<string>) => Promise<ArchiveFile>;
   archiveYandexFile: (file: TYandex, taken: Set<string>) => Promise<ArchiveFile>;
+  archiveSpaceItem?: (item: TSpace, taken: Set<string>) => Promise<ArchiveFile>;
   buildZip: (files: ArchiveFile[]) => Promise<Blob>;
   saveBlob: (blob: Blob, filename: string) => void;
   clearSelection: () => void;
@@ -26,9 +28,10 @@ export function useDashboardBulkDownload<TItem, TDrive, TYandex>(options: {
     const items = options.selectedItems.value;
     const driveFiles = options.selectedDriveFiles.value;
     const yandex = options.selectedYandexFiles.value;
-    if (!items.length && !driveFiles.length && !yandex.length) return;
+    const spaceItems = options.selectedSpaceItems?.value ?? [];
+    if (!items.length && !driveFiles.length && !yandex.length && !spaceItems.length) return;
     if (downloadStatusTimer) clearTimeout(downloadStatusTimer);
-    downloadStatus.value = { phase: 'collect', done: 0, total: items.length + driveFiles.length + yandex.length, failed: 0 };
+    downloadStatus.value = { phase: 'collect', done: 0, total: items.length + driveFiles.length + yandex.length + spaceItems.length, failed: 0 };
     const taken = new Set<string>();
     const files: ArchiveFile[] = [];
     const add = async (make: () => Promise<ArchiveFile>) => {
@@ -42,6 +45,9 @@ export function useDashboardBulkDownload<TItem, TDrive, TYandex>(options: {
     for (const item of items) await add(() => options.archiveItem(item, taken));
     for (const file of driveFiles) await add(() => options.archiveDriveFile(file, taken));
     for (const file of yandex) await add(() => options.archiveYandexFile(file, taken));
+    if (options.archiveSpaceItem) {
+      for (const item of spaceItems) await add(() => options.archiveSpaceItem!(item, taken));
+    }
     if (!files.length) {
       downloadStatus.value.phase = 'error';
     } else {

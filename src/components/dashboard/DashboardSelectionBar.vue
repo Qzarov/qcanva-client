@@ -9,7 +9,7 @@
     <button v-if="!allOnScreenSelected" type="button" class="dashboard-selection-icon" data-selection-select-all :aria-label="t('selectAll')" v-hint="t('selectAll')" @click="emit('select-all')">
       <CheckCheck :size="17" aria-hidden="true" />
     </button>
-    <button type="button" class="dashboard-selection-icon" data-selection-move :aria-label="t('bulkMove')" v-hint="t('bulkMove')" :disabled="isBusy" @click.stop="emit('move')">
+    <button v-if="canMove" type="button" class="dashboard-selection-icon" data-selection-move :aria-label="t('bulkMove')" v-hint="t('bulkMove')" :disabled="isBusy" @click.stop="emit('move')">
       <FolderInput :size="17" aria-hidden="true" />
     </button>
     <button type="button" class="dashboard-selection-icon" data-selection-download :aria-label="t('download')" v-hint="t('download')" :disabled="downloadBusy" @click="emit('download')">
@@ -26,14 +26,17 @@ import { CheckCheck, Download, FolderInput, Trash2, X } from '@lucide/vue';
 import { formatFileSize } from '../../api/drive';
 import { useI18n } from '../../composables/useI18n';
 
-defineProps<{
+withDefaults(defineProps<{
   selectedCount: number;
   selectedSize: number;
   allOnScreenSelected: boolean;
+  canMove?: boolean;
   bulkDeleteCount: number;
   isBusy: boolean;
   downloadBusy: boolean;
-}>();
+}>(), {
+  canMove: true,
+});
 
 const emit = defineEmits<{ clear: []; 'select-all': []; move: []; download: []; delete: [] }>();
 const { t } = useI18n();

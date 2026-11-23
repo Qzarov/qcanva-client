@@ -49,6 +49,9 @@
       @keydown.enter.prevent="saveFolderModal"
     />
     <div v-if="folderModalMoves" class="dashboard-modal-note">{{ t('chooseFolder') }}</div>
+    <div v-if="folderModalMoves && folderModal.bulkSkipped" class="dashboard-modal-note" data-bulk-move-skipped>
+      {{ t('bulkMoveSkipped').replace('{n}', String(folderModal.bulkSkipped)) }}
+    </div>
     <div v-if="folderModalMoves && folderOptions.length" class="folder-parent-list">
       <button
         v-for="folder in folderOptions"

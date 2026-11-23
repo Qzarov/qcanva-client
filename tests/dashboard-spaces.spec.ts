@@ -274,6 +274,15 @@ test('the home feed has Spaces right after Folders: a tile each, opening the spa
   await expect(page.locator('[data-space-title]')).toHaveText('Семья');
 });
 
+test('the home feed Spaces section shows Yandex Disk when enabled and opens it on click', async ({ page }) => {
+  await openDashboard(page, { yandex: true });
+  const yandexTile = page.locator('[data-recent-space-tile="yandex"]');
+  await expect(yandexTile).toContainText('Yandex Disk');
+  await expect(yandexTile.locator('[data-recent-yandex-account]')).toHaveText('Me');
+  await yandexTile.click();
+  await expect(page.locator('[data-yandex-title]')).toHaveText('Yandex Disk');
+});
+
 test('with no spaces the home feed offers "+ Add" under Spaces, which makes one', async ({ page }) => {
   const calls = await openDashboard(page, { spaces: false });
   await expect(page.locator('[data-recent-spaces]')).toHaveCount(0);

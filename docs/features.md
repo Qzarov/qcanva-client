@@ -1,4 +1,4 @@
-> Сверено с `q-space` @ c78a013, 2026-10-27.
+> Сверено с `q-space` @ 16e5ad1, 2026-11-22.
 
 # Функциональная карта веб-клиента QCanva (qcanva-client)
 
@@ -41,6 +41,7 @@
 | Переименование папки ресурсов | в интерфейсе | `src/views/DashboardView.vue` | `PUT /api/resource-folders/:id` |
 | Удаление папки ресурсов | в интерфейсе | `src/views/DashboardView.vue` | `DELETE /api/resource-folders/:id` |
 | Перемещение ресурса между папками (модальное окно и DnD) | в интерфейсе | `src/views/DashboardView.vue` | `PUT /api/resource-folders/:id/resources` |
+| Множественное выделение и групповые действия (перемещение, скачивание архивом, удаление) в Spaces с учётом ролей (`owner` / `editor` / `viewer`) и владения | в интерфейсе | `src/components/dashboard/DashboardSpace.vue`, `src/dashboard/space-selection.ts`, `src/views/DashboardView.vue` | `PUT /api/resource-folders/:id/resources`, `PATCH /api/drive/files/:id` |
 | Изменение порядка сортировки папок перетаскиванием | в интерфейсе | `src/views/DashboardView.vue` | `PUT /api/resource-folders/order` |
 | Приглашение пользователя к папке ресурсов | в интерфейсе | `src/views/DashboardView.vue` | `POST /api/resource-folders/:id/share` |
 | Отзыв доступа к папке ресурсов | в интерфейсе | `src/views/DashboardView.vue` | `DELETE /api/resource-folders/:id/share` |
@@ -58,8 +59,10 @@
 | Полнотекстовый поиск по названию, группе и тегам | в интерфейсе | `src/views/DashboardView.vue` | `—` |
 | Переключение отображения ресурсов (плитка / список) | в интерфейсе | `src/components/dashboard/DashboardViewToggle.vue` | `—` |
 | Импорт файлов `.canvas`, `.json`, `.html`, `.htm` | в интерфейсе | `src/views/DashboardView.vue` | `POST /api/canvas`, `POST /api/html-documents` |
+| Загрузка файлов перетаскиванием (Drag & Drop) на Home и внутри папок | в интерфейсе | `src/views/DashboardView.vue`, `src/composables/useDriveDropzone.ts` | `POST /api/drive/folders/:folderId/files` |
 | Жест Pull-to-refresh для обновления кэша дашборда | в интерфейсе | `src/views/DashboardView.vue` | `—` |
 | Рассмотрение входящих запросов доступа (одобрение / отказ) | в интерфейсе | `src/views/DashboardView.vue` | `GET /api/access-requests/incoming`, `PUT /api/access-requests/:id` |
+| Раздел «Пространства» (`Home/Spaces` и боковое меню): плитки и строки подключённого Яндекс Диска и общих пространств (без отдельного пункта Q Space) | в интерфейсе | `src/views/DashboardView.vue`, `src/components/dashboard/DashboardSidebarSpaces.vue`, `src/components/dashboard/DashboardSpace.vue`, `src/components/dashboard/DashboardYandexDisk.vue` | `GET /api/integrations/yandex`, `GET /api/yandex-disk/items`, `GET /api/spaces`, `POST /api/spaces` |
 
 ---
 

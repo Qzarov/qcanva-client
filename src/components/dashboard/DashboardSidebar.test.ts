@@ -12,6 +12,7 @@ vi.mock('vue-router', () => ({
 vi.mock('../../api/client', () => ({
   clearToken: vi.fn(),
   getCurrentUser: vi.fn(() => ({ id: 'user-1', email: 'admin@example.com', name: 'Admin' })),
+  isAuthenticated: vi.fn(() => true),
 }));
 
 const folders: DashboardFolderNavItem[] = [
@@ -368,5 +369,38 @@ describe('DashboardSidebar', () => {
     await wrapper.get('.dashboard-sidebar').trigger('keydown', { key: 'Tab' });
 
     expect(document.activeElement).toBe(close);
+  });
+
+  it('renders Spaces without a separate Q Space entry while keeping Yandex Disk and shared spaces', async () => {
+    const { useYandexDisk, resetYandexDiskStatus } = await import('../../composables/useYandexDisk');
+    const { useSpaces, resetSpaces } = await import('../../composables/useSpaces');
+    resetYandexDiskStatus();
+    resetSpaces();
+    useYandexDisk().status.value = {
+      enabled: true,
+      connected: true,
+      reconnectRequired: false,
+      login: 'ivan',
+      displayName: 'Ivan',
+      email: 'ivan@yandex.ru',
+      avatarUrl: null,
+    };
+    useSpaces().spaces.value = [
+      { id: 'space-1', name: 'Family', role: 'owner', ownerId: 'user-1', memberCount: 2, sourceCount: 1, updatedAt: '2026-11-07T10:00:00Z' },
+    ];
+    useSpaces().loaded.value = true;
+
+    const wrapper = mountSidebar({ spaces: true });
+
+    expect(wrapper.find('[data-sidebar-spaces]').exists()).toBe(true);
+    expect(wrapper.find('[data-space="q"]').exists()).toBe(false);
+    expect(wrapper.get('[data-space="yandex"]').text()).toContain('Yandex Disk');
+    expect(wrapper.get('[data-shared-space="space-1"]').text()).toContain('Family');
+
+    await wrapper.get('[data-space="yandex"]').trigger('click');
+    expect(wrapper.emitted('select')?.[0]).toEqual([{ kind: 'yandex', path: '/' }]);
+
+    resetYandexDiskStatus();
+    resetSpaces();
   });
 });
