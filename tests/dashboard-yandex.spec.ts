@@ -95,11 +95,10 @@ async function openDashboard(page: Page, state: { connected: boolean; reconnect?
 
 const yandexRow = (page: Page) => page.locator('[data-space="yandex"]');
 
-test('Spaces hold Q Space and Yandex Disk; connecting comes back to the Disk', async ({ page }) => {
+test('Spaces hold Yandex Disk without a separate Q Space row; connecting comes back to the Disk', async ({ page }) => {
   const calls = await openDashboard(page, { connected: false });
   await expect(page.locator('[data-sidebar-spaces]')).toContainText('Spaces');
-  await expect(page.locator('[data-space="q"]')).toContainText('Q Space');
-  // The old top-level "Drive" row moved into Spaces.
+  await expect(page.locator('[data-space="q"]')).toHaveCount(0);
   await expect(page.locator('[data-dashboard-section="drive"]')).toHaveCount(0);
 
   await yandexRow(page).click();

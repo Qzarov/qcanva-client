@@ -238,12 +238,27 @@
         </button>
       </div>
 
-      <!-- Shared spaces, after the folders and like them: a tile each, the
-           number of folders in it beside its last change. -->
+      <!-- Spaces, after the folders and like them: Yandex Disk (when enabled on
+           the hub) and each shared space as a tile. -->
       <div id="feed-spaces" class="dash-section-head dashboard-recent-folders-head dashboard-feed-anchor" data-feed-anchor="spaces">
         <h2>{{ t('spaces') }}</h2>
       </div>
-      <div v-if="spaceTiles.length" class="dash-grid subfolder-grid" data-recent-spaces>
+      <div v-if="showYandexSpaceTile || spaceTiles.length" class="dash-grid subfolder-grid" data-recent-spaces>
+        <button
+          v-if="showYandexSpaceTile"
+          key="recent-space-yandex"
+          type="button"
+          class="subfolder-card"
+          data-recent-space-tile="yandex"
+          data-recent-yandex-tile
+          @click="openYandexPath('/')"
+        >
+          <span class="subfolder-card-icon" aria-hidden="true"><Cloud :size="13" /></span>
+          <span class="subfolder-card-name">{{ t('yandexDisk') }}</span>
+          <span v-if="yandexRootCount !== null" class="subfolder-card-count" data-recent-yandex-count>{{ yandexRootCount || t('emptyFolder') }}</span>
+          <span v-else-if="!yandexStatus?.connected" class="subfolder-card-count" data-recent-yandex-status>{{ yandexStatus?.reconnectRequired ? t('yandexReconnect') : t('yandexConnect') }}</span>
+          <span v-if="yandexAccountLabel" class="subfolder-card-date" data-recent-yandex-account>{{ yandexAccountLabel }}</span>
+        </button>
         <button
           v-for="space in spaceTiles"
           :key="'recent-space-' + space.id"
@@ -669,7 +684,7 @@
 </template>
 
 <script lang="ts">
-import { ChevronDown, ChevronUp, Folder, Plus, UsersRound } from '@lucide/vue';
+import { ChevronDown, ChevronUp, Cloud, Folder, Plus, UsersRound } from '@lucide/vue';
 import { defineComponent, ref, onBeforeUnmount, onMounted, computed, nextTick, watch, type Ref } from 'vue';
 import { alertDialog, confirmDelete, confirmDialog, promptDialog } from '../composables/appDialog';
 import { selectAll, selectRange, selectionKey, toggleSelection } from '../dashboard/selection';
@@ -904,6 +919,7 @@ export default defineComponent({
     InteractiveTemplatePicker,
     ChevronDown,
     ChevronUp,
+    Cloud,
     Folder,
     Plus,
     UsersRound,
@@ -1817,8 +1833,25 @@ export default defineComponent({
     const feedItems = <T,>(items: T[], section: ExpandableFeedSection): T[] => (
       isHomeFeed.value && !isFeedSectionExpanded(section) ? items.slice(0, feedLimit(section)) : items
     );
-    /** The home feed's Spaces tiles: the user's spaces, narrowed by the search like the folders. */
+    /** The home feed's Spaces tiles: Yandex Disk (when enabled) and the user's shared spaces, narrowed by the search like the folders. */
     const { spaces: allSpaces } = useSpaces();
+    const { status: yandexStatus, load: loadYandexStatus, noteError: noteYandexError } = useYandexDisk();
+    const yandexAccountLabel = computed(() => {
+      if (!yandexStatus.value?.connected) return '';
+      return yandexStatus.value.displayName || yandexStatus.value.email || yandexStatus.value.login || '';
+    });
+    const showYandexSpaceTile = computed(() => {
+      if (!yandexStatus.value?.enabled) return false;
+      const needle = searchQuery.value.trim().toLocaleLowerCase();
+      if (!needle) return true;
+      const haystacks = [
+        t('yandexDisk'),
+        yandexAccountLabel.value,
+        yandexStatus.value.email ?? '',
+        yandexStatus.value.login ?? '',
+      ];
+      return haystacks.some((text) => text.toLocaleLowerCase().includes(needle));
+    });
     const spaceTiles = computed(() => {
       const needle = searchQuery.value.trim().toLocaleLowerCase();
       return needle ? allSpaces.value.filter((space) => space.name.toLocaleLowerCase().includes(needle)) : allSpaces.value;
@@ -1827,7 +1860,7 @@ export default defineComponent({
       if (!isHomeFeed.value) return [];
       const sections: FeedSection[] = ['recent'];
       if (recentFolderTiles.value.length) sections.push('folders');
-      if (spaceTiles.value.length) sections.push('spaces');
+      if (showYandexSpaceTile.value || spaceTiles.value.length) sections.push('spaces');
       sections.push('shared', 'interactive', 'public');
       return sections;
     });
@@ -3012,7 +3045,29 @@ export default defineComponent({
     const yandexPicker = ref<InstanceType<typeof YandexFolderPicker> | null>(null);
     const yandexPath = computed(() => (activeSection.value.kind === 'yandex' ? activeSection.value.path : null));
     const yandexMove = ref<{ sources: string[]; start: string } | null>(null);
-    const { load: loadYandexStatus } = useYandexDisk();
+    const yandexRootCount = ref<number | null>(null);
+    let yandexRootCountRun = 0;
+    const loadYandexRootCount = async () => {
+      const run = ++yandexRootCountRun;
+      if (!yandexStatus.value?.enabled || !yandexStatus.value.connected) {
+        yandexRootCount.value = null;
+        return;
+      }
+      try {
+        const listing = await yandexDisk.list('/', { limit: 1 });
+        if (run === yandexRootCountRun) {
+          yandexRootCount.value = typeof listing?.total === 'number' ? listing.total : null;
+        }
+      } catch (err) {
+        if (run === yandexRootCountRun) {
+          noteYandexError(err);
+          yandexRootCount.value = null;
+        }
+      }
+    };
+    watch(() => [yandexStatus.value?.enabled, yandexStatus.value?.connected, yandexRefreshKey.value] as const, () => {
+      void loadYandexRootCount();
+    }, { immediate: true });
     const openYandexPath = (path: string) => {
       selectDashboardSection({ kind: 'yandex', path });
     };
@@ -3053,7 +3108,12 @@ export default defineComponent({
     const spaceView = ref<InstanceType<typeof DashboardSpace> | null>(null);
     const spaceId = computed(() => (activeSection.value.kind === 'space' ? activeSection.value.spaceId : null));
     const { load: loadSpaces } = useSpaces();
-    onMounted(() => { if (isLoggedIn) void loadSpaces(); });
+    onMounted(() => {
+      if (isLoggedIn) {
+        void loadSpaces();
+        void loadYandexStatus();
+      }
+    });
     const createSpace = async () => {
       // Asked first: no typing a name for a plan that will refuse it.
       const allowed = await plansApi.mine().then((info) => info.plan?.canCreateSpaces !== false).catch(() => true);
@@ -4516,6 +4576,10 @@ export default defineComponent({
       hasActiveFilter,
       feedNavSections,
       spaceTiles,
+      yandexStatus,
+      yandexRootCount,
+      yandexAccountLabel,
+      showYandexSpaceTile,
       activeFeedSection,
       scrollToFeedSection,
       newItemFolderId,

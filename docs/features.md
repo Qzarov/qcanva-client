@@ -1,4 +1,4 @@
-> Сверено с `q-space` @ c78a013, 2026-10-27.
+> Сверено с `q-space` @ 16e5ad1, 2026-11-22.
 
 # Функциональная карта веб-клиента QCanva (qcanva-client)
 
@@ -62,6 +62,7 @@
 | Загрузка файлов перетаскиванием (Drag & Drop) на Home и внутри папок | в интерфейсе | `src/views/DashboardView.vue`, `src/composables/useDriveDropzone.ts` | `POST /api/drive/folders/:folderId/files` |
 | Жест Pull-to-refresh для обновления кэша дашборда | в интерфейсе | `src/views/DashboardView.vue` | `—` |
 | Рассмотрение входящих запросов доступа (одобрение / отказ) | в интерфейсе | `src/views/DashboardView.vue` | `GET /api/access-requests/incoming`, `PUT /api/access-requests/:id` |
+| Раздел «Пространства» (`Home/Spaces` и боковое меню): плитки и строки подключённого Яндекс Диска и общих пространств (без отдельного пункта Q Space) | в интерфейсе | `src/views/DashboardView.vue`, `src/components/dashboard/DashboardSidebarSpaces.vue`, `src/components/dashboard/DashboardSpace.vue`, `src/components/dashboard/DashboardYandexDisk.vue` | `GET /api/integrations/yandex`, `GET /api/yandex-disk/items`, `GET /api/spaces`, `POST /api/spaces` |
 
 ---
 
