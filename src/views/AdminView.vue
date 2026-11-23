@@ -161,6 +161,74 @@
         </div>
       </section>
 
+      <section v-if="mediaSupported" id="media" class="admin-card admin-media-section" data-admin-media-section>
+        <h2>{{ t('adminMediaTitle') }}</h2>
+        <div class="admin-storage-card">
+          <div class="admin-media-toggle-row">
+            <label class="admin-media-toggle-label" for="admin-media-fallback-toggle">
+              <input
+                id="admin-media-fallback-toggle"
+                v-model="mediaFallbackEnabled"
+                type="checkbox"
+                class="admin-media-checkbox"
+                data-admin-media-fallback-toggle
+                :disabled="mediaSaving"
+                @change="toggleMediaFallback"
+              />
+              <span>{{ t('adminMediaFallbackLabel') }}</span>
+            </label>
+            <span v-if="mediaSettings" class="admin-storage-muted" data-admin-media-fallback-source>
+              ({{ mediaEnabledSourceText }})
+            </span>
+          </div>
+          <div class="admin-storage-muted" data-admin-media-fallback-hint>
+            {{ t('adminMediaFallbackHint') }}
+          </div>
+
+          <div class="admin-storage-field admin-storage-capacity">
+            <label for="admin-media-grace-minutes" class="admin-storage-label">{{ t('adminMediaGraceLabel') }}</label>
+            <div class="admin-storage-controls">
+              <input
+                id="admin-media-grace-minutes"
+                v-model.number="mediaGraceMinutesInput"
+                type="number"
+                min="1"
+                max="10080"
+                step="1"
+                class="admin-storage-input"
+                data-admin-media-grace-input
+                placeholder="30"
+              />
+              <span class="admin-storage-muted">{{ t('adminMediaGraceUnitMin') }}</span>
+              <button
+                type="button"
+                class="btn-primary"
+                data-admin-media-grace-save
+                :disabled="mediaSaving"
+                @click="saveMediaGraceMinutes"
+              >
+                {{ t('save') }}
+              </button>
+              <button
+                type="button"
+                class="btn-ghost"
+                data-admin-media-grace-reset
+                :disabled="mediaSaving"
+                @click="resetMediaGraceMinutes"
+              >
+                {{ t('adminReset') }}
+              </button>
+            </div>
+            <div v-if="mediaSettings" class="admin-storage-effective" data-admin-media-grace-effective>
+              {{ t('adminCurrentValue') }} <strong>{{ mediaSettings.hubMediaFallbackGraceMinutes }} {{ t('adminMediaGraceUnitMin') }}</strong> ({{ mediaGraceSourceText }})
+            </div>
+            <div class="admin-storage-muted" data-admin-media-grace-hint>
+              {{ t('adminMediaGraceHint') }}
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section class="admin-card">
         <h2>{{ t('adminUsersTitle') }}</h2>
         <!-- Wider than a phone: the table scrolls sideways inside its card. -->
@@ -290,7 +358,7 @@ import { isSuperAdmin } from '../api/client';
 import { useToast } from '../composables/useToast';
 import AccountMenu from '../components/AccountMenu.vue';
 import { ArrowLeft } from '@lucide/vue';
-import { adminRequest, adminApi, type AdminSettings, type HiddenPublicResource } from '../api/admin';
+import { adminRequest, adminApi, type AdminMediaSettings, type AdminSettings, type HiddenPublicResource } from '../api/admin';
 import { useI18n } from '../composables/useI18n';
 import { plansApi, type PlanAssignment } from '../api/plans';
 import AdminPlansPanel from '../components/admin/AdminPlansPanel.vue';
@@ -332,6 +400,37 @@ export default defineComponent({
     const capacityInput = ref<number | null>(null);
     const capacityUnit = ref<'MB' | 'GB' | 'TB'>('GB');
     const CAPACITY_MULT = { MB: 1024 ** 2, GB: 1024 ** 3, TB: 1024 ** 4 } as const;
+
+    // Hub media fallback section state
+    const mediaSettings = ref<AdminMediaSettings | null>(null);
+    const mediaSupported = ref(true);
+    const mediaSaving = ref(false);
+    const mediaFallbackEnabled = ref(false);
+    const mediaGraceMinutesInput = ref<number | null>(30);
+
+    function syncMediaFromSettings(m: AdminMediaSettings) {
+      mediaSettings.value = m;
+      mediaFallbackEnabled.value = m.hubMediaFallbackEnabled;
+      mediaGraceMinutesInput.value = m.hubMediaFallbackGraceMinutes;
+    }
+
+    function formatMediaSource(source?: 'db' | 'env' | 'default'): string {
+      switch (source) {
+        case 'db':
+          return t('adminMediaSourceDb');
+        case 'env':
+          return t('adminMediaSourceEnv');
+        default:
+          return t('adminMediaSourceDefault');
+      }
+    }
+
+    const mediaEnabledSourceText = computed(() =>
+      formatMediaSource(mediaSettings.value?.hubMediaFallbackEnabledSource),
+    );
+    const mediaGraceSourceText = computed(() =>
+      formatMediaSource(mediaSettings.value?.hubMediaFallbackGraceMinutesSource),
+    );
 
     function formatStorageBytes(bytes: number): string {
       const units = ['driveUnitB', 'driveUnitKB', 'driveUnitMB', 'driveUnitGB', 'driveUnitTB'] as const;
@@ -484,6 +583,21 @@ export default defineComponent({
         }
       }
 
+      try {
+        const media = await adminApi.getMediaSettings();
+        if (media && typeof media.hubMediaFallbackEnabled === 'boolean') {
+          syncMediaFromSettings(media);
+        } else {
+          mediaSupported.value = false;
+        }
+      } catch (e: any) {
+        if (e.status === 404 || e.message?.includes('404')) {
+          mediaSupported.value = false;
+        } else {
+          showToast(e.message || t('adminMediaLoadFailed'), 'error');
+        }
+      }
+
       loading.value = false;
     };
 
@@ -556,6 +670,57 @@ export default defineComponent({
     };
 
     const resetCapacity = () => putCapacity(null, 'adminStorageCapacityResetDone');
+
+    const toggleMediaFallback = async () => {
+      const next = mediaFallbackEnabled.value;
+      mediaSaving.value = true;
+      try {
+        const updated = await adminApi.updateMediaSettings({ hubMediaFallbackEnabled: next });
+        syncMediaFromSettings(updated);
+        showToast(t('adminMediaFallbackSaved'), 'success');
+      } catch (e: any) {
+        mediaFallbackEnabled.value = mediaSettings.value?.hubMediaFallbackEnabled ?? !next;
+        showToast(e.message || t('adminMediaSaveFailed'), 'error');
+      } finally {
+        mediaSaving.value = false;
+      }
+    };
+
+    const saveMediaGraceMinutes = async () => {
+      const val = mediaGraceMinutesInput.value;
+      if (
+        typeof val !== 'number' ||
+        !Number.isInteger(val) ||
+        val < 1 ||
+        val > 10080
+      ) {
+        showToast(t('adminMediaGraceInvalid'), 'error');
+        return;
+      }
+      mediaSaving.value = true;
+      try {
+        const updated = await adminApi.updateMediaSettings({ hubMediaFallbackGraceMinutes: val });
+        syncMediaFromSettings(updated);
+        showToast(t('adminMediaFallbackSaved'), 'success');
+      } catch (e: any) {
+        showToast(e.message || t('adminMediaSaveFailed'), 'error');
+      } finally {
+        mediaSaving.value = false;
+      }
+    };
+
+    const resetMediaGraceMinutes = async () => {
+      mediaSaving.value = true;
+      try {
+        const updated = await adminApi.updateMediaSettings({ hubMediaFallbackGraceMinutes: null });
+        syncMediaFromSettings(updated);
+        showToast(t('adminMediaFallbackResetDone'), 'success');
+      } catch (e: any) {
+        showToast(e.message || t('adminMediaSaveFailed'), 'error');
+      } finally {
+        mediaSaving.value = false;
+      }
+    };
 
     const changeRole = async (userId: string, role: string) => {
       try {
@@ -670,6 +835,16 @@ export default defineComponent({
       sourceText,
       saveStorageLimit,
       resetStorageLimit,
+      mediaSettings,
+      mediaSupported,
+      mediaSaving,
+      mediaFallbackEnabled,
+      mediaGraceMinutesInput,
+      mediaEnabledSourceText,
+      mediaGraceSourceText,
+      toggleMediaFallback,
+      saveMediaGraceMinutes,
+      resetMediaGraceMinutes,
       changeRole,
       changeHistoryAccess,
       roleBadge,
@@ -857,6 +1032,28 @@ export default defineComponent({
 }
 .admin-storage-capacity .admin-storage-effective {
   margin-top: 0;
+}
+.admin-media-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.admin-media-toggle-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ui-text);
+  cursor: pointer;
+}
+.admin-media-checkbox {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--color-brands);
+  cursor: pointer;
 }
 .admin-tabs { display: inline-flex; justify-self: start; gap: 4px; padding: 3px; border: 1px solid var(--ui-glass-border); border-radius: 999px; background: var(--ui-glass-btn-bg); }
 .admin-tab { padding: 6px 14px; border: 0; border-radius: 999px; background: transparent; color: var(--ui-text-secondary); font: inherit; font-size: 14px; cursor: pointer; transition: background-color 0.15s ease, color 0.15s ease; }

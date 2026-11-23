@@ -438,4 +438,174 @@ describe('AdminView storage usage and capacity', () => {
     expect(wrapper.find('[data-admin-capacity-source]').text()).toContain('не задана');
     expect(wrapper.find<HTMLInputElement>('[data-admin-capacity-input]').element.value).toBe('');
   });
+
+  describe('hub media fallback settings', () => {
+    const defaultMedia = () => ({
+      hubMediaFallbackEnabled: false,
+      hubMediaFallbackEnabledSource: 'default' as 'db' | 'env' | 'default',
+      hubMediaFallbackGraceMinutes: 30,
+      hubMediaFallbackGraceMinutesDefault: 30,
+      hubMediaFallbackGraceMinutesSource: 'default' as 'db' | 'env' | 'default',
+    });
+
+    async function mountMedia(
+      initial: ReturnType<typeof defaultMedia> | 404 = defaultMedia(),
+      patchError = false,
+    ) {
+      let state = initial === 404 ? null : { ...initial };
+      const fetchMock = vi.fn((url: string, opts?: RequestInit) => {
+        if (url.includes('/admin/settings/media')) {
+          if (initial === 404) {
+            return Promise.resolve({
+              ok: false,
+              status: 404,
+              json: async () => ({ message: 'Not Found' }),
+            });
+          }
+          if (opts?.method === 'PATCH') {
+            if (patchError) {
+              return Promise.resolve({
+                ok: false,
+                status: 500,
+                json: async () => ({ message: 'Server error' }),
+              });
+            }
+            const body = JSON.parse(opts.body as string);
+            if ('hubMediaFallbackEnabled' in body && state) {
+              state = {
+                ...state,
+                hubMediaFallbackEnabled:
+                  body.hubMediaFallbackEnabled === null ? false : body.hubMediaFallbackEnabled,
+                hubMediaFallbackEnabledSource:
+                  body.hubMediaFallbackEnabled === null ? 'default' : 'db',
+              };
+            }
+            if ('hubMediaFallbackGraceMinutes' in body && state) {
+              state = {
+                ...state,
+                hubMediaFallbackGraceMinutes:
+                  body.hubMediaFallbackGraceMinutes === null
+                    ? state.hubMediaFallbackGraceMinutesDefault
+                    : body.hubMediaFallbackGraceMinutes,
+                hubMediaFallbackGraceMinutesSource:
+                  body.hubMediaFallbackGraceMinutes === null ? 'default' : 'db',
+              };
+            }
+            return Promise.resolve({ ok: true, status: 200, json: async () => ({ ...state }) });
+          }
+          return Promise.resolve({ ok: true, status: 200, json: async () => ({ ...state }) });
+        }
+        if (url.includes('/admin/settings')) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: async () => ({
+              driveMaxFileBytes: 2147483648,
+              driveMaxFileBytesDefault: 2147483648,
+              driveMaxFileBytesSource: 'default',
+            }),
+          });
+        }
+        return Promise.resolve({ ok: true, status: 200, json: async () => [] });
+      });
+      vi.stubGlobal('fetch', fetchMock);
+      const wrapper = mount(AdminView, {
+        global: {
+          stubs: {
+            RouterLink: { name: 'RouterLink', template: '<a><slot /></a>' },
+            AccountMenu: true,
+          },
+        },
+      });
+      await flushPromises();
+      return { wrapper, fetchMock };
+    }
+
+    it('renders toggle, CPU/RAM hint, and grace period in RU and EN', async () => {
+      useI18n().setLocale('ru');
+      const { wrapper } = await mountMedia();
+      expect(wrapper.find('[data-admin-media-section]').exists()).toBe(true);
+      expect(wrapper.find<HTMLInputElement>('[data-admin-media-fallback-toggle]').element.checked).toBe(false);
+      expect(wrapper.find('[data-admin-media-fallback-hint]').text()).toContain('CPU');
+      expect(wrapper.find('[data-admin-media-grace-effective]').text()).toContain('30 мин');
+
+      useI18n().setLocale('en');
+      await flushPromises();
+      expect(wrapper.find('[data-admin-media-fallback-hint]').text()).toContain('CPU and RAM');
+      expect(wrapper.find('[data-admin-media-grace-effective]').text()).toContain('30 min');
+      useI18n().setLocale('ru');
+    });
+
+    it('hides media fallback section when endpoint returns 404', async () => {
+      const { wrapper } = await mountMedia(404);
+      expect(wrapper.find('[data-admin-media-section]').exists()).toBe(false);
+    });
+
+    it('toggles hub media fallback via PATCH and updates source', async () => {
+      const { wrapper, fetchMock } = await mountMedia();
+      const checkbox = wrapper.find<HTMLInputElement>('[data-admin-media-fallback-toggle]');
+      await checkbox.setValue(true);
+      await flushPromises();
+
+      const patchCall = fetchMock.mock.calls.find(
+        (c: any[]) => String(c[0]).includes('/admin/settings/media') && c[1]?.method === 'PATCH',
+      );
+      expect(patchCall).toBeDefined();
+      expect(JSON.parse((patchCall![1] as RequestInit).body as string)).toEqual({
+        hubMediaFallbackEnabled: true,
+      });
+      expect(checkbox.element.checked).toBe(true);
+      expect(wrapper.find('[data-admin-media-fallback-source]').text()).toContain('задано здесь');
+    });
+
+    it('reverts toggle when PATCH fails', async () => {
+      const { wrapper } = await mountMedia(defaultMedia(), true);
+      const checkbox = wrapper.find<HTMLInputElement>('[data-admin-media-fallback-toggle]');
+      await checkbox.setValue(true);
+      await flushPromises();
+      expect(checkbox.element.checked).toBe(false);
+    });
+
+    it('validates, saves, and resets grace period minutes via PATCH', async () => {
+      const { wrapper, fetchMock } = await mountMedia();
+      const input = wrapper.find<HTMLInputElement>('[data-admin-media-grace-input]');
+
+      // Invalid values (0 and > 10080) do not send PATCH
+      await input.setValue(0);
+      await wrapper.find('[data-admin-media-grace-save]').trigger('click');
+      await flushPromises();
+      await input.setValue(20000);
+      await wrapper.find('[data-admin-media-grace-save]').trigger('click');
+      await flushPromises();
+      expect(
+        fetchMock.mock.calls.filter(
+          (c: any[]) => String(c[0]).includes('/admin/settings/media') && c[1]?.method === 'PATCH',
+        ),
+      ).toHaveLength(0);
+
+      // Valid value saves
+      await input.setValue(45);
+      await wrapper.find('[data-admin-media-grace-save]').trigger('click');
+      await flushPromises();
+      const patches = fetchMock.mock.calls.filter(
+        (c: any[]) => String(c[0]).includes('/admin/settings/media') && c[1]?.method === 'PATCH',
+      );
+      expect(patches).toHaveLength(1);
+      expect(JSON.parse((patches[0]![1] as RequestInit).body as string)).toEqual({
+        hubMediaFallbackGraceMinutes: 45,
+      });
+      expect(wrapper.find('[data-admin-media-grace-effective]').text()).toContain('45 мин');
+
+      // Reset sends null
+      await wrapper.find('[data-admin-media-grace-reset]').trigger('click');
+      await flushPromises();
+      const resetCall = fetchMock.mock.calls.filter(
+        (c: any[]) => String(c[0]).includes('/admin/settings/media') && c[1]?.method === 'PATCH',
+      )[1];
+      expect(JSON.parse((resetCall![1] as RequestInit).body as string)).toEqual({
+        hubMediaFallbackGraceMinutes: null,
+      });
+      expect(wrapper.find('[data-admin-media-grace-effective]').text()).toContain('30 мин');
+    });
+  });
 });

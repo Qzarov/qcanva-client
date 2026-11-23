@@ -1,4 +1,5 @@
 import { request } from './client';
+import type { HubBody, HubResponse } from './hub-types';
 
 export async function adminRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
   return request<T>(path, options);
@@ -40,6 +41,9 @@ export interface AdminSettings {
   storage?: AdminStorageUsage;
 }
 
+export type AdminMediaSettings = HubResponse<'/api/admin/settings/media', 'get'>;
+export type UpdateAdminMediaSettingsBody = Partial<HubBody<'/api/admin/settings/media', 'patch'>>;
+
 export const adminApi = {
   /** Out of the Public directory for everyone; the owner cannot list it again. The link still opens it. */
   hideFromPublic(type: PublicResourceType, id: string): Promise<void> {
@@ -63,6 +67,17 @@ export const adminApi = {
   updateSettings(body: { driveMaxFileBytes?: number | null; storageCapacityBytes?: number | null }): Promise<AdminSettings | { ok: boolean }> {
     return adminRequest<AdminSettings | { ok: boolean }>('/admin/settings', {
       method: 'PUT',
+      body: JSON.stringify(body),
+    });
+  },
+
+  getMediaSettings(): Promise<AdminMediaSettings> {
+    return adminRequest<AdminMediaSettings>('/admin/settings/media');
+  },
+
+  updateMediaSettings(body: UpdateAdminMediaSettingsBody): Promise<AdminMediaSettings> {
+    return adminRequest<AdminMediaSettings>('/admin/settings/media', {
+      method: 'PATCH',
       body: JSON.stringify(body),
     });
   },
