@@ -2,7 +2,7 @@
   <div class="landing">
     <header class="landing-header">
       <router-link to="/" class="landing-brand"><img class="brand-logo" src="/qcanva-logo.png" alt="QCanva" /><span>QCanva</span></router-link>
-      <nav class="landing-nav" aria-label="Навигация"><a href="#features">Возможности</a><a href="#use-cases">Сценарии</a><a href="#agents">Для агентов</a><a href="#templates">Примеры</a></nav>
+      <nav class="landing-nav" aria-label="Навигация"><a href="#features">Возможности</a><a href="#use-cases">Сценарии</a><a href="#agents">Для агентов</a><a href="#templates">Примеры</a><router-link to="/downloads" data-landing-downloads>Клиенты</router-link></nav>
       <div class="landing-actions">
         <ThemeMenu class="public-theme-control" />
         <router-link v-if="isLoggedIn" :to="{ name: 'dashboard' }" class="landing-register">Дашборд</router-link>
@@ -80,7 +80,7 @@
 
       <section class="landing-final"><span>НАЧНИТЕ СЕЙЧАС</span><h2>Ваше следующее<br>пространство ждёт.</h2><router-link :to="isLoggedIn ? { name: 'dashboard' } : '/register'" class="hero-primary">{{ isLoggedIn ? 'Открыть дашборд' : 'Создать бесплатно' }} <span>→</span></router-link></section>
     </main>
-    <footer class="landing-footer"><span>© {{ year }} QCanva</span><router-link :to="{ name: 'dashboard' }">Открыть дашборд</router-link></footer>
+    <footer class="landing-footer"><span>© {{ year }} QCanva</span><div class="landing-footer-links"><router-link to="/downloads">Клиенты</router-link><router-link :to="{ name: 'dashboard' }">Открыть дашборд</router-link></div></footer>
   </div>
 </template>
 
@@ -194,7 +194,7 @@ export default defineComponent({
 .landing-features article { padding:20px; border:1px solid var(--ui-border); border-radius:var(--radius-md); background:var(--ui-surface); }.section-intro { padding:20px 0; }.feature-icon { color:var(--ui-brand-on); background:var(--ui-brand); }.coral { background:var(--accent-yellow); }.mint { background:var(--accent-green); }.landing-features h3 { color:var(--ui-text); }.landing-features p { color:var(--ui-text-secondary); }
 .landing-features { grid-template-columns: repeat(4, 1fr); }.landing-features>.section-intro { grid-column: 1 / -1; display: flex; align-items: end; justify-content: space-between; gap: 32px; }.landing-features>.section-intro h2 { max-width: 650px; }
 .landing-workflow { background:var(--ui-surface); border-color:var(--ui-border); border-radius:var(--radius-lg); }.landing-workflow>div p, .landing-workflow li p { color:var(--ui-text-secondary); }.landing-workflow li { border-bottom-color:var(--ui-border); }.landing-workflow li>b { color:var(--ui-accent-strong); }.landing-workflow strong { color:var(--ui-text); }.text-cta { color:var(--ui-accent-strong); }
-.landing-final { background:linear-gradient(135deg, var(--ui-brand-soft), var(--ui-surface)); border:1px solid var(--ui-border); border-radius:var(--radius-xl); color:var(--ui-text); }.landing-final h2,.landing-final p,.landing-final a:not(.hero-primary) { color:var(--ui-text); }.landing-final .hero-primary,.landing-final .hero-primary span { background:var(--ui-brand); color:var(--ui-brand-on); }.landing-footer { color:var(--ui-text-secondary); }
+.landing-final { background:linear-gradient(135deg, var(--ui-brand-soft), var(--ui-surface)); border:1px solid var(--ui-border); border-radius:var(--radius-xl); color:var(--ui-text); }.landing-final h2,.landing-final p,.landing-final a:not(.hero-primary) { color:var(--ui-text); }.landing-final .hero-primary,.landing-final .hero-primary span { background:var(--ui-brand); color:var(--ui-brand-on); }.landing-footer { color:var(--ui-text-secondary); }.landing-footer-links { display:flex; align-items:center; gap:18px; }
 .landing-agents { max-width:1120px; margin:0 auto 105px; padding:56px 62px; display:grid; grid-template-columns:1fr 1fr; gap:74px; align-items:center; box-sizing:border-box; border-radius:var(--radius-lg); background:var(--ui-surface); border:1px solid var(--ui-border); }
 .agents-copy > span { color:var(--ui-focus); font-size:10px; font-weight:800; letter-spacing:.12em; }.agents-copy h2 { margin:14px 0; font-size:33px; letter-spacing:-.05em; line-height:1.12; }.agents-copy > p { max-width:470px; margin:0; color:var(--ui-text-secondary); font-size:13px; line-height:1.65; }
 .agents-points { display:grid; gap:11px; margin-top:24px; }.agents-points div { display:flex; gap:10px; align-items:center; color:var(--ui-text-secondary); font-size:12px; }.agents-points b { display:grid; place-items:center; width:20px; height:20px; border-radius:6px; color:var(--ui-brand-on); background:var(--accent-green); font-size:12px; }

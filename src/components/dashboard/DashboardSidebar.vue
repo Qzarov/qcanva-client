@@ -212,6 +212,17 @@
 
     <template #footer>
       <footer class="dashboard-sidebar-footer">
+      <router-link
+        to="/downloads"
+        class="btn-ghost dashboard-sidebar-item dashboard-sidebar-downloads"
+        :aria-label="t('downloadsNavLabel')"
+        :title="compactPresentation ? t('downloadsNavLabel') : undefined"
+        data-sidebar-downloads
+        @click="emit('close-mobile')"
+      >
+        <span class="dashboard-sidebar-icon" aria-hidden="true"><Download :size="18" /></span>
+        <span class="dashboard-sidebar-label">{{ t('downloadsNavLabel') }}</span>
+      </router-link>
       <div v-if="!compactPresentation" class="dashboard-sidebar-version">
         QCanva v{{ appVersion }} ·
         <a
@@ -244,7 +255,7 @@ import ResourceIcon from '../ResourceIcon.vue';
 import DashboardSidebarSpaces from './DashboardSidebarSpaces.vue';
 import SharedSidebarShell from '../SharedSidebarShell.vue';
 import type { YandexItem } from '../../api/yandexDisk';
-import { ChevronDown, File as FileIcon, Folder, FolderCog, Image as ImageIcon, Video, Globe2, House, PanelLeftClose, PanelLeftOpen, PanelsTopLeft, ShieldCheck, Trash2, Users, X } from '@lucide/vue';
+import { ChevronDown, Download, File as FileIcon, Folder, FolderCog, Image as ImageIcon, Video, Globe2, House, PanelLeftClose, PanelLeftOpen, PanelsTopLeft, ShieldCheck, Trash2, Users, X } from '@lucide/vue';
 import { computed, ref, watch, type CSSProperties, type Component } from 'vue';
 import { heightTransitionHooks } from '../../dashboard/motion';
 import AccountMenu from '../AccountMenu.vue';
