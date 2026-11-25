@@ -917,6 +917,7 @@ function onScrollerPointerDown(e: PointerEvent): void {
 
   const sc = scroller.value;
   if (!sc) return;
+  e.stopPropagation();
   const sx = e.clientX;
   const sy = e.clientY;
   const additive = e.shiftKey || e.ctrlKey || e.metaKey;

@@ -226,11 +226,30 @@ describe('DrivePhotos', () => {
     expect(w.get('[data-testid="feed-stub"]').attributes('data-period')).toBe('year');
   });
 
-  it('drives album feed when externalAlbumId is passed', async () => {
-    const w = mountIt({ externalAlbumId: 'alb1' });
+  it('drives album feed when externalAlbumId is passed, renders share pill with member count, and emits clear-album', async () => {
+    const w = mountIt({ externalAlbumId: 'alb1', externalAlbumMembersCount: 4 });
     await flushPromises();
     expect(w.get('[data-testid="feed-stub"]').attributes('data-album')).toBe('alb1');
     expect(w.get('[data-testid="gallery-album-crumb"]').text()).toContain('Алтай');
+    const sharePill = w.get('[data-testid="gallery-album-share"]');
+    expect(sharePill.text()).toContain('Поделиться · 4');
+    await sharePill.trigger('click');
+    expect(w.emitted('share-album')).toEqual([['alb1']]);
+
+    await w.get('[data-testid="gallery-album-crumb"]').trigger('click');
+    expect(w.emitted('clear-album')).toHaveLength(1);
+  });
+
+  it('exposes focusFile(fileId) to update panelId and focus matching tile', async () => {
+    const w = mountIt();
+    await flushPromises();
+    await w.get('[data-testid="info-toggle"]').trigger('click');
+    expect(w.get('[data-photo-panel]').attributes('data-panel-file')).toBe('f0');
+
+    (w.vm as unknown as { focusFile: (id: string) => void }).focusFile('f1');
+    await flushPromises();
+    expect(w.get('[data-photo-panel]').attributes('data-panel-file')).toBe('f1');
+    expect(document.activeElement).toBe(w.get('[data-file-id="f1"]').element);
   });
 
   it('search shows results and clears with single clear button', async () => {

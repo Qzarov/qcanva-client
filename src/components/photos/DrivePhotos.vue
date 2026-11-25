@@ -20,6 +20,21 @@
         </button>
 
         <button
+          v-if="effectiveAlbumId"
+          type="button"
+          class="dp-icon-pill dp-album-share-pill"
+          data-testid="gallery-album-share"
+          :aria-label="t('galleryShare')"
+          :title="t('galleryShare')"
+          @click="emit('share-album', effectiveAlbumId)"
+        >
+          <Share2 :size="14" aria-hidden="true" />
+          <span>
+            {{ t('galleryShare') }}<template v-if="typeof externalAlbumMembersCount === 'number' && externalAlbumMembersCount > 0"> · {{ externalAlbumMembersCount }}</template>
+          </span>
+        </button>
+
+        <button
           v-if="selectedPeople.length > 0"
           type="button"
           class="dp-crumb-pill"
@@ -451,12 +466,14 @@ import { usePhotosView } from './usePhotosView';
 const props = withDefaults(defineProps<{
   activeSection?: GallerySection;
   externalAlbumId?: string | null;
+  externalAlbumMembersCount?: number | null;
   externalFolderId?: string | null;
   hideInternalTabs?: boolean;
   people?: readonly GalleryPerson[];
 }>(), {
   activeSection: 'library',
   externalAlbumId: null,
+  externalAlbumMembersCount: null,
   externalFolderId: null,
   hideInternalTabs: false,
   people: undefined,
@@ -466,6 +483,7 @@ const emit = defineEmits<{
   (e: 'openFolder', folderId: string, fileId: string): void;
   (e: 'focus-photo', item: FeedItem): void;
   (e: 'share-album', id: string): void;
+  (e: 'clear-album'): void;
   (e: 'open-trash'): void;
 }>();
 
@@ -706,6 +724,7 @@ function clearAlbumFilter(): void {
   internalAlbumId.value = null;
   albumName.value = '';
   clearSelection();
+  emit('clear-album');
 }
 
 // ----- topbar controls: aspect, zoom, period -----
@@ -1129,6 +1148,16 @@ function focusTile(fileId: string): void {
   const safe = fileId.replace(/"/g, '');
   rootEl.value?.querySelector<HTMLElement>(`[data-file-id="${safe}"]`)?.focus();
 }
+
+function focusFile(fileId: string): void {
+  if (!fileId) return;
+  focusedId.value = fileId;
+  panelId.value = fileId;
+  focusTile(fileId);
+  void nextTick(() => focusTile(fileId));
+}
+
+defineExpose({ focusFile });
 
 function closePanel(restoreFocus = true): void {
   const id = panelId.value;

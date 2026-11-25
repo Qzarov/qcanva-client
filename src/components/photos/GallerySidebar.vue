@@ -76,10 +76,10 @@ const emit = defineEmits<{
   (e: 'select-folder', folderId: string): void;
   (e: 'select-yandex', path: string): void;
   (e: 'select-file', fileId: string, folderId: string | null): void;
-  (e: 'share-album', id: string): void;
+  (e: 'share-album', id: string, kind: 'photo-album' | 'space'): void;
   (e: 'open-trash'): void;
   (e: 'drop-favorites', fileIds: string[]): void;
-  (e: 'drop-album', albumId: string, fileIds: string[]): void;
+  (e: 'drop-album', albumId: string, fileIds: string[], kind: 'photo-album' | 'space'): void;
   (e: 'drop-folder', folderId: string, fileIds: string[]): void;
 }>();
 
@@ -334,10 +334,10 @@ function onAlbumDragLeave(albumId: string): void {
   if (isDropActive('album', albumId)) dnd.setGroupDropTarget(null);
 }
 
-function onAlbumDrop(e: DragEvent, albumId: string): void {
+function onAlbumDrop(e: DragEvent, albumId: string, kind: 'photo-album' | 'space'): void {
   const ids = extractDroppedFileIds(e);
   dnd.endGroupDrag();
-  if (ids.length > 0) emit('drop-album', albumId, ids);
+  if (ids.length > 0) emit('drop-album', albumId, ids, kind);
 }
 
 function onFolderDragOver(folderId: string): void {
@@ -508,7 +508,7 @@ onBeforeUnmount(() => {
         @dragenter.prevent="onAlbumDragOver(alb.id)"
         @dragover.prevent="onAlbumDragOver(alb.id)"
         @dragleave="onAlbumDragLeave(alb.id)"
-        @drop.prevent="onAlbumDrop($event, alb.id)"
+        @drop.prevent="onAlbumDrop($event, alb.id, 'photo-album')"
       >
         <button
           type="button"
@@ -531,7 +531,7 @@ onBeforeUnmount(() => {
           :data-share-album="alb.id"
           :aria-label="t('galleryShare')"
           :title="t('galleryShare')"
-          @click.stop="emit('share-album', alb.id)"
+          @click.stop="emit('share-album', alb.id, 'photo-album')"
         >
           <Share2 :size="13" aria-hidden="true" />
         </button>
@@ -550,7 +550,7 @@ onBeforeUnmount(() => {
         @dragenter.prevent="onAlbumDragOver(sp.id)"
         @dragover.prevent="onAlbumDragOver(sp.id)"
         @dragleave="onAlbumDragLeave(sp.id)"
-        @drop.prevent="onAlbumDrop($event, sp.id)"
+        @drop.prevent="onAlbumDrop($event, sp.id, 'space')"
       >
         <button
           type="button"
@@ -572,7 +572,7 @@ onBeforeUnmount(() => {
           :data-share-space="sp.id"
           :aria-label="t('galleryShare')"
           :title="t('galleryShare')"
-          @click.stop="emit('share-album', sp.id)"
+          @click.stop="emit('share-album', sp.id, 'space')"
         >
           <Share2 :size="13" aria-hidden="true" />
         </button>

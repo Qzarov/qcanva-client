@@ -7,9 +7,10 @@
     :key="file.id"
     :ref="(el) => watchVisible(el as Element | null, file)"
     class="canvas-card folder-file-card"
-    :class="{ 'has-preview': withPicture(file), 'is-markdown-doc': isMarkdown(file) }"
+    :class="{ 'has-preview': withPicture(file), 'is-markdown-doc': isMarkdown(file), 'is-dragging-group': Boolean(dnd.activeDrag.value?.keys.includes('drive-file:' + file.id)) }"
     role="button"
     tabindex="0"
+    :draggable="selectable || undefined"
     :data-folder-file="file.id"
     :data-file-kind="isMarkdown(file) ? 'markdown' : undefined"
     :data-select-key="selectable ? 'drive-file:' + file.id : undefined"
@@ -19,6 +20,9 @@
     @click="open(file)"
     @keydown.enter.prevent="open(file)"
     @keydown.space.prevent="open(file)"
+    @dragstart="onFileDragStart($event, file)"
+    @drag="onFileDragMove"
+    @dragend="onFileDragEnd"
   >
     <div class="card-title card-title-with-icon">
       <!-- Ticked like any other item of the dashboard (the dashboard handles the click). -->
@@ -104,6 +108,7 @@ import ResourceIcon from '../ResourceIcon.vue';
 import FilePlaceholder from './FilePlaceholder.vue';
 import { fileInfo, formatFileDateTime, nameParts } from '../../dashboard/file-info';
 import { useActivityJournal } from '../../composables/useActivityJournal';
+import { useExplorerGroupDnd, type GroupDragEntry } from '../../composables/useExplorerGroupDnd';
 import { useI18n } from '../../composables/useI18n';
 
 type SortMode = 'updated-desc' | 'updated-asc' | 'title-asc' | 'title-desc';
@@ -138,6 +143,7 @@ const emit = defineEmits<{
 }>();
 const { t, locale } = useI18n();
 const journal = useActivityJournal();
+const dnd = useExplorerGroupDnd();
 const mediaGroupKey = () => `media:thumbs:${props.folderId}`;
 let mediaPendingTotal = 0;
 let mediaTrackingActive = false;
@@ -461,5 +467,56 @@ async function download(file: DriveItem) {
       message: error instanceof Error && error.message ? error.message : t('driveDownloadLinkFailed'),
     });
   }
+}
+
+function parseSelectedKeyEntry(key: string): GroupDragEntry {
+  const sep = key.indexOf(':');
+  if (sep > 0) {
+    return {
+      key,
+      id: key.slice(sep + 1),
+      kind: key.slice(0, sep),
+    };
+  }
+  return { key, id: key, kind: 'drive-file' };
+}
+
+function onFileDragStart(event: DragEvent, file: DriveItem): void {
+  if (!props.selectable) return;
+  const key = 'drive-file:' + file.id;
+  const selfEntry: GroupDragEntry = {
+    key,
+    id: file.id,
+    kind: 'drive-file',
+    name: file.name,
+    folderId: file.folderId ?? file.parentId ?? props.folderId,
+  };
+  const items: GroupDragEntry[] = props.selectedKeys?.includes(key) && props.selectedKeys.length > 1
+    ? props.selectedKeys.map((k) => {
+        if (k === key) return selfEntry;
+        const known = shown.value.find((candidate) => 'drive-file:' + candidate.id === k);
+        if (known) {
+          return {
+            key: k,
+            id: known.id,
+            kind: 'drive-file',
+            name: known.name,
+            folderId: known.folderId ?? known.parentId ?? props.folderId,
+          };
+        }
+        return parseSelectedKeyEntry(k);
+      })
+    : [selfEntry];
+  dnd.startGroupDrag({ source: 'explorer', items }, event);
+}
+
+function onFileDragMove(event: DragEvent): void {
+  if (event.clientX || event.clientY) {
+    dnd.updateGroupDragPosition(event.clientX, event.clientY);
+  }
+}
+
+function onFileDragEnd(): void {
+  dnd.endGroupDrag();
 }
 </script>

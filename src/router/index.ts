@@ -31,6 +31,11 @@ const router = createRouter({
       name: 'drive',
       component: () => import('../views/DriveView.vue'),
       meta: { requiresAuth: true },
+      beforeEnter: (to) => {
+        if (to.query.view === 'photos') {
+          return { name: 'dashboard', query: { activity: 'gallery' } };
+        }
+      },
     },
     {
       // The trash is in the dashboard now.

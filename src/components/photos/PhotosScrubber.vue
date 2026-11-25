@@ -274,9 +274,12 @@ onBeforeUnmount(() => {
 }
 .scrub-now {
   position: absolute;
-  right: 0;
-  left: 6px;
-  height: 2px;
+  right: 2px;
+  left: auto;
+  width: 3px;
+  height: 18px;
+  border-radius: 999px;
+  transform: translateY(-50%);
   background: var(--ui-brand);
   box-shadow: 0 0 10px color-mix(in srgb, var(--ui-brand) 60%, transparent);
   pointer-events: none;
@@ -303,5 +306,10 @@ onBeforeUnmount(() => {
   white-space: nowrap;
   pointer-events: none;
   z-index: 5;
+}
+:global(:root[data-theme='light']) .scrub-hover {
+  background: rgba(255, 255, 255, 0.92);
+  border-color: rgba(20, 91, 37, 0.22);
+  color: var(--ui-text);
 }
 </style>

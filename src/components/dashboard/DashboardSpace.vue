@@ -39,6 +39,7 @@
         />
 
         <DashboardViewToggle
+          v-if="!hideViewToggle"
           class="folder-view-toggle"
           variant="album"
           :mode="albumView"
@@ -310,6 +311,8 @@ const props = defineProps<{
   selectedKeys?: readonly string[];
   /** Optional subfolder/source ID chosen in the left Explorer tree. */
   sourceFilterId?: string | null;
+  /** Hide internal view toggle when ExplorerHeadroomBar owns it. */
+  hideViewToggle?: boolean;
 }>();
 
 const emit = defineEmits<{

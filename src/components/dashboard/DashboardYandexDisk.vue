@@ -30,7 +30,7 @@
         </span>
       </div>
       <template v-if="connected">
-        <DashboardViewToggle class="folder-view-toggle" :mode="viewMode" @update:mode="emit('update:viewMode', $event)" />
+        <DashboardViewToggle v-if="!hideViewToggle" class="folder-view-toggle" :mode="viewMode" @update:mode="emit('update:viewMode', $event)" />
         <div class="folder-manager-menu folder-create-menu">
           <button
             class="folder-manager-trigger folder-create-trigger"
@@ -243,6 +243,7 @@ const props = defineProps<{
   viewMode: ViewMode;
   refreshKey?: number;
   selectedKeys?: readonly string[];
+  hideViewToggle?: boolean;
 }>();
 const emit = defineEmits<{
   navigate: [path: string];

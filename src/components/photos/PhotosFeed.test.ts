@@ -701,4 +701,32 @@ describe('PhotosFeed', () => {
     expect(await api.loadMore()).toBe(false);
     w.unmount();
   });
+
+  it('stops pointerdown propagation on .pf-scroller when starting marquee selection', async () => {
+    twoMonths();
+    const Feed = await load();
+    const parent = document.createElement('div');
+    document.body.appendChild(parent);
+    const parentPointerDown = vi.fn();
+    parent.addEventListener('pointerdown', parentPointerDown);
+
+    const w = mount(Feed, {
+      props: {
+        params: params(),
+        captionOnTile: [],
+        tile: 'm',
+        selected: new Set<string>(),
+        current: null,
+      },
+      attachTo: parent,
+    });
+    await settle();
+
+    const sc = w.get('.pf-scroller').element as HTMLElement;
+    sc.dispatchEvent(new MouseEvent('pointerdown', { button: 0, bubbles: true, cancelable: true }));
+    window.dispatchEvent(new MouseEvent('pointerup'));
+    expect(parentPointerDown).not.toHaveBeenCalled();
+
+    w.unmount();
+  });
 });

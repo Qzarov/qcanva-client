@@ -200,46 +200,42 @@ describe('dashboard sidebar navigation', () => {
     expect(wrapper.get('[data-activity-bar] [data-activity-brand]').text()).toBe('Q');
   });
 
-  it('starts on the feed with Q Space home expanded, and the sidebar never swaps the feed for a page', async () => {
+  it('starts on the feed with Q Space home expanded, and clicking shared opens the dedicated Q Space/shared view', async () => {
     const wrapper = mountDashboard();
     await flushPromises();
 
     expect(wrapper.get('[data-dashboard-view="recent"]').isVisible()).toBe(true);
     expect(wrapper.get('[data-home-disclosure]').attributes('aria-expanded')).toBe('true');
+    // An empty section on Home offers just "+ Add" in its grid, no caption saying it is empty.
+    expect(wrapper.get('[data-feed-empty="shared"]').text()).toBe('Add');
+    expect(wrapper.get('[data-feed-section="shared"]').text()).not.toContain('Nothing has been shared with you yet.');
 
-    // Nothing is shared with this user: Shared is still a feed section.
+    // Clicking Q Space -> shared in the unified tree opens the dedicated shared explorer view.
     await wrapper.get('[data-dashboard-section="shared"]').trigger('click');
     await flushPromises();
 
-    expect(wrapper.find('[data-dashboard-view="shared"]').exists()).toBe(false);
-    expect(wrapper.get('[data-dashboard-view="recent"]').isVisible()).toBe(true);
-    // An empty section offers just "+ Add" in its grid, no caption saying it is empty.
-    expect(wrapper.get('[data-feed-empty="shared"]').text()).toBe('Add');
-    expect(wrapper.get('[data-feed-section="shared"]').text()).not.toContain('Nothing has been shared with you yet.');
+    expect(wrapper.find('[data-dashboard-view="shared"]').exists()).toBe(true);
+    expect(wrapper.find('[data-dashboard-view="recent"]').exists()).toBe(false);
+    expect(wrapper.get('[data-dashboard-section="shared"]').classes()).toContain('active');
   });
 
-  it('scrolls the home feed to a sidebar section that has content, instead of opening a page', async () => {
+  it('opens Q Space/shared directly from the unified tree when shared has content', async () => {
     vi.mocked(canvas.list).mockResolvedValueOnce({
       own: [],
       shared: [{ id: 'shared-1', title: 'From a teammate', tags: [], ownerId: 'someone-else' }],
       public: [],
       welcome: null,
     } as never);
-    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(() => {});
-    // In the document: the feed finds its section by id.
     const wrapper = mountDashboard({ attachTo: document.body });
     await flushPromises();
 
     await wrapper.get('[data-dashboard-section="shared"]').trigger('click');
     await flushPromises();
 
-    // Still the one feed, scrolled to its Shared section.
-    expect(wrapper.find('[data-dashboard-view="recent"]').exists()).toBe(true);
-    expect(wrapper.find('[data-dashboard-view="shared"]').exists()).toBe(false);
-    expect(scrollIntoView.mock.contexts.some((el) => (el as Element).id === 'feed-shared')).toBe(true);
-    // The sidebar marks the section on screen, not Home.
+    expect(wrapper.find('[data-dashboard-view="shared"]').exists()).toBe(true);
+    expect(wrapper.find('[data-dashboard-view="recent"]').exists()).toBe(false);
+    expect(wrapper.get('[data-dashboard-view="shared"]').text()).toContain('From a teammate');
     expect(wrapper.get('[data-dashboard-section="shared"]').classes()).toContain('active');
-    scrollIntoView.mockRestore();
     wrapper.unmount();
   });
 
@@ -270,13 +266,13 @@ describe('dashboard sidebar navigation', () => {
     await flushPromises();
 
     expect(wrapper.get('[data-recent-layout]').classes()).toContain('dashboard-recents-grid');
-    expect(wrapper.get('[data-view-mode="grid"]').attributes('aria-pressed')).toBe('true');
+    expect(wrapper.get('[data-headroom-bar] [data-view-toggle="grid"]').attributes('aria-pressed')).toBe('true');
     expect(wrapper.get('.dashboard-recent-card').text()).toContain('MVP board');
 
-    await wrapper.get('[data-view-mode="list"]').trigger('click');
+    await wrapper.get('[data-headroom-bar] [data-view-toggle="table"]').trigger('click');
 
     expect(wrapper.find('[data-explorer-table]').exists()).toBe(true);
-    expect(wrapper.get('[data-view-mode="list"]').attributes('aria-pressed')).toBe('true');
+    expect(wrapper.get('[data-headroom-bar] [data-view-toggle="table"]').attributes('aria-pressed')).toBe('true');
     expect(localStorage.getItem('qcanva:dashboard-recents-view:v1')).toBe('list');
     expect(localStorage.getItem('qspace:viewMode')).toBe('table');
 
@@ -290,7 +286,7 @@ describe('dashboard sidebar navigation', () => {
     const wrapper = mountDashboard();
     await flushPromises();
 
-    expect(wrapper.get('[data-view-mode="list"]').attributes('aria-pressed')).toBe('true');
+    expect(wrapper.get('[data-headroom-bar] [data-view-toggle="table"]').attributes('aria-pressed')).toBe('true');
     expect((wrapper.vm as any).recentViewMode).toBe('list');
   });
 
@@ -355,7 +351,7 @@ describe('dashboard sidebar navigation', () => {
     await wrapper.get('[data-dashboard-folder="folder-b"]').trigger('click');
     expect((wrapper.vm as any).activeSection).toEqual({ kind: 'folder', folderId: 'folder-b' });
 
-    await wrapper.get('[data-folder-back-button]').trigger('click');
+    await wrapper.get('[data-headroom-bar] [data-nav-back]').trigger('click');
 
     expect((wrapper.vm as any).activeSection).toEqual({ kind: 'recent' });
   });
@@ -546,15 +542,15 @@ describe('dashboard sidebar navigation', () => {
     // «⋯» — только управление папкой: пункты создания переехали в «+».
     expect(wrapper.find('[data-folder-create]').exists()).toBe(false);
 
-    // «+» папки — окно «Добавить», эта папка уже выбрана (без выпадающего списка «Куда»).
-    await wrapper.get('[data-folder-create-menu]').trigger('click');
+    // «+» FAB папки — окно «Добавить», эта папка уже выбрана (без выпадающего списка «Куда»).
+    await wrapper.get('[data-explorer-fab]').trigger('click');
     await nextTick();
     expect(wrapper.find('[data-add-folder]').exists()).toBe(false);
     expect(wrapper.get('[data-add-target-folder]').text()).toContain('Target');
     await createNamed(wrapper, 'text-document', 'Notes');
     expect(wrapper.find('[data-add-dialog]').exists()).toBe(false);
     expect(textDocuments.create).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Notes', folderId: 'folder-b' }));
-    await wrapper.get('[data-folder-create-menu]').trigger('click');
+    await wrapper.get('[data-explorer-fab]').trigger('click');
     await nextTick();
     await createNamed(wrapper, 'canvas', 'Board');
     expect(canvas.create).toHaveBeenLastCalledWith('Board', undefined, 'folder-b');
@@ -781,7 +777,7 @@ describe('dashboard sidebar navigation', () => {
     vm.selectFolder('folder-b');
     await nextTick();
 
-    await wrapper.get('[data-folder-create-menu]').trigger('click');
+    await wrapper.get('[data-explorer-fab]').trigger('click');
     await nextTick();
     await wrapper.get('[data-add-create="interactive-template"]').trigger('click');
     await nextTick();
@@ -854,17 +850,23 @@ describe('dashboard sidebar navigation', () => {
       vm.resetFilters();
       apply();
       await nextTick();
-      for (const section of ['shared', 'interactive', 'public'] as const) {
-        scrollIntoView.mockClear();
-        await vm.onSidebarSelect({ kind: section });
-        await flushPromises();
-        expect(vm.activeSection).toEqual({ kind: 'recent' });
-        expect(scrollIntoView.mock.contexts.some((el) => (el as Element).id === `feed-${section}`)).toBe(true);
-      }
+      // Feed-only sections (interactive) scroll within Home; shared/public open their dedicated Q Space explorer sections.
+      scrollIntoView.mockClear();
+      await vm.onSidebarSelect({ kind: 'interactive' });
+      await flushPromises();
+      expect(vm.activeSection).toEqual({ kind: 'recent' });
+      expect(scrollIntoView.mock.contexts.some((el) => (el as Element).id === 'feed-interactive')).toBe(true);
       for (const button of wrapper.findAll('[data-feed-show-all]')) {
         await button.trigger('click');
         expect(vm.activeSection).toEqual({ kind: 'recent' });
       }
+      for (const explorerSection of ['shared', 'public'] as const) {
+        await vm.onSidebarSelect({ kind: explorerSection });
+        await flushPromises();
+        expect(vm.activeSection).toEqual({ kind: explorerSection });
+      }
+      await vm.onSidebarSelect({ kind: 'recent' });
+      await flushPromises();
     }
     vm.resetFilters();
     vi.mocked(textDocuments.list).mockResolvedValue({ documents: [] } as never);
@@ -976,17 +978,18 @@ describe('dashboard sidebar navigation', () => {
     expect(shell().classes()).not.toContain('dashboard-list-view');
     expect(wrapper.find('[data-section="shared"]').exists()).toBe(true);
 
-    await wrapper.get('[data-view-mode="list"]').trigger('click');
+    await wrapper.get('[data-headroom-bar] [data-view-toggle="table"]').trigger('click');
     expect(shell().classes()).toContain('dashboard-list-view');
 
-    // A folder follows the same choice, and has the switch in its heading.
+    // A folder follows the same choice via the single Headroom view toggle (no duplicate toggle in folder heading).
     await wrapper.get('[data-recent-folder-tile="folder-b"]').trigger('click');
     expect(shell().classes()).toContain('dashboard-list-view');
-    const folderToggle = wrapper.get('[data-dashboard-view="folder"] .folder-view-toggle');
-    expect(folderToggle.get('[data-view-mode="list"]').attributes('aria-pressed')).toBe('true');
-    await folderToggle.get('[data-view-mode="grid"]').trigger('click');
+    expect(wrapper.find('[data-dashboard-view="folder"] .folder-view-toggle').exists()).toBe(false);
+    expect(wrapper.get('[data-headroom-bar] [data-view-toggle="table"]').attributes('aria-pressed')).toBe('true');
+    await wrapper.get('[data-headroom-bar] [data-view-toggle="grid"]').trigger('click');
     expect(shell().classes()).not.toContain('dashboard-list-view');
     expect(localStorage.getItem('qcanva:dashboard-recents-view:v1')).toBe('grid');
+    expect(localStorage.getItem('qspace:viewMode')).toBe('grid');
   });
 
   it('adds my own public resources to Public even when the server list (latest 100) left them out', async () => {
@@ -1955,7 +1958,7 @@ describe('DashboardView groups', () => {
       expect(vm.selectedFolderId).toBe('folder-c');
     });
 
-    it('shows the open subfolder name and counts right next to the arrow', async () => {
+    it('shows the open subfolder name and counts cleanly without duplicating the Headroom back arrow', async () => {
       withNestedFolders();
       const wrapper = mountDashboard();
       await flushPromises();
@@ -1966,18 +1969,15 @@ describe('DashboardView groups', () => {
 
       const header = wrapper.find('.folder-manager-main');
       expect(header.exists()).toBe(true);
-      // One arrow only, then the title block, so the folder info reads as
-      // belonging to the arrow rather than drifting to the far edge.
-      const children = Array.from(header.element.children).map((node) => node.className);
-      expect(children[0]).toContain('folder-back-button');
-      expect(children[1]).toContain('folder-manager-title');
+      expect(header.find('.folder-back-button').exists()).toBe(false);
+      expect(wrapper.find('[data-headroom-bar] [data-nav-back]').exists()).toBe(true);
 
       const title = wrapper.find('.folder-manager-title');
       expect(title.find('.folder-manager-name').text()).toBe('Archive');
       expect(title.find('.folder-manager-count').exists()).toBe(true);
     });
 
-    it('has exactly one back arrow: to the parent folder when nested, to Recent at the root', async () => {
+    it('has exactly one back arrow in the Headroom bar: to the parent folder when nested, to Recent at the root', async () => {
       withNestedFolders();
       const wrapper = mountDashboard();
       await flushPromises();
@@ -1985,15 +1985,17 @@ describe('DashboardView groups', () => {
 
       vm.selectFolder('folder-b');
       await nextTick();
-      expect(wrapper.findAll('.folder-back-button')).toHaveLength(1);
-      await wrapper.get('.folder-back-button').trigger('click');
+      expect(wrapper.findAll('.folder-back-button')).toHaveLength(0);
+      expect(wrapper.findAll('[data-headroom-bar] [data-nav-back]')).toHaveLength(1);
+      await wrapper.get('[data-headroom-bar] [data-nav-back]').trigger('click');
       await nextTick();
       expect(vm.activeSection).toEqual({ kind: 'recent' });
 
       vm.selectFolder('folder-c');
       await nextTick();
-      expect(wrapper.findAll('.folder-back-button')).toHaveLength(1);
-      await wrapper.get('.folder-back-button').trigger('click');
+      expect(wrapper.findAll('.folder-back-button')).toHaveLength(0);
+      expect(wrapper.findAll('[data-headroom-bar] [data-nav-back]')).toHaveLength(1);
+      await wrapper.get('[data-headroom-bar] [data-nav-back]').trigger('click');
       await nextTick();
       expect(vm.selectedFolderId).toBe('folder-b');
     });

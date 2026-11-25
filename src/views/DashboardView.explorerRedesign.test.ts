@@ -12,10 +12,11 @@ import { resetYandexDiskStatus, useYandexDisk } from '../composables/useYandexDi
 import DashboardView from './DashboardView.vue';
 
 const push = vi.fn();
+const replace = vi.fn();
 const dashboardRoute = { query: {} as Record<string, unknown> };
 
 vi.mock('vue-router', () => ({
-  useRouter: () => ({ push }),
+  useRouter: () => ({ push, replace, currentRoute: { value: dashboardRoute } }),
   useRoute: () => dashboardRoute,
 }));
 
@@ -134,7 +135,11 @@ function mountDashboard() {
     global: {
       stubs: {
         RouterLink: { props: ['to'], template: '<a :href="typeof to === \'string\' ? to : \'\'"><slot /></a>' },
-        DrivePhotos: { template: '<div data-drive-photos-stub>Gallery</div>' },
+        DrivePhotos: {
+          props: ['externalAlbumId', 'externalAlbumMembersCount'],
+          emits: ['clear-album', 'share-album'],
+          template: '<div data-drive-photos-stub :data-album="externalAlbumId ?? \'\'"><button type="button" data-stub-clear-album @click="$emit(\'clear-album\')">Clear</button>Gallery</div>',
+        },
         DashboardTrash: { template: '<div data-dashboard-view="trash">Trash</div>' },
         DashboardYandexDisk: { template: '<div data-dashboard-view="yandex">Yandex</div>' },
       },
@@ -372,5 +377,74 @@ describe('DashboardView T-021 + T-018 Explorer Redesign Integration', () => {
       { key: 'canvas:c1', isFolder: false, sizeBytes: null },
       { key: 'drive-file:df1', isFolder: false, sizeBytes: 2048 },
     ]);
+  });
+
+  it('opens Q Space/shared and Q Space/public directly from the tree, updates path and lastExplorerRoute, and keeps zero duplicate view toggles', async () => {
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    // Home has only the single Headroom view toggle (no legacy DashboardViewToggle duplicates)
+    expect(wrapper.findAll('[data-view-mode]')).toHaveLength(0);
+    expect(wrapper.findAll('[data-explorer-view-toggle]')).toHaveLength(1);
+
+    await wrapper.get('[data-dashboard-section="shared"]').trigger('click');
+    await flushPromises();
+    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'shared' });
+    await wrapper.get('[data-path-fill]').trigger('click');
+    expect((wrapper.get('[data-path-input]').element as HTMLInputElement).value).toBe('Q Space/shared');
+    await wrapper.get('[data-path-input]').trigger('keydown', { key: 'Escape' });
+    expect(useExplorerLayoutPrefs().lastExplorerRoute.value).toEqual({ kind: 'shared' });
+
+    await wrapper.get('[data-dashboard-section="public"]').trigger('click');
+    await flushPromises();
+    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'public' });
+    await wrapper.get('[data-path-fill]').trigger('click');
+    expect((wrapper.get('[data-path-input]').element as HTMLInputElement).value).toBe('Q Space/public');
+    expect(useExplorerLayoutPrefs().lastExplorerRoute.value).toEqual({ kind: 'public' });
+
+    // Open folder -> still zero duplicate view toggles or folder header back/+ controls
+    await wrapper.get('[data-dashboard-folder="folder-home"]').trigger('click');
+    await nextTick();
+    expect(wrapper.findAll('[data-view-mode]')).toHaveLength(0);
+    expect(wrapper.findAll('.folder-back-button')).toHaveLength(0);
+    expect(wrapper.findAll('[data-folder-create-menu]')).toHaveLength(0);
+    expect(wrapper.findAll('[data-explorer-view-toggle]')).toHaveLength(1);
+  });
+
+  it('selects folder:* and resource rows in ExplorerTableView without capture-click interference', async () => {
+    useExplorerLayoutPrefs().setViewMode('table');
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    await wrapper.get('[data-dashboard-folder="folder-home"]').trigger('click');
+    await nextTick();
+
+    const folderRow = wrapper.get('[data-row-key="folder:folder-child"]');
+    const canvasRow = wrapper.get('[data-row-key="canvas:c1"]');
+
+    await folderRow.trigger('click');
+    await nextTick();
+    expect((wrapper.vm as any).selectedKeys).toEqual(['folder:folder-child']);
+
+    await canvasRow.trigger('click', { shiftKey: true });
+    await nextTick();
+    expect((wrapper.vm as any).selectedKeys).toEqual(['folder:folder-child', 'canvas:c1']);
+  });
+
+  it('honors ?activity=gallery query param and clears galleryAlbumId on DrivePhotos clear-album', async () => {
+    dashboardRoute.query = { activity: 'gallery' };
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'gallery' });
+    expect(wrapper.find('[data-drive-photos-stub]').exists()).toBe(true);
+
+    (wrapper.vm as any).galleryAlbumId = 'alb-1';
+    await nextTick();
+    expect(wrapper.get('[data-drive-photos-stub]').attributes('data-album')).toBe('alb-1');
+
+    await wrapper.get('[data-stub-clear-album]').trigger('click');
+    await nextTick();
+    expect((wrapper.vm as any).galleryAlbumId).toBeNull();
   });
 });

@@ -1297,9 +1297,16 @@ function onRowDragLeave(event: DragEvent, row: TreeRow) {
 function onRowDrop(event: DragEvent, row: TreeRow) {
   dnd.cancelSpringExpand();
   const payload = dnd.readGroupDragFromEvent(event);
+  const isSingleFolderReorder = Boolean(
+    Array.from(event.dataTransfer?.types ?? []).includes('application/x-qcanva-folder')
+    || (payload && payload.source === 'tree' && payload.items.length === 1 && payload.items[0]?.kind === 'folder'),
+  );
   if (row.kind === 'folder' && row.folderId) {
-    emit('folder-drop', event, row.folderId);
-    if (payload) emit('drop-group-to-folder', { folderId: row.folderId, drag: payload });
+    if (payload && !isSingleFolderReorder) {
+      emit('drop-group-to-folder', { folderId: row.folderId, drag: payload });
+    } else {
+      emit('folder-drop', event, row.folderId);
+    }
   } else if (row.kind === 'album' && row.albumId && payload) {
     emit('drop-group-to-album', { albumId: row.albumId, drag: payload });
   }

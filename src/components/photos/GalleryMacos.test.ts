@@ -182,11 +182,13 @@ describe('macOS Photos Gallery (T-021)', () => {
     await wrapper.get('[data-gallery-section="trash"]').trigger('click');
     expect(wrapper.emitted('open-trash')).toHaveLength(1);
 
-    // Mini cover for album & share button on space
+    // Mini cover for album & share button on space and photo album
     const albImg = wrapper.get('[data-gallery-album="alb-1"] .gs-cover img');
     expect(albImg.attributes('src')).toBe('blob:hash-cov-1');
     await wrapper.get('[data-share-space="sp-1"]').trigger('click');
-    expect(wrapper.emitted('share-album')![0]).toEqual(['sp-1']);
+    expect(wrapper.emitted('share-album')![0]).toEqual(['sp-1', 'space']);
+    await wrapper.get('[data-share-album="alb-1"]').trigger('click');
+    expect(wrapper.emitted('share-album')![1]).toEqual(['alb-1', 'photo-album']);
 
     // Auto-highlight of fold-a & ancestor fold-root expanded while fold-b-sub is collapsed
     expect(wrapper.get('[data-gallery-folder="fold-a"]').classes()).toContain('is-highlighted');
@@ -222,7 +224,14 @@ describe('macOS Photos Gallery (T-021)', () => {
       items: [{ key: 'photo:f3', id: 'f3', kind: 'photo' }],
     });
     await wrapper.get('[data-gallery-album="alb-1"]').trigger('drop');
-    expect(wrapper.emitted('drop-album')![0]).toEqual(['alb-1', ['f3']]);
+    expect(wrapper.emitted('drop-album')![0]).toEqual(['alb-1', ['f3'], 'photo-album']);
+
+    dnd.startGroupDrag({
+      source: 'gallery',
+      items: [{ key: 'photo:f5', id: 'f5', kind: 'photo' }],
+    });
+    await wrapper.get('[data-gallery-space="sp-1"]').trigger('drop');
+    expect(wrapper.emitted('drop-album')![1]).toEqual(['sp-1', ['f5'], 'space']);
 
     dnd.startGroupDrag({
       source: 'gallery',

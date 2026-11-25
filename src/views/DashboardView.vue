@@ -64,6 +64,7 @@
             @select-album="onGallerySelectAlbum"
             @select-space="onGallerySelectSpace"
             @select-folder="onGallerySelectFolder"
+            @select-file="onGallerySelectFile"
             @select-yandex="openYandexPath"
             @share-album="openAlbumShareById"
             @open-trash="selectDashboardSection({ kind: 'trash' })"
@@ -178,7 +179,7 @@
       class="app-main dashboard"
       :class="{ 'app-main-gallery': isLoggedIn && activeSection.kind === 'gallery' }"
       @scroll.passive="onDashboardMainScroll"
-      @pointerdown="startMarquee"
+      @pointerdown="onDashboardMainPointerDown"
       @touchstart.passive="onDashboardPullStart"
       @touchmove="onDashboardPullMove"
       @touchend="onDashboardPullEnd"
@@ -257,9 +258,6 @@
 
       <div class="dash-section-head dashboard-recent-head">
         <h2>{{ t('recents') }}</h2>
-        <div class="dashboard-recent-head-controls">
-          <DashboardViewToggle :mode="recentViewMode" @update:mode="setRecentViewMode" />
-        </div>
       </div>
       <p v-if="recentRefreshFailed && visibleRecent.length" class="dashboard-recents-stale" role="status" data-recent-stale>
         {{ t('recentStale') }}
@@ -439,6 +437,7 @@
                 :recent-view-mode="recentViewMode"
                 :is-busy="isBusy"
                 :menu-open="openControlMenu === 'folder:' + activeFolder.id"
+                :hide-chrome-controls="true"
                 @back="goToParentFolder"
                 @update:view-mode="setRecentViewMode"
                 @add="openAddDialog({ folderId: activeFolder.id })"
@@ -474,6 +473,7 @@
                 <div class="dash-grid" v-show="explorerViewMode !== 'table'">
                   <DashboardFolderResourceGrid
                     :items="activeFolder.items"
+                    :selected-keys="selectedKeys"
                     :is-logged-in="isLoggedIn"
                     :is-busy="isBusy"
                     :dragging-resource-id="draggingResourceId"
@@ -532,6 +532,7 @@
           :query="searchQuery"
           :sort-mode="sortMode"
           :view-mode="recentViewMode"
+          :hide-view-toggle="true"
           :refresh-key="yandexRefreshKey"
           :selected-keys="selectedKeys"
           @navigate="openYandexPath"
@@ -556,6 +557,7 @@
           ref="spaceView"
           :space-id="spaceId"
           :view-mode="recentViewMode"
+          :hide-view-toggle="true"
           :query="searchQuery"
           :me-id="currentUser?.id || ''"
           :folder-options="folderOptions"
@@ -587,12 +589,15 @@
         data-dashboard-view="gallery"
       >
         <DrivePhotos
+          ref="galleryViewRef"
           :active-section="gallerySection"
           :external-album-id="galleryAlbumId"
+          :external-album-members-count="galleryAlbumMembersCount"
           :external-folder-id="galleryFolderId"
           :hide-internal-tabs="true"
           @focus-photo="onGalleryFocusPhoto"
-          @share-album="openAlbumShareById"
+          @clear-album="onGalleryClearAlbum"
+          @share-album="(id) => openAlbumShareById(id, 'photo-album')"
           @open-trash="selectDashboardSection({ kind: 'trash' })"
           @open-folder="(folderId) => selectFolder(folderId)"
         />
@@ -608,7 +613,16 @@
         data-section="shared"
       >
         <div class="dash-section-head"><h2>{{ t('sharedWithMe') }}</h2></div>
-        <div class="dash-grid" data-feed-grid="shared">
+        <ExplorerTableView
+          v-if="sharedFiltered.length && explorerViewMode === 'table'"
+          :rows="sharedTableRows"
+          :selected-keys="selectedKeys"
+          :hide-albums="true"
+          @update:selected-keys="selectedKeys = $event"
+          @open="openExplorerTableRow"
+          @contextmenu="onTableRowContextMenu"
+        />
+        <div v-else class="dash-grid" data-feed-grid="shared">
           <DashboardFeedResourceGrid
             :items="feedItems(sharedFiltered, 'shared')"
             scope="shared"
@@ -660,7 +674,16 @@
         data-section="interactive-templates"
       >
         <div class="dash-section-head"><h2>{{ t('interactiveTemplate') }}</h2></div>
-        <div class="dash-grid" data-feed-grid="interactive">
+        <ExplorerTableView
+          v-if="visibleInteractiveTemplateItems.length && explorerViewMode === 'table'"
+          :rows="interactiveTableRows"
+          :selected-keys="selectedKeys"
+          :hide-albums="true"
+          @update:selected-keys="selectedKeys = $event"
+          @open="openExplorerTableRow"
+          @contextmenu="onTableRowContextMenu"
+        />
+        <div v-else class="dash-grid" data-feed-grid="interactive">
           <DashboardInteractiveFeedGrid
             :items="feedItems(visibleInteractiveTemplateItems, 'interactive')"
             :is-logged-in="isLoggedIn"
@@ -727,7 +750,16 @@
             </div>
           </div>
         </div>
-        <div class="dash-grid" data-feed-grid="public">
+        <ExplorerTableView
+          v-if="publicFiltered.length && explorerViewMode === 'table'"
+          :rows="publicTableRows"
+          :selected-keys="selectedKeys"
+          :hide-albums="true"
+          @update:selected-keys="selectedKeys = $event"
+          @open="openExplorerTableRow"
+          @contextmenu="onTableRowContextMenu"
+        />
+        <div v-else class="dash-grid" data-feed-grid="public">
           <DashboardFeedResourceGrid
             :items="feedItems(publicFiltered, 'public')"
             scope="public"
@@ -3184,20 +3216,32 @@ export default defineComponent({
     // Another section, another folder: the selection was of what is gone.
     watch(activeSection, (next) => {
       clearSelection();
+      layoutPrefs.setHeadroomHidden(false);
+      headroomElevated.value = false;
       if (next.kind !== 'space') {
         spaceFeedItems.value = [];
         activeSpace.value = null;
       }
     });
     // After a reload, whatever no longer exists drops out.
-    watch([itemsBySelectionKey, driveFilesByKey, yandexFilesByKey, spaceItemsByKey], ([items, files, yandex, spaceItems]) => {
-      const known = (key: string) => items.has(key) || files.has(key) || yandex.has(key) || spaceItems.has(key);
+    watch([itemsBySelectionKey, driveFilesByKey, yandexFilesByKey, spaceItemsByKey, allFolderSummaries], ([items, files, yandex, spaceItems, folders]) => {
+      const folderIds = new Set(folders.map((f) => f.id));
+      const known = (key: string) =>
+        items.has(key)
+        || files.has(key)
+        || yandex.has(key)
+        || spaceItems.has(key)
+        || (key.startsWith('folder:') && folderIds.has(key.slice('folder:'.length)));
       if (selectedKeys.value.some((key) => !known(key))) {
         selectedKeys.value = selectedKeys.value.filter(known);
       }
     });
 
     const { marquee, startMarquee } = useDashboardMarquee({ enabled: isLoggedIn, dashboardShell, selectedKeys });
+    const onDashboardMainPointerDown = (event: PointerEvent) => {
+      if (activeSection.value.kind === 'gallery') return;
+      startMarquee(event);
+    };
     const { cancelLongPress, onSelectionPointerDown, onSelectionPointerMove, onSelectionContextMenu, consumeSwallowNextClick } = useDashboardLongPress({
       enabled: isLoggedIn,
       toggleSelected,
@@ -3211,6 +3255,8 @@ export default defineComponent({
       }
       if (!isLoggedIn) return;
       const target = event.target as HTMLElement | null;
+      // ExplorerTableView owns its own Click / Ctrl+Click / Shift+Click / double-click semantics.
+      if (target?.closest('[data-explorer-table]')) return;
       const card = target?.closest<HTMLElement>('[data-select-key]');
       if (!card) return;
       const onBox = Boolean(target?.closest('[data-select-box]'));
@@ -3455,14 +3501,15 @@ export default defineComponent({
       if (!isLoggedIn) return;
       const query = router.currentRoute?.value?.query ?? {};
       const section = typeof query.section === 'string' ? query.section : '';
+      const activity = typeof query.activity === 'string' ? query.activity : '';
       const folder = typeof query.folder === 'string' ? query.folder : '';
       const querySpaceId = typeof query.spaceId === 'string' ? query.spaceId : '';
-      if (!section && !folder && !querySpaceId) return;
+      if (!section && !activity && !folder && !querySpaceId) return;
       if (section === 'trash') selectDashboardSection({ kind: 'trash' });
-      else if (section === 'gallery') selectDashboardSection({ kind: 'gallery' });
+      else if (section === 'gallery' || activity === 'gallery') selectDashboardSection({ kind: 'gallery' });
       else if (section === 'space' && querySpaceId) selectDashboardSection({ kind: 'space', spaceId: querySpaceId });
       else if (folder) selectFolder(folder);
-      const { section: _section, folder: _folder, spaceId: _spaceId, ...rest } = query;
+      const { section: _section, activity: _activity, folder: _folder, spaceId: _spaceId, ...rest } = query;
       void router.replace({ query: rest });
     };
 
@@ -4637,7 +4684,7 @@ export default defineComponent({
      * own - the feed always shows them all, one under the other, empty or
      * not. A guest has no feed: their dashboard is Public itself.
      */
-    const FEED_SIDEBAR_SECTIONS = ['recent', 'spaces', 'shared', 'interactive', 'public'] as const;
+    const FEED_SIDEBAR_SECTIONS = ['recent', 'spaces', 'interactive'] as const;
     const onSidebarSelect = async (section: DashboardSection) => {
       if (section.kind === 'drive') {
         router.push('/drive');
@@ -4887,6 +4934,30 @@ export default defineComponent({
         { sourceLabel: t('qSpace'), t, selectionKey },
       ),
     );
+    const sharedTableRows = computed<ExplorerTableRow[]>(() =>
+      buildFolderExplorerTableRows(
+        [],
+        feedItems(sharedFiltered.value, 'shared'),
+        [],
+        { sourceLabel: 'Q Space/shared', t, selectionKey },
+      ),
+    );
+    const interactiveTableRows = computed<ExplorerTableRow[]>(() =>
+      buildFolderExplorerTableRows(
+        [],
+        feedItems(visibleInteractiveTemplateItems.value, 'interactive'),
+        [],
+        { sourceLabel: t('qSpace'), t, selectionKey },
+      ),
+    );
+    const publicTableRows = computed<ExplorerTableRow[]>(() =>
+      buildFolderExplorerTableRows(
+        [],
+        feedItems(publicFiltered.value, 'public'),
+        [],
+        { sourceLabel: 'Q Space/public', t, selectionKey },
+      ),
+    );
     const openExplorerTableRow = (row: ExplorerTableRow) => {
       if (row.isFolder || row.kind === 'folder') {
         selectFolder(row.id);
@@ -4906,9 +4977,20 @@ export default defineComponent({
 
     // Album Share Modal (all 4 entry points)
     const sharingAlbum = ref<SpaceDetails | null>(null);
-    const openAlbumShareById = async (targetSpaceId: string) => {
+    const openAlbumShareById = async (targetId: string, kind?: 'photo-album' | 'space') => {
+      const isKnownSpace = kind === 'space' || allSpaces.value.some((s) => s.id === targetId);
+      if (!isKnownSpace && kind === 'photo-album') {
+        const shareUrl = `${window.location.origin}/dashboard?activity=gallery`;
+        try {
+          await navigator.clipboard?.writeText(shareUrl);
+        } catch {
+          // Clipboard may be unavailable in tests/headless mode
+        }
+        setFeedback('success', t('explorerAlbumLinkCopied'));
+        return;
+      }
       try {
-        sharingAlbum.value = await spacesApi.get(targetSpaceId);
+        sharingAlbum.value = await spacesApi.get(targetId);
       } catch (err) {
         setFeedback('error', err instanceof Error && err.message ? err.message : t('spaceLoadFailed'));
       }
@@ -5157,12 +5239,19 @@ export default defineComponent({
     };
 
     // Gallery mode state & handlers
+    const galleryViewRef = ref<InstanceType<typeof DrivePhotos> | null>(null);
     const gallerySection = ref<GallerySection>('library');
     const galleryAlbumId = ref<string | null>(null);
     const gallerySpaceId = ref<string | null>(null);
     const galleryFolderId = ref<string | null>(null);
     const galleryHighlightFolderId = ref<string | null>(null);
     const galleryHighlightFileId = ref<string | null>(null);
+
+    const galleryAlbumMembersCount = computed<number | null>(() => {
+      if (!gallerySpaceId.value) return null;
+      const found = allSpaces.value.find((s) => s.id === gallerySpaceId.value);
+      return found ? found.memberCount : null;
+    });
 
     const galleryStorageFolders = computed<GalleryStorageFolder[]>(() =>
       allResourceFolders.value.map((f) => ({
@@ -5187,6 +5276,11 @@ export default defineComponent({
       gallerySection.value = 'library';
     };
 
+    const onGalleryClearAlbum = () => {
+      galleryAlbumId.value = null;
+      gallerySpaceId.value = null;
+    };
+
     const onGallerySelectSpace = (targetSpaceId: string) => {
       gallerySpaceId.value = targetSpaceId;
       selectDashboardSection({ kind: 'space', spaceId: targetSpaceId });
@@ -5197,6 +5291,15 @@ export default defineComponent({
       galleryAlbumId.value = null;
       gallerySpaceId.value = null;
       gallerySection.value = 'library';
+    };
+
+    const onGallerySelectFile = (fileId: string, folderId: string | null) => {
+      if (folderId) galleryFolderId.value = folderId;
+      galleryHighlightFolderId.value = folderId;
+      galleryHighlightFileId.value = fileId;
+      void nextTick(() => {
+        (galleryViewRef.value as { focusFile?: (id: string) => void } | null)?.focusFile?.(fileId);
+      });
     };
 
     const onGalleryFocusPhoto = (item: PhotoFeedItem) => {
@@ -5211,8 +5314,21 @@ export default defineComponent({
       if (fileIds.length) setFeedback('success', `${t('explorerAddToFavorites')} (${fileIds.length})`);
     };
 
-    const onGalleryDropAlbum = async (albumId: string, fileIds: string[]) => {
+    const onGalleryDropAlbum = async (albumId: string, fileIds: string[], kind?: 'photo-album' | 'space') => {
       if (!fileIds.length) return;
+      const isSpace = kind === 'space' || allSpaces.value.some((s) => s.id === albumId);
+      if (isSpace) {
+        if (galleryHighlightFolderId.value) {
+          try {
+            await spacesApi.addQspaceFolder(albumId, galleryHighlightFolderId.value);
+            setFeedback('success', `${t('explorerAddToAlbum')} (${fileIds.length})`);
+            void loadSpaces(true);
+          } catch (err) {
+            setFeedback('error', err instanceof Error && err.message ? err.message : t('spaceActionFailed'));
+          }
+        }
+        return;
+      }
       try {
         await photosApi.addToAlbum(albumId, fileIds);
         setFeedback('success', `${t('explorerAddToAlbum')} (${fileIds.length})`);
@@ -5505,6 +5621,9 @@ export default defineComponent({
       openFavoriteTile,
       activeFolderTableRows,
       recentTableRows,
+      sharedTableRows,
+      interactiveTableRows,
+      publicTableRows,
       openExplorerTableRow,
       sharingAlbum,
       openAlbumShareById,
@@ -5525,8 +5644,10 @@ export default defineComponent({
       onCtxMenuDelete,
       shareSelectedGroup,
       openAddSelectionToAlbum,
+      galleryViewRef,
       gallerySection,
       galleryAlbumId,
+      galleryAlbumMembersCount,
       gallerySpaceId,
       galleryFolderId,
       galleryHighlightFolderId,
@@ -5534,12 +5655,15 @@ export default defineComponent({
       galleryStorageFolders,
       onGallerySelectSection,
       onGallerySelectAlbum,
+      onGalleryClearAlbum,
       onGallerySelectSpace,
       onGallerySelectFolder,
+      onGallerySelectFile,
       onGalleryFocusPhoto,
       onGalleryDropFavorites,
       onGalleryDropAlbum,
       onGalleryDropFolder,
+      onDashboardMainPointerDown,
       mobileSidebarOpen,
       sidebarFolders,
       selectDashboardSection,

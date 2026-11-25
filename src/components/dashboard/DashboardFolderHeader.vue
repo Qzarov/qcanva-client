@@ -1,14 +1,14 @@
 <template>
   <div class="folder-manager-top">
     <div class="folder-manager-main">
-      <button type="button" class="folder-back-button" :title="t('back')" :aria-label="t('back')" data-folder-back-button @click.stop="emit('back')"><ArrowLeft :size="16" aria-hidden="true" /></button>
+      <button v-if="!hideChromeControls" type="button" class="folder-back-button" :title="t('back')" :aria-label="t('back')" data-folder-back-button @click.stop="emit('back')"><ArrowLeft :size="16" aria-hidden="true" /></button>
       <span class="folder-manager-title">
         <span class="folder-manager-name">{{ activeFolder.name }}</span>
         <span class="folder-manager-count">{{ activeFolder.canvasCount }} {{ t('canvas').toLowerCase() }} / {{ activeFolder.htmlDocumentCount }} HTML / {{ activeFolder.textDocumentCount || 0 }} {{ t('docs').toLowerCase() }}<template v-if="activeFolderFileCount"> / {{ activeFolderFileCount }} {{ t('folderFilesTitle').toLowerCase() }}</template></span>
       </span>
     </div>
-    <DashboardViewToggle class="folder-view-toggle" :mode="recentViewMode" @update:mode="emit('update:view-mode', $event)" />
-    <div v-if="activeFolder.role === 'owner'" class="folder-manager-menu folder-create-menu">
+    <DashboardViewToggle v-if="!hideChromeControls" class="folder-view-toggle" :mode="recentViewMode" @update:mode="emit('update:view-mode', $event)" />
+    <div v-if="!hideChromeControls && activeFolder.role === 'owner'" class="folder-manager-menu folder-create-menu">
       <button class="folder-manager-trigger folder-create-trigger" data-folder-create-menu @click.stop="emit('add')" :title="t('add')" :aria-label="t('add')" :disabled="isBusy"><Plus :size="17" aria-hidden="true" /></button>
     </div>
     <div v-if="activeFolder.role === 'owner'" class="folder-manager-menu">
@@ -31,7 +31,7 @@ import type { RecentViewMode } from '../../dashboard/recent-view';
 import { useI18n } from '../../composables/useI18n';
 import DashboardViewToggle from './DashboardViewToggle.vue';
 
-defineProps<{ activeFolder: { id: string; name: string; role?: string; canvasCount: number; htmlDocumentCount: number; textDocumentCount?: number }; activeFolderFileCount: number; recentViewMode: RecentViewMode; isBusy: boolean; menuOpen: boolean }>();
+defineProps<{ activeFolder: { id: string; name: string; role?: string; canvasCount: number; htmlDocumentCount: number; textDocumentCount?: number }; activeFolderFileCount: number; recentViewMode: RecentViewMode; isBusy: boolean; menuOpen: boolean; hideChromeControls?: boolean }>();
 const emit = defineEmits<{ back: []; 'update:view-mode': [value: RecentViewMode]; add: []; 'toggle-menu': []; import: []; share: []; rename: []; 'add-subfolder': []; 'move-parent': []; delete: [] }>();
 const { t } = useI18n();
 </script>

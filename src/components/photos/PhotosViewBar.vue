@@ -322,6 +322,12 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick));
   -webkit-backdrop-filter: blur(var(--ui-glass-blur, 18px)) saturate(1.25);
   color: var(--ui-text);
 }
+:global(:root[data-theme='light']) .pvb-pill,
+:global(:root[data-theme='light']) .pvb-pop {
+  background: rgba(255, 255, 255, 0.92);
+  border-color: rgba(20, 91, 37, 0.22);
+  color: var(--ui-text);
+}
 .pvb-st {
   display: grid;
   grid-template-columns: 210px 170px;
