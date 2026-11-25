@@ -307,7 +307,7 @@ onBeforeUnmount(() => {
   pointer-events: none;
   z-index: 5;
 }
-:global(:root[data-theme='light']) .scrub-hover {
+:root[data-theme='light'] .scrub-hover {
   background: rgba(255, 255, 255, 0.92);
   border-color: rgba(20, 91, 37, 0.22);
   color: var(--ui-text);

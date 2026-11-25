@@ -27,7 +27,7 @@
       @click="emit('open-menu')"
     >
       <Menu :size="18" aria-hidden="true" />
-      <span>{{ t('openNavigation') }}</span>
+      <span>{{ locale === 'ru' ? 'Меню' : 'Menu' }}</span>
     </button>
   </nav>
 </template>
@@ -49,7 +49,7 @@ const emit = defineEmits<{
   'open-menu': [];
 }>();
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 
 const tabs = computed<Array<{ id: MobileTabId; label: string; icon: Component }>>(() => [
   { id: 'home', label: t('home'), icon: House },
