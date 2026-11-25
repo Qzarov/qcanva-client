@@ -12,12 +12,23 @@
   >
     <div class="drive-card-preview" :class="isMarkdownItem(item) ? 'preview-text-document' : `preview-${item.kind}`">
       <Folder v-if="item.kind === 'folder'" :size="44" class="drive-folder-svg" aria-hidden="true" />
+      <img
+        v-else-if="activeThumbUrl"
+        :src="activeThumbUrl"
+        :alt="item.name"
+        class="drive-card-thumb-img"
+        loading="lazy"
+        decoding="async"
+        data-drive-thumb
+        @error="onThumbError"
+      />
       <div v-else-if="item.kind === 'canvas'" class="drive-card-canvas-mock" aria-hidden="true"><div class="canvas-node n1"></div><div class="canvas-node n2"></div><div class="canvas-line"></div></div>
       <div v-else-if="item.kind === 'text-document' || isMarkdownItem(item)" class="drive-card-doc-mock" aria-hidden="true"><div class="doc-line l-head"></div><div class="doc-line l1"></div><div class="doc-line l2"></div><div class="doc-line l3"></div><span v-if="isMarkdownItem(item)" class="drive-ext-badge drive-ext-badge-doc">{{ getFileExtension(item.name) }}</span></div>
       <div v-else-if="item.kind === 'html-document'" class="drive-card-html-mock" aria-hidden="true"><Code :size="32" aria-hidden="true" /></div>
       <div v-else-if="item.kind === 'board' || item.kind === 'sheet'" class="drive-card-board-mock" aria-hidden="true"><div class="board-col"><div class="board-card"></div></div><div class="board-col"><div class="board-card"></div><div class="board-card"></div></div></div>
       <div v-else-if="isMediaItem(item)" class="drive-card-file-mock" aria-hidden="true"><Video v-if="isVideoItem(item)" :size="38" class="drive-media-icon" /><Image v-else :size="38" class="drive-media-icon" /></div>
       <div v-else class="drive-card-file-mock" aria-hidden="true"><File :size="36" aria-hidden="true" /><span class="drive-ext-badge drive-ext-badge-preview">{{ getFileExtension(item.name) }}</span></div>
+      <span v-if="activeThumbUrl && isVideoItem(item)" class="drive-thumb-play" aria-hidden="true"><Play :size="14" /></span>
     </div>
 
     <div class="drive-card-body">
@@ -53,16 +64,45 @@
 </template>
 
 <script setup lang="ts">
-import { Code, File, Folder, Image, Video } from '@lucide/vue';
+import { computed, ref, watch } from 'vue';
+import { Code, File, Folder, Image, Play, Video } from '@lucide/vue';
 import ResourceIcon from './ResourceIcon.vue';
 import DriveItemActionsMenu from './DriveItemActionsMenu.vue';
 import { formatFileSize, getFileExtension, type DriveItem } from '../api/drive';
 import { isMarkdownFile } from '../dashboard/thumb-kinds';
 import { useI18n } from '../composables/useI18n';
 
-defineProps<{ item: DriveItem; menuActive: boolean; phoneActive: boolean; phonePathAvailable: boolean }>();
-const emit = defineEmits<{ open: []; 'toggle-menu': []; download: []; rename: []; 'phone-fetch': []; 'phone-evict': []; properties: []; trash: [] }>();
+const props = defineProps<{
+  item: DriveItem;
+  menuActive: boolean;
+  phoneActive: boolean;
+  phonePathAvailable: boolean;
+  thumbUrl?: string | null;
+}>();
+const emit = defineEmits<{
+  open: [];
+  'toggle-menu': [];
+  download: [];
+  rename: [];
+  'phone-fetch': [];
+  'phone-evict': [];
+  properties: [];
+  trash: [];
+  'thumb-error': [];
+}>();
 const { t, locale } = useI18n();
+
+const thumbFailed = ref(false);
+watch(() => props.thumbUrl, () => {
+  thumbFailed.value = false;
+});
+
+const activeThumbUrl = computed(() => (!thumbFailed.value && props.thumbUrl ? props.thumbUrl : null));
+
+function onThumbError(): void {
+  thumbFailed.value = true;
+  emit('thumb-error');
+}
 
 const isFileKind = (item: DriveItem) => item.kind === 'file' || item.kind === 'photo' || item.kind === 'video';
 const isImageItem = (item: DriveItem) => item.kind === 'photo' || (item.kind === 'file' && !!item.mime?.startsWith('image/'));
@@ -128,6 +168,25 @@ const formatDate = (iso?: string | null) => {
   justify-content: center;
   background: rgba(0, 0, 0, 0.2);
   position: relative;
+}
+.drive-card-thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.drive-thumb-play {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: rgba(8, 12, 10, 0.72);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .drive-folder-svg { color: var(--ui-accent-strong, #8cff8c); }

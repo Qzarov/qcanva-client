@@ -1,4 +1,6 @@
-export type DashboardTopLevelSection = 'home' | 'shared' | 'interactive' | 'public' | 'drive' | 'trash' | 'spaces';
+export type DashboardTopLevelSection = 'home' | 'shared' | 'interactive' | 'public' | 'drive' | 'trash' | 'spaces' | 'gallery';
+
+export type ExplorerSidebarPanel = 'explorer' | 'search' | 'gallery';
 
 export type DashboardSection =
   | { kind: DashboardTopLevelSection }

@@ -1,0 +1,60 @@
+<template>
+  <nav
+    class="explorer-mobile-tabbar mobile-tabbar"
+    :aria-label="t('dashboardSections')"
+    data-mobile-tabbar
+  >
+    <button
+      v-for="tab in tabs"
+      :key="tab.id"
+      type="button"
+      class="m-tab"
+      :class="{ active: activeActivity === tab.id }"
+      :aria-label="tab.label"
+      :aria-current="activeActivity === tab.id ? 'page' : undefined"
+      :data-mobile-tab="tab.id"
+      @click="emit('select-activity', tab.id)"
+    >
+      <component :is="tab.icon" :size="18" aria-hidden="true" />
+      <span>{{ tab.label }}</span>
+    </button>
+
+    <button
+      type="button"
+      class="m-tab m-tab-menu"
+      :aria-label="t('openNavigation')"
+      data-mobile-tab="menu"
+      @click="emit('open-menu')"
+    >
+      <Menu :size="18" aria-hidden="true" />
+      <span>{{ t('openNavigation') }}</span>
+    </button>
+  </nav>
+</template>
+
+<script setup lang="ts">
+import { computed, type Component } from 'vue';
+import { FolderTree, House, Images, Menu, Search } from '@lucide/vue';
+import { useI18n } from '../../composables/useI18n';
+import type { ExplorerActivityId } from './ExplorerActivityBar.vue';
+
+export type MobileTabId = 'home' | 'explorer' | 'search' | 'gallery';
+
+defineProps<{
+  activeActivity: ExplorerActivityId;
+}>();
+
+const emit = defineEmits<{
+  'select-activity': [activity: MobileTabId];
+  'open-menu': [];
+}>();
+
+const { t } = useI18n();
+
+const tabs = computed<Array<{ id: MobileTabId; label: string; icon: Component }>>(() => [
+  { id: 'home', label: t('home'), icon: House },
+  { id: 'explorer', label: t('explorerTitle'), icon: FolderTree },
+  { id: 'search', label: t('explorerSearchTitle'), icon: Search },
+  { id: 'gallery', label: t('explorerGalleryTitle'), icon: Images },
+]);
+</script>

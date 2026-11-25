@@ -5,15 +5,18 @@ import { defineComponent, h } from 'vue';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/client';
 import { isPhotosMock, type FeedItem } from '../../api/photos';
+import { resetExplorerLayoutPrefs, useExplorerLayoutPrefs } from '../../composables/useExplorerLayoutPrefs';
 import { useI18n } from '../../composables/useI18n';
 import DrivePhotos from './DrivePhotos.vue';
 import { usePhotosView } from './usePhotosView';
 
 const searchMock = vi.hoisted(() => vi.fn());
 const albumsMock = vi.hoisted(() => vi.fn());
+const editMock = vi.hoisted(() => vi.fn());
 const feedRefresh = vi.hoisted(() => vi.fn());
 const feedPatch = vi.hoisted(() => vi.fn());
 const feedLoadMore = vi.hoisted(() => vi.fn(async () => false));
+const getDownloadLinkMock = vi.hoisted(() => vi.fn());
 
 vi.mock('../../api/photos', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../api/photos')>();
@@ -26,8 +29,22 @@ vi.mock('../../api/photos', async (importOriginal) => {
       items: vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
       search: searchMock,
       albums: albumsMock,
+      edit: editMock,
       getPreference: vi.fn().mockResolvedValue(null),
       putPreference: vi.fn().mockResolvedValue(undefined),
+    },
+  };
+});
+
+vi.mock('../../api/drive', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../api/drive')>();
+  return {
+    ...actual,
+    driveApi: {
+      ...actual.driveApi,
+      getDownloadLink: getDownloadLinkMock,
+      trashFile: vi.fn().mockResolvedValue({}),
+      moveFile: vi.fn().mockResolvedValue({}),
     },
   };
 });
@@ -56,14 +73,12 @@ function mkItem(i: number, over: Partial<FeedItem> = {}): FeedItem {
 }
 
 const feedItems = [mkItem(0), mkItem(1)];
-
 let extraFeedItems: FeedItem[] = [];
 
-/** Stand-ins for the heavy children: the container's wiring is what is under test. */
 const FeedStub = defineComponent({
   name: 'PhotosFeed',
-  props: ['params', 'captionOnTile', 'tile', 'selected', 'current'],
-  emits: ['open', 'activate', 'toggle-select'],
+  props: ['params', 'captionOnTile', 'tile', 'tileHeight', 'aspectMode', 'folderFilterId', 'peopleFilter', 'recentLimit', 'selected', 'current'],
+  emits: ['open', 'focus-photo', 'activate', 'toggle-select', 'set-selection', 'contextmenu', 'toggle-favorite'],
   setup(props, { emit, expose }) {
     expose({
       orderedItems: () => [...feedItems, ...extraFeedItems],
@@ -75,19 +90,32 @@ const FeedStub = defineComponent({
     return () =>
       h(
         'div',
-        { 'data-testid': 'feed-stub', 'data-album': (props.params as { albumId?: string }).albumId ?? '' },
+        {
+          'data-testid': 'feed-stub',
+          'data-album': (props.params as { albumId?: string }).albumId ?? '',
+          'data-aspect': props.aspectMode,
+          'data-tile-h': String(props.tileHeight),
+          'data-period': (props.params as { period?: string }).period ?? '',
+        },
         [
-          h('button', { 'data-stub-select': '', onClick: () => emit('toggle-select', ['f0', 'f1'], true) }, 'select'),
+          h('button', { 'data-stub-select': '', onClick: () => emit('set-selection', ['f0', 'f1']) }, 'select'),
           ...feedItems.map((it) =>
-          h(
-            'button',
-            {
-              'data-file-id': it.fileId,
-              onClick: () => emit('open', it),
-              onDblclick: () => emit('activate', it),
-            },
-            it.name,
-          )),
+            h(
+              'button',
+              {
+                'data-file-id': it.fileId,
+                onClick: () => {
+                  emit('open', it);
+                  emit('focus-photo', it);
+                },
+                onDblclick: () => emit('activate', it),
+                onContextmenu: (e: MouseEvent) => {
+                  e.preventDefault();
+                  emit('contextmenu', e, it);
+                },
+              },
+              it.name,
+            )),
         ],
       );
   },
@@ -95,7 +123,7 @@ const FeedStub = defineComponent({
 
 const PanelStub = defineComponent({
   name: 'PhotoPanel',
-  props: ['fileId'],
+  props: ['fileId', 'hideOpenFolder'],
   emits: ['close', 'open-folder', 'open-album', 'open-viewer', 'changed'],
   setup(props, { emit }) {
     return () =>
@@ -109,15 +137,6 @@ const PanelStub = defineComponent({
   },
 });
 
-const AlbumsStub = defineComponent({
-  name: 'PhotosAlbums',
-  emits: ['open'],
-  setup(_p, { emit, expose }) {
-    expose({ reload: vi.fn() });
-    return () => h('div', { 'data-testid': 'albums-stub' }, [h('button', { 'data-stub-open': '', onClick: () => emit('open', 'alb1') }, 'open')]);
-  },
-});
-
 const PickerStub = defineComponent({
   name: 'FolderPickerDialog',
   props: ['title', 'confirmLabel', 'excludeIds', 'excludeRoot'],
@@ -128,8 +147,8 @@ const PickerStub = defineComponent({
 const ViewBarStub = defineComponent({ name: 'PhotosViewBar', setup: () => () => h('div', { 'data-testid': 'viewbar-stub' }) });
 const ViewerStub = defineComponent({
   name: 'PhotoViewer',
-  props: ['item', 'index', 'total', 'hasPrev', 'hasNext'],
-  emits: ['next'],
+  props: ['item', 'items', 'index', 'total', 'hasPrev', 'hasNext'],
+  emits: ['next', 'prev', 'jump', 'close'],
   setup: (p, { emit }) => () =>
     h(
       'div',
@@ -140,14 +159,14 @@ const ViewerStub = defineComponent({
 
 let wrapper: VueWrapper | null = null;
 
-function mountIt(): VueWrapper {
+function mountIt(props: Record<string, unknown> = {}): VueWrapper {
   wrapper = mount(DrivePhotos, {
+    props,
     attachTo: document.body,
     global: {
       stubs: {
         PhotosFeed: FeedStub,
         PhotoPanel: PanelStub,
-        PhotosAlbums: AlbumsStub,
         PhotosViewBar: ViewBarStub,
         PhotoViewer: ViewerStub,
         FolderPickerDialog: PickerStub,
@@ -161,12 +180,15 @@ describe('DrivePhotos', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     localStorage.clear();
+    resetExplorerLayoutPrefs(true);
     useI18n().setLocale('ru');
     usePhotosView().reset();
     extraFeedItems = [];
     feedRefresh.mockReset();
     feedPatch.mockReset();
     feedLoadMore.mockReset().mockResolvedValue(false);
+    editMock.mockReset().mockResolvedValue(undefined);
+    getDownloadLinkMock.mockReset().mockResolvedValue({ url: 'https://example.com/file', expiresAt: '' });
     searchMock.mockReset().mockResolvedValue({ items: [mkItem(7), mkItem(8)], nextCursor: null });
     albumsMock.mockReset().mockResolvedValue([{ id: 'alb1', name: 'Алтай', count: 2, bytes: 0, coverFileIds: [] }]);
   });
@@ -184,40 +206,34 @@ describe('DrivePhotos', () => {
     await flushPromises();
   }
 
-  it('tabs switch feed and albums', async () => {
+  it('renders macOS Photos topbar controls (aspect toggle, zoom slider, Годы|Месяцы|Дни, info/share/fav/search) with no old tabs', async () => {
     const w = mountIt();
     await flushPromises();
-    const tabs = w.findAll('[role="tab"]');
-    expect(tabs.map((x) => x.text())).toEqual(['Лента', 'Альбомы']);
-    expect(w.find('[role="tablist"]').exists()).toBe(true);
-    expect(tabs[0]!.attributes('aria-selected')).toBe('true');
-    expect(w.find('[data-testid="feed-stub"]').exists()).toBe(true);
+    expect(w.find('[role="tablist"]').exists()).toBe(false);
+    expect(w.find('[data-testid="aspect-toggle"]').exists()).toBe(true);
+    expect(w.find('[data-testid="zoom-slider"]').exists()).toBe(true);
+    expect(w.find('[data-testid="period-year"]').text()).toBe('Годы');
+    expect(w.find('[data-testid="period-month"]').text()).toBe('Месяцы');
+    expect(w.find('[data-testid="period-day"]').text()).toBe('Дни');
     expect(w.find('[data-testid="viewbar-stub"]').exists()).toBe(true);
 
-    await tabs[1]!.trigger('click');
-    expect(tabs[1]!.attributes('aria-selected')).toBe('true');
-    expect(tabs[1]!.attributes('tabindex')).toBe('0');
-    expect(tabs[0]!.attributes('tabindex')).toBe('-1');
-    expect(w.find('[data-testid="albums-stub"]').exists()).toBe(true);
-    expect(w.find('[data-testid="feed-stub"]').exists()).toBe(false);
+    await w.get('[data-testid="aspect-toggle"]').trigger('click');
+    expect(useExplorerLayoutPrefs().galleryAspectMode.value).toBe('ratio');
+    expect(w.get('[data-testid="feed-stub"]').attributes('data-aspect')).toBe('ratio');
 
-    await w.get('[role="tablist"]').trigger('keydown', { key: 'ArrowLeft' });
-    expect(w.find('[data-testid="feed-stub"]').exists()).toBe(true);
+    await w.get('[data-testid="period-year"]').trigger('click');
+    expect(usePhotosView().state.value.period).toBe('year');
+    expect(w.get('[data-testid="feed-stub"]').attributes('data-period')).toBe('year');
   });
 
-  it('opens an album as a feed with a way back to all albums', async () => {
-    const w = mountIt();
-    await w.findAll('[role="tab"]')[1]!.trigger('click');
-    await w.get('[data-stub-open]').trigger('click');
+  it('drives album feed when externalAlbumId is passed', async () => {
+    const w = mountIt({ externalAlbumId: 'alb1' });
     await flushPromises();
     expect(w.get('[data-testid="feed-stub"]').attributes('data-album')).toBe('alb1');
-    expect(w.get('[data-photos-album-head]').text()).toContain('← Все альбомы');
-    expect(w.get('.dp-album-title').text()).toBe('Алтай');
-    await w.get('[data-photos-back]').trigger('click');
-    expect(w.find('[data-testid="albums-stub"]').exists()).toBe(true);
+    expect(w.get('[data-testid="gallery-album-crumb"]').text()).toContain('Алтай');
   });
 
-  it('search shows results and clears', async () => {
+  it('search shows results and clears with single clear button', async () => {
     const w = mountIt();
     await flushPromises();
     await typeQuery(w, 'закат');
@@ -244,15 +260,15 @@ describe('DrivePhotos', () => {
     expect(w.find('[data-testid="feed-stub"]').exists()).toBe(true);
   });
 
-  it('search results open the panel and the viewer', async () => {
+  it('search results focus and update info panel when open, dblclick opens viewer', async () => {
     const w = mountIt();
     await flushPromises();
+    await w.get('[data-testid="info-toggle"]').trigger('click');
     await typeQuery(w, 'cat');
     await w.get('[data-testid="photos-search-grid"] [data-file-id="f8"]').trigger('click');
     expect(w.get('[data-photo-panel]').attributes('data-panel-file')).toBe('f8');
     await w.get('[data-testid="photos-search-grid"] [data-file-id="f8"]').trigger('dblclick');
     expect(w.get('[data-testid="viewer-stub"]').text()).toBe('f8');
-    expect(w.get('[data-photo-panel]').attributes('data-panel-file')).toBe('f8');
   });
 
   it('search unavailable message', async () => {
@@ -276,69 +292,85 @@ describe('DrivePhotos', () => {
     expect(w.findAll('[data-testid="photos-search-grid"] [data-file-id]').length).toBe(2);
   });
 
-  it('people strip is gone', async () => {
-    const w = mountIt();
+  it('shows People grid only when activeSection is "people"', async () => {
+    const w = mountIt({ activeSection: 'library' });
     await flushPromises();
-    expect(w.find('[data-photos-people]').exists()).toBe(false);
-    expect(w.find('[data-photos-person-filter]').exists()).toBe(false);
-    expect(w.text()).not.toContain('Люди');
+    expect(w.find('[data-testid="gallery-people-grid"]').exists()).toBe(false);
+
+    await w.setProps({ activeSection: 'people' });
+    await flushPromises();
+    expect(w.find('[data-testid="gallery-people-grid"]').exists()).toBe(true);
+    expect(w.find('[data-testid="gallery-people-empty"]').exists()).toBe(true);
   });
 
-  it('click opens the panel, double click opens the viewer and keeps the panel on the same photo', async () => {
+  it('single click emits focus-photo and updates open panel; info toggle opens/closes panel; double click opens viewer', async () => {
     const w = mountIt();
     await flushPromises();
     await w.get('[data-file-id="f1"]').trigger('click');
+    expect(w.emitted('focus-photo')![0]).toEqual([feedItems[1]]);
+    expect(w.find('[data-photo-panel]').exists()).toBe(false);
+
+    await w.get('[data-testid="info-toggle"]').trigger('click');
     expect(w.get('[data-photo-panel]').attributes('data-panel-file')).toBe('f1');
-    expect(w.find('[data-testid="viewer-stub"]').exists()).toBe(false);
+
     await w.get('[data-file-id="f1"]').trigger('dblclick');
     expect(w.get('[data-testid="viewer-stub"]').text()).toBe('f1');
     expect(w.get('[data-photo-panel]').attributes('data-panel-file')).toBe('f1');
-  });
 
-  it('open folder from panel emits openFolder', async () => {
-    const w = mountIt();
-    await flushPromises();
-    await w.get('[data-file-id="f0"]').trigger('click');
-    await w.get('[data-stub-folder]').trigger('click');
-    expect(w.emitted('openFolder')).toEqual([['fold1', 'f0']]);
-  });
-
-  it('open album from the panel switches to the album view', async () => {
-    const w = mountIt();
-    await flushPromises();
-    await w.get('[data-file-id="f0"]').trigger('click');
-    await w.get('[data-stub-album]').trigger('click');
-    await flushPromises();
-    expect(w.findAll('[role="tab"]')[1]!.attributes('aria-selected')).toBe('true');
-    expect(w.get('[data-testid="feed-stub"]').attributes('data-album')).toBe('alb1');
-  });
-
-  it('closing the panel removes it', async () => {
-    const w = mountIt();
-    await flushPromises();
-    await w.get('[data-file-id="f0"]').trigger('click');
     await w.get('[data-stub-close]').trigger('click');
     expect(w.find('[data-photo-panel]').exists()).toBe(false);
   });
 
-  it('selection shows the bar and the move picker greys out the folder the photos are in', async () => {
+  it('open folder and open album from panel work', async () => {
     const w = mountIt();
     await flushPromises();
-    expect(w.find('[data-testid="selection-bar"], .sel-bar').exists()).toBe(false);
+    await w.get('[data-file-id="f0"]').trigger('click');
+    await w.get('[data-testid="info-toggle"]').trigger('click');
+    await w.get('[data-stub-folder]').trigger('click');
+    expect(w.emitted('openFolder')).toEqual([['fold1', 'f0']]);
+
+    await w.get('[data-stub-album]').trigger('click');
+    await flushPromises();
+    expect(w.get('[data-testid="feed-stub"]').attributes('data-album')).toBe('alb1');
+  });
+
+  it('never renders auto-popping SelectionBar; shows topbar (N ✕) badge and right-click context menu for bulk move', async () => {
+    const w = mountIt();
+    await flushPromises();
+    expect(w.find('.sel-bar').exists()).toBe(false);
+    expect(w.find('[data-testid="selection-badge"]').exists()).toBe(false);
+
     await w.get('[data-stub-select]').trigger('click');
-    expect(w.get('.sel-bar').text()).toContain('Выбрано 2');
-    await w.get('[data-sel-move]').trigger('click');
+    expect(w.find('.sel-bar').exists()).toBe(false);
+    expect(w.get('[data-testid="selection-badge"]').text()).toContain('2');
+
+    // Right-click opens Gallery context menu
+    await w.get('[data-file-id="f0"]').trigger('contextmenu');
+    expect(w.find('[data-testid="gallery-context-menu"]').exists()).toBe(true);
+    await w.get('[data-ctx-move]').trigger('click');
+
     const picker = w.get('[data-testid="picker-stub"]');
     expect(picker.attributes('data-excl')).toBe('["fold1"]');
     expect(picker.text()).toContain('2');
-    await w.get('[data-sel-clear]').trigger('click');
-    expect(w.find('.sel-bar').exists()).toBe(false);
-    expect(w.find('[data-testid="picker-stub"]').exists()).toBe(false);
+
+    await w.get('[data-testid="selection-badge"]').trigger('click');
+    expect(w.find('[data-testid="selection-badge"]').exists()).toBe(false);
+  });
+
+  it('topbar favorite button toggles favorite for all selected items', async () => {
+    const w = mountIt();
+    await flushPromises();
+    await w.get('[data-stub-select]').trigger('click');
+    await w.get('[data-testid="favorite-btn"]').trigger('click');
+    await flushPromises();
+    expect(editMock).toHaveBeenCalledWith('f0', { favorite: true });
+    expect(editMock).toHaveBeenCalledWith('f1', { favorite: true });
   });
 
   describe('panel changes refresh dependent views', () => {
     async function openPanel(w: VueWrapper): Promise<void> {
       await w.get('[data-file-id="f0"]').trigger('click');
+      await w.get('[data-testid="info-toggle"]').trigger('click');
     }
 
     it('plain feed: patches the tile only', async () => {
@@ -351,9 +383,7 @@ describe('DrivePhotos', () => {
     });
 
     it('album view: removing from the album refreshes the feed', async () => {
-      const w = mountIt();
-      await w.findAll('[role="tab"]')[1]!.trigger('click');
-      await w.get('[data-stub-open]').trigger('click');
+      const w = mountIt({ externalAlbumId: 'alb1' });
       await flushPromises();
       await openPanel(w);
       await w.get('[data-stub-chg-albums]').trigger('click');
@@ -382,28 +412,21 @@ describe('DrivePhotos', () => {
     });
   });
 
-  it('switching tabs within debounce cancels pending search, caps search input at 200, and shows mock banner when mock enabled', async () => {
-    vi.useFakeTimers();
-    try {
-      vi.mocked(isPhotosMock).mockReturnValueOnce(true);
-      const w = mountIt();
-      await flushPromises();
-      expect(w.get('[data-photos-mock-banner]').text()).toBeTruthy();
+  it('switching section within debounce cancels pending search, caps search input at 200, and shows mock banner when mock enabled', async () => {
+    vi.mocked(isPhotosMock).mockReturnValueOnce(true);
+    const w = mountIt();
+    await flushPromises();
+    expect(w.get('[data-photos-mock-banner]').text()).toBeTruthy();
 
-      const input = w.get('[data-photos-search-input]');
-      expect(input.attributes('maxlength')).toBe('200');
-      await input.setValue('pending query');
-      await w.findAll('[role="tab"]')[1]!.trigger('click');
-      await vi.advanceTimersByTimeAsync(400);
-      await flushPromises();
+    const input = w.get('[data-photos-search-input]');
+    expect(input.attributes('maxlength')).toBe('200');
+    await input.setValue('pending query');
+    await w.setProps({ activeSection: 'favorites' });
+    await vi.advanceTimersByTimeAsync(400);
+    await flushPromises();
 
-      expect(searchMock).not.toHaveBeenCalled();
-      expect(w.find('[data-testid="albums-stub"]').exists()).toBe(true);
-      expect((input.element as HTMLInputElement).value).toBe('');
-      w.unmount();
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(searchMock).not.toHaveBeenCalled();
+    expect((input.element as HTMLInputElement).value).toBe('');
   });
 
   it('stepping near end of feed in PhotoViewer triggers feed loadMore and syncs viewer items', async () => {

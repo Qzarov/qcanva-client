@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { mount } from '@vue/test-utils';
 import { defineComponent } from 'vue';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { resetExplorerLayoutPrefs } from '../../composables/useExplorerLayoutPrefs';
 import DashboardSidebar from './DashboardSidebar.vue';
 import { readGlobalCss } from '../../../tests/helpers/read-global-css';
 
@@ -18,6 +19,7 @@ const LayoutHarness = defineComponent({
       <DashboardSidebar
         :active-section="{ kind: 'home' }"
         :width-state="collapsed ? 'collapsed' : 'expanded'"
+        :collapsed="collapsed"
         :mobile-open="mobileOpen"
         :folders="[]"
       />
@@ -56,36 +58,42 @@ describe('dashboard sidebar layout contract', () => {
     stylesheet.remove();
   });
 
+  beforeEach(() => {
+    resetExplorerLayoutPrefs(true);
+  });
+
   afterEach(() => {
     document.body.innerHTML = '';
   });
 
-  it('gives the expanded rail a fixed column and the central pane its own scroll owner', () => {
+  it('gives the shell an auto ActivityBar+Sidebar column and keeps the central pane as its own scroll owner', () => {
     const wrapper = mountLayout();
 
     const shellStyle = getComputedStyle(wrapper.get('.dashboard-app-shell').element);
     expect(shellStyle.display).toBe('grid');
-    expect(shellStyle.getPropertyValue('--dashboard-sidebar-width')).toBe('248px');
-    expect(shellStyle.gridTemplateColumns).toContain('var(--dashboard-sidebar-width)');
+    expect(shellStyle.gridTemplateColumns).toBe('auto minmax(0, 1fr)');
+    expect(getComputedStyle(wrapper.get('[data-activity-bar]').element).width).toBe('50px');
     expect(getComputedStyle(wrapper.get('.dashboard-sidebar-scroll').element).overflowY).toBe('auto');
     expect(getComputedStyle(wrapper.get('.dashboard-central-shell .app-main').element).overflowY).toBe('auto');
-    expect(getComputedStyle(wrapper.get('[data-home-disclosure]').element).display).toBe('grid');
+    expect(getComputedStyle(wrapper.get('[data-home-disclosure]').element).display).toBe('inline-flex');
     expect(getComputedStyle(wrapper.get('.dashboard-mobile-sidebar-open').element).display).toBe('none');
     expect(getComputedStyle(wrapper.get('.dashboard-sidebar-close').element).display).toBe('none');
   });
 
-  it('uses the explicit shell class to render a stable 72px icon rail', () => {
+  it('collapses the sidebar pane to 0px while keeping the 50px Activity Bar and edge sash handle', () => {
     const wrapper = mountLayout(true);
 
-    expect(wrapper.get('.dashboard-app-shell').classes()).toContain('sidebar-collapsed');
-    expect(getComputedStyle(wrapper.get('.dashboard-app-shell').element).getPropertyValue('--dashboard-sidebar-width')).toBe('72px');
+    const sidebarEl = wrapper.get('.dashboard-sidebar').element as HTMLElement;
+    expect(wrapper.get('.dashboard-sidebar').classes()).toContain('collapsed');
+    expect(sidebarEl.style.width).toBe('0px');
+    expect(wrapper.get('[data-sidebar-sash]').classes()).toContain('collapsed-edge');
+    expect(getComputedStyle(wrapper.get('[data-activity-bar]').element).width).toBe('50px');
   });
 
-  it('shows expanded Home children when a collapsed desktop rail opens as a mobile drawer', async () => {
+  it('shows expanded Home children when a collapsed desktop sidebar opens as a mobile drawer', () => {
     const wrapper = mountLayout(true, true);
 
-    await wrapper.get('[data-home-disclosure]').trigger('click');
-
-    expect(getComputedStyle(wrapper.get('[data-home-children]').element).display).not.toBe('none');
+    expect(wrapper.get('.dashboard-sidebar').classes()).toContain('mobile-open');
+    expect(getComputedStyle(wrapper.get('[data-home-link]').element).display).not.toBe('none');
   });
 });

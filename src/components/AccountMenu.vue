@@ -45,6 +45,10 @@
         <span>{{ t('theme') }}</span>
         <ThemeSelector ref="selectorRef" />
       </div>
+      <div class="account-menu-language" data-account-menu-language>
+        <span>{{ t('language') }}</span>
+        <LanguageToggle />
+      </div>
       <!-- What the open page adds to the menu (the character sheet: its canvas connection). -->
       <div v-if="$slots.page" class="account-menu-page">
         <slot name="page" :close="close" />
@@ -75,6 +79,7 @@ import { useRouter } from 'vue-router';
 import { clearToken, getCurrentUser } from '../api/client';
 import { useI18n } from '../composables/useI18n';
 import { usePlugins } from '../composables/usePlugins';
+import LanguageToggle from './LanguageToggle.vue';
 import ThemeSelector from './ThemeSelector.vue';
 
 const emit = defineEmits<{ opened: [] }>();
@@ -233,7 +238,8 @@ defineExpose({ close });
   font-size: 13px;
 }
 .account-menu-identity span,
-.account-menu-theme > span {
+.account-menu-theme > span,
+.account-menu-language > span {
   color: var(--ui-text-secondary);
   font-size: 11px;
 }
@@ -241,6 +247,14 @@ defineExpose({ close });
   display: grid;
   gap: 7px;
   padding: 10px;
+  border-bottom: 1px solid var(--ui-border);
+}
+.account-menu-language {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
   border-bottom: 1px solid var(--ui-border);
 }
 .account-menu-page {
@@ -307,17 +321,20 @@ defineExpose({ close });
   -webkit-backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
 }
 .account-menu--glass .account-menu-identity,
-.account-menu--glass .account-menu-theme {
+.account-menu--glass .account-menu-theme,
+.account-menu--glass .account-menu-language {
   border-bottom-color: var(--ui-glass-border);
 }
 .account-menu--glass .account-menu-identity strong {
   font-size: 14px;
 }
 .account-menu--glass .account-menu-identity span,
-.account-menu--glass .account-menu-theme > span {
+.account-menu--glass .account-menu-theme > span,
+.account-menu--glass .account-menu-language > span {
   font-size: 12px;
 }
-.account-menu--glass .account-menu-theme > span {
+.account-menu--glass .account-menu-theme > span,
+.account-menu--glass .account-menu-language > span {
   letter-spacing: .04em;
   text-transform: uppercase;
   font-size: 10px;

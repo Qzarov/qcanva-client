@@ -1,7 +1,7 @@
 <template>
-  <!-- A shared space: everything in the folders its people added - QCanva or
-       Yandex Disk - as one feed, newest first, laid out like a dashboard
-       folder. Read-only for what others added. -->
+  <!-- A shared album (Space): clean header (Title, Members badge, Share button,
+       Filter, icon-only [Feed | Table] toggle, actions menu), NO top subfolder
+       filter pills, NO Split/Guests/Upload-destination clutter. -->
   <div class="folder-manager-row space-view" data-space-view>
     <div class="folder-manager-top">
       <div class="folder-manager-main">
@@ -11,6 +11,16 @@
         </span>
       </div>
       <template v-if="space">
+        <button
+          type="button"
+          class="space-share-btn"
+          data-space-share
+          @click="openMembers"
+        >
+          <Share2 :size="14" aria-hidden="true" />
+          <span>{{ t('explorerShareGroup') }}</span>
+        </button>
+
         <SpaceFilterDialog
           :open="filterMenuOpen"
           :types="filterTypes"
@@ -27,7 +37,14 @@
           @toggle-owner="toggleOwner"
           @update:exts="setExts"
         />
-        <DashboardViewToggle class="folder-view-toggle" :mode="viewMode" @update:mode="emit('update:viewMode', $event)" />
+
+        <DashboardViewToggle
+          class="folder-view-toggle"
+          variant="album"
+          :mode="albumView"
+          @update:mode="setAlbumView"
+        />
+
         <div class="folder-manager-menu">
           <button
             class="folder-manager-trigger"
@@ -39,7 +56,7 @@
           <Transition name="card-menu-pop">
             <div v-if="menu === 'space'" class="mobile-action-popover" data-space-actions @click.stop>
               <button v-if="canAdd" class="card-menu-item" data-space-add-folder @click="startAdd()">{{ t('spaceAddFolder') }}</button>
-              <button class="card-menu-item" data-space-members-open @click="openMembers">{{ t('spaceMembers') }}</button>
+              <button class="card-menu-item" data-space-members-open @click="openMembers">{{ t('explorerShareGroup') }}</button>
               <template v-if="space.role === 'owner'">
                 <button class="card-menu-item" data-space-rename @click="rename">{{ t('rename') }}</button>
                 <button class="card-menu-item danger" data-space-delete @click="removeSpace">{{ t('delete') }}</button>
@@ -58,51 +75,6 @@
       </div>
       <div v-else-if="!space" class="dash-empty">{{ t('driveLoading') }}</div>
       <template v-else>
-        <!-- The space's folders as tiles, like a folder's subfolders: pick any
-             number to see only them (picked again, off); take out one's own. -->
-        <template v-if="space.sources.length">
-          <div class="dash-section-head space-section-head">
-            <h2>{{ t('folders') }}</h2>
-            <button v-if="filterSources.length" type="button" class="space-folders-all" data-space-folders-all @click="toggleSource(null)">{{ t('spaceAllFolders') }}</button>
-          </div>
-          <div class="dash-grid subfolder-grid space-folder-grid" role="group" :aria-label="t('spaceFolders')" data-space-sources>
-            <div v-for="source in space.sources" :key="source.id" class="space-folder-tile" :data-space-source="source.id">
-              <button
-                type="button"
-                class="subfolder-card"
-                :class="{ 'is-selected': filterSources.includes(source.id) }"
-                :aria-pressed="filterSources.includes(source.id)"
-                data-space-folder-toggle
-                @click="toggleSource(source.id)"
-              >
-                <span class="subfolder-card-icon" aria-hidden="true">
-                  <Check v-if="filterSources.includes(source.id)" :size="13" />
-                  <!-- A Yandex folder still being read turns; one that could not be read says why. -->
-                  <LoaderCircle v-else-if="source.kind === 'yandex' && !source.syncedAt" class="space-source-reading" :size="13" data-space-source-reading />
-                  <TriangleAlert v-else-if="source.kind === 'yandex' && source.syncError" v-hint="source.syncError ?? ''" class="space-source-failed" :size="13" data-space-source-failed />
-                  <Cloud v-else-if="source.kind === 'yandex'" :size="13" />
-                  <FolderIcon v-else :size="13" />
-                </span>
-                <span class="subfolder-card-name">{{ source.title }}</span>
-                <span v-if="source.itemCount !== null" class="subfolder-card-count">{{ source.itemCount || t('emptyFolder') }}</span>
-                <span class="subfolder-card-date space-folder-who">{{ source.addedBy.name || '' }}</span>
-              </button>
-              <button
-                v-if="canRemoveSource(source)"
-                type="button"
-                class="space-folder-remove"
-                :aria-label="t('spaceRemoveFolder')"
-                v-hint="t('spaceRemoveFolder')"
-                data-space-source-remove
-                @click="removeSource(source)"
-              ><X :size="12" aria-hidden="true" /></button>
-            </div>
-          </div>
-          <div class="dash-section-head space-section-head">
-            <h2>{{ t('spaceFeed') }}</h2>
-          </div>
-        </template>
-
         <div v-if="!items.length && loaded && filtered" class="dash-empty" data-space-filtered-empty>
           {{ t('noFilterMatches') }}
           <button type="button" class="dash-empty-reset" @click="resetFilters">{{ t('resetFilters') }}</button>
@@ -114,6 +86,16 @@
           <p v-else class="dash-empty" data-space-empty>{{ t('noFolderItems') }}</p>
         </div>
 
+        <ExplorerTableView
+          v-else-if="albumView === 'table'"
+          :rows="tableRows"
+          :selected-keys="effectiveSelectedKeys"
+          drag-source="explorer"
+          @update:selected-keys="onTableSelection"
+          @open="open($event.raw as SpaceFeedItem)"
+          @contextmenu="(ev, row) => openItemContextMenu(ev, row.raw as SpaceFeedItem)"
+        />
+
         <div v-else class="dash-grid" data-space-feed>
           <template v-for="item in shown" :key="item.key">
             <!-- A QCanva document: its own card, picture and icon. -->
@@ -122,11 +104,16 @@
               class="canvas-card html-doc-card"
               role="button"
               tabindex="0"
+              draggable="true"
               :data-space-item="item.key"
               :data-select-key="selectKeyOf(item)"
               :data-selected="isSelected(item) || undefined"
               @click="open(item)"
               @keydown.enter.prevent="open(item)"
+              @contextmenu.prevent.stop="openItemContextMenu($event, item)"
+              @dragstart="onFeedDragStart($event, item)"
+              @drag="onFeedDragMove"
+              @dragend="onFeedDragEnd"
             >
               <ResourceThumb :kind="thumbKind(item)" :id="item.id!" :version="item.updatedAt" />
               <div class="card-title card-title-with-icon">
@@ -155,6 +142,7 @@
               :class="{ 'has-preview': withPicture(item), 'is-markdown-doc': isMarkdown(item) }"
               role="button"
               tabindex="0"
+              draggable="true"
               :data-space-item="item.key"
               :data-file-kind="isMarkdown(item) ? 'markdown' : undefined"
               :data-select-key="selectKeyOf(item)"
@@ -162,6 +150,10 @@
               v-file-info="infoOf(item)"
               @click="open(item)"
               @keydown.enter.prevent="open(item)"
+              @contextmenu.prevent.stop="openItemContextMenu($event, item)"
+              @dragstart="onFeedDragStart($event, item)"
+              @drag="onFeedDragMove"
+              @dragend="onFeedDragEnd"
             >
               <div class="card-title card-title-with-icon">
                 <span
@@ -210,6 +202,7 @@
             </article>
           </template>
         </div>
+
         <button v-if="nextOffset !== null" type="button" class="folder-files-more" :disabled="loadingMore" data-space-more @click="loadMore">
           {{ loadingMore ? t('driveLoading') : t('driveShowMore') }}
         </button>
@@ -226,13 +219,29 @@
           @click.stop
         >
           <button class="card-menu-item" data-space-add-qspace @click="openQspaceDialog">{{ t('spaceAddQspaceFolder') }}</button>
-              <button v-if="yandexConnected" class="card-menu-item" data-space-add-yandex @click="openYandexPicker">{{ t('spaceAddYandexFolder') }}</button>
+          <button v-if="yandexConnected" class="card-menu-item" data-space-add-yandex @click="openYandexPicker">{{ t('spaceAddYandexFolder') }}</button>
         </div>
       </Transition>
     </Teleport>
 
+    <ExplorerContextMenu
+      :open="ctxMenu.open"
+      :x="ctxMenu.x"
+      :y="ctxMenu.y"
+      :items="ctxMenu.items"
+      :can-move="false"
+      :can-delete="false"
+      :can-rename="false"
+      :is-favorite="ctxAllFavorite"
+      @close="ctxMenu.open = false"
+      @open="onCtxOpen"
+      @share="openMembers"
+      @toggle-favorite="onCtxToggleFavorite"
+      @download="onCtxDownload"
+    />
+
     <SpaceAddDialog v-if="addDialogOpen" @pick="pickSource" @close="addDialogOpen = false" />
-    <SpaceMembersDialog v-if="membersOpen && space" :space="space" :me-id="meId" @changed="onMembersChanged" @close="membersOpen = false" />
+    <AlbumShareDialog v-if="membersOpen && space" :space="space" :me-id="meId" @changed="onMembersChanged" @close="membersOpen = false" />
     <SpaceFolderDialog
       v-if="qspaceOpen"
       ref="qspaceDialog"
@@ -258,8 +267,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { Check, Cloud, File as FileIcon, Folder as FolderIcon, Image as ImageIcon, LoaderCircle, Play, Plus, TriangleAlert, Video, X } from '@lucide/vue';
-import { vHint } from '../../directives/hint';
+import { Check, File as FileIcon, Image as ImageIcon, Play, Plus, Share2, Video } from '@lucide/vue';
 import { spacesApi, type SpaceDetails, type SpaceFeedItem, type SpaceFeedType, type SpaceSource } from '../../api/spaces';
 import SpaceFilterDialog from './SpaceFilterDialog.vue';
 
@@ -267,6 +275,8 @@ import { LAYOUT, matchesMedia } from '../../composables/layoutMedia';
 import { downloadDriveFile, driveApi, getFileExtension, resolveDownloadUrl } from '../../api/drive';
 import { downloadYandexLink } from '../../api/yandexDisk';
 import { confirmDialog, promptDialog } from '../../composables/appDialog';
+import { useExplorerGroupDnd, type GroupDragEntry } from '../../composables/useExplorerGroupDnd';
+import { useExplorerLayoutPrefs } from '../../composables/useExplorerLayoutPrefs';
 import { useI18n } from '../../composables/useI18n';
 import { useSpaces } from '../../composables/useSpaces';
 import { useYandexDisk } from '../../composables/useYandexDisk';
@@ -276,12 +286,14 @@ import { hasCardPicture, isMarkdownFile, isPictureFile, isVideoFile } from '../.
 import { fetchMarkdownTextFromUrl } from '../../documents/markdown-viewer';
 import type { MarkdownViewerItem } from '../MarkdownDocumentViewer.vue';
 import ResourceIcon from '../ResourceIcon.vue';
-import ResourceThumb from './ResourceThumb.vue';
+import AlbumShareDialog from './AlbumShareDialog.vue';
 import DashboardViewToggle from './DashboardViewToggle.vue';
+import ExplorerContextMenu, { type ExplorerContextMenuItem } from './ExplorerContextMenu.vue';
+import ExplorerTableView, { type ExplorerTableRow } from './ExplorerTableView.vue';
 import FilePlaceholder from './FilePlaceholder.vue';
+import ResourceThumb from './ResourceThumb.vue';
 import SpaceAddDialog from './SpaceAddDialog.vue';
 import SpaceFolderDialog from './SpaceFolderDialog.vue';
-import SpaceMembersDialog from './SpaceMembersDialog.vue';
 import YandexFolderPicker from './YandexFolderPicker.vue';
 import type { MediaViewerItem } from './DashboardMediaViewer.vue';
 
@@ -289,16 +301,20 @@ type ViewMode = 'grid' | 'list';
 
 const props = defineProps<{
   spaceId: string;
-  viewMode: ViewMode;
+  viewMode?: ViewMode;
   query?: string;
   meId: string;
   /** The user's own QCanva folders, for "add a folder". */
   folderOptions: ReadonlyArray<{ id: string; name: string; depth: number; path: string }>;
   /** Keys ticked on the dashboard (`item.key` for feed items). */
   selectedKeys?: readonly string[];
+  /** Optional subfolder/source ID chosen in the left Explorer tree. */
+  sourceFilterId?: string | null;
 }>();
+
 const emit = defineEmits<{
   'update:viewMode': [mode: ViewMode];
+  'update:selectedKeys': [keys: string[]];
   /** A QCanva document: the dashboard opens it as it opens any. */
   open: [kind: string, id: string];
   /** Pictures full screen, from the one clicked. */
@@ -318,6 +334,8 @@ const emit = defineEmits<{
 const { t, locale } = useI18n();
 const { load: loadSpaces } = useSpaces();
 const { status: yandexStatus, load: loadYandexStatus } = useYandexDisk();
+const { albumView, setAlbumView, isFavorite, toggleFavorite } = useExplorerLayoutPrefs();
+const { startGroupDrag, updateGroupDragPosition, endGroupDrag } = useExplorerGroupDnd();
 
 const space = ref<SpaceDetails | null>(null);
 const items = ref<SpaceFeedItem[]>([]);
@@ -327,19 +345,26 @@ const loadingMore = ref(false);
 const error = ref('');
 const busy = ref(false);
 const menu = ref('');
-// The feed's filters: any number of folders, kinds of file and adders; none of a kind means all.
-const filterSources = ref<string[]>([]);
+const localSelectedKeys = ref<string[]>([]);
+
 const filterTypes = ref<SpaceFeedType[]>([]);
 const filterPeople = ref<string[]>([]);
 const filterOwners = ref<string[]>([]);
 const filterExts = ref<string[]>([]);
 const filterMenuOpen = ref(false);
-/** How many of each kind the other filters leave (the hub's first page). */
 const typeCounts = ref<Partial<Record<SpaceFeedType, number>>>({});
 
-const feedFilters = () => ({ sourceIds: filterSources.value, types: filterTypes.value, exts: filterExts.value, owners: filterOwners.value, addedBy: filterPeople.value });
-const filtered = computed(() => Boolean(filterSources.value.length || filterTypes.value.length || filterExts.value.length || filterOwners.value.length || filterPeople.value.length));
-/** Who added the space's folders, once each. */
+const feedFilters = () => ({
+  sourceIds: props.sourceFilterId ? [props.sourceFilterId] : [],
+  types: filterTypes.value,
+  exts: filterExts.value,
+  owners: filterOwners.value,
+  addedBy: filterPeople.value,
+});
+const filtered = computed(() =>
+  Boolean(props.sourceFilterId || filterTypes.value.length || filterExts.value.length || filterOwners.value.length || filterPeople.value.length),
+);
+
 const adders = computed(() => {
   const seen = new Map<string, { id: string; name: string | null }>();
   for (const source of space.value?.sources ?? []) if (!seen.has(source.addedBy.id)) seen.set(source.addedBy.id, source.addedBy);
@@ -359,30 +384,73 @@ const takenFolders = computed(() => (space.value?.sources ?? []).filter((s) => s
 const countLabel = computed(() => {
   const s = space.value;
   if (!s) return '';
-  return t('spaceCount').replace('{people}', String(s.members.length + 1)).replace('{folders}', String(s.sources.length));
+  return t('explorerMembersCount').replace('{n}', String(s.members.length + 1));
 });
+
 const shown = computed(() => {
   const needle = (props.query || '').trim().toLocaleLowerCase();
   return needle ? items.value.filter((item) => item.name.toLocaleLowerCase().includes(needle)) : items.value;
 });
+
+const effectiveSelectedKeys = computed(() => props.selectedKeys ?? localSelectedKeys.value);
 const selectKeyOf = (item: SpaceFeedItem) => item.key;
-const isSelected = (item: SpaceFeedItem) => Boolean(props.selectedKeys?.includes(item.key));
+const isSelected = (item: SpaceFeedItem) => effectiveSelectedKeys.value.includes(item.key);
 watch(shown, (list) => emit('items', list), { immediate: true });
 watch(space, (details) => emit('space', details), { immediate: true });
+
+function onTableSelection(keys: string[]): void {
+  localSelectedKeys.value = keys;
+  emit('update:selectedKeys', keys);
+}
+
+const sourceById = computed(() => {
+  const map = new Map<string, SpaceSource>();
+  for (const source of space.value?.sources ?? []) {
+    map.set(source.id, source);
+  }
+  return map;
+});
+
+function itemTypeLabel(item: SpaceFeedItem): string {
+  if (item.kind === 'canvas') return t('driveCanvas');
+  if (item.kind === 'text-document') return t('driveDocument');
+  if (item.kind === 'html-document') return 'HTML';
+  if (item.kind === 'board') return t('driveBoard');
+  if (item.kind === 'sheet') return t('driveSheet');
+  return getFileExtension(item.name);
+}
+
+const tableRows = computed<ExplorerTableRow<SpaceFeedItem>[]>(() =>
+  shown.value.map((item) => {
+    const src = sourceById.value.get(item.sourceId);
+    const sourceLabel = src?.title || (item.origin === 'yandex' ? t('yandexDisk') : t('qSpace'));
+    return {
+      key: item.key,
+      id: item.id || item.key,
+      kind: item.kind,
+      name: item.name || t('untitled'),
+      updatedAt: item.updatedAt,
+      typeLabel: itemTypeLabel(item),
+      sizeBytes: item.size,
+      sourceLabel,
+      albumNames: space.value ? [{ id: space.value.id, name: space.value.name }] : [],
+      folderId: src?.folderId ?? null,
+      path: item.path,
+      isFolder: false,
+      raw: item,
+    };
+  }),
+);
 
 const isDocument = (item: SpaceFeedItem) => item.origin === 'qspace' && item.kind !== 'file';
 const fileLike = (item: SpaceFeedItem) => ({ name: item.name, mime: item.mime, kind: item.mediaType === 'video' ? 'video' : item.mediaType === 'image' ? 'photo' : undefined });
 const isVideo = (item: SpaceFeedItem) => isVideoFile(fileLike(item));
 const isPicture = (item: SpaceFeedItem) => isPictureFile(fileLike(item));
 const isMarkdown = (item: SpaceFeedItem) => item.kind === 'file' && isMarkdownFile(fileLike(item));
-/** A picture square: pictures, videos, PDFs, EPUBs and text files - and any file Yandex made a preview of. */
 const withPicture = (item: SpaceFeedItem) => item.kind === 'file' && (hasCardPicture(fileLike(item)) || Boolean(item.origin === 'yandex' && item.previewUrl));
 const thumbKind = (item: SpaceFeedItem) => (item.kind === 'board' || item.kind === 'sheet' ? 'interactive-template' : item.kind);
 const templateType = (item: SpaceFeedItem) => (item.kind === 'board' ? 'trello-board' : item.kind === 'sheet' ? 'dnd-character' : null);
-/**
- * Known to have no picture (not one on its way): a Yandex file without a
- * preview, a QCanva one the hub has none for, a picture that failed to load.
- */
+
 const noPicture = reactive(new Set<string>());
 const pictureless = (item: SpaceFeedItem) => (item.origin === 'yandex' ? !item.previewUrl : false) || broken.has(item.key) || noPicture.has(item.key);
 const previewOf = (item: SpaceFeedItem) => {
@@ -405,7 +473,6 @@ const errorText = (err: unknown, fallback: string) => (err instanceof Error && e
 
 // ----- loading
 let loadId = 0;
-/** `quiet`: a look again while a Yandex folder is read - no "Loading", no lost place. */
 async function load(quiet = false) {
   const current = ++loadId;
   error.value = '';
@@ -435,11 +502,6 @@ async function load(quiet = false) {
 }
 const reload = () => load();
 
-/**
- * A Yandex folder just added (or not read yet) is read by the hub in the
- * background - a big one takes a while: the feed is looked at again every
- * few seconds until every Yandex folder is read, for three minutes at most.
- */
 const READ_POLL_MS = 3000;
 const READ_POLL_FOR_MS = 3 * 60 * 1000;
 let readPoll: ReturnType<typeof setTimeout> | null = null;
@@ -474,7 +536,6 @@ async function loadMore() {
   }
 }
 
-/** QCanva pictures and videos: the hub's card pictures, asked for once, then again for those still being made. */
 let previewTimer: ReturnType<typeof setTimeout> | null = null;
 async function loadPreviews(list: SpaceFeedItem[], retry = true) {
   const wanted = list.filter((item) => item.origin === 'qspace' && withPicture(item) && item.id && !previews[item.key]);
@@ -491,7 +552,7 @@ async function loadPreviews(list: SpaceFeedItem[], retry = true) {
     }
     if (pending.length && retry) previewTimer = setTimeout(() => void loadPreviews(pending, false), 5000);
   } catch {
-    /* no card pictures: the drawn placeholder stays */
+    /* fallback placeholder stays */
   }
 }
 
@@ -499,7 +560,6 @@ watch(() => props.spaceId, () => {
   if (readPoll) clearTimeout(readPoll);
   readPoll = null;
   readPollSince = 0;
-  filterSources.value = [];
   filterTypes.value = [];
   filterPeople.value = [];
   filterOwners.value = [];
@@ -514,12 +574,11 @@ watch(() => props.spaceId, () => {
   void load();
 });
 
-const toggleIn = <T,>(list: T[], value: T) => (list.includes(value) ? list.filter((item) => item !== value) : [...list, value]);
-/** A folder chip: on or off; "All" clears them. */
-function toggleSource(sourceId: string | null) {
-  filterSources.value = sourceId === null ? [] : toggleIn(filterSources.value, sourceId);
+watch(() => props.sourceFilterId, () => {
   void load();
-}
+});
+
+const toggleIn = <T,>(list: T[], value: T) => (list.includes(value) ? list.filter((item) => item !== value) : [...list, value]);
 function toggleType(type: SpaceFeedType) {
   filterTypes.value = toggleIn(filterTypes.value, type);
   void load();
@@ -537,12 +596,88 @@ function setExts(exts: string[]) {
   void load();
 }
 function resetFilters() {
-  filterSources.value = [];
   filterTypes.value = [];
   filterPeople.value = [];
   filterOwners.value = [];
   filterExts.value = [];
   void load();
+}
+
+// ----- Group DnD on Feed cards
+function toDragEntry(item: SpaceFeedItem): GroupDragEntry {
+  return {
+    key: item.key,
+    id: item.id || item.key,
+    kind: item.kind,
+    name: item.name,
+    folderId: sourceById.value.get(item.sourceId)?.folderId ?? null,
+    path: item.path,
+  };
+}
+
+function onFeedDragStart(event: DragEvent, item: SpaceFeedItem): void {
+  const dragged = isSelected(item) && effectiveSelectedKeys.value.length > 1
+    ? shown.value.filter((candidate) => effectiveSelectedKeys.value.includes(candidate.key))
+    : [item];
+  startGroupDrag({
+    source: 'explorer',
+    items: dragged.map(toDragEntry),
+  }, event);
+}
+
+function onFeedDragMove(event: DragEvent): void {
+  if (event.clientX !== 0 || event.clientY !== 0) {
+    updateGroupDragPosition(event.clientX, event.clientY);
+  }
+}
+
+function onFeedDragEnd(): void {
+  endGroupDrag();
+}
+
+// ----- Context menu
+const ctxMenu = reactive<{
+  open: boolean;
+  x: number;
+  y: number;
+  items: SpaceFeedItem[];
+}>({
+  open: false,
+  x: 0,
+  y: 0,
+  items: [],
+});
+
+const ctxAllFavorite = computed(() =>
+  ctxMenu.items.length > 0 && ctxMenu.items.every((item) => isFavorite(item.key)),
+);
+
+function openItemContextMenu(event: MouseEvent, item: SpaceFeedItem): void {
+  const selected = isSelected(item) && effectiveSelectedKeys.value.length > 1
+    ? shown.value.filter((candidate) => effectiveSelectedKeys.value.includes(candidate.key))
+    : [item];
+  ctxMenu.x = event.clientX;
+  ctxMenu.y = event.clientY;
+  ctxMenu.items = selected;
+  ctxMenu.open = true;
+}
+
+function onCtxOpen(entry: ExplorerContextMenuItem): void {
+  const found = shown.value.find((item) => item.key === entry.key);
+  if (found) void open(found);
+}
+
+function onCtxToggleFavorite(entries: ReadonlyArray<ExplorerContextMenuItem>): void {
+  for (const entry of entries) {
+    toggleFavorite(entry.key);
+  }
+}
+
+async function onCtxDownload(entries: ReadonlyArray<ExplorerContextMenuItem>): Promise<void> {
+  for (const entry of entries) {
+    const found = shown.value.find((item) => item.key === entry.key);
+    if (found) await download(found);
+  }
 }
 
 // ----- opening
@@ -553,7 +688,6 @@ async function open(item: SpaceFeedItem) {
     return;
   }
   if (isPicture(item) || isVideo(item)) {
-    // The feed's pictures and videos together, in its order: the viewer pages through them.
     const media = shown.value.filter((other) => other.kind === 'file' && (isPicture(other) || isVideo(other)));
     emit('open-media', media.map(viewerItem), Math.max(0, media.findIndex((other) => other.key === item.key)));
     return;
@@ -611,16 +745,10 @@ const closeMenu = (event: MouseEvent) => {
   const target = event.target as HTMLElement | null;
   if (!target?.closest('.folder-manager-menu, [data-space-add-menu], .card-menu, .card-manage')) menu.value = '';
 };
-/** Where the add choice opens: under what was pressed (a phone makes it a bottom sheet). */
 const addMenuStyle = ref<Record<string, string>>({});
 const teleportReady = ref(false);
 const addDialogOpen = ref(false);
-/**
- * Adding a folder - "⋯", the empty space's tile, the toolbar's Add, the
- * phone's "+": where it comes from is chosen first - in the Add window's look
- * on a computer, in a bottom sheet on a phone. With no Yandex Disk connected
- * there is one place, so its picker opens straight away (nothing of one item).
- */
+
 function startAdd(event?: Event) {
   if (!canAdd.value) return;
   if (!yandexConnected.value) {
@@ -696,25 +824,6 @@ async function addYandex(path: string) {
   }
 }
 
-const canRemoveSource = (source: SpaceSource) => space.value?.role === 'owner' || source.addedBy.id === props.meId;
-async function removeSource(source: SpaceSource) {
-  const confirmed = await confirmDialog({
-    title: t('spaceRemoveFolderTitle').replace('{name}', source.title),
-    confirmLabel: t('spaceRemoveFolder'),
-    cancelLabel: t('cancel'),
-    danger: true,
-  });
-  if (!confirmed) return;
-  try {
-    await spacesApi.removeSource(props.spaceId, source.id);
-    filterSources.value = filterSources.value.filter((id) => id !== source.id);
-    await load();
-    void loadSpaces(true);
-  } catch (err) {
-    emit('feedback', 'error', errorText(err, t('spaceActionFailed')));
-  }
-}
-
 async function rename() {
   menu.value = '';
   const name = (await promptDialog({ title: t('rename'), value: space.value?.name ?? '', confirmLabel: t('driveSave'), cancelLabel: t('cancel') }))?.trim();
@@ -771,7 +880,6 @@ async function onMembersChanged(next: SpaceDetails | null) {
   }
   const foldersChanged = next.sources.length !== (space.value?.sources.length ?? 0);
   space.value = next;
-  // A member made a viewer took their folders out: the feed changed too.
   if (foldersChanged) await load();
   void loadSpaces(true);
 }
@@ -791,5 +899,30 @@ onBeforeUnmount(() => {
   emit('space', null);
 });
 
-defineExpose({ reload, startAdd });
+defineExpose({ reload, startAdd, openMembers });
 </script>
+
+<style scoped>
+.space-share-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 11px;
+  border-radius: 9px;
+  border: 1px solid var(--ui-glass-border, var(--ui-border));
+  background: var(--ui-glass-btn-bg, var(--ui-surface-subtle));
+  box-shadow: var(--ui-glass-inset-highlight, none);
+  color: var(--ui-text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.space-share-btn:hover {
+  background: var(--ui-glass-btn-hover, var(--ui-surface-subtle));
+  border-color: var(--ui-glass-accent-border, var(--color-brands));
+  color: var(--ui-glass-accent-text, var(--color-brands));
+}
+</style>

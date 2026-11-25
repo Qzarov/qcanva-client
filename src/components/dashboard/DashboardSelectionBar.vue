@@ -9,6 +9,12 @@
     <button v-if="!allOnScreenSelected" type="button" class="dashboard-selection-icon" data-selection-select-all :aria-label="t('selectAll')" v-hint="t('selectAll')" @click="emit('select-all')">
       <CheckCheck :size="17" aria-hidden="true" />
     </button>
+    <button v-if="canShare" type="button" class="dashboard-selection-icon" data-selection-share :aria-label="t('explorerShareGroup')" v-hint="t('explorerShareGroup')" :disabled="isBusy" @click.stop="emit('share')">
+      <Share2 :size="17" aria-hidden="true" />
+    </button>
+    <button v-if="canAddToAlbum" type="button" class="dashboard-selection-icon" data-selection-album :aria-label="t('explorerAddToAlbum')" v-hint="t('explorerAddToAlbum')" :disabled="isBusy" @click.stop="emit('add-to-album')">
+      <FolderHeart :size="17" aria-hidden="true" />
+    </button>
     <button v-if="canMove" type="button" class="dashboard-selection-icon" data-selection-move :aria-label="t('bulkMove')" v-hint="t('bulkMove')" :disabled="isBusy" @click.stop="emit('move')">
       <FolderInput :size="17" aria-hidden="true" />
     </button>
@@ -22,7 +28,7 @@
 </template>
 
 <script setup lang="ts">
-import { CheckCheck, Download, FolderInput, Trash2, X } from '@lucide/vue';
+import { CheckCheck, Download, FolderHeart, FolderInput, Share2, Trash2, X } from '@lucide/vue';
 import { formatFileSize } from '../../api/drive';
 import { useI18n } from '../../composables/useI18n';
 
@@ -31,13 +37,25 @@ withDefaults(defineProps<{
   selectedSize: number;
   allOnScreenSelected: boolean;
   canMove?: boolean;
+  canShare?: boolean;
+  canAddToAlbum?: boolean;
   bulkDeleteCount: number;
   isBusy: boolean;
   downloadBusy: boolean;
 }>(), {
   canMove: true,
+  canShare: false,
+  canAddToAlbum: false,
 });
 
-const emit = defineEmits<{ clear: []; 'select-all': []; move: []; download: []; delete: [] }>();
+const emit = defineEmits<{
+  clear: [];
+  'select-all': [];
+  share: [];
+  'add-to-album': [];
+  move: [];
+  download: [];
+  delete: [];
+}>();
 const { t } = useI18n();
 </script>

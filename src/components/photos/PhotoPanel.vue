@@ -58,7 +58,8 @@
         <nav class="pp-crumbs" :aria-label="t('photosPanelFolder')">
           <template v-for="(part, i) in details.folderPath" :key="part.id + ':' + i">
             <span v-if="i > 0" class="pp-sep" aria-hidden="true">/</span>
-            <button type="button" class="pp-link" data-panel-crumb @click="emit('open-folder', part.id)">
+            <span v-if="hideOpenFolder" class="pp-crumb-text">{{ part.name }}</span>
+            <button v-else type="button" class="pp-link" data-panel-crumb @click="emit('open-folder', part.id)">
               {{ part.name }}
             </button>
           </template>
@@ -163,7 +164,12 @@ import {
 import { alertDialog, promptDialog } from '../../composables/appDialog';
 import { useI18n } from '../../composables/useI18n';
 
-const props = defineProps<{ fileId: string }>();
+const props = withDefaults(defineProps<{
+  fileId: string;
+  hideOpenFolder?: boolean;
+}>(), {
+  hideOpenFolder: false,
+});
 
 const emit = defineEmits<{
   (e: 'close'): void;
@@ -491,13 +497,16 @@ const storageRows = computed<StorageRow[]>(() => {
 <style scoped>
 .pp {
   box-sizing: border-box;
-  width: 340px;
+  width: 100%;
+  min-width: 0;
   max-width: 100vw;
   height: 100%;
   overflow-y: auto;
   padding: 16px 18px 40px;
-  background: var(--ui-surface-solid);
-  border-left: 1px solid var(--ui-border);
+  background: var(--ui-glass-tint), var(--ui-glass-bg);
+  backdrop-filter: blur(var(--ui-glass-blur, 18px)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--ui-glass-blur, 18px)) saturate(1.2);
+  border-left: 1px solid var(--ui-glass-border);
   color: var(--ui-text);
   font-size: 14px;
 }
@@ -658,6 +667,11 @@ const storageRows = computed<StorageRow[]>(() => {
 .pp-sep,
 .pp-muted {
   color: var(--ui-text-muted);
+}
+
+.pp-crumb-text {
+  padding: 2px 0;
+  color: var(--ui-text-secondary);
 }
 
 .pp-link {

@@ -214,24 +214,39 @@ describe('PhotosFeed', () => {
     w.unmount();
   });
 
-  it('selection circle toggles and group circle selects whole group', async () => {
+  it('calm interaction: single click focuses without checkmark; Ctrl+click / Shift+click triggers multi-select checkmarks (>=2); group pick selects whole group', async () => {
     twoMonths();
     const Feed = await load();
     const w = mountFeed(Feed);
     await settle();
 
-    await w.get('[data-file-id="f1"] [data-testid="tile-check"]').trigger('click');
-    expect(w.emitted('toggle-select')![0]).toEqual([['f1'], true]);
-    expect(w.emitted('open')).toBeUndefined();
+    // Single click on f1: opens & focuses, NO green checkmark when selected.size < 2
+    await w.get('[data-file-id="f1"]').trigger('click');
+    expect((w.emitted('open')![0]![0] as FeedItem).fileId).toBe('f1');
+    expect((w.emitted('focus-photo')![0]![0] as FeedItem).fileId).toBe('f1');
+    expect(w.find('[data-testid="tile-check"]').exists()).toBe(false);
 
-    await w.setProps({ selected: new Set(['f1']) });
-    await w.get('[data-file-id="f1"] [data-testid="tile-check"]').trigger('click');
-    expect(w.emitted('toggle-select')![1]).toEqual([['f1'], false]);
-    // With a selection, a plain click toggles instead of opening.
-    await w.get('[data-file-id="f2"]').trigger('click');
-    expect(w.emitted('toggle-select')![2]).toEqual([['f2'], true]);
-    expect(w.emitted('open')).toBeUndefined();
+    // Selected size = 1 still shows NO green checkmark
+    await w.setProps({ selected: new Set(['f1']), current: 'f1' });
+    expect(w.get('[data-file-id="f1"]').classes()).toContain('is-current');
+    expect(w.get('[data-file-id="f1"]').classes()).not.toContain('is-checked');
+    expect(w.find('[data-testid="tile-check"]').exists()).toBe(false);
 
+    // Ctrl+click on f2 when f1 is current adds both -> set-selection ['f1', 'f2']
+    await w.get('[data-file-id="f2"]').trigger('click', { ctrlKey: true });
+    expect(w.emitted('set-selection')![0]).toEqual([['f1', 'f2']]);
+
+    // When selected.size >= 2, green checkmarks appear on selected tiles
+    await w.setProps({ selected: new Set(['f1', 'f2']) });
+    expect(w.get('[data-file-id="f1"]').classes()).toContain('is-checked');
+    expect(w.get('[data-file-id="f2"]').classes()).toContain('is-checked');
+    expect(w.findAll('[data-testid="tile-check"]').length).toBeGreaterThanOrEqual(2);
+
+    // Clicking tile-check toggles that item
+    await w.get('[data-file-id="f1"] [data-testid="tile-check"]').trigger('click');
+    expect(w.emitted('toggle-select')![0]).toEqual([['f1'], false]);
+
+    // Group pick selects whole group
     await w.setProps({ selected: new Set<string>() });
     const picks = w.findAll('[data-testid="group-pick"]');
     await picks[0]!.trigger('click');
@@ -550,7 +565,7 @@ describe('PhotosFeed', () => {
     w.unmount();
   });
 
-  it('keyboard: Enter opens a tile, Space toggles its selection', async () => {
+  it('keyboard: Enter and Space activate a tile to open viewer; contextmenu emits right-click', async () => {
     twoMonths();
     const Feed = await load();
     const w = mountFeed(Feed);
@@ -560,12 +575,11 @@ describe('PhotosFeed', () => {
     expect(tile.attributes('role')).toBe('button');
     expect(tile.attributes('aria-label')).toContain('p1.jpg');
     await tile.trigger('keydown.enter');
-    expect((w.emitted('open')![0]![0] as FeedItem).fileId).toBe('f1');
+    expect((w.emitted('activate')![0]![0] as FeedItem).fileId).toBe('f1');
     await tile.trigger('keydown.space');
-    expect(w.emitted('toggle-select')![0]).toEqual([['f1'], true]);
-    const chk = w.get('[data-file-id="f1"] [data-testid="tile-check"]');
-    expect(chk.element.tagName).toBe('BUTTON');
-    expect(chk.attributes('aria-label')).toContain('p1.jpg');
+    expect((w.emitted('activate')![1]![0] as FeedItem).fileId).toBe('f1');
+    await tile.trigger('contextmenu');
+    expect((w.emitted('contextmenu')![0]![1] as FeedItem).fileId).toBe('f1');
     expect(w.get('[data-testid="group-pick"]').attributes('aria-label')).toContain('Октябрь 2026');
     w.unmount();
   });

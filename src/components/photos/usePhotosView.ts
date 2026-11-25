@@ -16,7 +16,7 @@ import {
 } from '../../api/photos';
 
 export type SubSortKey = 'folder' | 'album';
-export type CaptionKey = 'folder' | 'album' | 'size';
+export type CaptionKey = 'folder' | 'album' | 'size' | 'access';
 
 export type PhotosViewState = {
   /** Active sort keys in priority order; direction and sub are derived from dirs/subs. */
@@ -39,7 +39,7 @@ export const PHOTOS_VIEW_SAVE_DELAY_MS = 500;
 
 const VALID_SORT_KEYS = new Set<string>(['date', 'folder', 'album', 'size']);
 const VALID_SUB_KEYS = new Set<string>(['name', 'size', 'created', 'added']);
-const VALID_CAPTION_KEYS = new Set<string>(['folder', 'album', 'size']);
+const VALID_CAPTION_KEYS = new Set<string>(['folder', 'album', 'size', 'access']);
 const VALID_PERIODS = new Set<string>(['day', 'month', 'year']);
 const VALID_FILTERS = new Set<string>(['all', 'photo', 'video', 'fav']);
 const VALID_TILES = new Set<string>(['s', 'm', 'l']);
@@ -93,10 +93,7 @@ function withDerivedSort(st: PhotosViewState): PhotosViewState {
 
 export function defaultPhotosViewState(): PhotosViewState {
   return {
-    sort: [
-      { key: 'date', desc: true },
-      { key: 'folder', desc: false, sub: 'name' },
-    ],
+    sort: [],
     dirs: defaultDirs(),
     subs: defaultSubs(),
     period: 'month',
@@ -347,7 +344,9 @@ function mutate(updater: (prev: PhotosViewState) => PhotosViewState): void {
 
 const levels = computed<SortKey[]>(() => {
   const sortKeys = state.value.sort.map((s) => s.key);
-  const validCaptions = state.value.captions.filter((c) => sortKeys.includes(c));
+  const validCaptions = state.value.captions.filter(
+    (c): c is Exclude<CaptionKey, 'access'> => c !== 'access' && sortKeys.includes(c),
+  );
   const candidates: SortKey[] = ['date', ...validCaptions];
 
   const getRank = (k: SortKey): number => {
@@ -369,8 +368,8 @@ const levels = computed<SortKey[]>(() => {
 });
 
 const captionOnTile = computed<CaptionKey[]>(() => {
-  const sortKeys = new Set(state.value.sort.map((s) => s.key));
-  return state.value.captions.filter((c) => !sortKeys.has(c));
+  const sortKeys = new Set<string>(state.value.sort.map((s) => s.key));
+  return state.value.captions.filter((c) => c === 'access' || !sortKeys.has(c));
 });
 
 const feedParams = computed<FeedParams>(() => ({
@@ -380,6 +379,13 @@ const feedParams = computed<FeedParams>(() => ({
   filter: state.value.filter,
   shared: state.value.shared,
 }));
+
+function setSort(sort: SortSpec[]): void {
+  mutate((prev) => ({
+    ...prev,
+    sort: normalizeSort(sort, []).map((s) => makeSpec(s.key, prev.dirs, prev.subs)),
+  }));
+}
 
 function toggleSortKey(k: SortKey): void {
   mutate((prev) => {
@@ -459,6 +465,7 @@ export function usePhotosView(): {
   levels: ComputedRef<SortKey[]>;
   captionOnTile: ComputedRef<CaptionKey[]>;
   feedParams: ComputedRef<FeedParams>;
+  setSort(sort: SortSpec[]): void;
   toggleSortKey(k: SortKey): void;
   toggleDir(k: SortKey): void;
   setAllDirs(desc: boolean): void;
@@ -477,6 +484,7 @@ export function usePhotosView(): {
     levels,
     captionOnTile,
     feedParams,
+    setSort,
     toggleSortKey,
     toggleDir,
     setAllDirs,

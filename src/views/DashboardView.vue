@@ -6,10 +6,11 @@
     @click="closeCardMenu"
   >
     <div
-      class="dashboard-app-shell"
+      class="dashboard-app-shell explorer-app-shell"
       :class="{
-        'sidebar-collapsed': isLoggedIn && sidebarWidthState === 'collapsed',
+        'sidebar-collapsed': isLoggedIn && sidebarCollapsed,
         'dashboard-app-shell-public': !isLoggedIn,
+        'is-gallery-mode': isLoggedIn && activeSection.kind === 'gallery',
       }"
     >
       <DashboardSidebar
@@ -18,24 +19,60 @@
         :active-section="activeSection"
         :feed-section="isHomeFeed ? activeFeedSection : null"
         :width-state="sidebarWidthState"
+        :collapsed="sidebarCollapsed"
+        :panel-mode="sidebarPanelMode"
+        :active-activity="activeActivity"
         :mobile-open="mobileSidebarOpen"
         :folders="sidebarFolders"
         :spaces="isLoggedIn"
         :yandex-refresh-key="yandexRefreshKey"
+        :search-folders="searchSidebarFolders"
+        :search-albums="searchSidebarAlbums"
+        :search-items="searchSidebarItems"
         @select="onSidebarSelect"
+        @select-activity="onSelectActivity"
+        @update:collapsed="onSidebarCollapsedChange"
         @open-yandex-file="openYandexSidebarFile"
         @create-space="createSpace"
+        @create-folder="openCreateGroupModal"
+        @share-space="openAlbumShareById"
         @toggle-width="toggleSidebarWidth"
         @close-mobile="closeMobileSidebar"
         @open-file="openSidebarFile"
         @toggle-folder="toggleTreeExpanded"
+        @navigate-up="goToParentFolder"
+        @tree-contextmenu="onTreeContextMenu"
+        @drop-group-to-folder="(p) => onDropGroupToFolder(p.folderId, p.drag)"
+        @drop-group-to-album="(p) => onDropGroupToAlbum(p.albumId, p.drag)"
         @folder-drag-start="onSidebarFolderDragStart"
         @folder-drag-end="onFolderDragEnd"
         @folder-drag-enter="onSidebarFolderDragEnter"
         @folder-drag-over="onSidebarFolderDragOver"
         @folder-drag-leave="onSidebarFolderDragLeave"
         @folder-drop="onSidebarFolderDrop"
-      />
+      >
+        <template #gallery-sidebar>
+          <GallerySidebar
+            :active-section="gallerySection"
+            :active-album-id="galleryAlbumId"
+            :active-space-id="gallerySpaceId"
+            :active-folder-id="galleryFolderId"
+            :highlighted-folder-id="galleryHighlightFolderId"
+            :highlighted-file-id="galleryHighlightFileId"
+            :folders="galleryStorageFolders"
+            @select-section="onGallerySelectSection"
+            @select-album="onGallerySelectAlbum"
+            @select-space="onGallerySelectSpace"
+            @select-folder="onGallerySelectFolder"
+            @select-yandex="openYandexPath"
+            @share-album="openAlbumShareById"
+            @open-trash="selectDashboardSection({ kind: 'trash' })"
+            @drop-favorites="onGalleryDropFavorites"
+            @drop-album="onGalleryDropAlbum"
+            @drop-folder="onGalleryDropFolder"
+          />
+        </template>
+      </DashboardSidebar>
       <div
         class="dashboard-central-shell"
         data-dashboard-dropzone
@@ -51,16 +88,20 @@
       />
       <Transition name="dashboard-selection-bar">
         <DashboardSelectionBar
-          v-if="isLoggedIn && selectedKeys.length"
+          v-if="isLoggedIn && selectedKeys.length && activeSection.kind !== 'gallery'"
           :selected-count="selectedKeys.length"
           :selected-size="selectedSize"
           :all-on-screen-selected="allOnScreenSelected"
           :can-move="canBulkMove"
+          :can-share="selectedKeys.length > 0"
+          :can-add-to-album="allSpaces.length > 0"
           :bulk-delete-count="bulkDeleteCount"
           :is-busy="isBusy"
           :download-busy="downloadStatus.phase === 'collect' || downloadStatus.phase === 'pack'"
           @clear="clearSelection"
           @select-all="selectAllOnScreen"
+          @share="shareSelectedGroup"
+          @add-to-album="openAddSelectionToAlbum"
           @move="openBulkMoveModal"
           @download="bulkDownload"
           @delete="bulkDelete"
@@ -93,27 +134,50 @@
         :transfer-status-percent="transferStatusPercent"
       />
     <DashboardPublicHeader v-if="!isLoggedIn" v-model:search-query="searchQuery" :folder-search-placeholder="folderSearchPlaceholder" />
-    <DashboardAuthHeader
-      v-else
-      v-model:search-query="searchQuery"
-      :open-control-menu="openControlMenu"
-      :content-types="contentTypes"
-      :all-tag-names="allTagNames"
-      :selected-tags="selectedTags"
-      :with-files="activeSection.kind === 'folder'"
-      :sort-mode="sortMode"
-      :folder-search-placeholder="folderSearchPlaceholder"
-      @open-sidebar="openMobileSidebar"
-      @toggle-menu="toggleToolbarMenu"
-      @update-types="contentTypes = $event"
-      @toggle-tag="toggleSelectedTag"
-      @reset-filters="clearTypeAndTagFilters"
-      @select-sort="selectSortMode"
-    />
+    <ExplorerHeadroomBar
+      v-else-if="activeSection.kind !== 'gallery'"
+      ref="headroomBarRef"
+      :headroom-hidden="headroomHidden"
+      :elevated="headroomElevated"
+      :segments="explorerPathInfo.segments"
+      :editable-path="explorerPathInfo.editablePath"
+      :view-mode="explorerViewMode"
+      :album-view-mode="albumViewMode"
+      :view-toggle-mode="headroomViewToggleMode"
+      :can-go-back="activeSection.kind === 'folder' || activeSection.kind === 'yandex' || activeSection.kind === 'space'"
+      :can-go-up="activeSection.kind === 'folder' || (activeSection.kind === 'yandex' && yandexPath !== '/')"
+      :show-nav-arrows="true"
+      :show-mobile-menu-button="true"
+      :path-error="pathBarError"
+      @open-mobile-sidebar="openMobileSidebar"
+      @go-back="goToParentFolder"
+      @go-up="goToParentFolder"
+      @select-segment="onSelectPathSegment"
+      @navigate-path="onNavigatePath"
+      @update:view-mode="setExplorerViewMode"
+      @update:album-view-mode="setAlbumViewMode"
+    >
+      <template #filters>
+        <DashboardFilterMenu
+          v-if="spaceId === null"
+          :open="openControlMenu === 'filter:desktop'"
+          :types="contentTypes"
+          :tags="allTagNames"
+          :selected-tags="selectedTags"
+          :with-files="activeSection.kind === 'folder'"
+          @toggle="toggleToolbarMenu('filter:desktop')"
+          @update:types="contentTypes = $event"
+          @toggle-tag="toggleSelectedTag"
+          @reset="clearTypeAndTagFilters"
+        />
+      </template>
+    </ExplorerHeadroomBar>
 
     <main
       ref="dashboardMain"
       class="app-main dashboard"
+      :class="{ 'app-main-gallery': isLoggedIn && activeSection.kind === 'gallery' }"
+      @scroll.passive="onDashboardMainScroll"
       @pointerdown="startMarquee"
       @touchstart.passive="onDashboardPullStart"
       @touchmove="onDashboardPullMove"
@@ -121,11 +185,11 @@
       @touchcancel="resetDashboardPull"
     >
     <!-- One grid/list choice for the whole dashboard: every feed section
-         and every folder (the switch sits in Recents' and the folder's heading). -->
+         and every folder (persisted in localStorage via qspace:viewMode). -->
     <div
       ref="dashboardShell"
       class="dashboard-shell"
-      :class="[{ 'dashboard-list-view': recentViewMode === 'list', 'dashboard-selecting': selectedKeys.length > 0, 'dashboard-marquee-active': Boolean(marquee) }, 'dashboard-nav-' + navDirection]"
+      :class="[{ 'dashboard-list-view': recentViewMode === 'list', 'dashboard-selecting': selectedKeys.length > 0, 'dashboard-marquee-active': Boolean(marquee), 'dashboard-shell-gallery': isLoggedIn && activeSection.kind === 'gallery' }, 'dashboard-nav-' + navDirection]"
       @click.capture="onSelectionClickCapture"
       @pointerdown.capture="onSelectionPointerDown"
       @pointermove.capture="onSelectionPointerMove"
@@ -134,6 +198,7 @@
       @contextmenu.capture="onSelectionContextMenu"
     >
     <DashboardToolbarControls
+      v-if="!isLoggedIn"
       :show-controls="spaceId === null"
       :filter-open="openControlMenu === 'filter:desktop'"
       :sort-open="openControlMenu === 'sort:desktop'"
@@ -167,6 +232,29 @@
       data-dashboard-view="recent"
       data-feed-section="recent"
     >
+      <template v-if="favoriteTiles.length">
+        <div id="feed-favorites" class="dash-section-head dashboard-recent-folders-head" data-feed-section="favorites">
+          <h2>{{ t('explorerFavorites') }}</h2>
+        </div>
+        <div class="dash-grid subfolder-grid" data-home-favorites>
+          <button
+            v-for="fav in favoriteTiles"
+            :key="fav.key"
+            type="button"
+            class="subfolder-card"
+            :data-favorite-tile="fav.key"
+            @click="openFavoriteTile(fav)"
+          >
+            <span class="subfolder-card-icon" aria-hidden="true">
+              <UsersRound v-if="fav.kind === 'space'" :size="13" />
+              <Folder v-else :size="13" />
+            </span>
+            <span class="subfolder-card-name">{{ fav.name }}</span>
+            <span class="subfolder-card-count">{{ fav.subtitle }}</span>
+          </button>
+        </div>
+      </template>
+
       <div class="dash-section-head dashboard-recent-head">
         <h2>{{ t('recents') }}</h2>
         <div class="dashboard-recent-head-controls">
@@ -177,8 +265,17 @@
         {{ t('recentStale') }}
         <button type="button" class="dash-empty-reset" @click.stop="retryRecent">{{ t('retry') }}</button>
       </p>
+      <ExplorerTableView
+        v-if="visibleRecent.length && explorerViewMode === 'table'"
+        :rows="recentTableRows"
+        :selected-keys="selectedKeys"
+        :hide-albums="true"
+        @update:selected-keys="selectedKeys = $event"
+        @open="openExplorerTableRow"
+        @contextmenu="onTableRowContextMenu"
+      />
       <DashboardRecentResources
-        v-if="visibleRecent.length"
+        v-else-if="visibleRecent.length"
         :items="visibleRecent"
         :recent-view-mode="recentViewMode"
         :is-logged-in="isLoggedIn"
@@ -260,19 +357,33 @@
           <span v-else-if="!yandexStatus?.connected" class="subfolder-card-count" data-recent-yandex-status>{{ yandexStatus?.reconnectRequired ? t('yandexReconnect') : t('yandexConnect') }}</span>
           <span v-if="yandexAccountLabel" class="subfolder-card-date" data-recent-yandex-account>{{ yandexAccountLabel }}</span>
         </button>
-        <button
+        <div
           v-for="space in spaceTiles"
           :key="'recent-space-' + space.id"
-          type="button"
-          class="subfolder-card"
-          :data-recent-space-tile="space.id"
-          @click="selectDashboardSection({ kind: 'space', spaceId: space.id })"
+          class="space-overview-card-wrap"
         >
-          <span class="subfolder-card-icon" aria-hidden="true"><UsersRound :size="13" /></span>
-          <span class="subfolder-card-name">{{ space.name }}</span>
-          <span class="subfolder-card-count">{{ space.sourceCount || t('emptyFolder') }}</span>
-          <span v-if="space.updatedAt" class="subfolder-card-date" data-folder-tile-date>{{ formatDate(space.updatedAt) }}</span>
-        </button>
+          <button
+            type="button"
+            class="subfolder-card"
+            :data-recent-space-tile="space.id"
+            @click="selectDashboardSection({ kind: 'space', spaceId: space.id })"
+          >
+            <span class="subfolder-card-icon" aria-hidden="true"><UsersRound :size="13" /></span>
+            <span class="subfolder-card-name">{{ space.name }}</span>
+            <span class="subfolder-card-count">{{ space.sourceCount || t('emptyFolder') }}</span>
+            <span v-if="space.updatedAt" class="subfolder-card-date" data-folder-tile-date>{{ formatDate(space.updatedAt) }}</span>
+          </button>
+          <button
+            type="button"
+            class="space-overview-share-btn"
+            :aria-label="t('share')"
+            :title="t('share')"
+            :data-recent-space-share="space.id"
+            @click.stop="openAlbumShareById(space.id)"
+          >
+            {{ t('share') }}
+          </button>
+        </div>
       </div>
       <div v-else class="dash-grid subfolder-grid" data-recent-spaces-empty>
         <button type="button" class="dashboard-add-tile dashboard-add-tile-folder" data-feed-add="spaces" @click.stop="createSpace">
@@ -340,7 +451,17 @@
                 @delete="deleteFolder(activeFolder)"
               />
               <div ref="activeFolderBody" class="folder-manager-body" @scroll="onFolderBodyScroll">
+                <ExplorerTableView
+                  v-if="explorerViewMode === 'table'"
+                  :rows="activeFolderTableRows"
+                  :selected-keys="selectedKeys"
+                  @update:selected-keys="selectedKeys = $event"
+                  @open="openExplorerTableRow"
+                  @contextmenu="onTableRowContextMenu"
+                  @drop-on-folder="(targetRow, payload) => onDropGroupToFolder(targetRow.id, payload)"
+                />
                 <DashboardActiveSubfolders
+                  v-if="explorerViewMode !== 'table'"
                   :subfolders="activeSubfolders"
                   :active-folder-empty="activeFolderEmpty"
                   :has-active-filter="hasActiveFilter"
@@ -350,7 +471,7 @@
                   @reset="resetFilters"
                   @add="openAddFromTile('folder')"
                 />
-                <div class="dash-grid">
+                <div class="dash-grid" v-show="explorerViewMode !== 'table'">
                   <DashboardFolderResourceGrid
                     :items="activeFolder.items"
                     :is-logged-in="isLoggedIn"
@@ -440,6 +561,7 @@
           :folder-options="folderOptions"
           :selected-keys="selectedKeys"
           @update:view-mode="setRecentViewMode"
+          @update:selected-keys="selectedKeys = $event"
           @open="openSpaceResource"
           @open-media="(items, start) => (mediaViewer = { items, start })"
           @open-markdown="openSpaceMarkdown"
@@ -457,6 +579,23 @@
         data-dashboard-view="trash"
       >
         <DashboardTrash @restored="onTrashRestored" @feedback="setFeedback" />
+      </section>
+
+      <section
+        v-if="isLoggedIn && activeSection.kind === 'gallery'"
+        class="dashboard-gallery-content"
+        data-dashboard-view="gallery"
+      >
+        <DrivePhotos
+          :active-section="gallerySection"
+          :external-album-id="galleryAlbumId"
+          :external-folder-id="galleryFolderId"
+          :hide-internal-tabs="true"
+          @focus-photo="onGalleryFocusPhoto"
+          @share-album="openAlbumShareById"
+          @open-trash="selectDashboardSection({ kind: 'trash' })"
+          @open-folder="(folderId) => selectFolder(folderId)"
+        />
       </section>
 
       <div
@@ -634,13 +773,20 @@
     </div>
     </main>
       <button
-        v-if="isLoggedIn"
+        v-if="isLoggedIn && showFolderFab"
         type="button"
-        class="dashboard-fab"
+        class="dashboard-fab fab-create"
+        data-explorer-fab
         :aria-label="t('add')"
         :title="t('add')"
-        @click.stop="spaceId !== null ? spaceView?.startAdd($event) : yandexPath !== null ? yandexView?.pickFiles() : openAddDialog()"
+        @click.stop="yandexPath !== null ? yandexView?.pickFiles() : openAddDialog({ folderId: activeFolder?.id })"
       ><Plus :size="24" aria-hidden="true" /></button>
+      <ExplorerMobileTabBar
+        v-if="isLoggedIn"
+        :active-activity="mobileTabActivity"
+        @select-activity="onSelectActivity"
+        @open-menu="openMobileSidebar"
+      />
       </div>
     </div>
 
@@ -650,6 +796,7 @@
       v-if="addDialog.open"
       :folders="newItemFolderOptions"
       :initial-folder-id="addDialog.folderId"
+      :target-folder-name="addDialogTargetFolderName"
       :initial-import="addDialog.importKind"
       :busy="isBusy"
       @close="closeAddDialog"
@@ -659,6 +806,37 @@
       @create-folder="onAddCreateFolder"
       @import="onAddImport"
     />
+
+    <AlbumShareDialog
+      v-if="sharingAlbum"
+      :space="sharingAlbum"
+      :me-id="currentUser?.id || ''"
+      @changed="onSharingAlbumChanged"
+      @close="sharingAlbum = null"
+    />
+
+    <ExplorerContextMenu
+      :open="explorerCtxMenu.open"
+      :x="explorerCtxMenu.x"
+      :y="explorerCtxMenu.y"
+      :items="explorerCtxMenu.items"
+      :can-move="explorerCtxMenu.canMove"
+      :can-delete="explorerCtxMenu.canDelete"
+      :can-rename="explorerCtxMenu.canRename"
+      :is-favorite="explorerCtxMenu.isFavorite"
+      :albums="contextMenuAlbums"
+      @close="explorerCtxMenu.open = false"
+      @open="onCtxMenuOpen"
+      @share="onCtxMenuShare"
+      @add-to-album="onCtxMenuAddToAlbum"
+      @toggle-favorite="onCtxMenuToggleFavorite"
+      @move="onCtxMenuMove"
+      @rename="onCtxMenuRename"
+      @download="onCtxMenuDownload"
+      @delete="onCtxMenuDelete"
+    />
+
+    <ExplorerDragBadge />
 
     <DashboardMediaViewer
       v-if="mediaViewer"
@@ -712,7 +890,22 @@ import { useI18n } from '../composables/useI18n';
 import { LAYOUT, matchesMedia } from '../composables/layoutMedia';
 import { useBackHandler } from '../composables/useBackHandler';
 import { useDocumentTitle } from '../composables/useDocumentTitle';
-import DashboardSidebar from '../components/dashboard/DashboardSidebar.vue';
+import DashboardSidebar, { type TreeContextMenuPayload } from '../components/dashboard/DashboardSidebar.vue';
+import ExplorerHeadroomBar, { type ExplorerPathSegment, type HeadroomViewToggleMode } from '../components/dashboard/ExplorerHeadroomBar.vue';
+import ExplorerTableView, { type ExplorerTableRow } from '../components/dashboard/ExplorerTableView.vue';
+import ExplorerContextMenu, { type ExplorerContextMenuItem } from '../components/dashboard/ExplorerContextMenu.vue';
+import ExplorerDragBadge from '../components/dashboard/ExplorerDragBadge.vue';
+import ExplorerMobileTabBar, { type MobileTabId } from '../components/dashboard/ExplorerMobileTabBar.vue';
+import type { ExplorerActivityId } from '../components/dashboard/ExplorerActivityBar.vue';
+import type { SearchAlbumEntry, SearchFolderEntry, SearchItemEntry } from '../components/dashboard/ExplorerSearchSidebar.vue';
+import AlbumShareDialog from '../components/dashboard/AlbumShareDialog.vue';
+import DashboardFilterMenu from '../components/dashboard/DashboardFilterMenu.vue';
+import DrivePhotos from '../components/photos/DrivePhotos.vue';
+import GallerySidebar, { type GallerySection, type GalleryStorageFolder } from '../components/photos/GallerySidebar.vue';
+import { photosApi, type FeedItem as PhotoFeedItem } from '../api/photos';
+import { createHeadroomScrollHandler, useExplorerLayoutPrefs } from '../composables/useExplorerLayoutPrefs';
+import type { GroupDragPayload } from '../composables/useExplorerGroupDnd';
+import { buildExplorerPath, buildFolderExplorerTableRows, resolveExplorerPath } from '../composables/useExplorerWorkspaceHelpers';
 import { forgetResourceTab } from '../tabs/forget';
 import DashboardViewToggle from '../components/dashboard/DashboardViewToggle.vue';
 import DashboardResourceCard from '../components/dashboard/DashboardResourceCard.vue';
@@ -780,17 +973,17 @@ import type { CharacterImport } from '../dnd/importLongStoryShort';
 import {
   SIDEBAR_FOLDER_CHILD_LIMIT,
   buildSidebarNavItems,
-  readSidebarWidthState,
   writeSidebarWidthState,
   type DashboardFileNavItem,
   type DashboardFolderNavItem,
   type DashboardSidebarNavItem,
   type DashboardSection,
+  type ExplorerSidebarPanel,
   type SidebarWidthState,
 } from '../dashboard/navigation';
 import { animateHeight, heightOfFirstChildren } from '../dashboard/motion';
 import { useSegmentThumb } from '../composables/useSegmentThumb';
-import { readRecentViewMode, writeRecentViewMode, type RecentViewMode } from '../dashboard/recent-view';
+import { writeRecentViewMode, type RecentViewMode } from '../dashboard/recent-view';
 import { descendantFolderIds, folderIdByResourceKey, folderPaths } from '../dashboard/folder-paths';
 import { childFolderCounts, folderLatestChange } from '../dashboard/folder-stats';
 import { isMarkdownFile, isPictureFile, isVideoFile } from '../dashboard/thumb-kinds';
@@ -906,6 +1099,15 @@ export default defineComponent({
   directives: { hint: vHint },
   components: {
     DashboardSidebar,
+    ExplorerHeadroomBar,
+    ExplorerTableView,
+    ExplorerContextMenu,
+    ExplorerDragBadge,
+    ExplorerMobileTabBar,
+    AlbumShareDialog,
+    DashboardFilterMenu,
+    DrivePhotos,
+    GallerySidebar,
     DashboardViewToggle,
     DashboardResourceCard,
     DashboardSelectionBar,
@@ -1004,11 +1206,45 @@ export default defineComponent({
         return null;
       }
     };
-    const sidebarWidthState = ref<SidebarWidthState>(readSidebarWidthState(storage()));
-    const recentViewMode = ref<RecentViewMode>(readRecentViewMode(storage()));
+    const layoutPrefs = useExplorerLayoutPrefs();
+    const sidebarCollapsed = layoutPrefs.sidebarCollapsed;
+    const sidebarWidthState = computed<SidebarWidthState>(() => (
+      sidebarCollapsed.value ? 'collapsed' : 'expanded'
+    ));
+    const explorerViewMode = layoutPrefs.viewMode;
+    const setExplorerViewMode = (mode: 'grid' | 'table') => {
+      layoutPrefs.setViewMode(mode);
+    };
+    const albumViewMode = layoutPrefs.albumView;
+    const setAlbumViewMode = (mode: 'feed' | 'table') => {
+      layoutPrefs.setAlbumView(mode);
+    };
+    const recentViewMode = computed<RecentViewMode>(() => layoutPrefs.legacyRecentViewMode.value);
     const setRecentViewMode = (mode: RecentViewMode) => {
-      recentViewMode.value = mode;
+      layoutPrefs.setViewMode(mode === 'list' ? 'table' : 'grid');
       writeRecentViewMode(storage(), mode);
+    };
+    const headroomBarRef = ref<InstanceType<typeof ExplorerHeadroomBar> | null>(null);
+    const headroomHidden = layoutPrefs.headroomHidden;
+    const headroomElevated = ref(false);
+    const handleHeadroomScroll = createHeadroomScrollHandler();
+    const onDashboardMainScroll = (event: Event) => {
+      const target = event.target as HTMLElement | null;
+      const top = target?.scrollTop ?? 0;
+      headroomElevated.value = top > 8;
+      handleHeadroomScroll(top);
+    };
+    const searchPanelActive = ref(false);
+    const pathBarError = ref(false);
+    let pathErrorTimer: ReturnType<typeof setTimeout> | null = null;
+    const flashPathError = () => {
+      pathBarError.value = true;
+      if (pathErrorTimer) clearTimeout(pathErrorTimer);
+      pathErrorTimer = setTimeout(() => { pathBarError.value = false; }, 1600);
+    };
+    const onSidebarCollapsedChange = (collapsed: boolean) => {
+      layoutPrefs.setSidebarCollapsed(collapsed);
+      writeSidebarWidthState(storage(), collapsed ? 'collapsed' : 'expanded');
     };
     const mobileSidebarOpen = ref(false);
     const SIDEBAR_DESKTOP_QUERY = LAYOUT.dashboardSidebarDocked;
@@ -3220,10 +3456,13 @@ export default defineComponent({
       const query = router.currentRoute?.value?.query ?? {};
       const section = typeof query.section === 'string' ? query.section : '';
       const folder = typeof query.folder === 'string' ? query.folder : '';
-      if (!section && !folder) return;
+      const querySpaceId = typeof query.spaceId === 'string' ? query.spaceId : '';
+      if (!section && !folder && !querySpaceId) return;
       if (section === 'trash') selectDashboardSection({ kind: 'trash' });
+      else if (section === 'gallery') selectDashboardSection({ kind: 'gallery' });
+      else if (section === 'space' && querySpaceId) selectDashboardSection({ kind: 'space', spaceId: querySpaceId });
       else if (folder) selectFolder(folder);
-      const { section: _section, folder: _folder, ...rest } = query;
+      const { section: _section, folder: _folder, spaceId: _spaceId, ...rest } = query;
       void router.replace({ query: rest });
     };
 
@@ -4370,6 +4609,7 @@ export default defineComponent({
       selectedFolderId.value = folderId;
       expandAncestorsOf(folderId);
       writeLastFolderId(folderId);
+      layoutPrefs.setLastExplorerRoute({ kind: 'folder', folderId });
       closeCardMenu();
     };
 
@@ -4380,8 +4620,14 @@ export default defineComponent({
 
     const selectDashboardSection = (section: DashboardSection) => {
       activeSection.value = section;
-      if (section.kind === 'folder') selectFolder(section.folderId);
-      else closeCardMenu();
+      if (section.kind === 'folder') {
+        selectFolder(section.folderId);
+      } else {
+        if (section.kind !== 'recent' && section.kind !== 'home' && section.kind !== 'gallery') {
+          layoutPrefs.setLastExplorerRoute(section);
+        }
+        closeCardMenu();
+      }
       mobileSidebarOpen.value = false;
     };
 
@@ -4422,8 +4668,566 @@ export default defineComponent({
     useBackHandler(goToParentFolder);
 
     const toggleSidebarWidth = () => {
-      sidebarWidthState.value = sidebarWidthState.value === 'expanded' ? 'collapsed' : 'expanded';
-      writeSidebarWidthState(storage(), sidebarWidthState.value);
+      const nextCollapsed = !sidebarCollapsed.value;
+      onSidebarCollapsedChange(nextCollapsed);
+    };
+
+    // ----- T-021 / T-018 Explorer Activity Bar, Editable Path, Table, Favorites, Group DnD, Context Menu & Gallery -----
+    const sidebarPanelMode = computed<ExplorerSidebarPanel>(() => {
+      if (activeSection.value.kind === 'gallery') return 'gallery';
+      if (searchPanelActive.value) return 'search';
+      return 'explorer';
+    });
+
+    const activeActivity = computed<ExplorerActivityId>(() => {
+      if (searchPanelActive.value) return 'search';
+      if (activeSection.value.kind === 'gallery') return 'gallery';
+      if (activeSection.value.kind === 'trash') return 'trash';
+      if (activeSection.value.kind === 'recent' || activeSection.value.kind === 'home') return 'home';
+      return 'explorer';
+    });
+
+    const mobileTabActivity = computed<MobileTabId>(() => {
+      if (activeActivity.value === 'gallery') return 'gallery';
+      if (activeActivity.value === 'search') return 'search';
+      if (activeActivity.value === 'home') return 'home';
+      return 'explorer';
+    });
+
+    const showFolderFab = computed(() => (
+      activeSection.value.kind === 'folder' || activeSection.value.kind === 'yandex'
+    ));
+
+    const addDialogTargetFolderName = computed(() => {
+      if (activeSection.value.kind === 'folder' && activeFolder.value) return activeFolder.value.name;
+      const found = folderOptions.value.find((f) => f.id === addDialog.value.folderId);
+      return found?.name || t('home');
+    });
+
+    const onSelectActivity = (activity: ExplorerActivityId) => {
+      if (activity === 'search') {
+        searchPanelActive.value = true;
+        return;
+      }
+      searchPanelActive.value = false;
+      if (activity === 'home') {
+        selectDashboardSection({ kind: 'recent' });
+        return;
+      }
+      if (activity === 'gallery') {
+        selectDashboardSection({ kind: 'gallery' });
+        return;
+      }
+      if (activity === 'trash') {
+        selectDashboardSection({ kind: 'trash' });
+        return;
+      }
+      // Explorer: restore lastExplorerRoute without resetting to home!
+      const remembered = layoutPrefs.lastExplorerRoute.value;
+      if (remembered) {
+        selectDashboardSection(remembered);
+        return;
+      }
+      const firstOwn = ownResourceFolders.value.find((f) => !isTechnicalFolder(f)) || allFolderSummaries.value[0];
+      if (firstOwn) selectFolder(firstOwn.id);
+      else selectDashboardSection({ kind: 'shared' });
+    };
+
+    const explorerPathInfo = computed(() => buildExplorerPath(activeSection.value, {
+      folders: allResourceFolders.value,
+      spaces: allSpaces.value,
+      t,
+    }));
+
+    const headroomViewToggleMode = computed<HeadroomViewToggleMode>(() => {
+      if (activeSection.value.kind === 'space') return 'album';
+      if (activeSection.value.kind === 'trash') return 'none';
+      return 'explorer';
+    });
+
+    const onSelectPathSegment = (seg: ExplorerPathSegment) => {
+      if (seg.id.startsWith('folder:')) {
+        selectFolder(seg.id.slice('folder:'.length));
+      } else if (seg.id.startsWith('yandex:')) {
+        openYandexPath(seg.id.slice('yandex:'.length) || '/');
+      } else if (seg.id.startsWith('space:')) {
+        selectDashboardSection({ kind: 'space', spaceId: seg.id.slice('space:'.length) });
+      } else if (seg.id === 'root:shared') {
+        selectDashboardSection({ kind: 'shared' });
+      } else if (seg.id === 'root:public') {
+        selectDashboardSection({ kind: 'public' });
+      } else if (seg.id === 'root:clouds') {
+        openYandexPath('/');
+      } else if (seg.id === 'root:albums') {
+        void onSidebarSelect({ kind: 'spaces' });
+      } else {
+        selectDashboardSection({ kind: 'recent' });
+      }
+    };
+
+    const onNavigatePath = (rawPath: string) => {
+      const target = resolveExplorerPath(rawPath, {
+        folders: allResourceFolders.value,
+        spaces: allSpaces.value,
+        t,
+      });
+      if (!target) {
+        flashPathError();
+        setFeedback('error', t('explorerPathNotFound'));
+        return;
+      }
+      selectDashboardSection(target);
+    };
+
+    // Global shortcuts: Ctrl/Cmd+K -> Search sidebar, Ctrl/Cmd+L -> Editable path bar
+    const onExplorerShortcutKeydown = (event: KeyboardEvent) => {
+      if (!isLoggedIn || !(event.ctrlKey || event.metaKey)) return;
+      const key = event.key.toLowerCase();
+      if (key === 'k') {
+        event.preventDefault();
+        searchPanelActive.value = true;
+        if (sidebarCollapsed.value) onSidebarCollapsedChange(false);
+      } else if (key === 'l' && activeSection.value.kind !== 'gallery') {
+        event.preventDefault();
+        headroomBarRef.value?.startPathEdit();
+      }
+    };
+    onMounted(() => window.addEventListener('keydown', onExplorerShortcutKeydown));
+    onBeforeUnmount(() => {
+      window.removeEventListener('keydown', onExplorerShortcutKeydown);
+      if (pathErrorTimer) clearTimeout(pathErrorTimer);
+    });
+
+    // Search sidebar data (real folders, albums, resources & drive files)
+    const searchSidebarFolders = computed<SearchFolderEntry[]>(() =>
+      allResourceFolders.value.map((f) => ({
+        id: f.id,
+        name: f.name,
+        path: folderPathById.value.get(f.id) || f.name,
+      })),
+    );
+    const searchSidebarAlbums = computed<SearchAlbumEntry[]>(() =>
+      allSpaces.value.map((s) => ({
+        id: s.id,
+        name: s.name,
+        sourceCount: s.sourceCount,
+      })),
+    );
+    const searchSidebarItems = computed<SearchItemEntry[]>(() => {
+      const entries: SearchItemEntry[] = [];
+      for (const item of own.value) {
+        entries.push({ key: selectionKey(item), id: item.id, title: item.title || t('untitled'), type: 'canvas', folderId: item.folderId });
+      }
+      for (const item of allHtmlDocumentsRaw.value) {
+        entries.push({ key: selectionKey(item), id: item.id, title: item.title || t('untitled'), type: 'html-document', folderId: item.folderId });
+      }
+      for (const item of allTextDocumentsRaw.value) {
+        entries.push({ key: selectionKey(item), id: item.id, title: item.title || t('untitled'), type: 'text-document', folderId: item.folderId });
+      }
+      for (const item of interactiveTemplateItems.value) {
+        entries.push({ key: selectionKey({ type: 'interactive-template', id: item.id }), id: item.id, title: item.title || t('untitled'), type: 'interactive-template', folderId: item.folderId });
+      }
+      for (const file of folderDriveFiles.value) {
+        entries.push({
+          key: `drive-file:${file.id}`,
+          id: file.id,
+          title: file.name,
+          type: 'drive-file',
+          mime: file.mime,
+          folderId: file.folderId,
+          fileKind: isVideoFile(file) ? 'video' : isPictureFile(file) ? 'image' : isMarkdownFile(file) ? 'markdown' : 'file',
+        });
+      }
+      return entries;
+    });
+
+    // Home Favorites section
+    type HomeFavoriteTile = { key: string; kind: 'folder' | 'space'; id: string; name: string; subtitle: string };
+    const favoriteTiles = computed<HomeFavoriteTile[]>(() => {
+      const result: HomeFavoriteTile[] = [];
+      for (const key of layoutPrefs.favorites.value) {
+        if (key.startsWith('folder:')) {
+          const id = key.slice('folder:'.length);
+          const f = allFolderSummaries.value.find((item) => item.id === id);
+          if (f) result.push({ key, kind: 'folder', id: f.id, name: f.name, subtitle: t('qSpace') });
+        } else if (key.startsWith('space:')) {
+          const id = key.slice('space:'.length);
+          const s = allSpaces.value.find((item) => item.id === id);
+          if (s) result.push({ key, kind: 'space', id: s.id, name: s.name, subtitle: t('spaces') });
+        }
+      }
+      return result;
+    });
+    const openFavoriteTile = (fav: HomeFavoriteTile) => {
+      if (fav.kind === 'space') selectDashboardSection({ kind: 'space', spaceId: fav.id });
+      else selectFolder(fav.id);
+    };
+
+    // Windows Explorer table rows for active folder & Home Recents
+    const activeFolderTableRows = computed<ExplorerTableRow[]>(() => {
+      if (!activeFolder.value) return [];
+      return buildFolderExplorerTableRows(
+        activeSubfolders.value,
+        activeFolder.value.items,
+        folderDriveFiles.value,
+        { sourceLabel: t('qSpace'), t, selectionKey },
+      );
+    });
+    const recentTableRows = computed<ExplorerTableRow[]>(() =>
+      buildFolderExplorerTableRows(
+        [],
+        visibleRecent.value.map((r) => ({
+          type: r.type,
+          id: r.id,
+          title: r.title,
+          openedAt: r.openedAt,
+          folderId: null,
+        })),
+        [],
+        { sourceLabel: t('qSpace'), t, selectionKey },
+      ),
+    );
+    const openExplorerTableRow = (row: ExplorerTableRow) => {
+      if (row.isFolder || row.kind === 'folder') {
+        selectFolder(row.id);
+        return;
+      }
+      if (row.kind === 'file' || row.kind === 'drive-file') {
+        const file = folderDriveFiles.value.find((f) => f.id === row.id);
+        if (file) {
+          if (isDriveMedia(file)) openDriveImage(file);
+          else if (isMarkdownFile(file)) openDriveMarkdown(file);
+          else void downloadDriveFile(file.id, file.name);
+        }
+        return;
+      }
+      openSpaceResource(row.kind, row.id);
+    };
+
+    // Album Share Modal (all 4 entry points)
+    const sharingAlbum = ref<SpaceDetails | null>(null);
+    const openAlbumShareById = async (targetSpaceId: string) => {
+      try {
+        sharingAlbum.value = await spacesApi.get(targetSpaceId);
+      } catch (err) {
+        setFeedback('error', err instanceof Error && err.message ? err.message : t('spaceLoadFailed'));
+      }
+    };
+    const onSharingAlbumChanged = (next: SpaceDetails | null) => {
+      sharingAlbum.value = next;
+      void loadSpaces(true);
+    };
+
+    // Group Drag-and-Drop handlers (folders & albums)
+    const onDropGroupToFolder = async (folderId: string, payload: GroupDragPayload) => {
+      if (!folderId || !payload.items.length) return;
+      const target = allResourceFolders.value.find((f) => f.id === folderId);
+      if (!target) return;
+      let moved = 0;
+      for (const entry of payload.items) {
+        try {
+          if (entry.kind === 'drive-file' || entry.kind === 'file' || entry.key.startsWith('drive-file:')) {
+            const fileId = entry.id || entry.key.replace(/^drive-file:/, '');
+            await driveApi.moveFile(fileId, folderId);
+            moved += 1;
+          } else if (entry.kind === 'folder' || entry.key.startsWith('folder:')) {
+            const fId = entry.id || entry.key.replace(/^folder:/, '');
+            if (fId !== folderId) {
+              await resourceFolders.moveFolder(fId, folderId);
+              moved += 1;
+            }
+          } else if (entry.kind === 'canvas') {
+            await canvas.update(entry.id, { folderId });
+            moved += 1;
+          } else if (entry.kind === 'html-document') {
+            await htmlDocuments.update(entry.id, { folderId });
+            moved += 1;
+          } else if (entry.kind === 'text-document') {
+            await textDocuments.update(entry.id, { folderId });
+            moved += 1;
+          } else if (entry.kind === 'interactive-template') {
+            await resourceFolders.move(folderId, 'interactive-template', entry.id);
+            moved += 1;
+          }
+        } catch {
+          // Continue moving remaining items in group
+        }
+      }
+      if (moved > 0) {
+        setFeedback('success', t('bulkMovedTo').replace('{folder}', target.name).replace('{n}', String(moved)));
+        clearSelection();
+        folderFilesRefreshKey.value += 1;
+        void load({ showLoading: false });
+      }
+    };
+
+    const onDropGroupToAlbum = async (targetSpaceId: string, payload: GroupDragPayload) => {
+      if (!targetSpaceId || !payload.items.length) return;
+      let added = 0;
+      const folderIds = new Set<string>();
+      for (const entry of payload.items) {
+        if (entry.kind === 'folder' || entry.key.startsWith('folder:')) {
+          folderIds.add(entry.id || entry.key.replace(/^folder:/, ''));
+        } else if (entry.folderId) {
+          folderIds.add(entry.folderId);
+        }
+      }
+      for (const fId of folderIds) {
+        try {
+          await spacesApi.addQspaceFolder(targetSpaceId, fId);
+          added += 1;
+        } catch {
+          // Folder may already be attached or non-owned
+        }
+      }
+      if (added > 0) {
+        setFeedback('success', t('spaceAdd'));
+        void loadSpaces(true);
+      }
+    };
+
+    // Multi-select Right-Click Context Menu
+    const explorerCtxMenu = ref<{
+      open: boolean;
+      x: number;
+      y: number;
+      items: ExplorerContextMenuItem[];
+      canMove: boolean;
+      canDelete: boolean;
+      canRename: boolean;
+      isFavorite: boolean;
+    }>({
+      open: false,
+      x: 0,
+      y: 0,
+      items: [],
+      canMove: false,
+      canDelete: false,
+      canRename: false,
+      isFavorite: false,
+    });
+
+    const contextMenuAlbums = computed(() =>
+      allSpaces.value.map((s) => ({ id: s.id, name: s.name })),
+    );
+
+    const openContextMenuForItems = (x: number, y: number, items: ExplorerContextMenuItem[]) => {
+      if (!items.length) return;
+      const first = items[0]!;
+      explorerCtxMenu.value = {
+        open: true,
+        x,
+        y,
+        items,
+        canMove: items.some((i) => i.kind !== 'space'),
+        canDelete: true,
+        canRename: items.length === 1,
+        isFavorite: items.every((i) => layoutPrefs.isFavorite(i.key)),
+      };
+      if (first.kind === 'space' && items.length === 1) {
+        explorerCtxMenu.value.canMove = false;
+      }
+    };
+
+    const onTableRowContextMenu = (event: MouseEvent, row: ExplorerTableRow) => {
+      const keys = selectedKeys.value.includes(row.key) ? selectedKeys.value : [row.key];
+      const byKey = new Map(activeFolderTableRows.value.map((r) => [r.key, r]));
+      const items: ExplorerContextMenuItem[] = keys.map((k) => {
+        const match = byKey.get(k);
+        return {
+          key: k,
+          id: match?.id || row.id,
+          kind: match?.kind || row.kind,
+          name: match?.name || row.name,
+        };
+      });
+      openContextMenuForItems(event.clientX, event.clientY, items);
+    };
+
+    const onTreeContextMenu = (payload: TreeContextMenuPayload) => {
+      const keys = payload.selectedKeys.length ? payload.selectedKeys : [payload.nodeKey];
+      const items: ExplorerContextMenuItem[] = keys.map((key) => {
+        const isSpace = key.startsWith('album:') || payload.kind === 'album';
+        const isFolder = key.startsWith('folder:') || payload.kind === 'folder';
+        const id = key === payload.nodeKey
+          ? payload.targetId
+          : key.replace(/^(folder:|album:|file:)/, '');
+        return {
+          key,
+          id,
+          kind: isSpace ? 'space' : isFolder ? 'folder' : payload.kind,
+          name: allFolderSummaries.value.find((f) => f.id === id)?.name
+            || allSpaces.value.find((s) => s.id === id)?.name
+            || id,
+        };
+      });
+      openContextMenuForItems(payload.event.clientX, payload.event.clientY, items);
+    };
+
+    const onCtxMenuOpen = (item: ExplorerContextMenuItem) => {
+      if (item.kind === 'folder' && item.id) selectFolder(item.id);
+      else if (item.kind === 'space' && item.id) selectDashboardSection({ kind: 'space', spaceId: item.id });
+      else if (item.id && item.kind) openSpaceResource(item.kind, item.id);
+    };
+
+    const onCtxMenuShare = (items: readonly ExplorerContextMenuItem[]) => {
+      const first = items[0];
+      if (!first) return;
+      if (first.kind === 'space' && first.id) {
+        void openAlbumShareById(first.id);
+      } else if (first.kind === 'folder' && first.id) {
+        const f = allFolderSummaries.value.find((x) => x.id === first.id);
+        if (f) openFolderShareModal(f);
+      } else {
+        setFeedback('success', `${t('explorerShareGroup')} (${items.length})`);
+      }
+    };
+
+    const onCtxMenuAddToAlbum = (albumId: string | undefined, items: readonly ExplorerContextMenuItem[]) => {
+      if (!albumId) return;
+      void onDropGroupToAlbum(albumId, {
+        source: 'explorer',
+        items: items.map((i) => ({
+          key: i.key,
+          id: i.id || '',
+          kind: i.kind || 'file',
+          folderId: i.kind === 'folder' ? (i.id ?? null) : (activeFolder.value?.id ?? null),
+        })),
+        keys: items.map((i) => i.key),
+        count: items.length,
+      });
+    };
+
+    const onCtxMenuToggleFavorite = (items: readonly ExplorerContextMenuItem[]) => {
+      for (const item of items) layoutPrefs.toggleFavorite(item.key);
+    };
+
+    const onCtxMenuMove = (items: readonly ExplorerContextMenuItem[]) => {
+      const keys = items.map((i) => i.key).filter((k) => !k.startsWith('folder:') && !k.startsWith('space:'));
+      if (keys.length) {
+        selectedKeys.value = keys;
+        openBulkMoveModal();
+      } else if (items[0]?.kind === 'folder' && items[0].id) {
+        const f = allFolderSummaries.value.find((x) => x.id === items[0]!.id);
+        if (f) openFolderParentModal(f);
+      }
+    };
+
+    const onCtxMenuRename = (item: ExplorerContextMenuItem) => {
+      if (item.kind === 'folder' && item.id) {
+        const f = allFolderSummaries.value.find((x) => x.id === item.id);
+        if (f) openRenameFolderModal(f);
+      }
+    };
+
+    const onCtxMenuDownload = (items: readonly ExplorerContextMenuItem[]) => {
+      selectedKeys.value = items.map((i) => i.key);
+      void bulkDownload();
+    };
+
+    const onCtxMenuDelete = (items: readonly ExplorerContextMenuItem[]) => {
+      if (items.length === 1 && items[0]!.kind === 'folder' && items[0]!.id) {
+        const f = allFolderSummaries.value.find((x) => x.id === items[0]!.id);
+        if (f) void deleteFolder(f);
+        return;
+      }
+      selectedKeys.value = items.map((i) => i.key);
+      void bulkDelete();
+    };
+
+    const shareSelectedGroup = () => {
+      if (spaceId.value) {
+        void openAlbumShareById(spaceId.value);
+      } else if (activeFolder.value && selectedKeys.value.length > 0) {
+        openFolderShareModal(activeFolder.value);
+      }
+    };
+
+    const openAddSelectionToAlbum = () => {
+      const firstAlbum = allSpaces.value[0];
+      if (!firstAlbum) return;
+      if (activeFolder.value) {
+        void onDropGroupToAlbum(firstAlbum.id, {
+          source: 'explorer',
+          items: [{ key: `folder:${activeFolder.value.id}`, id: activeFolder.value.id, kind: 'folder', folderId: activeFolder.value.id }],
+          keys: [`folder:${activeFolder.value.id}`],
+          count: 1,
+        });
+      }
+    };
+
+    // Gallery mode state & handlers
+    const gallerySection = ref<GallerySection>('library');
+    const galleryAlbumId = ref<string | null>(null);
+    const gallerySpaceId = ref<string | null>(null);
+    const galleryFolderId = ref<string | null>(null);
+    const galleryHighlightFolderId = ref<string | null>(null);
+    const galleryHighlightFileId = ref<string | null>(null);
+
+    const galleryStorageFolders = computed<GalleryStorageFolder[]>(() =>
+      allResourceFolders.value.map((f) => ({
+        id: f.id,
+        name: f.name,
+        parentId: f.parentId ?? null,
+        role: f.role,
+      })),
+    );
+
+    const onGallerySelectSection = (section: GallerySection) => {
+      gallerySection.value = section;
+      galleryAlbumId.value = null;
+      gallerySpaceId.value = null;
+      galleryFolderId.value = null;
+    };
+
+    const onGallerySelectAlbum = (albumId: string) => {
+      galleryAlbumId.value = albumId;
+      gallerySpaceId.value = null;
+      galleryFolderId.value = null;
+      gallerySection.value = 'library';
+    };
+
+    const onGallerySelectSpace = (targetSpaceId: string) => {
+      gallerySpaceId.value = targetSpaceId;
+      selectDashboardSection({ kind: 'space', spaceId: targetSpaceId });
+    };
+
+    const onGallerySelectFolder = (folderId: string) => {
+      galleryFolderId.value = folderId;
+      galleryAlbumId.value = null;
+      gallerySpaceId.value = null;
+      gallerySection.value = 'library';
+    };
+
+    const onGalleryFocusPhoto = (item: PhotoFeedItem) => {
+      galleryHighlightFolderId.value = item.folderId ?? null;
+      galleryHighlightFileId.value = item.fileId;
+    };
+
+    const onGalleryDropFavorites = async (fileIds: string[]) => {
+      for (const fileId of fileIds) {
+        try { await photosApi.edit(fileId, { favorite: true }); } catch { /* continue */ }
+      }
+      if (fileIds.length) setFeedback('success', `${t('explorerAddToFavorites')} (${fileIds.length})`);
+    };
+
+    const onGalleryDropAlbum = async (albumId: string, fileIds: string[]) => {
+      if (!fileIds.length) return;
+      try {
+        await photosApi.addToAlbum(albumId, fileIds);
+        setFeedback('success', `${t('explorerAddToAlbum')} (${fileIds.length})`);
+      } catch (err) {
+        setFeedback('error', err instanceof Error && err.message ? err.message : t('spaceActionFailed'));
+      }
+    };
+
+    const onGalleryDropFolder = async (folderId: string, fileIds: string[]) => {
+      if (!fileIds.length) return;
+      let moved = 0;
+      for (const fileId of fileIds) {
+        try { await driveApi.moveFile(fileId, folderId); moved += 1; } catch { /* continue */ }
+      }
+      if (moved > 0) setFeedback('success', t('bulkMovedTo').replace('{folder}', '').replace('{n}', String(moved)));
     };
 
     const onAppClickCapture = (event: MouseEvent) => {
@@ -4673,6 +5477,69 @@ export default defineComponent({
       closeControlMenusForAccount,
       activeSection,
       sidebarWidthState,
+      sidebarCollapsed,
+      sidebarPanelMode,
+      activeActivity,
+      mobileTabActivity,
+      showFolderFab,
+      addDialogTargetFolderName,
+      explorerViewMode,
+      setExplorerViewMode,
+      albumViewMode,
+      setAlbumViewMode,
+      headroomBarRef,
+      headroomHidden,
+      headroomElevated,
+      onDashboardMainScroll,
+      pathBarError,
+      explorerPathInfo,
+      headroomViewToggleMode,
+      onSelectPathSegment,
+      onNavigatePath,
+      onSelectActivity,
+      onSidebarCollapsedChange,
+      searchSidebarFolders,
+      searchSidebarAlbums,
+      searchSidebarItems,
+      favoriteTiles,
+      openFavoriteTile,
+      activeFolderTableRows,
+      recentTableRows,
+      openExplorerTableRow,
+      sharingAlbum,
+      openAlbumShareById,
+      onSharingAlbumChanged,
+      onDropGroupToFolder,
+      onDropGroupToAlbum,
+      explorerCtxMenu,
+      contextMenuAlbums,
+      onTableRowContextMenu,
+      onTreeContextMenu,
+      onCtxMenuOpen,
+      onCtxMenuShare,
+      onCtxMenuAddToAlbum,
+      onCtxMenuToggleFavorite,
+      onCtxMenuMove,
+      onCtxMenuRename,
+      onCtxMenuDownload,
+      onCtxMenuDelete,
+      shareSelectedGroup,
+      openAddSelectionToAlbum,
+      gallerySection,
+      galleryAlbumId,
+      gallerySpaceId,
+      galleryFolderId,
+      galleryHighlightFolderId,
+      galleryHighlightFileId,
+      galleryStorageFolders,
+      onGallerySelectSection,
+      onGallerySelectAlbum,
+      onGallerySelectSpace,
+      onGallerySelectFolder,
+      onGalleryFocusPhoto,
+      onGalleryDropFavorites,
+      onGalleryDropAlbum,
+      onGalleryDropFolder,
       mobileSidebarOpen,
       sidebarFolders,
       selectDashboardSection,
@@ -4778,6 +5645,7 @@ export default defineComponent({
       resetFilters,
       hasActiveFilter,
       feedNavSections,
+      allSpaces,
       spaceTiles,
       yandexStatus,
       yandexRootCount,

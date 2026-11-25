@@ -21,6 +21,15 @@ import {
 } from '../../api/photos';
 import { driveApi, formatFileSize } from '../../api/drive';
 import { useI18n } from '../../composables/useI18n';
+import {
+  createHeadroomScrollHandler,
+  GALLERY_TILE_DEFAULT_H,
+  useExplorerLayoutPrefs,
+} from '../../composables/useExplorerLayoutPrefs';
+import {
+  formatDragCountLabel,
+  useExplorerGroupDnd,
+} from '../../composables/useExplorerGroupDnd';
 import { usePhotosView, type CaptionKey } from './usePhotosView';
 import {
   anchorAt,
@@ -45,22 +54,40 @@ import {
 import PhotosGroupHead from './PhotosGroupHead.vue';
 import PhotosScrubber, { type ScrubGroup } from './PhotosScrubber.vue';
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   params: FeedParams;
   captionOnTile: CaptionKey[];
-  tile: 's' | 'm' | 'l';
+  tile?: 's' | 'm' | 'l';
+  tileHeight?: number;
+  aspectMode?: 'square' | 'ratio';
+  folderFilterId?: string | null;
+  peopleFilter?: readonly string[];
+  recentLimit?: number | null;
   selected: Set<string>;
   current: string | null;
-}>();
+}>(), {
+  tile: undefined,
+  tileHeight: undefined,
+  aspectMode: undefined,
+  folderFilterId: null,
+  peopleFilter: () => [],
+  recentLimit: null,
+});
 
 const emit = defineEmits<{
   (e: 'open', item: FeedItem): void;
+  (e: 'focus-photo', item: FeedItem): void;
   (e: 'activate', item: FeedItem): void;
   (e: 'toggle-select', fileIds: string[], on: boolean): void;
+  (e: 'set-selection', fileIds: string[]): void;
+  (e: 'contextmenu', event: MouseEvent, item: FeedItem): void;
+  (e: 'toggle-favorite', item: FeedItem): void;
+  (e: 'zoom', tileHeight: number): void;
 }>();
 
-/** Thumbnail row height per tile size, px. */
+/** Thumbnail row height fallback per discrete tile preset, px. */
 const TILE_ROW_HEIGHT = { s: 110, m: 170, l: 250 } as const;
+const GALLERY_WALL_GAP = 2;
 const PAGE_SIZE = 200;
 const OVERSCAN = 600;
 /** Header band the sticky group title covers; the anchor line sits right below it. */
@@ -71,6 +98,9 @@ const JUMP_DEBOUNCE_MS = 80;
 
 const { t, locale } = useI18n();
 const view = usePhotosView();
+const prefs = useExplorerLayoutPrefs();
+const dnd = useExplorerGroupDnd();
+const onHeadroomScroll = createHeadroomScrollHandler();
 
 const scroller = ref<HTMLElement | null>(null);
 const sizer = ref<HTMLElement | null>(null);
@@ -108,10 +138,30 @@ let keptAnchor: { anchor: Anchor; item: FeedItem | null } | null = null;
 /** Anchor waiting for the units of a refetched feed to load. */
 let pending: { anchor: Anchor; units: Array<{ group: string; sub?: string }>; pages: number } | null = null;
 
-const rowHeight = computed(() => TILE_ROW_HEIGHT[props.tile] ?? TILE_ROW_HEIGHT.m);
+const rowHeight = computed(() => {
+  if (props.tileHeight !== undefined && Number.isFinite(props.tileHeight)) {
+    return props.tileHeight;
+  }
+  if (props.tile) {
+    return TILE_ROW_HEIGHT[props.tile] ?? GALLERY_TILE_DEFAULT_H;
+  }
+  return prefs.photoTileH.value;
+});
+
+const resolvedAspectMode = computed<'square' | 'ratio'>(
+  () => props.aspectMode ?? prefs.galleryAspectMode.value,
+);
+
+const hasMultiSelect = computed(() => props.selected.size >= 2);
 const collapsedShares = computed(() => new Set(view.state.value.collapsedShares));
 const level1 = computed<SortKey>(() => appliedParams.value.levels[0] ?? 'date');
 const level2 = computed<SortKey | undefined>(() => appliedParams.value.levels[1]);
+const headroomHidden = computed(() => prefs.headroomHidden.value);
+
+const selectionAnchorId = ref<string | null>(null);
+const marqueeRect = ref<{ left: number; top: number; width: number; height: number } | null>(null);
+let lastMarqueeTs = 0;
+let dragGhostEl: HTMLElement | null = null;
 
 function unitKey(group: string, sub?: string): string {
   return sub !== undefined ? `${group}|${sub}` : group;
@@ -135,6 +185,39 @@ function findItem(fileId: string): FeedItem | null {
   return null;
 }
 
+function itemMatchesExternalFilters(item: FeedItem): boolean {
+  if (props.folderFilterId) {
+    if (props.folderFilterId === 'root') {
+      if (item.folderId !== null) return false;
+    } else if (item.folderId !== props.folderFilterId) {
+      return false;
+    }
+  }
+  if (props.peopleFilter && props.peopleFilter.length > 0) {
+    const ownerId = item.share?.ownerId ?? '';
+    const ownerName = item.share?.ownerName ?? '';
+    const matchesOwner = props.peopleFilter.some((p) => p === ownerId || p === ownerName);
+    if (!matchesOwner) return false;
+  }
+  return true;
+}
+
+const filteredItemsMap = computed(() => {
+  const hasFilter = Boolean(props.folderFilterId) || (props.peopleFilter?.length ?? 0) > 0 || (props.recentLimit ?? 0) > 0;
+  if (!hasFilter) return items.value;
+  const out = new Map<string, FeedItem[]>();
+  let remaining = props.recentLimit && props.recentLimit > 0 ? props.recentLimit : Infinity;
+  for (const [k, list] of items.value) {
+    let filtered = list.filter(itemMatchesExternalFilters);
+    if (remaining !== Infinity) {
+      filtered = filtered.slice(0, Math.max(0, remaining));
+      remaining -= filtered.length;
+    }
+    out.set(k, filtered);
+  }
+  return out;
+});
+
 // ----- layout -----
 
 function buildLayoutGroups(): LayoutGroup[] {
@@ -143,7 +226,9 @@ function buildLayoutGroups(): LayoutGroup[] {
   const l2 = level2.value;
   headInfo.clear();
   unitCount.clear();
-  return groups.value.map((g) => {
+  const hasClientFilter = Boolean(props.folderFilterId) || (props.peopleFilter?.length ?? 0) > 0;
+  const out: LayoutGroup[] = [];
+  for (const g of groups.value) {
     const info = groupTitle(l1, g, p.period, locale.value);
     headInfo.set(g.key, info);
     unitCount.set(g.key, g.count);
@@ -159,13 +244,27 @@ function buildLayoutGroups(): LayoutGroup[] {
             return { key: s.key, title: sInfo.title, count: s.count };
           })
         : undefined;
-    return {
+    if (hasClientFilter) {
+      if (subs) {
+        const nonEmptySubs = subs.filter((s) => {
+          const loaded = filteredItemsMap.value.get(unitKey(g.key, s.key));
+          return loaded === undefined || loaded.length > 0;
+        });
+        if (nonEmptySubs.length === 0) continue;
+        out.push({ key: g.key, title: info.title, count: g.count, subs: nonEmptySubs });
+        continue;
+      }
+      const loaded = filteredItemsMap.value.get(g.key);
+      if (loaded !== undefined && loaded.length === 0) continue;
+    }
+    out.push({
       key: g.key,
       title: info.title,
       count: g.count,
       ...(subs ? { subs } : {}),
-    };
-  });
+    });
+  }
+  return out;
 }
 
 function rebuildIndexes(next: Layout): void {
@@ -221,12 +320,11 @@ function canRestore(rows: Row[], a: Anchor): boolean {
 /** Scrolls so that the anchored photo stays at the same screen position in the new layout. */
 function applyAnchor(a: Anchor): void {
   const rows = layout.value.rows;
-  if (!canRestore(rows, a)) return; // nothing to land on: keep the current scrollTop
+  if (!canRestore(rows, a)) return;
   const target = clampScroll(
     restoreAnchor(rows, a, a.localTakenAt == null ? flattenItems() : [], STICKY_OFFSET),
   );
   if (Math.abs(target - lastScrollTop) <= 0.5) return;
-  // The sizer height only grows after the next render; write the scroll then.
   lastScrollTop = target;
   scrollTop.value = target;
   void nextTick(() => setScroll(target));
@@ -238,8 +336,6 @@ function relayout(): void {
   const hadRows = old.rows.length > 0;
   if (!pending) {
     if (hadRows) {
-      // Only before a relayout, never per scroll event. null (a placeholder under the
-      // line) means: do not jump.
       anchor = anchorAt(old.rows, lastScrollTop, STICKY_OFFSET);
       if (anchor) keptAnchor = { anchor, item: findItem(anchor.fileId) };
     } else {
@@ -249,14 +345,16 @@ function relayout(): void {
 
   const next = computeLayout({
     groups: buildLayoutGroups(),
-    items: items.value,
+    items: filteredItemsMap.value,
     width: width.value,
     rowHeight: rowHeight.value,
+    gap: GALLERY_WALL_GAP,
     collapsedShares: collapsedShares.value,
+    aspectMode: resolvedAspectMode.value,
   });
   layout.value = next;
   rebuildIndexes(next);
-  if (next.rows.length === 0) return; // keep keptAnchor until the width comes back
+  if (next.rows.length === 0) return;
 
   if (pending) {
     resolvePending();
@@ -275,15 +373,14 @@ function loadUnit(group: string, sub?: string): Promise<void> {
   if (running) return running;
   if (failed.has(key)) return Promise.resolve();
   const have = items.value.get(key);
-  if (have && !cursors.get(key)) return Promise.resolve(); // fully loaded
+  if (have && !cursors.get(key)) return Promise.resolve();
 
   const my = epoch;
   const params = appliedParams.value;
-  // A response is current only while neither the epoch nor the applied params moved on.
   const current = (): boolean => my === epoch && params === appliedParams.value;
   let run: Promise<void> | undefined;
   run = (async () => {
-    await Promise.resolve(); // `run` is assigned before anything below can finish
+    await Promise.resolve();
     try {
       const res = await photosApi.items(params, group, sub ?? null, have ? cursors.get(key) : null, PAGE_SIZE);
       if (!current()) return;
@@ -295,7 +392,6 @@ function loadUnit(group: string, sub?: string): Promise<void> {
     } catch {
       if (current()) failed.add(key);
     } finally {
-      // Only drop our own entry: a newer request for the same key may have replaced it.
       if (inflight.get(key) === run) inflight.delete(key);
       if (current()) ensureLoaded();
     }
@@ -314,9 +410,6 @@ async function loadAll(group: string, sub?: string): Promise<void> {
   }
 }
 
-// Visibility-driven requests go through a small queue: at most MAX_CONCURRENT run at once,
-// the nearest to the viewport first, and units that left the viewport before they started
-// are dropped (the next ensureLoaded rebuilds the wanted set from what is visible now).
 type Task = { dist: number; run: () => Promise<unknown> };
 let wanted = new Map<string, Task>();
 let active = 0;
@@ -510,7 +603,6 @@ async function refresh(): Promise<void> {
   try {
     const res = await photosApi.summary(params);
     if (my !== epoch) return;
-    // Anything started during the request belongs to the old params: invalidate it.
     epoch++;
     wanted = new Map();
     appliedParams.value = params;
@@ -541,7 +633,6 @@ async function refresh(): Promise<void> {
   }
 }
 
-/** Called after every relayout while a param change waits for its anchor group. */
 function resolvePending(): void {
   const p = pending;
   if (!p) return;
@@ -554,13 +645,13 @@ function resolvePending(): void {
     const have = items.value.get(key);
     if (!have) {
       void loadUnit(u.group, u.sub);
-      return; // wait for the first page
+      return;
     }
     const found = have.some((i) => i.fileId === p.anchor.fileId);
     if (!found && cursors.get(key) && p.pages < MAX_PENDING_PAGES) {
       p.pages++;
       void loadUnit(u.group, u.sub);
-      return; // the photo may sit on a later page
+      return;
     }
   }
   pending = null;
@@ -571,19 +662,27 @@ function cancelPending(): void {
   pending = null;
 }
 
-// ----- scrolling -----
+// ----- scrolling & Ctrl+wheel zoom -----
 
 let jumpTimer: ReturnType<typeof setTimeout> | null = null;
 
 function onScroll(): void {
   const el = scroller.value;
   if (!el) return;
-  // A hidden tab reports 0 here; do not forget the real position.
   if (sizer.value && sizer.value.clientWidth === 0) return;
   lastScrollTop = el.scrollTop;
   scrollTop.value = lastScrollTop;
-  // While the scrubber is being dragged, loading waits for the debounced jump.
+  onHeadroomScroll(lastScrollTop);
   if (jumpTimer === null) ensureLoaded();
+}
+
+function onWheel(e: WheelEvent): void {
+  cancelPending();
+  if (!e.ctrlKey && !e.metaKey) return;
+  e.preventDefault();
+  const step = -e.deltaY * (Math.abs(e.deltaY) < 20 ? 1.8 : 0.35);
+  prefs.setPhotoTileH(rowHeight.value + step);
+  emit('zoom', prefs.photoTileH.value);
 }
 
 function onJump(key: string, frac: number): void {
@@ -591,7 +690,6 @@ function onJump(key: string, frac: number): void {
   if (!entry) return;
   pending = null;
   setScroll(entry.top + frac * entry.height - 8);
-  // The scroll position follows the pointer at once; requests wait until it settles.
   if (jumpTimer !== null) clearTimeout(jumpTimer);
   jumpTimer = setTimeout(() => {
     jumpTimer = null;
@@ -658,7 +756,6 @@ function hoverLabel(key: string, frac: number): string {
     if (m) month = Number(m[1]) - 1;
   }
   if (month === null) {
-    // Not loaded: spread the twelve months evenly along the year.
     const desc = p.sort.find((s) => s.key === 'date')?.desc ?? true;
     const idx = Math.min(11, Math.floor(frac * 12));
     month = desc ? 11 - idx : idx;
@@ -681,6 +778,10 @@ function tileCaption(item: FeedItem): string[] {
       if (names.length > 0) out.push(names.join(', '));
     } else if (key === 'size') {
       out.push(formatFileSize(item.bytes));
+    } else if (key === 'access') {
+      if (item.share) {
+        out.push(item.share.ownerName ? `${t('photosSharedLabel')} · ${item.share.ownerName}` : t('photosSharedLabel'));
+      }
     }
   }
   return out;
@@ -709,17 +810,202 @@ function toggleOne(item: FeedItem): void {
   emit('toggle-select', [item.fileId], !props.selected.has(item.fileId));
 }
 
-function onTileClick(e: Event, item: FeedItem): void {
-  if ((e.target as HTMLElement | null)?.closest('[data-chk]') || props.selected.size > 0) {
+function rangeIdsBetween(fromId: string, toId: string): string[] {
+  const list = orderedItems();
+  const a = list.findIndex((i) => i.fileId === fromId);
+  const b = list.findIndex((i) => i.fileId === toId);
+  if (a < 0 || b < 0) return [toId];
+  const [lo, hi] = a <= b ? [a, b] : [b, a];
+  return list.slice(lo, hi + 1).map((i) => i.fileId);
+}
+
+function onTileClick(e: MouseEvent, item: FeedItem): void {
+  if (Date.now() - lastMarqueeTs < 180) return;
+
+  if ((e.target as HTMLElement | null)?.closest('[data-chk]')) {
     toggleOne(item);
     return;
   }
+
+  if (e.shiftKey) {
+    const anchor = selectionAnchorId.value ?? props.current ?? [...props.selected][0] ?? item.fileId;
+    const range = rangeIdsBetween(anchor, item.fileId);
+    const next = e.ctrlKey || e.metaKey
+      ? [...new Set([...props.selected, ...range])]
+      : range;
+    emit('set-selection', next);
+    emit('open', item);
+    emit('focus-photo', item);
+    return;
+  }
+
+  if (e.ctrlKey || e.metaKey) {
+    const next = new Set(props.selected);
+    if (next.size === 0 && props.current && props.current !== item.fileId) {
+      next.add(props.current);
+    }
+    if (next.has(item.fileId)) next.delete(item.fileId);
+    else next.add(item.fileId);
+    selectionAnchorId.value = item.fileId;
+    emit('set-selection', [...next]);
+    emit('open', item);
+    emit('focus-photo', item);
+    return;
+  }
+
+  // Calm single click: focus ring (is-current) WITHOUT green checkmark, preserves scroll!
+  selectionAnchorId.value = item.fileId;
+  if (props.selected.size > 0) {
+    emit('set-selection', []);
+  }
   emit('open', item);
+  emit('focus-photo', item);
 }
 
-function onTileDblClick(e: Event, item: FeedItem): void {
-  if ((e.target as HTMLElement | null)?.closest('[data-chk]') || props.selected.size > 0) return;
+function onTileDblClick(e: MouseEvent, item: FeedItem): void {
+  if ((e.target as HTMLElement | null)?.closest('[data-chk]')) return;
   emit('activate', item);
+}
+
+function onTileContextMenu(e: MouseEvent, item: FeedItem): void {
+  e.preventDefault();
+  if (!props.selected.has(item.fileId) && props.selected.size < 2) {
+    selectionAnchorId.value = item.fileId;
+    emit('open', item);
+    emit('focus-photo', item);
+  }
+  emit('contextmenu', e, item);
+}
+
+function onTileKeydown(e: KeyboardEvent, item: FeedItem): void {
+  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' && e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+  const list = orderedItems();
+  const idx = list.findIndex((x) => x.fileId === item.fileId);
+  if (idx < 0) return;
+  const delta = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : -1;
+  const next = list[idx + delta];
+  if (!next) return;
+  e.preventDefault();
+
+  if (e.shiftKey) {
+    const anchor = selectionAnchorId.value ?? item.fileId;
+    selectionAnchorId.value = anchor;
+    emit('set-selection', rangeIdsBetween(anchor, next.fileId));
+  } else {
+    selectionAnchorId.value = next.fileId;
+  }
+  emit('open', next);
+  emit('focus-photo', next);
+  void nextTick(() => {
+    const safe = next.fileId.replace(/"/g, '');
+    scroller.value?.querySelector<HTMLElement>(`[data-file-id="${safe}"]`)?.focus();
+  });
+}
+
+// ----- marquee selection -----
+
+function onScrollerPointerDown(e: PointerEvent): void {
+  cancelPending();
+  if (e.button !== 0) return;
+  const target = e.target as HTMLElement | null;
+  if (!target) return;
+  // Clicking on an already multi-selected tile allows HTML5 Group DnD instead of marquee.
+  if (hasMultiSelect.value && target.closest('.pf-tile.is-checked') && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+    return;
+  }
+  if (target.closest('button, a, input, [data-chk], .pgh-pick, .pf-share-bar')) return;
+
+  const sc = scroller.value;
+  if (!sc) return;
+  const sx = e.clientX;
+  const sy = e.clientY;
+  const additive = e.shiftKey || e.ctrlKey || e.metaKey;
+  const baseSelection = additive ? new Set(props.selected) : new Set<string>();
+  let dragging = false;
+
+  const onMove = (ev: PointerEvent) => {
+    const dx = ev.clientX - sx;
+    const dy = ev.clientY - sy;
+    if (!dragging && Math.hypot(dx, dy) < 7) return;
+    dragging = true;
+    const x1 = Math.min(sx, ev.clientX);
+    const y1 = Math.min(sy, ev.clientY);
+    const x2 = Math.max(sx, ev.clientX);
+    const y2 = Math.max(sy, ev.clientY);
+    marqueeRect.value = { left: x1, top: y1, width: x2 - x1, height: y2 - y1 };
+
+    const next = new Set(baseSelection);
+    sc.querySelectorAll<HTMLElement>('[data-file-id]').forEach((el) => {
+      const r = el.getBoundingClientRect();
+      if (!(r.right < x1 || r.left > x2 || r.bottom < y1 || r.top > y2)) {
+        const fid = el.getAttribute('data-file-id');
+        if (fid) next.add(fid);
+      }
+    });
+    emit('set-selection', [...next]);
+  };
+
+  const onUp = () => {
+    marqueeRect.value = null;
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', onUp);
+    window.removeEventListener('pointercancel', onUp);
+    if (dragging) {
+      lastMarqueeTs = Date.now();
+    } else if (!target.closest('[data-file-id]') && !additive && props.selected.size > 0) {
+      emit('set-selection', []);
+    }
+  };
+
+  window.addEventListener('pointermove', onMove);
+  window.addEventListener('pointerup', onUp);
+  window.addEventListener('pointercancel', onUp);
+}
+
+// ----- Group Drag-and-Drop -----
+
+function onTileDragStart(e: DragEvent, item: FeedItem): void {
+  const all = orderedItems();
+  const byId = new Map(all.map((i) => [i.fileId, i]));
+  const ids = props.selected.has(item.fileId) && props.selected.size >= 2
+    ? [...props.selected]
+    : [item.fileId];
+  const entries = ids
+    .map((id) => byId.get(id) ?? (id === item.fileId ? item : null))
+    .filter((x): x is FeedItem => Boolean(x))
+    .map((x) => ({
+      key: `photo:${x.fileId}`,
+      id: x.fileId,
+      kind: x.kind,
+      name: x.name,
+      folderId: x.folderId,
+    }));
+  if (entries.length === 0) return;
+
+  dnd.startGroupDrag({ source: 'gallery', items: entries }, e);
+
+  if (e.dataTransfer?.setDragImage && typeof document !== 'undefined') {
+    const pill = document.createElement('div');
+    pill.className = 'pf-drag-ghost';
+    pill.textContent = formatDragCountLabel(entries.length, locale.value);
+    pill.style.cssText =
+      'position:fixed;top:-1000px;left:-1000px;padding:6px 12px;border-radius:999px;background:rgba(14,24,17,0.94);border:1.5px solid #44cf6e;color:#ebffeb;font:600 12px/1.2 sans-serif;pointer-events:none;z-index:9999;';
+    document.body.appendChild(pill);
+    dragGhostEl = pill;
+    try {
+      e.dataTransfer.setDragImage(pill, 12, 12);
+    } catch {
+      // Ignore dragImage errors in jsdom
+    }
+  }
+}
+
+function onTileDragEnd(): void {
+  dnd.endGroupDrag();
+  if (dragGhostEl) {
+    dragGhostEl.remove();
+    dragGhostEl = null;
+  }
 }
 
 // ----- group selection -----
@@ -737,7 +1023,7 @@ function groupPressed(group: string, sub?: string): boolean {
   let any = false;
   for (const u of unitsOf(group, sub)) {
     const key = unitKey(u.group, u.sub);
-    const list = items.value.get(key);
+    const list = filteredItemsMap.value.get(key);
     if (!list || list.length < (unitCount.get(key) ?? 0)) return false;
     for (const i of list) {
       any = true;
@@ -754,7 +1040,7 @@ async function pickGroup(group: string, sub?: string): Promise<void> {
   if (my !== epoch) return;
   const ids = new Set<string>();
   for (const u of units) {
-    for (const i of items.value.get(unitKey(u.group, u.sub)) ?? []) ids.add(i.fileId);
+    for (const i of filteredItemsMap.value.get(unitKey(u.group, u.sub)) ?? []) ids.add(i.fileId);
   }
   if (ids.size === 0) return;
   const list = [...ids];
@@ -788,7 +1074,8 @@ function measure(): void {
 
 watch(width, () => relayout());
 watch(viewportH, () => ensureLoaded());
-watch(() => props.tile, () => relayout());
+watch(() => [props.tile, props.tileHeight, props.aspectMode] as const, () => relayout());
+watch(() => [props.folderFilterId, props.peopleFilter?.join(','), props.recentLimit] as const, () => relayout());
 watch(collapsedShares, () => relayout());
 watch(locale, () => relayout());
 watch(
@@ -815,10 +1102,6 @@ onMounted(() => {
   void refresh();
 });
 
-/**
- * Photos of the loaded groups in feed order (what the viewer steps through).
- * A photo that sits in several groups appears once, at its first place.
- */
 function orderedItems(): FeedItem[] {
   const seen = new Set<string>();
   const out: FeedItem[] = [];
@@ -833,10 +1116,6 @@ function orderedItems(): FeedItem[] {
   return out;
 }
 
-/**
- * A photo's favorite flag or album membership changed elsewhere (the panel): update
- * every loaded copy so the heart and the album captions follow, without a reload.
- */
 function patchItem(fileId: string, patch: Partial<Pick<FeedItem, 'favorite' | 'albumIds'>>): void {
   let touched = false;
   const next = new Map<string, FeedItem[]>();
@@ -883,6 +1162,10 @@ defineExpose({ orderedItems, refresh, refreshAlbums, patchItem, loadMore });
 onBeforeUnmount(() => {
   epoch++;
   if (jumpTimer !== null) clearTimeout(jumpTimer);
+  if (dragGhostEl) {
+    dragGhostEl.remove();
+    dragGhostEl = null;
+  }
   wanted = new Map();
   ro?.disconnect();
   window.removeEventListener('resize', measure);
@@ -890,14 +1173,18 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="pf" :class="{ 'sel-on': selected.size > 0 }" data-testid="photos-feed">
+  <div
+    class="pf"
+    :class="{ 'has-multi-select': hasMultiSelect, 'sel-on': hasMultiSelect, 'headroom-hidden': headroomHidden }"
+    data-testid="photos-feed"
+  >
     <div
       ref="scroller"
       class="pf-scroller"
       @scroll.passive="onScroll"
-      @wheel.passive="cancelPending"
+      @wheel="onWheel"
       @touchstart.passive="cancelPending"
-      @pointerdown="cancelPending"
+      @pointerdown="onScrollerPointerDown"
       @keydown="cancelPending"
     >
       <div
@@ -914,7 +1201,7 @@ onBeforeUnmount(() => {
             :count="stuck.row.count ?? 0"
             :folder="headFor(stuck.row)?.isFolder"
             :pressed="groupPressed(stuck.row.groupKey)"
-            :selecting="selected.size > 0"
+            :selecting="hasMultiSelect"
             @pick="pickGroup(stuck.row.groupKey)"
           />
         </div>
@@ -938,7 +1225,7 @@ onBeforeUnmount(() => {
               :count="row.count ?? 0"
               :folder="headFor(row)?.isFolder"
               :pressed="groupPressed(row.groupKey, row.subKey)"
-              :selecting="selected.size > 0"
+              :selecting="hasMultiSelect"
               @pick="pickGroup(row.groupKey, row.subKey)"
             />
 
@@ -963,20 +1250,28 @@ onBeforeUnmount(() => {
                 :key="tl.item.fileId"
                 class="pf-tile"
                 :class="{
-                  sel: selected.has(tl.item.fileId),
+                  'is-checked': hasMultiSelect && selected.has(tl.item.fileId),
+                  sel: hasMultiSelect && selected.has(tl.item.fileId),
+                  'is-current': current === tl.item.fileId,
                   cur: current === tl.item.fileId,
                   vid: tl.item.kind === 'video',
+                  'is-dragging-group': dnd.activeDrag.value?.keys.includes(`photo:${tl.item.fileId}`),
                 }"
                 :data-file-id="tl.item.fileId"
+                draggable="true"
                 tabindex="0"
                 role="button"
                 :aria-label="tileLabel(tl.item)"
-                :aria-pressed="selected.has(tl.item.fileId)"
+                :aria-pressed="current === tl.item.fileId || (hasMultiSelect && selected.has(tl.item.fileId))"
                 :style="{ left: `${tl.left}px`, width: `${tl.width}px`, height: `${row.height}px` }"
                 @click="onTileClick($event, tl.item)"
                 @dblclick="onTileDblClick($event, tl.item)"
-                @keydown.enter.self="onTileClick($event, tl.item)"
-                @keydown.space.self.prevent="toggleOne(tl.item)"
+                @contextmenu="onTileContextMenu($event, tl.item)"
+                @keydown.enter.self="emit('activate', tl.item)"
+                @keydown.space.self.prevent="emit('activate', tl.item)"
+                @keydown="onTileKeydown($event, tl.item)"
+                @dragstart="onTileDragStart($event, tl.item)"
+                @dragend="onTileDragEnd"
               >
                 <img
                   v-if="thumbs.get(tl.item.hash)"
@@ -993,6 +1288,7 @@ onBeforeUnmount(() => {
                   :title="thumbs.get(tl.item.hash) === null || !tl.item.processed ? t('photosThumbUnavailable') : undefined"
                 ></div>
                 <button
+                  v-if="hasMultiSelect"
                   type="button"
                   class="pf-chk"
                   data-chk
@@ -1004,7 +1300,16 @@ onBeforeUnmount(() => {
                 <span v-if="tileCaption(tl.item).length" class="pf-cap">
                   <span v-for="(part, i) in tileCaption(tl.item)" :key="i">{{ part }}</span>
                 </span>
-                <span v-if="tl.item.favorite" class="pf-fav" :title="t('photosFavorite')">♥</span>
+                <button
+                  type="button"
+                  class="pf-fav-btn"
+                  :class="{ 'is-fav': tl.item.favorite, 'pf-fav': tl.item.favorite }"
+                  :title="t('photosFavorite')"
+                  :aria-label="t('photosFavorite')"
+                  @click.stop="emit('toggle-favorite', tl.item)"
+                >
+                  {{ tl.item.favorite ? '♥' : '♡' }}
+                </button>
                 <span v-if="tl.item.kind === 'video'" class="pf-badge">▶ {{ formatDuration(tl.item.durationSec) }}</span>
               </div>
             </template>
@@ -1017,8 +1322,22 @@ onBeforeUnmount(() => {
         <span>{{ t('photosLoadError') }}</span>
         <button type="button" class="pf-retry" @click="refresh()">{{ t('photosRetry') }}</button>
       </div>
-      <div v-else-if="status === 'ready' && groups.length === 0" class="pf-state">{{ t('photosFeedEmpty') }}</div>
+      <div v-else-if="status === 'ready' && (groups.length === 0 || layout.rows.length === 0)" class="pf-state">
+        {{ t('photosFeedEmpty') }}
+      </div>
     </div>
+
+    <div
+      v-if="marqueeRect"
+      class="pf-marquee"
+      data-testid="gallery-marquee"
+      :style="{
+        left: `${marqueeRect.left}px`,
+        top: `${marqueeRect.top}px`,
+        width: `${marqueeRect.width}px`,
+        height: `${marqueeRect.height}px`,
+      }"
+    ></div>
 
     <PhotosScrubber
       v-if="groups.length > 0"
@@ -1044,7 +1363,7 @@ onBeforeUnmount(() => {
   flex: 1;
   min-width: 0;
   overflow-y: auto;
-  padding: 0 8px 0 20px;
+  padding: 2px 4px 48px 2px;
   scrollbar-width: none;
 }
 .pf-scroller::-webkit-scrollbar {
@@ -1062,6 +1381,8 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: flex-end;
   padding-bottom: 6px;
+  padding-left: 8px;
+  pointer-events: none;
 }
 .pf-h1 > :deep(.pgh),
 .pf-h2 > :deep(.pgh) {
@@ -1070,41 +1391,56 @@ onBeforeUnmount(() => {
 .pf-h2 {
   display: flex;
   align-items: center;
+  padding-left: 8px;
+  pointer-events: none;
 }
 .pf-stick {
   position: sticky;
   top: 0;
   height: 0;
-  z-index: 3;
+  z-index: 8;
+  pointer-events: none;
+  transition: top 0.2s ease;
+}
+.pf.headroom-hidden .pf-stick {
+  top: 8px;
 }
 .pf-stick-inner {
   position: absolute;
-  left: -20px;
-  right: -8px;
-  height: 48px;
+  left: 6px;
+  right: 6px;
+  height: 44px;
   box-sizing: border-box;
   display: flex;
-  align-items: flex-end;
-  padding: 0 8px 6px 20px;
-  background: linear-gradient(
-    color-mix(in srgb, var(--ui-canvas) 97%, transparent),
-    color-mix(in srgb, var(--ui-canvas) 82%, transparent) 45%,
-    color-mix(in srgb, var(--ui-canvas) 0%, transparent)
-  );
+  align-items: center;
+  padding: 0 10px;
+  pointer-events: none;
 }
 .pf-stick-inner > :deep(.pgh) {
-  width: 100%;
+  width: auto;
+  max-width: 100%;
+  padding: 3px 10px;
+  border-radius: 8px;
+  background: rgba(12, 20, 15, 0.56);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(10px) saturate(1.18);
+  -webkit-backdrop-filter: blur(10px) saturate(1.18);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.22);
+}
+:root[data-theme='light'] .pf-stick-inner > :deep(.pgh) {
+  background: rgba(255, 255, 255, 0.86);
+  border-color: rgba(15, 36, 20, 0.14);
 }
 .pf-skeleton {
   width: 100%;
   height: 100%;
-  border-radius: 4px;
+  border-radius: 2px;
   background: repeating-linear-gradient(
     90deg,
     var(--ui-surface-subtle) 0,
     var(--ui-surface-subtle) 160px,
     transparent 160px,
-    transparent 164px
+    transparent 162px
   );
   opacity: 0.6;
 }
@@ -1114,7 +1450,7 @@ onBeforeUnmount(() => {
   gap: 8px;
   width: 100%;
   height: 100%;
-  padding: 0 4px;
+  padding: 0 8px;
   border: 0;
   background: transparent;
   color: var(--ui-text-secondary);
@@ -1133,17 +1469,27 @@ onBeforeUnmount(() => {
 .pf-tile {
   position: absolute;
   top: 0;
-  border-radius: 4px;
+  border-radius: 2px;
   overflow: hidden;
   background: var(--ui-surface-subtle);
   cursor: pointer;
+  user-select: none;
+  transition: box-shadow 0.12s ease, opacity 0.14s ease, transform 0.14s ease;
+}
+.pf-tile.is-dragging-group {
+  opacity: 0.42;
+  transform: scale(0.96);
 }
 .pf-img {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
-  transition: transform 0.15s;
+  transition: transform 0.15s ease, filter 0.15s ease;
+  pointer-events: none;
+}
+.pf-tile:hover:not(.is-checked) .pf-img {
+  filter: brightness(1.05);
 }
 .pf-nothumb {
   width: 100%;
@@ -1161,8 +1507,8 @@ onBeforeUnmount(() => {
   border-radius: 50%;
   border: 2px solid #fff;
   background: rgba(0, 0, 0, 0.25);
-  opacity: 0;
   cursor: pointer;
+  z-index: 4;
 }
 .pf-tile:focus-visible {
   outline: 2px solid var(--ui-focus);
@@ -1172,29 +1518,31 @@ onBeforeUnmount(() => {
   outline: 2px solid var(--ui-focus);
   outline-offset: 2px;
 }
-.pf-tile:hover .pf-chk,
-.pf-tile:focus-within .pf-chk,
-.sel-on .pf-chk {
-  opacity: 1;
+/* Focus ring for single click (is-current) WITHOUT green checkmark */
+.pf-tile.is-current,
+.pf-tile.cur {
+  box-shadow: inset 0 0 0 2px var(--ui-accent-strong), 0 0 0 1px var(--ui-accent-strong);
+  z-index: 2;
 }
-@media (hover: none) {
-  .pf-chk {
-    opacity: 0.9;
-  }
-}
+/* Multi-selection (selected.size >= 2): green border + green checkmark badge */
+.pf-tile.is-checked,
 .pf-tile.sel {
   outline: 3px solid var(--ui-brand);
   outline-offset: -3px;
+  z-index: 3;
 }
+.pf-tile.is-checked .pf-img,
 .pf-tile.sel .pf-img {
-  transform: scale(0.9);
-  border-radius: 4px;
+  transform: scale(0.93);
+  border-radius: 3px;
 }
+.pf-tile.is-checked .pf-chk,
 .pf-tile.sel .pf-chk {
   background: var(--ui-brand);
   border-color: var(--ui-brand);
   opacity: 1;
 }
+.pf-tile.is-checked .pf-chk::after,
 .pf-tile.sel .pf-chk::after {
   content: '';
   position: absolute;
@@ -1206,8 +1554,35 @@ onBeforeUnmount(() => {
   border-width: 0 2px 2px 0;
   transform: rotate(45deg);
 }
-.pf-tile.cur {
-  box-shadow: 0 0 0 3px var(--ui-accent-strong);
+.pf-fav-btn {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  z-index: 4;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: rgba(10, 14, 11, 0.46);
+  backdrop-filter: blur(6px);
+  color: #fff;
+  font-size: 13px;
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 0.12s ease, transform 0.12s ease, color 0.12s ease;
+}
+.pf-tile:hover .pf-fav-btn,
+.pf-fav-btn.is-fav {
+  opacity: 1;
+}
+.pf-fav-btn.is-fav {
+  color: #ff5d73;
+  background: rgba(10, 14, 11, 0.58);
+}
+.pf-fav-btn:hover {
+  transform: scale(1.1);
 }
 .pf-badge {
   position: absolute;
@@ -1217,17 +1592,18 @@ onBeforeUnmount(() => {
   border-radius: 6px;
   background: rgba(0, 0, 0, 0.6);
   color: #fff;
-  font-size: 12px;
+  font-size: 11px;
+  pointer-events: none;
 }
 .pf-cap {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
-  padding: 18px 9px 5px;
+  padding: 18px 9px 5px 34px;
   background: linear-gradient(transparent, rgba(0, 0, 0, 0.7));
   color: #fff;
-  font-size: 12px;
+  font-size: 11.5px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1241,13 +1617,13 @@ onBeforeUnmount(() => {
   right: 62px;
   padding-right: 0;
 }
-.pf-fav {
-  position: absolute;
-  right: 22px;
-  top: 3px;
-  color: #fff;
-  font-size: 14px;
-  text-shadow: 0 1px 3px #000;
+.pf-marquee {
+  position: fixed;
+  z-index: 50;
+  border: 1.5px solid var(--ui-brand);
+  background: color-mix(in srgb, var(--ui-brand) 14%, transparent);
+  border-radius: 4px;
+  pointer-events: none;
 }
 .pf-state {
   position: absolute;

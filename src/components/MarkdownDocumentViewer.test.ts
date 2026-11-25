@@ -12,6 +12,7 @@ import { driveApi, type DriveItem } from '../api/drive';
 import { spacesApi } from '../api/spaces';
 import { yandexDisk } from '../api/yandexDisk';
 import { useYandexDisk, resetYandexDiskStatus } from '../composables/useYandexDisk';
+import { setShowFilesInTree } from '../composables/useExplorerLayoutPrefs';
 import { useI18n } from '../composables/useI18n';
 
 vi.mock('../api/drive', async (importOriginal) => {
@@ -377,12 +378,27 @@ describe('.md files across DashboardFolderFiles, DashboardSpace, and DashboardYa
   });
 
   it('DashboardSidebar and DriveItemRow render .md files with the document icon', () => {
+    setShowFilesInTree(true);
     const sidebar = mount(DashboardSidebar, {
       props: {
         activeSection: { kind: 'folder', folderId: 'f-1' },
         widthState: 'expanded',
         mobileOpen: false,
         folders: [
+          {
+            kind: 'folder',
+            id: 'f-1',
+            name: 'Docs',
+            parentId: null,
+            depth: 0,
+            role: 'owner',
+            technical: false,
+            expanded: true,
+            hasChildren: true,
+            draggable: false,
+            dropActive: false,
+            reorderTarget: false,
+          },
           {
             kind: 'file',
             key: 'f-1/drive-file:md-1',
@@ -399,6 +415,7 @@ describe('.md files across DashboardFolderFiles, DashboardSpace, and DashboardYa
     });
     const sidebarFile = sidebar.get('[data-sidebar-file="f-1/drive-file:md-1"]');
     expect(sidebarFile.find('[data-resource-kind="text-document"]').exists()).toBe(true);
+    setShowFilesInTree(false);
 
     const row = mount(DriveItemRow, {
       props: {

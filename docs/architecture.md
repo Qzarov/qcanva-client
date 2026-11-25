@@ -1,5 +1,4 @@
-> Сверено с `q-space` @ da505c9, 2026-11-23.
-> Сверено с `q-space` @ da505c9 + `feat/clients-download-page`, 2026-11-23.
+> Сверено с `q-space` @ 7f83f24 + `feat/explorer-albums-gallery-redesign`, 2026-11-26.
 
 # Архитектура веб-клиента QCanva (qcanva-client)
 
@@ -70,7 +69,7 @@
 
 - `src/components/AccessGate.vue`: экран ввода пароля или отправки заявки владельцу при блокировке 401/403.
 - `src/components/AccessRequestDialog.vue`: модальный диалог отправки запроса на чтение или редактирование закрытого ресурса.
-- `src/components/ActivityJournal.vue`: глобальный плавающий виджет журнала фоновых процессов в правом нижнем углу (компактная пилюля со счётчиком и общим прогрессом, раскрывающийся список задач загрузки, скачивания, массовых операций, синхронизации и обработки медиа с кнопками отмены и очистки); подавляет дублирующие локальные панели (`DashboardUploadPanel`, `DashboardUploadBadge`, `DashboardStatusOverlays`, `DriveUploadPanel`).
+- `src/components/ActivityJournal.vue`: глобальный плавающий виджет журнала фоновых процессов в правом нижнем углу (компактная пилюля со счётчиком и общим прогрессом, раскрывающийся список задач загрузки, скачивания, массовых операций, синхронизации и обработки медиа с кнопками отмены и очистки, перетаскиваемый по экрану с сохранением позиции через `useExplorerLayoutPrefs().setActivityJournalPos`); подавляет дублирующие локальные панели (`DashboardUploadPanel`, `DashboardUploadBadge`, `DashboardStatusOverlays`, `DriveUploadPanel`).
 - `src/components/AccountMenu.vue`: меню профиля пользователя с переключением темы, переходом в настройки и выходом.
 - `src/components/AppDialogHost.vue`: глобальный хост очереди модальных окон приложения (alert, confirm, prompt).
 - `src/components/BackButton.vue`: кнопка возврата на предыдущий экран с индикатором открытых вкладок.
@@ -91,21 +90,30 @@
 - `src/components/ToastContainer.vue`: всплывающие уведомления (тосты) об успехе, ошибках или системных событиях.
 - `src/components/board/BoardEditor.vue`: рабочая область канбан-доски с перетаскиванием колонок, карточек и привязкой документов.
 - `src/components/board/BoardShareDialog.vue`: модальное окно приглашения соавторов и настройки прав доступа к канбан-доске.
-- `src/components/dashboard/DashboardSidebar.vue`: боковая панель разделов (Главная с деревом папок, Пространства, Доступные, Шаблоны, Публичные, Корзина).
-- `src/components/dashboard/DashboardSidebarSpaces.vue`: раскрывающийся блок «Пространства» в боковой панели (Яндекс Диск с деревом папок и общие пространства без отдельной строки Q Space).
-- `src/components/dashboard/DashboardSpace.vue`: представление общего пространства (плитки источников Q Space и Яндекс Диска, объединённая лента файлов и документов, фильтрация и управление участниками).
+- `src/components/DriveItemsView.vue`, `src/components/DriveItemCard.vue`: отображение сетки и списка файлов `/drive` с пакетным запросом миниатюр карточек через `driveApi.getThumbLinks` (`POST /api/drive/thumbs/links`) для картинок, видео, PDF, EPUB и текстовых файлов с фоллбеком на типовые иконки.
+- `src/components/dashboard/ExplorerActivityBar.vue`: боковая панель переключения активностей в стиле VS Code (`home`, `explorer`, `search`, `gallery`, `trash`, ссылки на `/drive/devices`, `/downloads`, `/admin`).
+- `src/components/dashboard/DashboardSidebar.vue`: сворачиваемый и изменяемый по ширине (`160..440 px`, `< 110 px` сворачивает) сайдбар с единым деревом (`Q Space` → `shared`/`public`/`home`, `Clouds` → Яндекс Диск / Telegram скоро, `Альбомы`), поиском по сайдбару, авто-раскрытием при наведении перетаскивания (450 мс) и слотом `#gallery-sidebar`.
+- `src/components/dashboard/ExplorerSearchSidebar.vue`: панель мгновенного поиска по папкам, альбомам и файлам с чипами фильтров (`all | folder | doc | pdf | media`).
+- `src/components/dashboard/ExplorerHeadroomBar.vue`: верхняя панель 46 px с авто-скрытием при прокрутке (Headroom), редактируемой строкой пути (`Ctrl+L`, без пробелов вокруг `/`) и иконочным переключателем вида.
+- `src/components/dashboard/ExplorerMobileTabBar.vue`: нижняя капсульная панель переключения режимов на мобильных экранах (`<= 768 px`).
+- `src/components/dashboard/ExplorerTableView.vue`: сортируемая таблица Windows Explorer без колонки чекбоксов с поддержкой `Click` / `Ctrl` / `Shift` / `Shift+↑↓` и группового Drag & Drop.
+- `src/components/dashboard/ExplorerContextMenu.vue`, `src/components/dashboard/ExplorerDragBadge.vue`: плавающее контекстное меню одиночных/групповых действий и пилюля счётчика перетаскиваемой группы объектов.
+- `src/components/dashboard/DashboardAddDialog.vue`: упрощённый диалог создания и загрузки (5 квадратных плиток и большая drag-and-drop зона загрузки в текущую папку).
+- `src/components/dashboard/DashboardSidebarSpaces.vue`: блок «Альбомы» (ex-Spaces) и облаков в боковой панели.
+- `src/components/dashboard/DashboardSpace.vue`, `src/components/dashboard/AlbumShareDialog.vue`, `src/components/dashboard/SpaceMembersDialog.vue`: представление альбома с двойным видом («Лента / Таблица»), фильтрацией по дереву и диалогом «Поделиться альбомом» (публичная web-ссылка, приглашения и роли участников).
 - `src/components/dashboard/DashboardYandexDisk.vue`: просмотр и управление файлами и папками подключённого Яндекс Диска внутри дашборда.
-- `src/components/dashboard/DashboardViewToggle.vue`: переключатель сетки отображения ресурсов (плитка / табличный список).
+- `src/components/dashboard/DashboardViewToggle.vue`: строго иконочный переключатель режима отображения (`explorer`: плитка/таблица; `album`: лента/таблица).
 - `src/components/dashboard/InteractiveTemplatePicker.vue`: диалог выбора типа интерактивного шаблона или импорта персонажа из JSON.
-- `src/components/photos/DrivePhotos.vue`: контейнер вкладки «Фото»: вкладки «Лента»/«Альбомы», поиск, панель вида, лента, панель фото, просмотр, панель выделения и выбор папки для переноса; состояние выделения, панели и просмотра держит он.
-- `src/components/photos/PhotosViewBar.vue`, `usePhotosView.ts`: панель вида ленты и его состояние (модульный синглтон, `localStorage` + предпочтение `photos.view`).
-- `src/components/photos/PhotosFeed.vue`, `photoGridLayout.ts`, `groupTitle.ts`, `PhotosGroupHead.vue`: виртуализированная лента по `photosApi.summary/items`; раскладка — чистая функция; наружу отдаёт `orderedItems()`, `refresh()`, `patchItem()`.
+- `src/components/photos/DrivePhotos.vue`: контейнер Галереи в стиле macOS Photos (верхняя панель без стрелок навигации: «Квадраты/Пропорции», ползунок масштаба `72..280 px`, сегменты `Годы | Месяцы | Дни`, бейдж `(N ✕)`, `ⓘ`, `↑ Поделиться`, `♡ Избранное`, поиск по смыслу, контекстное меню группы и изменяемая по ширине панель свойств).
+- `src/components/photos/GallerySidebar.vue`, `src/components/photos/GalleryPeopleGrid.vue`: боковая панель Галереи (`Фото`, `Альбомы`, `Папки хранилища` с авто-подсветкой выбранного файла) и сетка портретов людей.
+- `src/components/photos/PhotosViewBar.vue`, `src/components/photos/usePhotosView.ts`: плавающая кнопка многоключевой сортировки и выбора подписей плиток, синхронизированная с Headroom.
+- `src/components/photos/PhotosFeed.vue`, `src/components/photos/photoGridLayout.ts`, `src/components/photos/groupTitle.ts`, `src/components/photos/PhotosGroupHead.vue`: виртуализированная стена фото (`gap: 2px`, режимы `square`/`ratio`, `Ctrl+wheel`/pinch zoom, спокойный одиночный клик без зелёной галочки, групповые галочки при `2+` выделенных, marquee и Group DnD).
 - `src/components/photos/PhotosScrubber.vue`: слайдер по датам/группам внутри ленты.
 - `src/components/photos/PhotosSearchGrid.vue`: плоская сетка результатов поиска (`photosApi.search`) без групп и слайдера.
-- `src/components/photos/PhotoPanel.vue`: боковая панель фото (`photosApi.details/edit/albums`): избранное, сведения, путь, альбомы, где хранится, описание.
-- `src/components/photos/PhotoViewer.vue`: полноэкранный просмотр фото и видео (`renditionUrl`: preview → thumbnail; видео: rendition `video` → оригинал по ссылке → превью-кадр), листает по порядку ленты; «Сведения» закрывает просмотр и оставляет панель на этом фото.
+- `src/components/photos/PhotoPanel.vue`: панель свойств фото в стиле Liquid Glass (`photosApi.details/edit/albums`).
+- `src/components/photos/PhotoViewer.vue`: полупрозрачный просмотр фото и видео (`backdrop-filter: blur(22px)`, закрытие кликом по фону, независимая боковая панель `ⓘ` и нижняя лента миниатюр Filmstrip).
 - `src/components/photos/PhotosAlbums.vue`: список альбомов (создание, переименование, удаление).
-- `src/components/photos/SelectionBar.vue`, `usePhotoSelectionActions.ts`: панель выделения и действия над ним (в альбом, перенос в папку, убрать из альбома).
+- `src/components/photos/SelectionBar.vue`, `src/components/photos/usePhotoSelectionActions.ts`: вспомогательная панель и действия переноса/добавления в альбом для выделенных фото.
 - `src/components/settings/McpTokensPanel.vue`: панель выпуска и управления личными токенами доступа по протоколу MCP.
 - `src/components/tabs/TabsButton.vue`: кнопка со счётчиком вкладок для вызова панели переключения активных ресурсов на Android.
 
@@ -147,6 +155,10 @@
    - Кеширует временные токены для отображения картинок Immich через защищённые URL без отправки Bearer-заголовка в `<img src>`.
 10. **Журнал фоновых процессов** — [`src/composables/useActivityJournal.ts`](../src/composables/useActivityJournal.ts):
    - Модульный реестр задач `tasks = ref<ActivityTask[]>([])` (`upload`, `download`, `bulk`, `sync`, `media`) с прогрессом `0..100` или `null` (indeterminate), статусами (`running` / `done` / `error` / `cancelled`), взвешенным общим прогрессом активной волны, отменой (`cancelTask` / `AbortController`) и мостом `useSyncActivity()` для редакторов.
+11. **Настройки раскладки и групповой Drag & Drop** — [`src/composables/useExplorerLayoutPrefs.ts`](../src/composables/useExplorerLayoutPrefs.ts), [`src/composables/useExplorerGroupDnd.ts`](../src/composables/useExplorerGroupDnd.ts):
+   - Модульный синглтон `useExplorerLayoutPrefs` персистит `qspace:viewMode`, `qspace:albumView`, `qspace:sidebarCollapsed`, `qspace:sidebarWidth`, `qspace:lastExplorerRoute`, `qspace:showFilesInTree`, `qspace:galleryAspectMode`, `qspace:photoTileH`, `qspace:activityJournalPos` и `qspace:favorites` в `localStorage` и держит состояние `headroomHidden`.
+   - `useExplorerGroupDnd` хранит `activeDrag`, `dragCursor`, `dropTarget`, `springHoverId` и таймер авто-раскрытия папок `SPRING_EXPAND_DELAY_MS = 450`.
+   - [`src/composables/useExplorerWorkspaceHelpers.ts`](../src/composables/useExplorerWorkspaceHelpers.ts) предоставляет чистые функции построения/разрешения путей (`buildExplorerPath`, `resolveExplorerPath`) и нормализации строк таблицы (`buildFolderExplorerTableRows`).
 
 ---
 

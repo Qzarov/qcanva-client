@@ -102,4 +102,19 @@ describe('AccountMenu', () => {
     expect(wrapper.find('[data-account-menu]').exists()).toBe(false);
     expect(document.activeElement).toBe(trigger.element);
   });
+
+  it('includes LanguageToggle inside the AccountMenu popover and switches locale', async () => {
+    const { useI18n } = await import('../composables/useI18n');
+    useI18n().setLocale('en');
+    const wrapper = mount(AccountMenu, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    });
+    await wrapper.get('[data-account-menu-trigger]').trigger('click');
+    const langSection = wrapper.get('[data-account-menu-language]');
+    const toggleBtn = langSection.get('.language-toggle');
+    expect(toggleBtn.text()).toBe('РУ');
+    await toggleBtn.trigger('click');
+    expect(useI18n().locale.value).toBe('ru');
+    useI18n().setLocale('en');
+  });
 });

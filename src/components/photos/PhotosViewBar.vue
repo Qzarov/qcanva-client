@@ -1,11 +1,19 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n, type MessageKey } from '../../composables/useI18n';
-import type { FeedPeriod, SortKey, SubKey } from '../../api/photos';
-import { usePhotosView, type CaptionKey, type PhotosViewState } from './usePhotosView';
+import { useExplorerLayoutPrefs } from '../../composables/useExplorerLayoutPrefs';
+import type { SortKey, SubKey } from '../../api/photos';
+import { usePhotosView, type CaptionKey } from './usePhotosView';
 
-const { t } = useI18n();
-const { state, toggleSortKey, toggleDir, setAllDirs, cycleSub, setPeriod, setFilter, toggleCaption, setShared, cycleTile, reset } =
+const props = withDefaults(defineProps<{
+  hidden?: boolean;
+}>(), {
+  hidden: false,
+});
+
+const { t, locale } = useI18n();
+const prefs = useExplorerLayoutPrefs();
+const { state, toggleSortKey, toggleDir, setAllDirs, cycleSub, toggleCaption, reset } =
   usePhotosView();
 
 const ALL_KEYS: SortKey[] = ['date', 'folder', 'album', 'size'];
@@ -21,29 +29,18 @@ const SUB_LABEL: Record<SubKey, MessageKey> = {
   created: 'photosSubCreated',
   added: 'photosSubAdded',
 };
-const PERIODS: { v: FeedPeriod; label: MessageKey }[] = [
-  { v: 'day', label: 'photosPeriodDay' },
-  { v: 'month', label: 'photosPeriodMonth' },
-  { v: 'year', label: 'photosPeriodYear' },
-];
-const FILTERS: { v: PhotosViewState['filter']; label: MessageKey }[] = [
-  { v: 'all', label: 'photosFilterAll' },
-  { v: 'photo', label: 'photosFilterPhoto' },
-  { v: 'video', label: 'photosFilterVideo' },
-  { v: 'fav', label: 'photosFilterFav' },
-];
 const CAPTIONS: { v: CaptionKey; label: MessageKey }[] = [
   { v: 'folder', label: 'photosCaptionFolder' },
   { v: 'album', label: 'photosCaptionAlbums' },
   { v: 'size', label: 'photosCaptionSize' },
+  { v: 'access', label: 'galleryCaptionAccess' },
 ];
-const TILE_LABEL: Record<PhotosViewState['tile'], MessageKey> = {
-  s: 'photosTileS',
-  m: 'photosTileM',
-  l: 'photosTileL',
-};
 
 const isSubKey = (k: SortKey): k is 'folder' | 'album' => k === 'folder' || k === 'album';
+
+const captionsHeading = computed(() =>
+  locale.value === 'ru' ? 'Подписи на плитках' : 'Tile captions',
+);
 
 /** Pill text: active keys in priority order, non-default sub in brackets. */
 const pillValue = computed(() => {
@@ -54,13 +51,17 @@ const pillValue = computed(() => {
   return parts.length ? parts.join(`, ${t('photosSortThen')} `) : t('photosSortDefault');
 });
 
+const hasActiveCustomizations = computed(
+  () => state.value.sort.length > 0 || state.value.captions.length > 0,
+);
+
 /** Active keys first (priority order), then the inactive ones in their usual order. */
 const rows = computed(() => {
   const active = state.value.sort.map((s) => s.key);
   const off = ALL_KEYS.filter((k) => !active.includes(k));
   return [
-    ...active.map((key) => ({ key, on: true, sepBefore: false })),
-    ...off.map((key, i) => ({ key, on: false, sepBefore: i === 0 && active.length > 0 })),
+    ...active.map((key, idx) => ({ key, on: true, order: idx + 1, sepBefore: false })),
+    ...off.map((key, i) => ({ key, on: false, order: null as number | null, sepBefore: i === 0 && active.length > 0 })),
   ];
 });
 
@@ -86,6 +87,8 @@ const MENU_ID = `photos-sort-menu-${Math.random().toString(36).slice(2, 8)}`;
 const open = ref(false);
 const root = ref<HTMLElement | null>(null);
 const pill = ref<HTMLButtonElement | null>(null);
+
+const isHeadroomHidden = computed(() => !open.value && (props.hidden || prefs.headroomHidden.value));
 
 /** Viewport offset of the popup on phones, where it is pinned with `position: fixed`. */
 const popTop = ref(0);
@@ -119,7 +122,6 @@ function onToggleKey(k: SortKey): void {
 }
 
 function onDocClick(e: MouseEvent): void {
-  // The menu re-renders on every click, so the target may already be detached: use the dispatch-time path.
   const el = root.value;
   if (el && !e.composedPath().includes(el)) closeMenu();
 }
@@ -141,19 +143,25 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick));
 </script>
 
 <template>
-  <div class="pvb" role="group" :aria-label="t('photosViewBarLabel')">
+  <div
+    class="pvb"
+    :class="{ 'is-hidden': isHeadroomHidden, 'is-active': open || hasActiveCustomizations }"
+    role="group"
+    :aria-label="t('photosViewBarLabel')"
+  >
     <div ref="root" class="pvb-popwrap" @keydown="onMenuKeydown" @focusout="onFocusOut">
       <button
         ref="pill"
         type="button"
         class="pvb-pill"
+        :class="{ active: open || hasActiveCustomizations }"
         data-testid="sort-pill"
         aria-haspopup="dialog"
         :aria-expanded="open"
         :aria-controls="MENU_ID"
         @click="toggleMenu"
       >
-        {{ t('photosSortPill') }}: <b>{{ pillValue }}</b>
+        <span class="pvb-pill-prefix">{{ t('photosSortPill') }}:</span>&nbsp;<b>{{ pillValue }}</b>&nbsp;<span class="pvb-caret" aria-hidden="true">▾</span>
       </button>
       <div
         v-if="open"
@@ -185,7 +193,10 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick));
                 :aria-pressed="row.on"
                 @click="onToggleKey(row.key)"
               >
-                {{ t(KEY_LABEL[row.key]) }}
+                <span class="pvb-check" aria-hidden="true">
+                  <span v-if="row.on" class="pvb-ord-badge">{{ row.order }}</span>
+                </span>
+                <span>{{ t(KEY_LABEL[row.key]) }}</span>
               </button>
               <button
                 v-if="isSubKey(row.key)"
@@ -209,81 +220,43 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick));
             </button>
           </template>
         </div>
+
         <div class="pvb-foot">
           <span>{{ t('photosPriorityNote') }}</span>
           <button type="button" class="pvb-link" data-testid="sort-reset" @click="reset()">{{ t('photosResetView') }}</button>
         </div>
-      </div>
-    </div>
 
-    <div class="pvb-ctl">
-      {{ t('photosGroupBy') }}
-      <div class="pvb-seg" role="group" :aria-label="t('photosGroupBy')">
-        <button
-          v-for="p in PERIODS"
-          :key="p.v"
-          type="button"
-          :data-testid="`period-${p.v}`"
-          :aria-pressed="state.period === p.v"
-          @click="setPeriod(p.v)"
-        >
-          {{ t(p.label) }}
-        </button>
+        <div class="pvb-cap-sec">
+          <div class="pvb-cap-label">{{ captionsHeading }}</div>
+          <div class="pvb-seg" role="group" :aria-label="captionsHeading">
+            <button
+              v-for="c in CAPTIONS"
+              :key="c.v"
+              type="button"
+              :data-testid="`caption-${c.v}`"
+              :aria-pressed="state.captions.includes(c.v)"
+              @click="toggleCaption(c.v)"
+            >
+              {{ t(c.label) }}
+            </button>
+          </div>
+        </div>
       </div>
-    </div>
-
-    <div class="pvb-ctl">
-      {{ t('photosShow') }}
-      <div class="pvb-seg" role="group" :aria-label="t('photosShow')">
-        <button
-          v-for="f in FILTERS"
-          :key="f.v"
-          type="button"
-          :data-testid="`filter-${f.v}`"
-          :aria-pressed="state.filter === f.v"
-          @click="setFilter(f.v)"
-        >
-          {{ t(f.label) }}
-        </button>
-      </div>
-      {{ t('photosCaptionWith') }}
-      <div class="pvb-seg" role="group" :aria-label="t('photosCaptionWith')">
-        <button
-          v-for="c in CAPTIONS"
-          :key="c.v"
-          type="button"
-          :data-testid="`caption-${c.v}`"
-          :aria-pressed="state.captions.includes(c.v)"
-          @click="toggleCaption(c.v)"
-        >
-          {{ t(c.label) }}
-        </button>
-      </div>
-      <div class="pvb-seg">
-        <button type="button" data-testid="shared-toggle" :aria-pressed="state.shared" @click="setShared(!state.shared)">
-          {{ t('photosSharedToggle') }}
-        </button>
-      </div>
-    </div>
-
-    <div class="pvb-ctl">
-      <button type="button" class="pvb-pill" data-testid="size-button" :title="t('photosTileTitle')" @click="cycleTile()">
-        {{ t('photosTileLabel') }}: <b>{{ t(TILE_LABEL[state.tile]) }}</b>
-      </button>
     </div>
   </div>
 </template>
 
 <style scoped>
 .pvb {
-  display: flex;
-  flex-wrap: wrap;
+  display: inline-flex;
   align-items: center;
-  gap: 8px 22px;
-  padding: 10px 20px;
-  background: var(--ui-surface-solid);
-  border-bottom: 1px solid var(--ui-border);
-  font-size: 13px;
+  font-size: 12px;
+  transition: transform 0.22s ease, opacity 0.18s ease;
+}
+.pvb.is-hidden {
+  opacity: 0;
+  transform: translateY(-48px);
+  pointer-events: none;
 }
 .pvb button {
   font: inherit;
@@ -296,64 +269,57 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick));
   outline: 2px solid var(--ui-focus);
   outline-offset: 1px;
 }
-.pvb-ctl {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  color: var(--ui-text-muted);
-}
 .pvb-popwrap {
   position: relative;
 }
 .pvb-pill {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 5px 12px;
-  border-radius: 9px;
-  background: var(--ui-glass-btn-bg);
+  gap: 5px;
+  height: 28px;
+  padding: 0 11px;
+  border-radius: 999px;
+  white-space: nowrap;
+  background: var(--ui-glass-tint), var(--ui-glass-bg);
+  border: 1px solid var(--ui-glass-border);
+  box-shadow: var(--ui-glass-surface-shadow);
+  backdrop-filter: blur(var(--ui-glass-blur, 18px)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--ui-glass-blur, 18px)) saturate(1.2);
   color: var(--ui-text-secondary);
+  transition: border-color 0.14s ease, color 0.14s ease, background 0.14s ease;
 }
-.pvb-pill:hover {
-  background: var(--ui-glass-btn-hover);
+.pvb-pill:hover,
+.pvb-pill.active {
+  border-color: var(--ui-glass-accent-border);
+  color: var(--ui-glass-accent-text);
 }
 .pvb-pill b {
-  color: var(--ui-glass-accent-text);
+  color: var(--ui-text);
   font-weight: 600;
 }
-.pvb-seg {
-  display: flex;
-  background: var(--ui-glass-btn-bg);
-  border-radius: 9px;
-  padding: 2px;
-}
-.pvb-seg button {
-  padding: 4px 10px;
-  border-radius: 7px;
-  color: var(--ui-text-secondary);
-}
-.pvb-seg button[aria-pressed='true'] {
-  background: var(--ui-glass-accent-bg);
+.pvb-pill.active b {
   color: var(--ui-glass-accent-text);
 }
-.pvb-seg button:hover:not([aria-pressed='true']) {
-  background: var(--ui-glass-btn-hover);
+.pvb-caret {
+  opacity: 0.78;
 }
 .pvb-pop {
   position: absolute;
   top: calc(100% + 6px);
-  left: 0;
+  right: 0;
+  left: auto;
   z-index: 30;
   box-sizing: border-box;
   max-width: calc(100vw - 16px);
   max-height: calc(100vh - 16px);
   overflow: auto;
-  padding: 10px;
-  border-radius: 12px;
-  background: var(--ui-surface-solid);
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: var(--ui-glass-tint), var(--ui-surface-solid);
   border: 1px solid var(--ui-glass-border);
-  box-shadow: var(--ui-glass-shadow);
+  box-shadow: var(--ui-glass-surface-shadow);
+  backdrop-filter: blur(var(--ui-glass-blur, 18px)) saturate(1.25);
+  -webkit-backdrop-filter: blur(var(--ui-glass-blur, 18px)) saturate(1.25);
   color: var(--ui-text);
 }
 .pvb-st {
@@ -364,7 +330,7 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick));
 }
 .pvb-st-h {
   color: var(--ui-text-muted);
-  font-size: 12px;
+  font-size: 11.5px;
   padding: 2px 8px 6px;
 }
 .pvb-st-h-r {
@@ -381,7 +347,7 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick));
   padding: 2px 8px;
   border-radius: 6px;
   background: var(--ui-glass-btn-bg);
-  font-size: 12px;
+  font-size: 11.5px;
   color: var(--ui-text-secondary);
 }
 .pvb-all button:hover {
@@ -397,21 +363,22 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick));
 }
 .pvb-key,
 .pvb-ord {
-  padding: 7px 8px;
+  padding: 6px 8px;
   border-radius: 8px;
   text-align: left;
 }
 .pvb-key {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 8px;
   color: var(--ui-text-muted);
 }
-.pvb-key::before {
-  content: '';
-  width: 14px;
-  height: 14px;
-  border-radius: 4px;
+.pvb-check {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 5px;
   border: 1.5px solid var(--ui-text-muted);
   flex: none;
 }
@@ -419,9 +386,15 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick));
   color: var(--ui-text);
   font-weight: 600;
 }
-.pvb-key.on::before {
+.pvb-key.on .pvb-check {
   background: var(--ui-brand);
   border-color: var(--ui-brand);
+}
+.pvb-ord-badge {
+  color: var(--ui-brand-on);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
 }
 .pvb-ord {
   color: var(--ui-glass-accent-text);
@@ -438,7 +411,7 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick));
   border-radius: 6px;
   background: var(--ui-glass-btn-bg);
   color: var(--ui-text-secondary);
-  font-size: 12px;
+  font-size: 11.5px;
   white-space: nowrap;
 }
 .pvb-subbtn:hover {
@@ -458,7 +431,7 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick));
   margin-top: 8px;
   padding: 8px 8px 0;
   border-top: 1px solid var(--ui-border);
-  font-size: 12px;
+  font-size: 11.5px;
   color: var(--ui-text-muted);
 }
 .pvb-link {
@@ -466,11 +439,43 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick));
   color: var(--ui-glass-accent-text);
   text-decoration: underline;
 }
+.pvb-cap-sec {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 8px 8px 2px;
+  border-top: 1px solid var(--ui-border);
+}
+.pvb-cap-label {
+  font-size: 11.5px;
+  color: var(--ui-text-muted);
+}
+.pvb-seg {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.pvb-seg button {
+  padding: 4px 10px;
+  border-radius: 7px;
+  background: var(--ui-glass-btn-bg);
+  color: var(--ui-text-secondary);
+  font-size: 11.5px;
+}
+.pvb-seg button[aria-pressed='true'] {
+  background: var(--ui-glass-accent-bg);
+  color: var(--ui-glass-accent-text);
+  font-weight: 600;
+}
+.pvb-seg button:hover:not([aria-pressed='true']) {
+  background: var(--ui-glass-btn-hover);
+}
 
 /* Phones: the menu spans the viewport, columns shrink and long labels wrap. */
 @media (max-width: 480px) {
-  .pvb {
-    padding: 10px 16px;
+  .pvb-pill-prefix {
+    display: none;
   }
   .pvb-pop {
     position: fixed;

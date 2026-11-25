@@ -5,6 +5,7 @@ import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ActivityJournal from './ActivityJournal.vue';
 import { resetActivityJournalForTests, useActivityJournal } from '../composables/useActivityJournal';
+import { resetExplorerLayoutPrefs, useExplorerLayoutPrefs } from '../composables/useExplorerLayoutPrefs';
 import { useI18n } from '../composables/useI18n';
 import { useDriveUpload } from '../composables/useDriveUpload';
 import { useDashboardBulkDownload } from '../composables/useDashboardBulkDownload';
@@ -28,6 +29,7 @@ describe('ActivityJournal.vue', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetActivityJournalForTests();
+    resetExplorerLayoutPrefs(true);
     useI18n().setLocale('en');
   });
 
@@ -278,5 +280,45 @@ describe('ActivityJournal.vue', () => {
       driveFiles: [],
       yandex: [],
     });
+  });
+
+  it('drags by pill and header, persists clamped position, and preserves short clicks (< 5px)', async () => {
+    const journal = useActivityJournal();
+    const prefs = useExplorerLayoutPrefs();
+    const wrapper = mount(ActivityJournal, { attachTo: document.body });
+
+    journal.startTask({ kind: 'upload', title: 'photo.jpg', progress: 40 });
+    await nextTick();
+
+    const pill = wrapper.get('[data-activity-pill]');
+    // Short jitter (< 5px) must NOT swallow the click that expands the drawer.
+    pill.element.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, clientX: 500, clientY: 500, pointerId: 1 }));
+    window.dispatchEvent(new PointerEvent('pointermove', { clientX: 502, clientY: 501, pointerId: 1 }));
+    window.dispatchEvent(new PointerEvent('pointerup', { clientX: 502, clientY: 501, pointerId: 1 }));
+    await pill.trigger('click');
+    await nextTick();
+    expect(wrapper.find('[data-activity-drawer]').exists()).toBe(true);
+    expect(prefs.activityJournalPos.value).toBeNull();
+
+    // Real drag (>= 5px) on expanded header updates and persists clamped position.
+    const head = wrapper.get('[data-activity-head]');
+    head.element.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, clientX: 500, clientY: 500, pointerId: 2 }));
+    window.dispatchEvent(new PointerEvent('pointermove', { clientX: 200, clientY: 160, pointerId: 2 }));
+    window.dispatchEvent(new PointerEvent('pointerup', { clientX: 200, clientY: 160, pointerId: 2 }));
+    await nextTick();
+
+    expect(prefs.activityJournalPos.value).not.toBeNull();
+    const aside = wrapper.get('[data-activity-journal]').element as HTMLElement;
+    expect(aside.style.left).toMatch(/^\d+px$/);
+    expect(aside.style.top).toMatch(/^\d+px$/);
+    expect(aside.style.right).toBe('auto');
+
+    // Dragging out of bounds clamps safely within viewport.
+    head.element.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, clientX: 200, clientY: 160, pointerId: 3 }));
+    window.dispatchEvent(new PointerEvent('pointermove', { clientX: -2000, clientY: -2000, pointerId: 3 }));
+    window.dispatchEvent(new PointerEvent('pointerup', { clientX: -2000, clientY: -2000, pointerId: 3 }));
+    await nextTick();
+    expect(prefs.activityJournalPos.value!.x).toBeGreaterThanOrEqual(8);
+    expect(prefs.activityJournalPos.value!.y).toBeGreaterThanOrEqual(8);
   });
 });

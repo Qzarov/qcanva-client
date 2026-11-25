@@ -71,7 +71,7 @@ describe('PhotoViewer', () => {
     expect(dialog.attributes('aria-label')).toBe('Просмотр фото');
     expect(w.get('[data-viewer-close]').attributes('aria-label')).toBe('Закрыть');
     expect(w.get('[data-viewer-prev]').attributes('aria-label')).toBe('Предыдущее');
-    expect(w.get('[data-viewer-pos]').text()).toBe('2 из 5');
+    expect(w.get('[data-viewer-pos]').text()).toContain('2 из 5');
     expect(w.get('[data-viewer-name]').text()).toBe('photo.jpg');
     expect(document.activeElement).toBe(dialog.element);
   });
@@ -195,20 +195,28 @@ describe('PhotoViewer', () => {
     const ev = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
     last.dispatchEvent(ev);
     expect(ev.defaultPrevented).toBe(true);
-    expect(document.activeElement).toBe(w.get('[data-viewer-info]').element);
+    expect(document.activeElement).toBe(w.get('[data-viewer-close]').element);
   });
 
-  it('"Сведения" and the buttons emit', async () => {
+  it('ⓘ toggles independent side panel without closing viewer, and filmstrip/backdrop work', async () => {
     const item = mkItem();
-    const w = await setup(item);
-    expect(w.get('[data-viewer-info]').text()).toBe('Сведения');
+    const item2 = mkItem({ fileId: 'f2', hash: 'h2', name: 'second.jpg' });
+    const w = await setup(item, { items: [item, item2], index: 0, total: 2, hasPrev: false, hasNext: true });
+    expect(w.get('[data-viewer-info]').attributes('aria-label')).toBe('Сведения');
     await w.get('[data-viewer-info]').trigger('click');
     expect(w.emitted('info')![0]).toEqual([item]);
-    await w.get('[data-viewer-next]').trigger('click');
-    await w.get('[data-viewer-prev]').trigger('click');
-    await w.get('[data-viewer-close]').trigger('click');
-    expect(w.emitted('next')).toHaveLength(1);
-    expect(w.emitted('prev')).toHaveLength(1);
+    expect(w.find('[data-viewer-side-panel]').exists()).toBe(true);
+    expect(w.emitted('close')).toBeUndefined();
+
+    // Filmstrip shows items and emits jump on click
+    const thumbs = w.findAll('[data-viewer-filmstrip] [data-filmstrip-id]');
+    expect(thumbs).toHaveLength(2);
+    expect(thumbs[0]!.classes()).toContain('active');
+    await thumbs[1]!.trigger('click');
+    expect(w.emitted('jump')![0]).toEqual([1, item2]);
+
+    // Clicking translucent backdrop closes viewer
+    await w.get('.pv-stage').trigger('click');
     expect(w.emitted('close')).toHaveLength(1);
   });
 
@@ -217,6 +225,6 @@ describe('PhotoViewer', () => {
     await w.setProps({ item: mkItem({ fileId: 'f2', hash: 'h2', name: 'second.jpg' }), index: 2 });
     await flushPromises();
     expect(w.get('[data-viewer-image]').attributes('src')).toBe('blob:h2:preview');
-    expect(w.get('[data-viewer-pos]').text()).toBe('3 из 5');
+    expect(w.get('[data-viewer-pos]').text()).toContain('3 из 5');
   });
 });

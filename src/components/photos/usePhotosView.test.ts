@@ -39,10 +39,7 @@ describe('usePhotosView', () => {
 
     expect(state.value).toEqual(defaultPhotosViewState());
     expect(state.value).toEqual({
-      sort: [
-        { key: 'date', desc: true },
-        { key: 'folder', desc: false, sub: 'name' },
-      ],
+      sort: [],
       dirs: { date: true, folder: false, album: false, size: true },
       subs: { folder: 'name', album: 'name' },
       period: 'month',
@@ -54,10 +51,7 @@ describe('usePhotosView', () => {
     });
     expect(levels.value).toEqual(['date']);
     expect(feedParams.value).toEqual({
-      sort: [
-        { key: 'date', desc: true },
-        { key: 'folder', desc: false, sub: 'name' },
-      ],
+      sort: [],
       levels: ['date'],
       period: 'month',
       filter: 'all',
@@ -68,10 +62,13 @@ describe('usePhotosView', () => {
 
   it('levels: date then folder when folder sorted after date and captioned', async () => {
     const { usePhotosView } = await load();
-    const { levels, toggleCaption } = usePhotosView();
+    const { levels, toggleSortKey, toggleCaption } = usePhotosView();
 
     expect(levels.value).toEqual(['date']);
-    toggleCaption('folder');
+    toggleSortKey('date');
+    toggleSortKey('folder');
+    expect(levels.value).toEqual(['date', 'folder']);
+    toggleCaption('access');
     expect(levels.value).toEqual(['date', 'folder']);
   });
 
@@ -96,12 +93,13 @@ describe('usePhotosView', () => {
     expect(levels.value).toEqual(['folder', 'date']);
   });
 
-  it('caption not in sort goes to tile', async () => {
+  it('caption not in sort goes to tile (including access)', async () => {
     const { usePhotosView } = await load();
     const { captionOnTile, levels, toggleCaption } = usePhotosView();
 
     toggleCaption('album');
-    expect(captionOnTile.value).toEqual(['album']);
+    toggleCaption('access');
+    expect(captionOnTile.value).toEqual(['album', 'access']);
     expect(levels.value).toEqual(['date']);
   });
 
@@ -124,12 +122,8 @@ describe('usePhotosView', () => {
     });
     expect(state.value.captions).toContain('size');
 
-    // Toggle date off first so state is without date
-    toggleSortKey('date');
-    expect(state.value.sort.some((s) => s.key === 'date')).toBe(false);
+    // Toggle date on (does not add a caption)
     const captionsSnapshot = [...state.value.captions];
-
-    // Re-enabling date does not add a caption
     toggleSortKey('date');
     expect(state.value.sort.some((s) => s.key === 'date')).toBe(true);
     expect(state.value.captions).toEqual(captionsSnapshot);
@@ -150,8 +144,10 @@ describe('usePhotosView', () => {
 
   it('setAllDirs', async () => {
     const { usePhotosView } = await load();
-    const { state, setAllDirs } = usePhotosView();
+    const { state, setAllDirs, toggleSortKey } = usePhotosView();
 
+    toggleSortKey('date');
+    toggleSortKey('folder');
     setAllDirs(true);
     expect(state.value.sort.every((s) => s.desc === true)).toBe(true);
 
@@ -161,8 +157,10 @@ describe('usePhotosView', () => {
 
   it('toggleDir flips only the given key', async () => {
     const { usePhotosView } = await load();
-    const { state, toggleDir } = usePhotosView();
+    const { state, toggleDir, toggleSortKey } = usePhotosView();
 
+    toggleSortKey('date');
+    toggleSortKey('folder');
     toggleDir('date');
     expect(state.value.sort.find((s) => s.key === 'date')?.desc).toBe(false);
     expect(state.value.sort.find((s) => s.key === 'folder')?.desc).toBe(false);
@@ -176,6 +174,7 @@ describe('usePhotosView', () => {
     const { usePhotosView } = await load();
     const { state, cycleSub, toggleSortKey } = usePhotosView();
 
+    toggleSortKey('folder');
     cycleSub('folder');
     expect(state.value.sort.find((s) => s.key === 'folder')?.sub).toBe('size');
     cycleSub('folder');
@@ -365,10 +364,7 @@ describe('usePhotosView', () => {
     expect(state.value.period).toBe('day');
     expect(state.value.filter).toBe('all');
     expect(state.value.tile).toBe('m');
-    expect(state.value.sort).toEqual([
-      { key: 'date', desc: true },
-      { key: 'folder', desc: false, sub: 'name' },
-    ]);
+    expect(state.value.sort).toEqual([]);
   });
 
   it('toggleShareCollapsed and reset', async () => {
@@ -408,6 +404,7 @@ describe('usePhotosView', () => {
     const { usePhotosView } = await load();
     const { state, toggleSortKey, toggleDir, cycleSub } = usePhotosView();
 
+    toggleSortKey('folder');
     toggleDir('folder');
     cycleSub('folder');
     toggleSortKey('folder');
@@ -437,7 +434,7 @@ describe('usePhotosView', () => {
     let view = mod.usePhotosView();
     view.toggleDir('size');
     view.cycleSub('album');
-    expect(view.state.value.sort.map((s) => s.key)).toEqual(['date', 'folder']);
+    expect(view.state.value.sort.map((s) => s.key)).toEqual([]);
     expect(view.state.value.dirs.size).toBe(false);
     expect(view.state.value.subs.album).toBe('size');
 
@@ -448,10 +445,20 @@ describe('usePhotosView', () => {
     expect(view.state.value.subs.album).toBe('size');
     view.toggleSortKey('album');
     view.toggleSortKey('size');
-    expect(view.state.value.sort.slice(2)).toEqual([
+    expect(view.state.value.sort).toEqual([
       { key: 'album', desc: false, sub: 'size' },
       { key: 'size', desc: false },
     ]);
+  });
+
+  it('setSort replaces sort specs while preserving dirs/subs', async () => {
+    const { usePhotosView } = await load();
+    const { state, setSort } = usePhotosView();
+
+    setSort([{ key: 'size', desc: false }, { key: 'date', desc: true }]);
+    expect(state.value.sort).toEqual([{ key: 'size', desc: true }, { key: 'date', desc: true }]);
+    setSort([]);
+    expect(state.value.sort).toEqual([]);
   });
 
   it('old stored state without dirs and subs migrates to defaults', async () => {
