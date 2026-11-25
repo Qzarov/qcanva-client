@@ -6432,6 +6432,7 @@ export interface operations {
                     "application/json": {
                         items: {
                             folderId: string | null;
+                            hash: string;
                             id: string;
                             kind: string;
                             mime: string | null;

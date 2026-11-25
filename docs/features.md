@@ -110,6 +110,7 @@
 | Просмотр одного альбома лентой с возвратом «← Все альбомы» | за флагом `VITE_PHOTOS_ENABLED` | `src/components/photos/DrivePhotos.vue` | `GET /api/photos/feed/summary`, `GET /api/photos/feed/items` |
 | Поиск по фото: плоская сетка результатов по релевантности без групп и слайдера; при недоступности поиска на хабе — «Поиск сейчас недоступен» | за флагом `VITE_PHOTOS_ENABLED` | `src/components/photos/DrivePhotos.vue`, `src/components/photos/PhotosSearchGrid.vue` | `POST /api/photos/search` |
 | Использование локальных сгенерированных демо-данных вместо хаба | за флагом `VITE_PHOTOS_MOCK` | `src/api/photos.mock.ts` | `—` |
+| Клиентская генерация миниатюры (~250 px WebP/JPEG) и извлечение базовых EXIF/размеров/длительности видео при загрузке (best-effort для мгновенного отображения в «Фото» без ожидания воркера) | в интерфейсе (фон) | `src/utils/clientMediaPreview.ts`, `src/api/clientMediaUpload.ts`, `src/composables/useDriveUpload.ts`, `src/views/DashboardView.vue` | `PUT /api/media/:hash/rendition?size=thumbnail`, `PUT /api/media/:hash/meta` |
 
 ---
 

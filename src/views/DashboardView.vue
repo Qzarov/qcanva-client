@@ -744,6 +744,7 @@ import DashboardUploadBadge from '../components/dashboard/DashboardUploadBadge.v
 import DriveUploadOverlay from '../components/DriveUploadOverlay.vue';
 import { useUploadSummary } from '../dashboard/upload-summary';
 import { plansApi } from '../api/plans';
+import { uploadClientPreviewForItems } from '../api/clientMediaUpload';
 import DashboardYandexDisk from '../components/dashboard/DashboardYandexDisk.vue';
 import YandexFolderPicker from '../components/dashboard/YandexFolderPicker.vue';
 import DashboardMediaViewer, { type MediaViewerItem } from '../components/dashboard/DashboardMediaViewer.vue';
@@ -3566,7 +3567,16 @@ export default defineComponent({
       uploadPanelOpen.value = true;
       await runDashboardUploads(batch.map(({ id, file }) => ({
         id,
-        start: () => driveApi.uploadFile(folderId, file, (percent) => setUploadProgress(id, percent)),
+        start: () => {
+          const handle = driveApi.uploadFile(folderId, file, (percent) => setUploadProgress(id, percent));
+          return {
+            abort: handle.abort,
+            promise: handle.promise.then((res) => {
+              void uploadClientPreviewForItems(file, res?.items);
+              return res;
+            }),
+          };
+        },
       })));
       folderFilesRefreshKey.value += 1;
       refreshFolderFileCounts();
