@@ -8,6 +8,7 @@
     tabindex="0"
     data-explorer-table
     @keydown="onKeydown"
+    @contextmenu="onShellContextMenu"
   >
     <div class="exp-table-head" role="row">
       <button
@@ -209,10 +210,12 @@ const props = withDefaults(defineProps<{
   externalSortSeq?: number;
   dragSource?: GroupDragSource;
   emptyText?: string;
+  allowEmptyContextMenu?: boolean;
 }>(), {
   hideSource: false,
   hideAlbums: false,
   dragSource: 'explorer',
+  allowEmptyContextMenu: false,
 });
 
 const emit = defineEmits<{
@@ -220,6 +223,7 @@ const emit = defineEmits<{
   'update:sort': [col: ExplorerSortCol, dir: ExplorerSortDir];
   open: [row: ExplorerTableRow];
   contextmenu: [event: MouseEvent, row: ExplorerTableRow];
+  'empty-contextmenu': [event: MouseEvent];
   'album-click': [albumIdOrName: string, row: ExplorerTableRow];
   'drop-on-folder': [targetRow: ExplorerTableRow, payload: GroupDragPayload];
   'drop-external-files': [payload: { folderId: string; files: File[] }];
@@ -403,6 +407,15 @@ function onRowContextMenu(event: MouseEvent, row: ExplorerTableRow, index: numbe
     commitSelection([row.key]);
   }
   emit('contextmenu', event, row);
+}
+
+function onShellContextMenu(event: MouseEvent): void {
+  if (!props.allowEmptyContextMenu) return;
+  const target = event.target as HTMLElement | null;
+  if (target?.closest('.exp-row, [data-select-key], button, a, input, textarea, [data-explorer-context-menu]')) return;
+  event.preventDefault();
+  event.stopPropagation();
+  emit('empty-contextmenu', event);
 }
 
 function onKeydown(event: KeyboardEvent): void {

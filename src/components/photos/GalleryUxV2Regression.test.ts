@@ -10,8 +10,10 @@ import { useI18n } from '../../composables/useI18n';
 import { resetSpaces } from '../../composables/useSpaces';
 import { resetYandexDiskStatus } from '../../composables/useYandexDisk';
 import DrivePhotos from './DrivePhotos.vue';
+import drivePhotosSource from './DrivePhotos.vue?raw';
 import GallerySidebar from './GallerySidebar.vue';
 import photosFeedSource from './PhotosFeed.vue?raw';
+import inlineSearchSource from '../dashboard/ExplorerInlineSearch.vue?raw';
 import { resetPhotosView } from './usePhotosView';
 
 const WIDTH = 800;
@@ -466,5 +468,27 @@ describe('Gallery UX v2 & B-009/B-011/B-014 regressions', () => {
       body: JSON.stringify({ value: { period: 'month' } }),
       keepalive: true,
     });
+  });
+
+  it('390x844 mobile Media topbar: prevents dp-top-left/dp-top-center overlap and S2 search right-edge overflow', async () => {
+    expect(drivePhotosSource).toMatch(/@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.dp-top-left\s*\{[^}]*flex:\s*0\s+0\s+auto;/);
+    expect(drivePhotosSource).toMatch(/@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.dp-top-center\s*\{[^}]*position:\s*static;[^}]*transform:\s*none;[^}]*margin:\s*0\s+auto;/);
+    expect(drivePhotosSource).toMatch(/@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.dp-info-btn\s*\{\s*display:\s*none;\s*\}/);
+    expect(drivePhotosSource).toMatch(/@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.dp-seg-btn\s*\{[^}]*height:\s*26px;[^}]*padding:\s*0\s+7px;[^}]*font-size:\s*11\.5px;/);
+
+    expect(inlineSearchSource).toMatch(/@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.s2-wrap\.in-gallery\s*\{[^}]*flex:\s*0\s+1\s+84px;[^}]*min-width:\s*68px;/);
+    expect(inlineSearchSource).toMatch(/@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.s2-wrap\.in-gallery\.is-open\s*\{[^}]*left:\s*6px;[^}]*right:\s*6px;/);
+
+    const w = mountDrivePhotos({ showSidebarExpand: true });
+    await settle();
+
+    expect(w.get('[data-testid="info-toggle"]').classes()).toContain('dp-info-btn');
+    const s2Wrap = w.get('[data-s2-search]');
+    expect(s2Wrap.classes()).toContain('in-gallery');
+    expect(s2Wrap.classes()).not.toContain('is-open');
+
+    await w.get('[data-s2-input]').trigger('focus');
+    await nextTick();
+    expect(s2Wrap.classes()).toContain('is-open');
   });
 });

@@ -685,7 +685,7 @@ describe('DashboardView T-021 + T-018 Explorer Redesign Integration', () => {
     await renameAndCommit({ key: 'space:alb-1', id: 'alb-1', kind: 'space', name: 'Семья' }, 'Путешествия');
     expect(spacesApi.rename).toHaveBeenCalledWith('alb-1', 'Путешествия');
 
-    // Empty area right-click in folder opens emptyArea context menu
+    // Empty area right-click in folder opens emptyArea context menu (Grid and Table modes)
     await wrapper.get('[data-dashboard-folder="folder-home"]').trigger('click');
     await nextTick();
     await wrapper.get('[data-dashboard-view="folder"] .folder-manager-body').trigger('contextmenu');
@@ -694,6 +694,24 @@ describe('DashboardView T-021 + T-018 Explorer Redesign Integration', () => {
     expect(wrapper.find('[data-ctx-action="create-folder"]').exists()).toBe(true);
     expect(wrapper.find('[data-ctx-action="add"]').exists()).toBe(true);
     expect(wrapper.find('[data-ctx-action="refresh"]').exists()).toBe(true);
+
+    // Table mode empty area right-click (on both [data-explorer-table] empty space and .folder-manager-body below rows)
+    await wrapper.get('[data-view-toggle="table"]').trigger('click');
+    await nextTick();
+    (wrapper.vm as any).explorerCtxMenu.open = false;
+    await nextTick();
+    await wrapper.get('[data-dashboard-view="folder"] [data-explorer-table]').trigger('contextmenu');
+    await nextTick();
+    expect((wrapper.vm as any).explorerCtxMenu.open).toBe(true);
+    expect((wrapper.vm as any).explorerCtxMenu.emptyArea).toBe(true);
+    expect(wrapper.find('[data-ctx-action="create-folder"]').exists()).toBe(true);
+
+    (wrapper.vm as any).explorerCtxMenu.open = false;
+    await nextTick();
+    await wrapper.get('[data-dashboard-view="folder"] .folder-manager-body').trigger('contextmenu');
+    await nextTick();
+    expect((wrapper.vm as any).explorerCtxMenu.open).toBe(true);
+    expect((wrapper.vm as any).explorerCtxMenu.emptyArea).toBe(true);
 
     // Single Headroom header: DashboardFolderHeader removed, folder menu lives in Headroom #actions
     expect(wrapper.find('.folder-manager-top').exists()).toBe(false);

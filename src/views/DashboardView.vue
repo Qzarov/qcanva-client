@@ -506,17 +506,19 @@
         data-dashboard-view="home"
       >
         <div class="folder-manager-row">
-          <div class="folder-manager-body" @contextmenu.prevent="onEmptyAreaContextMenu">
+          <div class="folder-manager-body" @contextmenu.prevent.stop="onEmptyAreaContextMenu">
             <ExplorerTableView
               v-if="explorerViewMode === 'table'"
               :rows="homeRootTableRows"
               :selected-keys="selectedKeys"
               :external-sort-mode="sortMode"
               :external-sort-seq="sortSyncSeq"
+              :allow-empty-context-menu="true"
               @update:selected-keys="selectedKeys = $event"
               @update:sort="onExplorerTableSort"
               @open="openExplorerTableRow"
               @contextmenu="onTableRowContextMenu"
+              @empty-contextmenu="onEmptyAreaContextMenu"
               @drop-on-folder="(targetRow, payload) => onDropGroupToFolder(targetRow.id, payload)"
               @drop-external-files="(p) => onDropExternalFilesToFolder(p.folderId, p.files)"
             />
@@ -612,17 +614,19 @@
             :key="activeFolder.id"
             class="folder-manager-row"
           >
-              <div ref="activeFolderBody" class="folder-manager-body" @scroll="onFolderBodyScroll" @contextmenu.prevent="onEmptyAreaContextMenu">
+              <div ref="activeFolderBody" class="folder-manager-body" @scroll="onFolderBodyScroll" @contextmenu.prevent.stop="onEmptyAreaContextMenu">
                 <ExplorerTableView
                   v-if="explorerViewMode === 'table'"
                   :rows="activeFolderTableRows"
                   :selected-keys="selectedKeys"
                   :external-sort-mode="sortMode"
                   :external-sort-seq="sortSyncSeq"
+                  :allow-empty-context-menu="true"
                   @update:selected-keys="selectedKeys = $event"
                   @update:sort="onExplorerTableSort"
                   @open="openExplorerTableRow"
                   @contextmenu="onTableRowContextMenu"
+                  @empty-contextmenu="onEmptyAreaContextMenu"
                   @drop-on-folder="(targetRow, payload) => onDropGroupToFolder(targetRow.id, payload)"
                   @drop-external-files="(p) => onDropExternalFilesToFolder(p.folderId, p.files)"
                 />

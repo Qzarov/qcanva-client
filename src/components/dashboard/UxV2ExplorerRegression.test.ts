@@ -11,6 +11,7 @@ import { resetYandexDiskStatus } from '../../composables/useYandexDisk';
 import DashboardAddDialog from './DashboardAddDialog.vue';
 import DashboardSidebar from './DashboardSidebar.vue';
 import ExplorerInlineSearch from './ExplorerInlineSearch.vue';
+import ExplorerTableView from './ExplorerTableView.vue';
 
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push: vi.fn() }),
@@ -206,5 +207,76 @@ describe('UX v2 Explorer & B-011/B-012/B-013/B-014 regressions', () => {
     expect(bodyMatch?.[0]).toContain('min-height: calc(100dvh - 56px)');
 
     expect(css).toMatch(/@media\s*\(min-width:\s*721px\)\s*\{[\s\S]*#feed-spaces\s*\+\s*\.dash-grid\.subfolder-grid[\s\S]*\[data-recent-spaces\]\.dash-grid\.subfolder-grid[\s\S]*grid-template-columns:\s*repeat\(auto-fill,\s*minmax\(240px,\s*1fr\)\)/);
+  });
+
+  it('760x800 drawer CSS & DashboardSidebar: open drawer snaps cleanly to left: 0 without negative-x transform or collapsed width: 0', async () => {
+    const cssPath = path.resolve(process.cwd(), 'src/styles/19-explorer-redesign.css');
+    const css = fs.readFileSync(cssPath, 'utf8');
+
+    expect(css).toMatch(
+      /@media\s*\(max-width:\s*768px\)\s*\{[\s\S]*\.dashboard-view\s+\.dashboard-sidebar\.explorer-sidebar\s*\{[^}]*left:\s*0;[^}]*margin-left:\s*0;[^}]*width:\s*min\(290px,\s*84vw\)\s*!important;[\s\S]*transform:\s*translateX\(-105%\);[^}]*pointer-events:\s*none;/,
+    );
+    expect(css).toMatch(
+      /@media\s*\(max-width:\s*768px\)\s*\{[\s\S]*\.dashboard-view\s+\.dashboard-sidebar\.explorer-sidebar\.mobile-open[\s\S]*\{[^}]*left:\s*0;[^}]*margin-left:\s*0\s*!important;[^}]*width:\s*min\(290px,\s*84vw\)\s*!important;[\s\S]*transform:\s*translateX\(0\)\s*!important;[\s\S]*transition:\s*none;/,
+    );
+
+    const wrapper = mount(DashboardSidebar, {
+      attachTo: document.body,
+      props: {
+        activeSection: { kind: 'home' },
+        collapsed: true,
+        mobileOpen: false,
+        folders: [],
+        spaces: false,
+      },
+      global: { stubs: { RouterLink: routerLinkStub } },
+    });
+
+    const aside = wrapper.get('.dashboard-sidebar');
+    expect(aside.attributes('style')).toContain('width: 0px');
+
+    await wrapper.setProps({ mobileOpen: true });
+    await nextTick();
+    expect(aside.classes()).toContain('mobile-open');
+    expect(aside.attributes('style') ?? '').toBe('');
+  });
+
+  it('ExplorerTableView allowEmptyContextMenu emits empty-contextmenu on empty table shell / empty message, but emits row contextmenu on rows', async () => {
+    const emptyWrapper = mount(ExplorerTableView, {
+      props: {
+        rows: [],
+        allowEmptyContextMenu: true,
+      },
+    });
+    await emptyWrapper.get('[data-explorer-table-empty]').trigger('contextmenu');
+    expect(emptyWrapper.emitted('empty-contextmenu')).toHaveLength(1);
+
+    const wrapper = mount(ExplorerTableView, {
+      props: {
+        rows: [
+          {
+            key: 'canvas:c1',
+            id: 'c1',
+            kind: 'canvas',
+            name: 'Маршрут',
+            updatedAt: '2026-11-20T10:00:00Z',
+            typeLabel: 'Холст',
+            sizeBytes: null,
+            sourceLabel: 'Q Space',
+            albumNames: [],
+            raw: {},
+          },
+        ],
+        allowEmptyContextMenu: true,
+      },
+    });
+
+    await wrapper.get('[data-explorer-table]').trigger('contextmenu');
+    expect(wrapper.emitted('empty-contextmenu')).toHaveLength(1);
+    expect(wrapper.emitted('contextmenu')).toBeUndefined();
+
+    await wrapper.get('[data-row-key="canvas:c1"]').trigger('contextmenu');
+    expect(wrapper.emitted('contextmenu')).toHaveLength(1);
+    expect(wrapper.emitted('empty-contextmenu')).toHaveLength(1);
   });
 });

@@ -1604,27 +1604,33 @@ body.resizing * {
     top: 0;
     left: 0;
     bottom: 0;
-    width: min(296px, 86vw) !important;
+    margin-left: 0;
+    width: min(290px, 84vw) !important;
     padding: 0;
     z-index: 300;
-    transform: translateX(-104%);
+    transform: translateX(-105%);
     visibility: hidden;
     pointer-events: none;
-    transition: transform 0.2s ease, visibility 0.2s ease;
+    transition: none;
     box-shadow: var(--ui-glass-surface-shadow);
   }
 
-  .dashboard-view .dashboard-sidebar.explorer-sidebar.mobile-open {
+  .dashboard-view .dashboard-sidebar.explorer-sidebar.mobile-open,
+  .dashboard-view .dashboard-sidebar.explorer-sidebar.is-open,
+  .dashboard-view .dashboard-sidebar.explorer-sidebar.open {
     position: fixed;
     top: 0;
     left: 0;
     bottom: 0;
-    width: min(296px, 86vw) !important;
+    margin-left: 0 !important;
+    width: min(290px, 84vw) !important;
+    min-width: 0 !important;
     transform: translateX(0) !important;
     visibility: visible !important;
     pointer-events: auto !important;
     opacity: 1 !important;
     z-index: 300;
+    transition: none;
   }
 
   .dashboard-view.is-android-app .dashboard-sidebar.explorer-sidebar.mobile-open .dashboard-sidebar-footer {

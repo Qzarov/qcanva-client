@@ -2,7 +2,7 @@
   <div
     ref="wrapRef"
     class="s2-wrap"
-    :class="{ 'in-gallery': inGallery }"
+    :class="{ 'in-gallery': inGallery, 'is-open': isOpen }"
     data-s2-search
   >
     <div
@@ -987,6 +987,36 @@ defineExpose({
 
   .s2-wrap.in-gallery .s2-scope-pill {
     display: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .s2-wrap.in-gallery {
+    flex: 0 1 84px;
+    min-width: 68px;
+    max-width: 84px;
+  }
+
+  .s2-wrap.in-gallery .s2-box {
+    height: 26px;
+    padding: 0 6px;
+    gap: 4px;
+  }
+
+  .s2-wrap.in-gallery.is-open {
+    position: absolute;
+    left: 6px;
+    right: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    max-width: none;
+    z-index: 30;
+  }
+
+  .s2-wrap.in-gallery.is-open .s2-box {
+    height: 30px;
+    padding: 0 8px;
+    gap: 6px;
   }
 }
 </style>

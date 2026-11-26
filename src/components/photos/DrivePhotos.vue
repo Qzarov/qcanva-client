@@ -153,7 +153,7 @@
 
         <button
           type="button"
-          class="dp-icon-btn"
+          class="dp-icon-btn dp-info-btn"
           :class="{ active: isPanelVisible }"
           :aria-pressed="isPanelVisible"
           :aria-label="t('galleryInfoToggle')"
@@ -2101,8 +2101,52 @@ onBeforeUnmount(() => {
 
 @media (max-width: 720px) {
   .dp-top {
-    padding: 6px 8px;
-    gap: 6px;
+    padding: 0 6px;
+    gap: 4px;
+  }
+  .dp-top-left {
+    flex: 0 0 auto;
+    gap: 4px;
+  }
+  .dp-top-right {
+    flex: 0 1 auto;
+    min-width: 0;
+    gap: 4px;
+  }
+  .dp-top-center {
+    position: static;
+    transform: none;
+    margin: 0 auto;
+    flex: 0 0 auto;
+  }
+  .dp-info-btn {
+    display: none;
+  }
+  .dp-crumb-pill {
+    max-width: 82px;
+    height: 26px;
+    padding: 0 6px;
+    font-size: 11px;
+  }
+  .dp-album-share-pill {
+    height: 26px;
+    padding: 0 7px;
+  }
+  .dp-album-share-pill span {
+    display: none;
+  }
+  .dp-icon-pill[data-testid='aspect-toggle'] {
+    height: 26px;
+    padding: 0 7px;
+  }
+  .dp-icon-btn {
+    width: 26px;
+    height: 26px;
+  }
+  .dp-seg-btn {
+    height: 26px;
+    padding: 0 7px;
+    font-size: 11.5px;
   }
   .dp-panel-sash {
     display: none;
