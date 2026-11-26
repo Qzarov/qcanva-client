@@ -2,6 +2,7 @@ import { PROBE_TIMEOUT_MS, type LivenessResult } from './useCharacterSheetSocket
 import { ref, onUnmounted } from 'vue';
 import { io, type Socket } from 'socket.io-client';
 import type {RulerActor,RulerState,RulerMeasurement,RulerSettings,RulerUpdate} from '../canvas/ruler';
+import { getAccessToken } from '../api/client';
 import { resolveWsOrigin } from '../api/hubOverride';
 
 const WS_URL = resolveWsOrigin();
@@ -113,9 +114,12 @@ export function useCanvasSocket(canvasIdInput: string | { value: string }) {
   }
 
   function connect() {
-    const token = localStorage.getItem('token');
+    if (socket.value) return;
     const s = io(`${WS_URL}/canvas-ws`, {
-      auth: token ? { token } : {},
+      auth: (cb) => {
+        const t = getAccessToken();
+        cb(t ? { token: t } : {});
+      },
       transports: ['websocket', 'polling'],
     });
 

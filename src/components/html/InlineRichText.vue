@@ -18,6 +18,7 @@
 import { nextTick, onMounted, ref, watch } from 'vue';
 import { promptText } from '../../composables/appDialog';
 import { sanitizeInlineHtml } from '../../html/visualHtml';
+import { safeHref } from '../../utils/safeUrl';
 
 const props = defineProps<{ modelValue: string }>();
 const emit = defineEmits<{ (event: 'update:modelValue', value: string): void }>();
@@ -26,14 +27,14 @@ const surfaceRef = ref<HTMLElement | null>(null);
 
 onMounted(() => {
   if (surfaceRef.value) {
-    surfaceRef.value.innerHTML = props.modelValue || '';
+    surfaceRef.value.innerHTML = sanitizeInlineHtml(props.modelValue || '');
   }
 });
 
 watch(() => props.modelValue, (value) => {
   const el = surfaceRef.value;
   if (!el || el === document.activeElement) return;
-  el.innerHTML = value || '';
+  el.innerHTML = sanitizeInlineHtml(value || '');
 });
 
 function exec(command: 'bold' | 'italic') {
@@ -43,7 +44,9 @@ function exec(command: 'bold' | 'italic') {
 async function promptLink() {
   const selection = window.getSelection();
   const range = selection?.rangeCount ? selection.getRangeAt(0).cloneRange() : null;
-  const href = await promptText('linkUrlTitle', 'linkUrlConfirm');
+  const rawHref = await promptText('linkUrlTitle', 'linkUrlConfirm');
+  if (!rawHref) return;
+  const href = safeHref(rawHref);
   if (!href) return;
   // The dialog had the focus: wait for it to go, then put the selection back.
   await nextTick();

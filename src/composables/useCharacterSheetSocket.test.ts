@@ -7,10 +7,11 @@ import type { SheetOperation } from '../dnd/sheetOperations';
 const sockets: any[] = [];
 
 vi.mock('socket.io-client', () => ({
-  io: vi.fn((url: string) => {
+  io: vi.fn((url: string, options: unknown) => {
     const handlers = new Map<string, Function>();
     const socket = {
       url,
+      options,
       connected: false,
       emit: vi.fn(),
       on: vi.fn((event: string, cb: Function) => { handlers.set(event, cb); }),
@@ -209,6 +210,17 @@ describe('useCharacterSheetSocket', () => {
       socket.pingAnswer = new Error('operation has timed out');
       await expect(sync.probe()).resolves.toBe('reconnecting');
     });
+  });
+
+  it('resolves access token dynamically via auth callback', () => {
+    const sync = useCharacterSheetSocket('sheet-1');
+    sync.connect();
+
+    const authFn = sockets[0].options.auth as (cb: (data: Record<string, string>) => void) => void;
+    const cb = vi.fn();
+    localStorage.setItem('token', 'sheet-tok');
+    authFn(cb);
+    expect(cb).toHaveBeenLastCalledWith({ token: 'sheet-tok' });
   });
 });
 

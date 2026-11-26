@@ -1,7 +1,7 @@
 import { PROBE_TIMEOUT_MS, type LivenessResult } from './useCharacterSheetSocket';
 import { onUnmounted, ref } from 'vue';
 import { io, type Socket } from 'socket.io-client';
-import { interactiveTemplates } from '../api/client';
+import { getAccessToken, interactiveTemplates } from '../api/client';
 import { applyBoardOperation } from '../boards/operations';
 import type { BoardData, BoardOperation, BoardParticipant, BoardRole } from '../boards/types';
 import { resolveWsOrigin } from '../api/hubOverride';
@@ -196,9 +196,11 @@ export function useBoardSocket(boardId: string | { value: string }) {
   function connect() {
     if (socket.value) return;
     syncStatus.value = 'connecting';
-    const token = localStorage.getItem('token');
     const nextSocket = io(`${WS_URL}/boards-ws`, {
-      auth: token ? { token } : {},
+      auth: (cb) => {
+        const t = getAccessToken();
+        cb(t ? { token: t } : {});
+      },
       transports: ['websocket', 'polling'],
     });
     nextSocket.on('connect', () => {

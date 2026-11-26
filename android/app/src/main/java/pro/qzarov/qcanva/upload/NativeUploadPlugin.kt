@@ -8,6 +8,7 @@ import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
 import org.json.JSONObject
+import java.net.URL
 
 /**
  * The page's side of [UploadQueue]: `enqueue` a picked file (named by its
@@ -37,13 +38,29 @@ class NativeUploadPlugin : Plugin() {
         UploadQueue.removeListener(forward)
     }
 
+    private fun isAllowedUploadUrl(raw: String): Boolean {
+        if (raw.contains('\r') || raw.contains('\n')) return false
+        val parsed = try { URL(raw) } catch (_: Exception) { return false }
+        return parsed.protocol.equals("https", ignoreCase = true) && !parsed.host.isNullOrBlank()
+    }
+
+    private fun sanitizeHeaderToken(value: String): String =
+        value.replace("\r", "").replace("\n", "").replace("\"", "")
+
     /** The file was not picked through the chooser (or long ago): `accepted: false`, the page uploads it itself. */
     @PluginMethod
     fun enqueue(call: PluginCall) {
         val id = call.getString("id")
         val name = call.getString("name")
         val url = call.getString("url")
-        if (id.isNullOrEmpty() || name.isNullOrEmpty() || url.isNullOrEmpty() || !url.startsWith("https://")) {
+        val method = (call.getString("method") ?: "POST").uppercase()
+        if (
+            id.isNullOrEmpty() ||
+            name.isNullOrEmpty() ||
+            url.isNullOrEmpty() ||
+            !isAllowedUploadUrl(url) ||
+            (method != "POST" && method != "PUT")
+        ) {
             call.resolve(JSObject().put("accepted", false))
             return
         }
@@ -55,19 +72,26 @@ class NativeUploadPlugin : Plugin() {
         }
         val headers = mutableMapOf<String, String>()
         call.getObject("headers")?.let { obj ->
-            for (key in obj.keys()) obj.getString(key)?.let { headers[key] = it }
+            for (key in obj.keys()) {
+                val safeKey = sanitizeHeaderToken(key)
+                if (safeKey.isEmpty()) continue
+                obj.getString(key)?.let { headers[safeKey] = it.replace("\r", "").replace("\n", "") }
+            }
         }
+        val rawField = sanitizeHeaderToken(call.getString("field") ?: "file").ifEmpty { "file" }
+        val rawContentType = sanitizeHeaderToken(call.getString("contentType") ?: "application/octet-stream")
+            .ifEmpty { "application/octet-stream" }
         val job = UploadQueue.Job(
             id = id,
             uri = uri,
             name = name,
             size = size,
             url = url,
-            method = call.getString("method") ?: "POST",
+            method = method,
             headers = headers,
             mode = if (call.getString("mode") == "raw") UploadQueue.Mode.RAW else UploadQueue.Mode.MULTIPART,
-            field = call.getString("field") ?: "file",
-            contentType = call.getString("contentType") ?: "application/octet-stream",
+            field = rawField,
+            contentType = rawContentType,
         )
         UploadQueue.enqueue(context, job)
         call.resolve(JSObject().put("accepted", true))

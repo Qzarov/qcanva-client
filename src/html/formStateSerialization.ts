@@ -68,6 +68,24 @@ function syncSelectState(source: Document, clone: HTMLElement) {
   });
 }
 
+const SAFE_STORAGE_KEY_RE = /^[a-zA-Z0-9][a-zA-Z0-9._:-]{2,63}$/;
+const RESERVED_STORAGE_KEY_RE = /^(?:token|currentuser|userrole|accessmode|theme|locale|huburl|qcanva:|qspace:|auth|jwt|session)/i;
+
+export function isSafeChecklistStorageKey(value: string): boolean {
+  if (!SAFE_STORAGE_KEY_RE.test(value)) return false;
+  if (RESERVED_STORAGE_KEY_RE.test(value)) return false;
+  return true;
+}
+
+export function escapeJsonForScript(json: string): string {
+  return json
+    .replace(/&/g, '\\u0026')
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
+}
+
 function syncStateBackedChecklist(source: Document, clone: HTMLElement) {
   const storageKey = findChecklistStorageKey(source);
   if (!storageKey) return;
@@ -82,7 +100,9 @@ function syncStateBackedChecklist(source: Document, clone: HTMLElement) {
   if (!Object.keys(state.items).length) return;
   const seed = source.createElement('script');
   seed.setAttribute('data-qcanva-form-state', storageKey);
-  seed.textContent = `try{localStorage.setItem(${JSON.stringify(storageKey)},${JSON.stringify(JSON.stringify(state))});}catch(e){}`;
+  const encodedKey = escapeJsonForScript(JSON.stringify(storageKey));
+  const encodedState = escapeJsonForScript(JSON.stringify(JSON.stringify(state)));
+  seed.textContent = `try{localStorage.setItem(${encodedKey},${encodedState});}catch(e){/* storage unavailable in sandboxed iframe */}`;
   const firstScript = clone.querySelector('script');
   if (firstScript?.parentNode) firstScript.parentNode.insertBefore(seed, firstScript);
   else (clone.querySelector('head') || clone).appendChild(seed);
@@ -93,7 +113,7 @@ function findChecklistStorageKey(source: Document): string | null {
     const text = script.textContent || '';
     if (!text.includes('function attachItem') || !text.includes('comment-wrap')) continue;
     const match = text.match(/STORAGE_KEY\s*=\s*['"]([^'"]+)['"]/);
-    if (match?.[1]) return match[1];
+    if (match?.[1] && isSafeChecklistStorageKey(match[1])) return match[1];
   }
   return null;
 }
@@ -128,7 +148,13 @@ function buildChecklistState(source: Document, storageKey: string) {
 
 function readStoredState(source: Document, storageKey: string): ChecklistState {
   try {
-    const raw = source.defaultView?.localStorage?.getItem(storageKey) || globalThis.localStorage?.getItem(storageKey);
+    // Never fall back to the parent app's globalThis.localStorage — untrusted HTML
+    // documents must not read or serialize parent origin storage keys.
+    const docWindow = source.defaultView;
+    if (!docWindow || docWindow === globalThis) {
+      return { items: {} };
+    }
+    const raw = docWindow.localStorage?.getItem(storageKey);
     const parsed = raw ? JSON.parse(raw) : {};
     return {
       ...parsed,

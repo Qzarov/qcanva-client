@@ -2,6 +2,7 @@ import { onUnmounted, ref } from 'vue';
 import { io, type Socket } from 'socket.io-client';
 import { applySheetOperation, replaySheetOperations, type SheetOperation } from '../dnd/sheetOperations';
 import type { RollSpec, RolledSpec } from '../dnd/useSheetRolls';
+import { getAccessToken } from '../api/client';
 import { resolveWsOrigin } from '../api/hubOverride';
 
 const WS_URL = resolveWsOrigin();
@@ -191,9 +192,11 @@ export function useCharacterSheetSocket(sheetIdInput: string | { value: string }
   function connect() {
     if (socket.value) return;
     status.value = 'connecting';
-    const token = localStorage.getItem('token');
     const s = io(`${WS_URL}/character-sheets-ws`, {
-      auth: token ? { token } : {},
+      auth: (cb) => {
+        const t = getAccessToken();
+        cb(t ? { token: t } : {});
+      },
       transports: ['websocket', 'polling'],
     });
     s.on('connect', join);

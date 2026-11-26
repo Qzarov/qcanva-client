@@ -244,8 +244,7 @@
           <iframe
             :srcdoc="historyPreviewSrcdoc"
             class="html-browser-preview"
-            sandbox="allow-same-origin allow-scripts allow-forms"
-            @load="onHistoryPreviewLoad"
+            sandbox=""
           ></iframe>
         </template>
       </div>
@@ -264,7 +263,7 @@
         ref="previewFrame"
         :srcdoc="previewSrcdoc"
         class="html-browser-preview"
-        sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox"
+        sandbox="allow-scripts allow-forms allow-popups"
         @load="onPreviewLoad"
       ></iframe>
       <div v-else-if="viewMode === 'split' && canEditContent" class="html-editor-grid">
@@ -275,9 +274,10 @@
           spellcheck="false"
         ></textarea>
         <iframe
+          ref="splitPreviewFrame"
           :srcdoc="previewSrcdoc"
           class="html-browser-preview"
-          sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox"
+          sandbox="allow-scripts allow-forms allow-popups"
           @load="onPreviewLoad"
         ></iframe>
       </div>
@@ -312,9 +312,14 @@ import { useReadOnlyNotice } from '../composables/useReadOnlyNotice';
 import { readNativeResourceCache, writeNativeResourceCache } from '../composables/useNativeResourceCache';
 import { createSyncEventStore, syncReasonLabel, type SyncRejectReason } from '../canvas/syncEvents';
 import { downloadHtmlDocument } from '../html/htmlDocumentExport';
-import { serializeDocumentWithFormState } from '../html/formStateSerialization';
-import { captureFrameScroll, restoreFrameScroll } from '../html/scrollRestoration';
-import { bindInPageLinks } from '../html/inPageLinks';
+import {
+  PREVIEW_BRIDGE_CHANNEL,
+  createPreviewBridgeToken,
+  extractImageIdFromSrc,
+  injectPreviewBridge,
+  isBridgeMessageFromFrame,
+  stripPreviewBridgeAndUnmapImages,
+} from '../html/previewBridge';
 import type { FrameScrollPosition } from '../html/scrollRestoration';
 import type { HtmlVisualOp } from '../html/visualHtmlOps';
 import { useI18n } from '../composables/useI18n';
@@ -391,8 +396,10 @@ export default defineComponent({
     const historyLoading = ref(false);
     const historyItems = ref<any[]>([]);
     const selectedHistory = ref<any | null>(null);
+    const previewBridgeToken = createPreviewBridgeToken();
     const previewSrcdoc = computed(() => {
-      return mapHtmlImageUrls(html.value, 'html-document', resolvedId.value, imageToken.value);
+      const mapped = mapHtmlImageUrls(html.value, 'html-document', resolvedId.value, imageToken.value);
+      return injectPreviewBridge(mapped, previewBridgeToken);
     });
     const historyPreviewSrcdoc = computed(() => {
       return mapHtmlImageUrls(selectedHistory.value?.html || '', 'html-document', resolvedId.value, imageToken.value);
@@ -420,8 +427,15 @@ export default defineComponent({
     const syncEvents = syncEventStore.events;
     const pendingVisualOp = ref<HtmlVisualOp | null>(null);
     const previewFrame = ref<HTMLIFrameElement | null>(null);
+    const splitPreviewFrame = ref<HTMLIFrameElement | null>(null);
     const sourceEditor = ref<HTMLTextAreaElement | null>(null);
     let pendingPreviewScroll: FrameScrollPosition | null = null;
+    type PendingCapture = {
+      resolve: (value: { html: string; scroll: FrameScrollPosition } | null) => void;
+      timer: ReturnType<typeof setTimeout>;
+    };
+    const pendingStateCaptures = new Map<string, PendingCapture>();
+    let captureSeq = 0;
     let htmlSocketInitialized = false;
     const canEditContent = computed(() => role.value === 'owner' || role.value === 'edit');
     const currentUser = computed(() => getCurrentUser());
@@ -511,10 +525,6 @@ export default defineComponent({
         passwordAccessEnabled.value = !!res.document.passwordAccessEnabled;
         passwordAccessRole.value = res.document.passwordAccessRole || 'read';
         role.value = res.role;
-        if (res.role === 'read' && res.document.visibility === 'public') {
-          window.location.replace(`/api/html-documents/${slug.value || id}/stream`);
-          return;
-        }
         // Prettify the address bar: prefer the slug when present.
         const preferred = slug.value || res.document.id;
         if (route.params.id !== preferred) {
@@ -570,15 +580,48 @@ export default defineComponent({
       }
     }
 
-    function syncHtmlFromPreview() {
-      if (viewMode.value !== 'preview') return;
-      const doc = previewFrame.value?.contentDocument;
-      if (!doc?.documentElement) return;
-      html.value = serializeDocumentWithFormState(doc);
+    function requestPreviewState(frame: HTMLIFrameElement | null): Promise<{ html: string; scroll: FrameScrollPosition } | null> {
+      const targetWindow = frame?.contentWindow;
+      if (!targetWindow || typeof targetWindow.postMessage !== 'function') {
+        return Promise.resolve(null);
+      }
+      const requestId = `cap-${++captureSeq}`;
+      return new Promise((resolve) => {
+        const timer = setTimeout(() => {
+          pendingStateCaptures.delete(requestId);
+          resolve(null);
+        }, 250);
+        pendingStateCaptures.set(requestId, { resolve, timer });
+        try {
+          targetWindow.postMessage(
+            {
+              channel: PREVIEW_BRIDGE_CHANNEL,
+              token: previewBridgeToken,
+              type: 'capture-state',
+              requestId,
+            },
+            '*',
+          );
+        } catch {
+          clearTimeout(timer);
+          pendingStateCaptures.delete(requestId);
+          resolve(null);
+        }
+      });
     }
 
-    function downloadDocument() {
-      syncHtmlFromPreview();
+    async function syncHtmlFromPreview(captureScroll = false) {
+      if (viewMode.value !== 'preview') return;
+      const captured = await requestPreviewState(previewFrame.value);
+      if (!captured) return;
+      if (captureScroll) {
+        pendingPreviewScroll = captured.scroll;
+      }
+      html.value = stripPreviewBridgeAndUnmapImages(captured.html);
+    }
+
+    async function downloadDocument() {
+      await syncHtmlFromPreview(false);
       downloadHtmlDocument(title.value, html.value);
     }
 
@@ -590,7 +633,7 @@ export default defineComponent({
         link.href = url;
         link.download = `${(title.value || 'qcanva-document').replace(/[\\/:*?"<>|]+/g, '-').trim() || 'qcanva-document'}.pdf`;
         link.click();
-        URL.revokeObjectURL(url);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
       } catch (error: any) {
         showToast(error?.message || 'Failed to export PDF', 'error');
       }
@@ -601,10 +644,7 @@ export default defineComponent({
       saving.value = true;
       const pageScroll = { x: window.scrollX, y: window.scrollY };
       try {
-        if (viewMode.value === 'preview') {
-          pendingPreviewScroll = captureFrameScroll(previewFrame.value);
-        }
-        syncHtmlFromPreview();
+        await syncHtmlFromPreview(viewMode.value === 'preview');
         if (htmlWsConnected.value && title.value === savedSnapshot.value.title) {
           const op = pendingVisualOp.value?.html === html.value
             ? pendingVisualOp.value
@@ -846,59 +886,68 @@ export default defineComponent({
       }
     }
 
-    async function persistChecklistChange(target: HTMLInputElement) {
-      if (target?.type !== 'checkbox' || !target.dataset.checkId) return;
-      await htmlDocuments.checklist(resolvedId.value, target.dataset.checkId, target.checked);
+    async function persistChecklistChange(checkId: string, checked: boolean) {
+      if (!checkId || checkId.length > 128) return;
+      await htmlDocuments.checklist(resolvedId.value, checkId, checked);
     }
 
-    async function onPreviewChange(event: Event) {
-      await persistChecklistChange(event.target as HTMLInputElement);
-    }
-
-    function bindPreviewChecklist(event: Event) {
-      const iframe = event.target as HTMLIFrameElement;
-      const doc = iframe.contentDocument;
-      if (!doc) return;
-      doc.addEventListener('change', (changeEvent) => {
-        void persistChecklistChange(changeEvent.target as HTMLInputElement);
-      });
-    }
-
-    function bindFrameInPageLinks(event: Event) {
-      const doc = (event.target as HTMLIFrameElement).contentDocument;
-      if (doc) bindInPageLinks(doc);
-    }
-
-    function attachFrameImageErrors(iframe: HTMLIFrameElement) {
-      const doc = iframe?.contentDocument;
-      if (!doc) return;
-      doc.addEventListener('error', async (event: Event) => {
-        const target = event.target;
-        if (target instanceof HTMLImageElement) {
-          const src = target.getAttribute('src') || '';
-          const match = src.match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
-          const imageId = match ? match[1] : '';
-          if (imageId) {
-            await handleImageError(imageId, src);
-          }
+    function onPreviewBridgeMessage(event: MessageEvent) {
+      if (!isBridgeMessageFromFrame(event, [previewFrame.value, splitPreviewFrame.value], previewBridgeToken)) {
+        return;
+      }
+      const data = event.data;
+      if (data.type === 'checklist-change') {
+        if (typeof data.checkId === 'string' && typeof data.checked === 'boolean') {
+          void persistChecklistChange(data.checkId, data.checked);
         }
-      }, true);
-    }
-
-    function onHistoryPreviewLoad(event: Event) {
-      bindFrameInPageLinks(event);
-      attachFrameImageErrors(event.target as HTMLIFrameElement);
+        return;
+      }
+      if (data.type === 'image-error') {
+        const src = typeof data.src === 'string' ? data.src : '';
+        const imageId = extractImageIdFromSrc(src);
+        if (imageId) {
+          void handleImageError(imageId, src);
+        }
+        return;
+      }
+      if (data.type === 'state-captured' && typeof data.requestId === 'string') {
+        const pending = pendingStateCaptures.get(data.requestId);
+        if (!pending) return;
+        pendingStateCaptures.delete(data.requestId);
+        clearTimeout(pending.timer);
+        if (typeof data.html === 'string') {
+          const scroll: FrameScrollPosition = {
+            x: typeof data.scroll?.x === 'number' && Number.isFinite(data.scroll.x) ? data.scroll.x : 0,
+            y: typeof data.scroll?.y === 'number' && Number.isFinite(data.scroll.y) ? data.scroll.y : 0,
+          };
+          pending.resolve({ html: data.html, scroll });
+        } else {
+          pending.resolve(null);
+        }
+      }
     }
 
     function onPreviewLoad(event: Event) {
-      bindPreviewChecklist(event);
-      bindFrameInPageLinks(event);
       const iframe = event.target as HTMLIFrameElement;
-      attachFrameImageErrors(iframe);
       const scroll = pendingPreviewScroll;
       if (!scroll) return;
       pendingPreviewScroll = null;
-      requestAnimationFrame(() => restoreFrameScroll(iframe, scroll));
+      requestAnimationFrame(() => {
+        try {
+          iframe?.contentWindow?.postMessage(
+            {
+              channel: PREVIEW_BRIDGE_CHANNEL,
+              token: previewBridgeToken,
+              type: 'restore-scroll',
+              x: scroll.x,
+              y: scroll.y,
+            },
+            '*',
+          );
+        } catch {
+          // Preview iframe may have unmounted before scroll restore ran.
+        }
+      });
     }
 
     async function loadPermissions() {
@@ -995,12 +1044,19 @@ export default defineComponent({
       window.addEventListener('keydown', onEditorKeydown);
       window.addEventListener('keydown', closeBarMenusOnEscape);
       window.addEventListener('click', closeBarMenus);
+      window.addEventListener('message', onPreviewBridgeMessage);
     });
     onBeforeUnmount(() => {
       if (cacheStatusTimeout) clearTimeout(cacheStatusTimeout);
+      for (const pending of pendingStateCaptures.values()) {
+        clearTimeout(pending.timer);
+        pending.resolve(null);
+      }
+      pendingStateCaptures.clear();
       window.removeEventListener('keydown', onEditorKeydown);
       window.removeEventListener('keydown', closeBarMenusOnEscape);
       window.removeEventListener('click', closeBarMenus);
+      window.removeEventListener('message', onPreviewBridgeMessage);
     });
     return {
       toggleBarMenu, closeBarMenus, tabMode: tabsEnabled(),
@@ -1011,9 +1067,9 @@ export default defineComponent({
       showSyncEvents, syncEvents, syncReasonLabel, formatSyncEventTime, pendingVisualOp,
       requestingAccess, accessRequestSent, showShare, shareEmail,
       shareRole, permissions, checkingResourcePassword,
-      passwordAccessEnabled, passwordAccessPassword, passwordAccessRole, saving, previewFrame, sourceEditor,
+      passwordAccessEnabled, passwordAccessPassword, passwordAccessRole, saving, previewFrame, splitPreviewFrame, sourceEditor,
       showHistory, showHtmlActions, showExportMenu, historyLoading, historyItems, selectedHistory, restoringHistory,
-      save, saveAccessSettings, savePasswordAccess, onPreviewChange, bindPreviewChecklist, onPreviewLoad, onHistoryPreviewLoad, doShare,
+      save, saveAccessSettings, savePasswordAccess, onPreviewLoad, doShare,
       slug, slugInput, savingSlug, saveSlug, publicUrl, copyPublicLink,
       doRevoke, requestHtmlAccess, loginWithHtmlPassword, formatHtml, wrapSelection, insertSnippet, notifyReadOnlyEditAttempt,
       downloadDocument, exportPdfDocument, loadHistory, toggleHistory, openHistoryEntry, restoreSelectedHistory,

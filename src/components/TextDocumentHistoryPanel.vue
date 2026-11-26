@@ -26,7 +26,7 @@
               {{ restoring ? labels.restoring : labels.restore }}
             </button>
           </div>
-          <div class="text-doc-history-preview" v-html="selected.html"></div>
+          <div class="text-doc-history-preview" v-html="sanitizedHtml"></div>
         </template>
       </div>
     </UiCard>
@@ -34,7 +34,8 @@
 </template>
 
 <script setup lang="ts">
-import type { PropType } from 'vue';
+import { computed, type PropType } from 'vue';
+import DOMPurify from 'dompurify';
 import UiCard from './ui/UiCard.vue';
 
 export type TextDocumentHistoryEntry = {
@@ -61,7 +62,7 @@ export type TextDocumentHistoryLabels = {
   restoring: string;
 };
 
-defineProps({
+const props = defineProps({
   open: { type: Boolean, required: true },
   loading: { type: Boolean, required: true },
   items: { type: Array as PropType<TextDocumentHistoryEntry[]>, required: true },
@@ -69,6 +70,19 @@ defineProps({
   canEdit: { type: Boolean, required: true },
   restoring: { type: Boolean, required: true },
   labels: { type: Object as PropType<TextDocumentHistoryLabels>, required: true },
+});
+
+const sanitizedHtml = computed(() => {
+  const raw = props.selected?.html ?? '';
+  if (!raw) return '';
+  return DOMPurify.sanitize(raw, {
+    USE_PROFILES: { html: true },
+    FORBID_TAGS: [
+      'script', 'style', 'iframe', 'object', 'embed', 'form', 'input',
+      'svg', 'math', 'noscript', 'template', 'link', 'meta', 'base',
+    ],
+    FORBID_ATTR: ['style', 'srcdoc', 'formaction'],
+  });
 });
 
 const emit = defineEmits<{

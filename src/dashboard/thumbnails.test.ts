@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
+import { clearToken } from '../api/client';
 import { loadThumbnail, resetThumbnailCache, thumbnailUrl } from './thumbnails';
 import ResourceThumb from '../components/dashboard/ResourceThumb.vue';
 
@@ -70,6 +71,18 @@ describe('thumbnail loader', () => {
     }
     await Promise.all(all);
     expect(fetchMock).toHaveBeenCalledTimes(6);
+  });
+
+  it('revokes cached blob URLs and clears cache when clearToken runs', async () => {
+    const url = await loadThumbnail('canvas', 'c-logout', { version: 'v1', theme: 'dark' });
+    expect(url).toBe('blob:thumb-1');
+    clearToken();
+    await flushPromises();
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:thumb-1');
+
+    localStorage.setItem('token', 'tok-1');
+    await loadThumbnail('canvas', 'c-logout', { version: 'v1', theme: 'dark' });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
 

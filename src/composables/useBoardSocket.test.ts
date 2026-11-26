@@ -8,9 +8,10 @@ import { interactiveTemplates } from '../api/client';
 const sockets: any[] = [];
 
 vi.mock('socket.io-client', () => ({
-  io: vi.fn((_url: string, _options: unknown) => {
+  io: vi.fn((_url: string, options: unknown) => {
     const handlers = new Map<string, (payload?: unknown) => void>();
     const socket = {
+      options,
       emit: vi.fn(),
       on: vi.fn((event: string, cb: (payload?: unknown) => void) => handlers.set(event, cb)),
       disconnect: vi.fn(),
@@ -241,5 +242,16 @@ describe('useBoardSocket', () => {
 
     expect(board.data.value).toBeNull();
     expect(board.syncStatus.value).toBe('forbidden');
+  });
+
+  it('resolves access token dynamically via auth callback', () => {
+    const board = useBoardSocket('board-1');
+    board.connect();
+
+    const authFn = sockets[0].options.auth as (cb: (data: Record<string, string>) => void) => void;
+    const cb = vi.fn();
+    localStorage.setItem('token', 'board-tok');
+    authFn(cb);
+    expect(cb).toHaveBeenLastCalledWith({ token: 'board-tok' });
   });
 });

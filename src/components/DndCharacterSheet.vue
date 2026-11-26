@@ -4,7 +4,7 @@
     <section class="dnd-cs-topcard dnd-glass">
     <header class="dnd-cs-header">
       <div class="dnd-cs-portrait" :class="{ empty: !data.identity.portraitUrl }">
-        <img v-if="data.identity.portraitUrl" :src="portraitSrc" alt="Портрет персонажа" @error="onPortraitError" />
+        <img v-if="data.identity.portraitUrl" :src="portraitSrc" referrerpolicy="no-referrer" alt="Портрет персонажа" @error="onPortraitError" />
         <span v-else>{{ initial }}</span>
         <div v-if="!locked" class="dnd-cs-portrait-actions">
           <button type="button" title="Загрузить портрет" aria-label="Загрузить портрет" @click="$emit('request-portrait')">▣</button>

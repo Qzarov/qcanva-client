@@ -8,7 +8,7 @@
     @contextmenu.prevent.stop="onNodeContextMenu($event, node)"
   >
     <div v-if="node.label" class="node-image-title">{{ node.label }}</div>
-    <img class="node-image" :src="getImageSrc(node.file)" :alt="node.label || 'Image'" draggable="false" @error="onImageError(node.id, node.file)" />
+    <img class="node-image" :src="getImageSrc(node.file)" :alt="node.label || 'Image'" referrerpolicy="no-referrer" draggable="false" @error="onImageError(node.id, node.file)" />
     <template v-if="isNodeSelected(node.id) && !isNodePositionLocked(node.id)">
       <div v-for="handle in ['br', 'bl', 'tr', 'tl']" :key="handle" class="resize-handle" :class="`resize-handle-${handle}`" :data-handle="handle" @mousedown.stop="onResizeStart($event, node, handle)" />
     </template>

@@ -1,3 +1,4 @@
+import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 import { downloadFileFromUrl } from '../api/drive';
 
@@ -12,32 +13,70 @@ export type RenderedMarkdownDocument = {
   headings: MarkdownHeading[];
 };
 
-const FORBIDDEN_TAGS = new Set([
-  'script',
-  'iframe',
-  'object',
-  'embed',
-  'form',
-  'style',
-  'link',
-  'meta',
-  'base',
-  'applet',
-  'frame',
-  'frameset',
-]);
+const MARKDOWN_ALLOWED_TAGS = [
+  'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+  'p', 'br', 'hr', 'blockquote', 'pre', 'code',
+  'ul', 'ol', 'li', 'dl', 'dt', 'dd',
+  'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'caption', 'colgroup', 'col',
+  'a', 'img',
+  'strong', 'b', 'em', 'i', 'u', 's', 'del', 'ins', 'mark', 'sub', 'sup', 'small',
+  'kbd', 'samp', 'var', 'abbr', 'cite', 'q', 'span', 'div',
+  'details', 'summary', 'figure', 'figcaption',
+  'input',
+];
 
-const SAFE_DATA_IMAGE_RE = /^data:image\/(?:png|jpeg|jpg|gif|webp);base64,/i;
+const MARKDOWN_ALLOWED_ATTR = [
+  'href', 'src', 'alt', 'title', 'id', 'class',
+  'target', 'rel',
+  'type', 'checked', 'disabled',
+  'start', 'colspan', 'rowspan', 'align', 'open',
+  'width', 'height', 'loading', 'decoding', 'referrerpolicy',
+  'data-md-callout',
+];
 
-function isUnsafeUrl(value: string, attrName: string): boolean {
-  const normalized = value.replace(/[\u0000-\u0020\u007f]+/g, '').toLowerCase();
-  if (normalized.startsWith('javascript:') || normalized.startsWith('vbscript:')) {
+const MARKDOWN_FORBIDDEN_TAGS = [
+  'script', 'style', 'iframe', 'object', 'embed', 'form',
+  'noscript', 'svg', 'math', 'template',
+  'link', 'meta', 'base', 'applet', 'frame', 'frameset',
+];
+
+const SAFE_DATA_IMAGE_RE = /^data:image\/(?:png|jpeg|jpg|gif|webp);base64,[a-z0-9+/=\s]+$/i;
+
+function normalizeUrlForCheck(value: string): string {
+  return value.replace(/[\u0000-\u0020\u007f]+/g, '');
+}
+
+function isSafeMarkdownHref(raw: string): boolean {
+  const normalized = normalizeUrlForCheck(raw);
+  if (!normalized) return false;
+  if (normalized.startsWith('//') || normalized.startsWith('/\\')) return false;
+  if (normalized.startsWith('#') || normalized.startsWith('/')) return true;
+  const lower = normalized.toLowerCase();
+  if (lower.startsWith('http://') || lower.startsWith('https://') || lower.startsWith('mailto:')) {
     return true;
   }
-  if (normalized.startsWith('data:')) {
-    return !(attrName === 'src' && SAFE_DATA_IMAGE_RE.test(normalized));
-  }
-  return false;
+  // Reject any other explicit URI scheme (javascript:, vbscript:, data:, etc.).
+  if (/^[a-z][a-z0-9+.-]*:/i.test(lower)) return false;
+  return true;
+}
+
+function isSafeMarkdownImageSrc(raw: string): boolean {
+  const normalized = normalizeUrlForCheck(raw);
+  if (!normalized) return false;
+  if (normalized.startsWith('//') || normalized.startsWith('/\\')) return false;
+  if (normalized.startsWith('/')) return true;
+  const lower = normalized.toLowerCase();
+  if (lower.startsWith('http://') || lower.startsWith('https://')) return true;
+  return SAFE_DATA_IMAGE_RE.test(normalized);
+}
+
+function escapeHtmlFallback(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 const CALLOUT_LABELS: Record<string, { icon: string; tone: string }> = {
@@ -55,7 +94,7 @@ function transformCallouts(rawHtml: string): string {
   return rawHtml.replace(
     /<blockquote>\s*<p>\s*\[!\s*([\w-]+)\]\s*(?:<br\s*\/?>\s*)?(.*?)<\/p>([\s\S]*?)<\/blockquote>/gi,
     (_match, rawType: string, firstLine: string, rest: string) => {
-      const key = rawType.toLowerCase();
+      const key = rawType.toLowerCase().replace(/[^a-z0-9-]/g, '') || 'note';
       const meta = CALLOUT_LABELS[key] ?? CALLOUT_LABELS.note!;
       const label = key.charAt(0).toUpperCase() + key.slice(1);
       const bodyParts = [firstLine.trim() ? `<p>${firstLine}</p>` : '', rest.trim()].filter(Boolean).join('');
@@ -77,52 +116,67 @@ export function renderMarkdownDocument(markdown: string): RenderedMarkdownDocume
   const parsed = marked.parse(source, { async: false, gfm: true, breaks: true }) as string;
   const withCallouts = transformCallouts(parsed);
 
-  if (typeof DOMParser === 'undefined') {
-    const fallbackHtml = withCallouts
-      .replace(/<(script|iframe|object|embed|style)[^>]*>[\s\S]*?<\/\1>/gi, '')
-      .replace(/\son\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '');
-    return { html: fallbackHtml, headings: [] };
+  if (!DOMPurify.isSupported || typeof document === 'undefined') {
+    return { html: escapeHtmlFallback(source), headings: [] };
   }
 
-  const doc = new DOMParser().parseFromString(`<div id="md-root">${withCallouts}</div>`, 'text/html');
-  const root = doc.getElementById('md-root');
-  if (!root) {
-    return { html: '', headings: [] };
-  }
-
-  // Strip dangerous elements
-  for (const tag of FORBIDDEN_TAGS) {
-    for (const el of Array.from(root.querySelectorAll(tag))) {
-      el.remove();
-    }
-  }
-
-  // Sanitize attributes on all remaining elements
-  for (const el of Array.from(root.querySelectorAll('*'))) {
-    for (const attr of Array.from(el.attributes)) {
-      const name = attr.name.toLowerCase();
-      if (name.startsWith('on') || name === 'srcdoc' || name === 'formaction') {
-        el.removeAttribute(attr.name);
-        continue;
+  const uponAttrHook = (node: Element, data: { attrName: string; attrValue: string; keepAttr: boolean }) => {
+    const tag = node.tagName?.toLowerCase();
+    const attrName = data.attrName.toLowerCase();
+    if (tag === 'a' && attrName === 'href') {
+      if (!isSafeMarkdownHref(data.attrValue)) {
+        data.attrValue = '#';
       }
-      if ((name === 'href' || name === 'src' || name === 'xlink:href' || name === 'action') && isUnsafeUrl(attr.value, name)) {
-        if (name === 'href') {
-          el.setAttribute(attr.name, '#');
+    } else if (tag === 'img' && attrName === 'src') {
+      if (!isSafeMarkdownImageSrc(data.attrValue)) {
+        data.keepAttr = false;
+      }
+    }
+  };
+
+  DOMPurify.addHook('uponSanitizeAttribute', uponAttrHook);
+  let fragment: DocumentFragment;
+  try {
+    fragment = DOMPurify.sanitize(withCallouts, {
+      ALLOWED_TAGS: MARKDOWN_ALLOWED_TAGS,
+      ALLOWED_ATTR: MARKDOWN_ALLOWED_ATTR,
+      FORBID_TAGS: MARKDOWN_FORBIDDEN_TAGS,
+      FORBID_ATTR: ['style', 'srcdoc', 'formaction'],
+      ALLOW_DATA_ATTR: false,
+      RETURN_DOM_FRAGMENT: true,
+    });
+  } finally {
+    DOMPurify.removeHook('uponSanitizeAttribute');
+  }
+
+  const root = document.createElement('div');
+  root.appendChild(fragment);
+
+  for (const el of Array.from(root.querySelectorAll('a, img, input'))) {
+    const tag = el.tagName.toLowerCase();
+    if (tag === 'a') {
+      const href = el.getAttribute('href');
+      if (href !== null) {
+        if (!isSafeMarkdownHref(href)) {
+          el.setAttribute('href', '#');
+          el.removeAttribute('target');
+          el.removeAttribute('rel');
+        } else if (/^https?:\/\//i.test(normalizeUrlForCheck(href))) {
+          el.setAttribute('target', '_blank');
+          el.setAttribute('rel', 'noopener noreferrer');
         } else {
-          el.removeAttribute(attr.name);
+          el.removeAttribute('target');
+          el.removeAttribute('rel');
         }
       }
-    }
-
-    if (el.tagName.toLowerCase() === 'a') {
-      const href = el.getAttribute('href') || '';
-      if (/^https?:\/\//i.test(href)) {
-        el.setAttribute('target', '_blank');
-        el.setAttribute('rel', 'noopener noreferrer');
+    } else if (tag === 'img') {
+      const src = el.getAttribute('src');
+      if (src !== null && !isSafeMarkdownImageSrc(src)) {
+        el.removeAttribute('src');
+      } else if (src !== null && /^https?:\/\//i.test(normalizeUrlForCheck(src))) {
+        el.setAttribute('referrerpolicy', 'no-referrer');
       }
-    }
-
-    if (el.tagName.toLowerCase() === 'input') {
+    } else if (tag === 'input') {
       const type = (el.getAttribute('type') || '').toLowerCase();
       if (type !== 'checkbox') {
         el.remove();
@@ -132,7 +186,7 @@ export function renderMarkdownDocument(markdown: string): RenderedMarkdownDocume
     }
   }
 
-  // Assign deterministic IDs to headings and collect outline
+  // Assign deterministic IDs to headings and collect outline from the sanitized DOM
   const headings: MarkdownHeading[] = [];
   const headingEls = Array.from(root.querySelectorAll('h1, h2, h3, h4, h5, h6'));
   headingEls.forEach((el, index) => {

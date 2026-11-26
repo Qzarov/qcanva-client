@@ -12,7 +12,7 @@
  * null - the card then simply shows no picture.
  */
 
-import { API_BASE, getAccessToken } from '../api/client';
+import * as clientApi from '../api/client';
 
 export type ThumbnailKind = 'canvas' | 'text-document' | 'html-document' | 'interactive-template';
 export type ThumbnailTheme = 'light' | 'dark';
@@ -41,7 +41,7 @@ function schedule<T>(task: () => Promise<T>): Promise<T> {
       task()
         .then(resolve, reject)
         .finally(() => {
-          running -= 1;
+          running = Math.max(0, running - 1);
           pump();
         });
     });
@@ -52,7 +52,7 @@ function schedule<T>(task: () => Promise<T>): Promise<T> {
 export function thumbnailUrl(kind: ThumbnailKind, id: string, options: { version?: string | null; theme: ThumbnailTheme }) {
   const params = new URLSearchParams({ size: 'card', theme: options.theme });
   if (options.version) params.set('v', options.version);
-  return `${API_BASE}/thumbnails/${kind}/${encodeURIComponent(id)}?${params}`;
+  return `${clientApi.API_BASE}/thumbnails/${kind}/${encodeURIComponent(id)}?${params}`;
 }
 
 /** The thumbnail as a blob URL, or null when there is none for this caller. */
@@ -62,7 +62,7 @@ export function loadThumbnail(
   options: { version?: string | null; theme: ThumbnailTheme },
 ): Promise<string | null> {
   const url = thumbnailUrl(kind, id, options);
-  const token = getAccessToken();
+  const token = clientApi.getAccessToken();
   // The caller is part of the key: another account may see a different picture (or none).
   const key = `${token ?? ''}|${url}`;
   const known = entries.get(key);
@@ -98,4 +98,8 @@ export function resetThumbnailCache() {
   entries.clear();
   queue.length = 0;
   running = 0;
+}
+
+if ('onAuthCleared' in clientApi && typeof clientApi.onAuthCleared === 'function') {
+  clientApi.onAuthCleared(resetThumbnailCache);
 }

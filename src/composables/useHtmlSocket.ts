@@ -1,6 +1,7 @@
 import { ref, onUnmounted } from 'vue';
 import { io, type Socket } from 'socket.io-client';
 import type { HtmlVisualOp } from '../html/visualHtmlOps';
+import { getAccessToken } from '../api/client';
 import { resolveWsOrigin } from '../api/hubOverride';
 
 const WS_URL = resolveWsOrigin();
@@ -62,9 +63,12 @@ export function useHtmlSocket(documentIdInput: string | { value: string }) {
   }
 
   function connect() {
-    const token = localStorage.getItem('token');
+    if (socket.value) return;
     const s = io(`${WS_URL}/html-ws`, {
-      auth: token ? { token } : {},
+      auth: (cb) => {
+        const t = getAccessToken();
+        cb(t ? { token: t } : {});
+      },
       transports: ['websocket', 'polling'],
     });
 

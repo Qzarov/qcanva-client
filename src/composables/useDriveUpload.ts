@@ -5,6 +5,8 @@ import type { DriveUploadItem } from '../components/DriveUploadPanel.vue';
 import { useActivityJournal } from './useActivityJournal';
 import { useI18n } from './useI18n';
 
+const MAX_CONCURRENT_UPLOADS = 4;
+
 function uploadDetail(size: number, percent: number): string {
   const loaded = Math.round(size * Math.min(100, Math.max(0, percent)) / 100);
   return `${formatFileSize(loaded)} / ${formatFileSize(size)}`;
@@ -49,7 +51,13 @@ export function useDriveUpload(options: {
       taskIds.set(item.id, taskId);
     }
 
-    await Promise.all(newItems.map(async (item) => {
+    let nextIndex = 0;
+    const uploadItem = async (item: DriveUploadItem) => {
+      const current = uploads.value.find((upload) => upload.id === item.id) ?? item;
+      if (current.status === 'cancelled') {
+        taskIds.delete(item.id);
+        return;
+      }
       const taskId = taskIds.get(item.id);
       try {
         const handle = driveApi.uploadFile(options.folderId.value, item.file, (percent) => {
@@ -79,8 +87,21 @@ export function useDriveUpload(options: {
           ? t('driveUploadTooLarge')
           : error.message || t('driveUploadFailed');
         if (taskId) journal.failTask(taskId, found.errorMessage);
+      } finally {
+        taskIds.delete(item.id);
       }
-    }));
+    };
+
+    const workerCount = Math.min(MAX_CONCURRENT_UPLOADS, newItems.length);
+    await Promise.all(
+      Array.from({ length: workerCount }, async () => {
+        while (nextIndex < newItems.length) {
+          const item = newItems[nextIndex]!;
+          nextIndex += 1;
+          await uploadItem(item);
+        }
+      }),
+    );
     await options.loadCurrentFolder();
   }
 
@@ -98,6 +119,7 @@ export function useDriveUpload(options: {
     item.abort?.();
     const taskId = taskIds.get(item.id);
     if (taskId) journal.cancelTask(taskId);
+    taskIds.delete(item.id);
   }
 
   return {

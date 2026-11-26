@@ -94,7 +94,13 @@ object UploadQueue {
     /** Every job the page still cares about (finished ones once, then forgotten). */
     fun snapshot(): List<JSONObject> = jobs.values.map { it.toJson() }
 
-    fun forget(id: String) { jobs.remove(id) }
+    fun forget(id: String) {
+        jobs.remove(id)
+        lastProgressAt.remove(id)
+    }
+
+    private fun sanitizeHeaderToken(value: String): String =
+        value.replace("\r", "").replace("\n", "").replace("\"", "")
 
     private fun Job.toJson() = JSONObject()
         .put("id", id)
@@ -151,10 +157,12 @@ object UploadQueue {
         job.state = "uploading"
         job.loaded = 0
         val boundary = "----qcanva${System.nanoTime()}"
+        val safeContentType = sanitizeHeaderToken(job.contentType).ifEmpty { "application/octet-stream" }
         val head = if (job.mode == Mode.MULTIPART) {
             val safeName = job.name.replace("\"", "%22").replace("\r", "").replace("\n", "")
-            ("--$boundary\r\nContent-Disposition: form-data; name=\"${job.field}\"; filename=\"$safeName\"\r\n" +
-                "Content-Type: ${job.contentType}\r\n\r\n").toByteArray(Charsets.UTF_8)
+            val safeField = sanitizeHeaderToken(job.field).ifEmpty { "file" }
+            ("--$boundary\r\nContent-Disposition: form-data; name=\"$safeField\"; filename=\"$safeName\"\r\n" +
+                "Content-Type: $safeContentType\r\n\r\n").toByteArray(Charsets.UTF_8)
         } else ByteArray(0)
         val tail = if (job.mode == Mode.MULTIPART) "\r\n--$boundary--\r\n".toByteArray(Charsets.UTF_8) else ByteArray(0)
 
@@ -162,14 +170,20 @@ object UploadQueue {
         job.connection = connection
         try {
             connection.requestMethod = job.method
+            connection.instanceFollowRedirects = false
             connection.doOutput = true
             connection.connectTimeout = 30_000
             connection.readTimeout = 120_000
             connection.useCaches = false
-            for ((key, value) in job.headers) connection.setRequestProperty(key, value)
+            for ((key, value) in job.headers) {
+                val safeKey = sanitizeHeaderToken(key)
+                if (safeKey.isNotEmpty()) {
+                    connection.setRequestProperty(safeKey, value.replace("\r", "").replace("\n", ""))
+                }
+            }
             connection.setRequestProperty(
                 "Content-Type",
-                if (job.mode == Mode.MULTIPART) "multipart/form-data; boundary=$boundary" else job.contentType,
+                if (job.mode == Mode.MULTIPART) "multipart/form-data; boundary=$boundary" else safeContentType,
             )
             if (job.size >= 0) connection.setFixedLengthStreamingMode(head.size + job.size + tail.size)
             else connection.setChunkedStreamingMode(BUFFER)

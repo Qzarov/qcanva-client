@@ -222,7 +222,7 @@ describe('Resource Image Tokens - Views and Lifecycle Contract', () => {
       );
     });
 
-    it('HtmlVisualEditor handles image error in preview iframe', async () => {
+    it('HtmlVisualEditor handles image error from sandboxed preview iframe via postMessage', async () => {
       const onImageError = vi.fn().mockResolvedValue(true);
       const storedHtml = `<img src="/api/canvas/files/images/${uuid}.png">`;
 
@@ -235,26 +235,40 @@ describe('Resource Image Tokens - Views and Lifecycle Contract', () => {
         },
       });
 
-      const iframe = wrapper.find('iframe').element as HTMLIFrameElement;
-      const iframeDoc = document.implementation.createHTMLDocument('Preview');
-      Object.defineProperty(iframe, 'contentDocument', { value: iframeDoc, configurable: true });
+      const iframeWrapper = wrapper.find('iframe');
+      const sandbox = iframeWrapper.attributes('sandbox') || '';
+      expect(sandbox).not.toContain('allow-same-origin');
+      expect(sandbox).not.toContain('allow-popups-to-escape-sandbox');
 
-      // Trigger frame load to bind error listener
-      await wrapper.find('iframe').trigger('load');
+      const srcdoc = iframeWrapper.attributes('srcdoc') || '';
+      const tokenMatch = srcdoc.match(/TK="([^"]+)"/);
+      expect(tokenMatch).not.toBeNull();
+      const bridgeToken = tokenMatch![1]!;
 
-      const img = iframeDoc.createElement('img');
-      img.src = `http://localhost:3001/api/html-documents/html-err-test/images/${uuid}.png?t=${initialToken}`;
-      iframeDoc.body.appendChild(img);
+      const iframe = iframeWrapper.element as HTMLIFrameElement;
+      const fakeContentWindow = {} as Window;
+      Object.defineProperty(iframe, 'contentWindow', { value: fakeContentWindow, configurable: true });
 
-      img.dispatchEvent(new Event('error', { bubbles: false }));
+      const src = `http://localhost:3001/api/html-documents/html-err-test/images/${uuid}.png?t=${initialToken}`;
+
+      // Message from an unrelated window must be ignored
+      window.dispatchEvent(new MessageEvent('message', {
+        source: {} as Window,
+        data: { channel: 'qcanva-html-preview', token: bridgeToken, type: 'image-error', src },
+      }));
+      expect(onImageError).not.toHaveBeenCalled();
+
+      // Message from the preview iframe triggers refresh
+      window.dispatchEvent(new MessageEvent('message', {
+        source: fakeContentWindow,
+        data: { channel: 'qcanva-html-preview', token: bridgeToken, type: 'image-error', src },
+      }));
 
       await vi.waitFor(() => {
         expect(onImageError).toHaveBeenCalledTimes(1);
       });
-      expect(onImageError).toHaveBeenCalledWith(
-        uuid,
-        `http://localhost:3001/api/html-documents/html-err-test/images/${uuid}.png?t=${initialToken}`,
-      );
+      expect(onImageError).toHaveBeenCalledWith(uuid, src);
+      wrapper.unmount();
     });
 
     it('composables enforce strictly one refresh and no endless retry loops on repeated errors', async () => {
