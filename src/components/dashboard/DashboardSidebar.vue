@@ -1493,15 +1493,18 @@ function onRowDrop(event: DragEvent, row: TreeRow) {
         event.preventDefault();
         event.stopPropagation();
         emit('drop-group-to-folder', { folderId: row.folderId, drag: payload });
+        treeSelectedKeys.value = new Set();
       }
     } else if (row.key === 'qspace:home') {
       event.preventDefault();
       event.stopPropagation();
       emit('drop-group-to-folder', { folderId: null, drag: payload });
+      treeSelectedKeys.value = new Set();
     } else if (row.kind === 'album' && row.albumId) {
       event.preventDefault();
       event.stopPropagation();
       emit('drop-group-to-album', { albumId: row.albumId, drag: payload });
+      treeSelectedKeys.value = new Set();
     }
     dnd.endGroupDrag();
     return;

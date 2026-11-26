@@ -143,7 +143,7 @@ function onSubfolderDragOver(event: DragEvent, child: SubfolderItem): void {
     dropTargetFolderId.value = child.id;
     return;
   }
-  if (!dnd.activeDrag.value && hasDataTransferFiles(event)) {
+  if (props.isOwner && !dnd.activeDrag.value && hasDataTransferFiles(event)) {
     event.preventDefault();
     event.stopPropagation();
     if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
@@ -174,11 +174,11 @@ function onSubfolderDrop(event: DragEvent, child: SubfolderItem): void {
     dnd.endGroupDrag();
     return;
   }
-  if (!dnd.activeDrag.value && hasDataTransferFiles(event)) {
+  if (props.isOwner && !dnd.activeDrag.value && hasDataTransferFiles(event)) {
     event.preventDefault();
-    event.stopPropagation();
     const files = Array.from(event.dataTransfer?.files || []);
     if (files.length > 0) {
+      event.stopPropagation();
       emit('drop-external-files', { folderId: child.id, files });
     }
   }

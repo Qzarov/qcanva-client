@@ -26,6 +26,7 @@
         :folders="sidebarFolders"
         :spaces="isLoggedIn"
         :yandex-refresh-key="yandexRefreshKey"
+        :folder-drag-id="folderDragId"
         :search-folders="searchSidebarFolders"
         :search-albums="searchSidebarAlbums"
         :search-items="searchSidebarItems"
@@ -6752,6 +6753,7 @@ export default defineComponent({
       draggingResourceType,
       dragTargetFolder,
       draggingResourceFolderId,
+      folderDragId,
       folderDragOverId,
       tagColors,
       tagSuggestions,

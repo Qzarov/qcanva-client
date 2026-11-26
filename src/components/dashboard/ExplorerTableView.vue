@@ -520,9 +520,9 @@ function onRowDrop(event: DragEvent, row: ExplorerTableRow): void {
   }
   if (!activeDrag.value && hasDataTransferFiles(event)) {
     event.preventDefault();
-    event.stopPropagation();
     const files = Array.from(event.dataTransfer?.files || []);
     if (files.length > 0) {
+      event.stopPropagation();
       emit('drop-external-files', { folderId: row.id, files });
     }
   }

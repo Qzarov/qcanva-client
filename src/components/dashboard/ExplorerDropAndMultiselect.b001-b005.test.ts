@@ -175,6 +175,52 @@ describe('DashboardActiveSubfolders B-001 & B-005', () => {
     expect(folderDrops?.[0]?.[0]).toBe('f2');
     expect((folderDrops?.[0]?.[1] as { keys: string[] }).keys).toEqual(['folder:f1']);
   });
+
+  it('does not stopPropagation on empty-files OS drop and ignores external file drags when isOwner is false', async () => {
+    const parentDrop = vi.fn();
+    const wrapper = mount({
+      components: { DashboardActiveSubfolders },
+      template: `
+        <div @drop="onParentDrop">
+          <DashboardActiveSubfolders
+            :subfolders="subfolders"
+            :active-folder-empty="false"
+            :has-active-filter="false"
+            :is-owner="isOwner"
+            :format-date="(v) => v"
+            @drop-external-files="onExternal"
+          />
+        </div>
+      `,
+      data: () => ({ subfolders, isOwner: true }),
+      methods: {
+        onParentDrop: parentDrop,
+        onExternal: vi.fn(),
+      },
+    });
+
+    const card1 = wrapper.get('[data-select-key="folder:f1"]');
+
+    // Empty files list must bubble to parent shell dropzone so overlay isn't trapped
+    await card1.trigger('drop', {
+      dataTransfer: makeDragTransfer({ types: ['Files'], files: [] }),
+    });
+    expect(parentDrop).toHaveBeenCalledTimes(1);
+    expect(wrapper.findComponent(DashboardActiveSubfolders).emitted('drop-external-files')).toBeUndefined();
+
+    // Non-owner shared folder must neither highlight nor swallow external file drops
+    await wrapper.setData({ isOwner: false });
+    const dtOver = makeDragTransfer({ types: ['Files'] });
+    await card1.trigger('dragover', { dataTransfer: dtOver });
+    expect(card1.classes()).not.toContain('is-drop-target');
+
+    const file = new File(['abc'], 'photo.jpg', { type: 'image/jpeg' });
+    await card1.trigger('drop', {
+      dataTransfer: makeDragTransfer({ types: ['Files'], files: [file] }),
+    });
+    expect(parentDrop).toHaveBeenCalledTimes(2);
+    expect(wrapper.findComponent(DashboardActiveSubfolders).emitted('drop-external-files')).toBeUndefined();
+  });
 });
 
 describe('ExplorerTableView B-001 & B-005', () => {
@@ -241,6 +287,13 @@ describe('ExplorerTableView B-001 & B-005', () => {
     expect(wrapper.findComponent(ExplorerTableView).emitted('drop-external-files')).toEqual([
       [{ folderId: 'f1', files: [dropped] }],
     ]);
+
+    // Empty files list must bubble to parent shell dropzone
+    await folderRow.trigger('drop', {
+      dataTransfer: makeDragTransfer({ types: ['Files'], files: [] }),
+    });
+    expect(parentDrop).toHaveBeenCalledTimes(1);
+    expect(wrapper.findComponent(ExplorerTableView).emitted('drop-external-files')).toHaveLength(1);
   });
 });
 
@@ -355,6 +408,15 @@ describe('DashboardSidebar B-001 & B-005', () => {
     };
     expect(dropPayload.folderId).toBe('f-target');
     expect(dropPayload.drag.keys).toEqual(['folder:f-alpha', 'folder:f-alpha-child', 'folder:f-beta']);
+
+    // Multi-selection is cleared after successful tree drop so a subsequent drag doesn't re-drag old items
+    expect(wrapper.get('[data-dashboard-folder="f-alpha"]').classes()).not.toContain('tree-selected');
+    expect(wrapper.get('[data-dashboard-folder="f-alpha-child"]').classes()).not.toContain('tree-selected');
+    expect(wrapper.get('[data-dashboard-folder="f-beta"]').classes()).not.toContain('tree-selected');
+
+    await wrapper.get('[data-dashboard-folder="f-alpha"]').trigger('dragstart', { dataTransfer: makeDragTransfer() });
+    expect(useExplorerGroupDnd().activeDrag.value?.keys).toEqual(['folder:f-alpha']);
+    expect(wrapper.emitted('folder-drag-start')?.[0]?.[1]).toBe('f-alpha');
   });
 
   it('supports dropping multi-folder selection onto Q Space/home (folderId: null)', async () => {
@@ -374,6 +436,8 @@ describe('DashboardSidebar B-001 & B-005', () => {
     };
     expect(dropPayload.folderId).toBeNull();
     expect(dropPayload.drag.keys).toEqual(['folder:f-alpha-child', 'folder:f-beta']);
+    expect(wrapper.get('[data-dashboard-folder="f-alpha-child"]').classes()).not.toContain('tree-selected');
+    expect(wrapper.get('[data-dashboard-folder="f-beta"]').classes()).not.toContain('tree-selected');
   });
 
   it('accepts external OS file drops on folder rows and qspace:home without swallowing non-target rows', async () => {

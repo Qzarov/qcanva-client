@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
-import { nextTick, ref } from 'vue';
+import { defineComponent, nextTick, ref } from 'vue';
+import { mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
 import { hasDataTransferFiles, useDriveDropzone } from './useDriveDropzone';
 
@@ -108,5 +109,32 @@ describe('useDriveDropzone', () => {
     enabled.value = false;
     await nextTick();
     expect(isDraggingOver.value).toBe(false);
+  });
+
+  it('resets active overlay on capture-phase window drop even if a child stops propagation, and cleans up on unmount', async () => {
+    const handleFilesUpload = vi.fn();
+    let dropzone!: ReturnType<typeof useDriveDropzone>;
+    const Host = defineComponent({
+      setup() {
+        dropzone = useDriveDropzone({ handleFilesUpload });
+        return { dropzone };
+      },
+      template: '<div class="outer"><div class="child" @drop.stop></div></div>',
+    });
+
+    const wrapper = mount(Host, { attachTo: document.body });
+    dropzone.onDragEnter(makeDragEvent('dragenter', { types: ['Files'] }));
+    expect(dropzone.isDraggingOver.value).toBe(true);
+
+    const childDrop = makeDragEvent('drop', { types: ['Files'], files: [] });
+    wrapper.get('.child').element.dispatchEvent(childDrop);
+    expect(dropzone.isDraggingOver.value).toBe(false);
+
+    // After unmount, capture listener is removed
+    wrapper.unmount();
+    dropzone.onDragEnter(makeDragEvent('dragenter', { types: ['Files'] }));
+    expect(dropzone.isDraggingOver.value).toBe(true);
+    window.dispatchEvent(makeDragEvent('drop', { types: ['Files'], files: [] }));
+    expect(dropzone.isDraggingOver.value).toBe(true);
   });
 });

@@ -40,8 +40,14 @@ export function useDriveDropzone(options: {
   });
 
   if (getCurrentInstance() && typeof window !== 'undefined') {
-    onMounted(() => window.addEventListener('dragend', reset));
-    onBeforeUnmount(() => window.removeEventListener('dragend', reset));
+    onMounted(() => {
+      window.addEventListener('dragend', reset);
+      window.addEventListener('drop', reset, true);
+    });
+    onBeforeUnmount(() => {
+      window.removeEventListener('dragend', reset);
+      window.removeEventListener('drop', reset, true);
+    });
   }
 
   function onDragEnter(event: DragEvent) {
