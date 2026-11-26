@@ -99,8 +99,7 @@
 - `src/components/dashboard/ExplorerTableView.vue`: сортируемая таблица Windows Explorer без колонки чекбоксов с поддержкой `Click` / `Ctrl` / `Shift` / `Shift+↑↓` и группового Drag & Drop.
 - `src/components/dashboard/ExplorerContextMenu.vue`, `src/components/dashboard/ExplorerDragBadge.vue`: плавающее контекстное меню одиночных/групповых действий и пилюля счётчика перетаскиваемой группы объектов.
 - `src/components/dashboard/DashboardAddDialog.vue`: упрощённый диалог создания и загрузки (5 квадратных плиток и большая drag-and-drop зона загрузки в текущую папку).
-- `src/components/dashboard/DashboardSidebarSpaces.vue`: блок «Альбомы» (ex-Spaces) и облаков в боковой панели.
-- `src/components/dashboard/DashboardSpace.vue`, `src/components/dashboard/AlbumShareDialog.vue`, `src/components/dashboard/SpaceMembersDialog.vue`: представление альбома с двойным видом («Лента / Таблица»), фильтрацией по дереву и диалогом «Поделиться альбомом» (публичная web-ссылка, приглашения и роли участников).
+- `src/components/dashboard/DashboardSpace.vue`, `src/components/dashboard/AlbumShareDialog.vue`: представление альбома с двойным видом («Лента / Таблица»), фильтрацией по дереву и диалогом «Поделиться альбомом» (приглашения и роли участников).
 - `src/components/dashboard/DashboardYandexDisk.vue`: просмотр и управление файлами и папками подключённого Яндекс Диска внутри дашборда.
 - `src/components/dashboard/DashboardViewToggle.vue`: строго иконочный переключатель режима отображения (`explorer`: плитка/таблица; `album`: лента/таблица).
 - `src/components/dashboard/InteractiveTemplatePicker.vue`: диалог выбора типа интерактивного шаблона или импорта персонажа из JSON.
@@ -112,8 +111,7 @@
 - `src/components/photos/PhotosSearchGrid.vue`: плоская сетка результатов поиска (`photosApi.search`) без групп и слайдера.
 - `src/components/photos/PhotoPanel.vue`: панель свойств фото в стиле Liquid Glass (`photosApi.details/edit/albums`).
 - `src/components/photos/PhotoViewer.vue`: полупрозрачный просмотр фото и видео (`backdrop-filter: blur(22px)`, закрытие кликом по фону, независимая боковая панель `ⓘ` и нижняя лента миниатюр Filmstrip).
-- `src/components/photos/PhotosAlbums.vue`: список альбомов (создание, переименование, удаление).
-- `src/components/photos/SelectionBar.vue`, `src/components/photos/usePhotoSelectionActions.ts`: вспомогательная панель и действия переноса/добавления в альбом для выделенных фото.
+- `src/components/photos/usePhotoSelectionActions.ts`: действия переноса, добавления в альбом и удаления для выделенных фото.
 - `src/components/settings/McpTokensPanel.vue`: панель выпуска и управления личными токенами доступа по протоколу MCP.
 - `src/components/tabs/TabsButton.vue`: кнопка со счётчиком вкладок для вызова панели переключения активных ресурсов на Android.
 

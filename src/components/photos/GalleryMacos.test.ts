@@ -252,10 +252,19 @@ describe('macOS Photos Gallery (T-021)', () => {
     await wrapper.setProps({
       people: [
         { id: 'p1', name: 'Анна', count: 5, coverHash: 'hp1' },
-        { id: 'p2', name: 'Борис', count: 3, coverHash: 'hp2' },
+        { id: 'p2', name: 'Борис', count: 1, coverHash: 'hp2' },
       ],
     });
     await flushPromises();
+
+    expect(wrapper.get('[data-person-id="p1"] .gpg-count').text()).toBe('5 фото');
+    expect(wrapper.get('[data-person-id="p2"] .gpg-count').text()).toBe('1 фото');
+    useI18n().setLocale('en');
+    await nextTick();
+    expect(wrapper.get('[data-person-id="p1"] .gpg-count').text()).toBe('5 photos');
+    expect(wrapper.get('[data-person-id="p2"] .gpg-count').text()).toBe('1 photo');
+    useI18n().setLocale('ru');
+    await nextTick();
 
     await wrapper.get('[data-person-id="p1"]').trigger('click');
     expect(wrapper.emitted('select')![0]).toEqual([['p1']]);

@@ -43,7 +43,7 @@ const badgeStyle = computed(() => ({
   gap: 7px;
   padding: 6px 12px;
   border-radius: 999px;
-  background: var(--ui-glass-tint), var(--ui-glass-bg-deep, rgba(14, 24, 17, 0.92));
+  background: var(--ui-glass-tint), var(--explorer-glass-bg-deep, rgba(14, 24, 17, 0.92));
   border: 1px solid var(--ui-glass-accent-border, var(--color-brands, #44cf6e));
   box-shadow: var(--ui-glass-accent-shadow, 0 10px 28px rgba(0, 0, 0, 0.45));
   backdrop-filter: blur(var(--ui-glass-blur, 16px)) saturate(1.25);

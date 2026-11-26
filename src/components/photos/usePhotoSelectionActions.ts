@@ -1,8 +1,8 @@
 /**
- * What the selection bar does: move the selected photos to a folder, add them to
+ * What photo selection actions do: move the selected photos to a folder, add them to
  * an album (or a new one), remove them from the open album. The container owns the
  * selection and the feed; it hands in accessors and callbacks and renders
- * `SelectionBar` / `FolderPickerDialog` from the state returned here.
+ * `FolderPickerDialog` from the state returned here.
  */
 import { ref, type Ref } from 'vue';
 import { driveApi } from '../../api/drive';

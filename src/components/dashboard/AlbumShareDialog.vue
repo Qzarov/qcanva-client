@@ -18,49 +18,6 @@
 
         <p class="album-share-hint">{{ t('explorerAlbumSharedHint') }}</p>
 
-        <div class="album-share-public-card">
-          <div class="album-share-public-info">
-            <div class="album-share-public-title">
-              <Globe :size="15" aria-hidden="true" />
-              <span>{{ t('explorerAlbumPublicLink') }}</span>
-            </div>
-            <div class="album-share-public-sub">{{ t('explorerAlbumPublicLinkHint') }}</div>
-          </div>
-          <button
-            type="button"
-            class="album-share-toggle"
-            :class="{ active: publicLinkEnabled }"
-            role="switch"
-            :aria-checked="publicLinkEnabled"
-            data-album-public-toggle
-            @click="togglePublicLink"
-          >
-            {{ publicLinkEnabled ? 'ON' : 'OFF' }}
-          </button>
-        </div>
-
-        <div v-if="publicLinkEnabled" class="album-share-url-row" data-album-public-url-row>
-          <input
-            type="text"
-            readonly
-            class="dashboard-modal-input album-share-url-input"
-            :value="albumUrl"
-            :aria-label="t('explorerAlbumPublicLink')"
-            data-album-public-url
-            @focus="($event.target as HTMLInputElement).select()"
-          />
-          <button
-            type="button"
-            class="btn-ghost btn-sm album-share-copy-btn"
-            data-album-copy-link
-            @click="copyAlbumUrl"
-          >
-            <Check v-if="copied" :size="14" aria-hidden="true" />
-            <Copy v-else :size="14" aria-hidden="true" />
-            <span>{{ copied ? t('explorerAlbumLinkCopied') : t('explorerAlbumCopyLink') }}</span>
-          </button>
-        </div>
-
         <form v-if="isOwner" class="space-invite" data-space-invite novalidate @submit.prevent="invite">
           <ContactEmailInput
             v-model.trim="email"
@@ -128,8 +85,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue';
-import { Check, Copy, Globe, X } from '@lucide/vue';
+import { computed, ref } from 'vue';
+import { X } from '@lucide/vue';
 import ContactEmailInput from '../ContactEmailInput.vue';
 import { spacesApi, type SpaceDetails, type SpaceMember } from '../../api/spaces';
 import { confirmDialog } from '../../composables/appDialog';
@@ -138,72 +95,26 @@ import { useI18n } from '../../composables/useI18n';
 const props = defineProps<{
   space: SpaceDetails;
   meId: string;
-  initialPublicLink?: boolean;
 }>();
 
 const emit = defineEmits<{
   changed: [space: SpaceDetails | null];
   close: [];
-  'toggle-public': [enabled: boolean];
 }>();
 
 const { t } = useI18n();
-
-const PUBLIC_LINK_KEY_PREFIX = 'qspace:albumPublicLink:';
-
-function readStoredPublicLink(spaceId: string): boolean {
-  if (props.initialPublicLink !== undefined) return props.initialPublicLink;
-  try {
-    return typeof localStorage !== 'undefined' && localStorage.getItem(`${PUBLIC_LINK_KEY_PREFIX}${spaceId}`) === '1';
-  } catch {
-    return false;
-  }
-}
 
 const visible = ref(true);
 const busy = ref(false);
 const error = ref('');
 const email = ref('');
 const role = ref<'editor' | 'viewer'>('editor');
-const publicLinkEnabled = ref(readStoredPublicLink(props.space.id));
-const copied = ref(false);
-let copyTimer: ReturnType<typeof setTimeout> | null = null;
 
 const isOwner = computed(() => props.space.role === 'owner');
 const modalTitle = computed(() => t('explorerAlbumShareTitle').replace('{name}', props.space.name));
-const albumUrl = computed(() => {
-  const origin = typeof window !== 'undefined' && window.location ? window.location.origin : '';
-  return `${origin}/dashboard?section=space&spaceId=${encodeURIComponent(props.space.id)}`;
-});
 const inSpaceEmails = computed(() =>
   [props.space.owner.email, ...props.space.members.map((member) => member.email)].filter((item): item is string => Boolean(item)),
 );
-
-function togglePublicLink(): void {
-  const next = !publicLinkEnabled.value;
-  publicLinkEnabled.value = next;
-  try {
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(`${PUBLIC_LINK_KEY_PREFIX}${props.space.id}`, next ? '1' : '0');
-    }
-  } catch {
-    // Ignore storage errors.
-  }
-  emit('toggle-public', next);
-}
-
-async function copyAlbumUrl(): Promise<void> {
-  try {
-    await navigator.clipboard?.writeText(albumUrl.value);
-  } catch {
-    // Fallback / non-clipboard test environments still show visual confirmation.
-  }
-  copied.value = true;
-  if (copyTimer) clearTimeout(copyTimer);
-  copyTimer = setTimeout(() => {
-    copied.value = false;
-  }, 2200);
-}
 
 const errorText = (err: unknown) => {
   const code = (err as { body?: { code?: string } } | null)?.body?.code;
@@ -260,10 +171,6 @@ async function leave() {
 function close() {
   visible.value = false;
 }
-
-onBeforeUnmount(() => {
-  if (copyTimer) clearTimeout(copyTimer);
-});
 </script>
 
 <style scoped>
@@ -277,69 +184,6 @@ onBeforeUnmount(() => {
   margin: 0;
   font-size: 12px;
   color: var(--ui-text-secondary);
-}
-.album-share-public-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: var(--ui-glass-btn-bg, var(--ui-surface-subtle));
-  border: 1px solid var(--ui-glass-border, var(--ui-border));
-}
-.album-share-public-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-.album-share-public-title {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--ui-text);
-}
-.album-share-public-sub {
-  font-size: 11.5px;
-  color: var(--ui-text-secondary);
-}
-.album-share-toggle {
-  flex: none;
-  min-width: 52px;
-  height: 28px;
-  padding: 0 10px;
-  border-radius: 999px;
-  border: 1px solid var(--ui-glass-border, var(--ui-border));
-  background: var(--ui-glass-card-bg, var(--ui-surface-subtle));
-  color: var(--ui-text-secondary);
-  font: inherit;
-  font-size: 11.5px;
-  font-weight: 700;
-  cursor: pointer;
-}
-.album-share-toggle.active {
-  background: var(--ui-glass-accent-tint, transparent), var(--ui-glass-accent-bg, color-mix(in srgb, var(--color-brands) 18%, transparent));
-  border-color: var(--ui-glass-accent-border, var(--color-brands));
-  color: var(--ui-glass-accent-text, var(--color-brands));
-}
-.album-share-url-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.album-share-url-input {
-  flex: 1;
-  min-width: 0;
-  font-size: 12px;
-}
-.album-share-copy-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  flex: none;
 }
 .album-share-members-count {
   font-size: 12px;

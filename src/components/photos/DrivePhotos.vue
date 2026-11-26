@@ -1043,8 +1043,11 @@ function toggleInfoPanel(): void {
   panelOpen.value = true;
 }
 
+let stopDrag: (() => void) | null = null;
+
 function onPanelSashDown(e: PointerEvent): void {
   e.preventDefault();
+  stopDrag?.();
   const startX = e.clientX;
   const startW = panelWidth.value;
   panelDragging.value = true;
@@ -1059,13 +1062,19 @@ function onPanelSashDown(e: PointerEvent): void {
     }
   };
 
-  const onUp = () => {
+  const cleanup = () => {
     panelDragging.value = false;
     window.removeEventListener('pointermove', onMove);
     window.removeEventListener('pointerup', onUp);
     window.removeEventListener('pointercancel', onUp);
+    if (stopDrag === cleanup) stopDrag = null;
   };
 
+  const onUp = () => {
+    cleanup();
+  };
+
+  stopDrag = cleanup;
   window.addEventListener('pointermove', onMove);
   window.addEventListener('pointerup', onUp);
   window.addEventListener('pointercancel', onUp);
@@ -1208,6 +1217,7 @@ function onPanelChanged(change: { fileId: string; favorite?: boolean; albumIds?:
 }
 
 onBeforeUnmount(() => {
+  stopDrag?.();
   document.removeEventListener('pointerdown', onDocPointerDown);
   cancelSearchTimer();
   searchGen++;

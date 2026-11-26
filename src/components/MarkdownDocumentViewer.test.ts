@@ -411,7 +411,7 @@ describe('.md files across DashboardFolderFiles, DashboardSpace, and DashboardYa
           },
         ],
       },
-      global: { stubs: { AccountMenu: true, LanguageToggle: true, DashboardSidebarSpaces: true, RouterLink: true } },
+      global: { stubs: { AccountMenu: true, LanguageToggle: true, RouterLink: true } },
     });
     const sidebarFile = sidebar.get('[data-sidebar-file="f-1/drive-file:md-1"]');
     expect(sidebarFile.find('[data-resource-kind="text-document"]').exists()).toBe(true);

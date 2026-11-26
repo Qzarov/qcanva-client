@@ -25,7 +25,7 @@ const emit = defineEmits<{
   (e: 'update:selectedIds', personIds: string[]): void;
 }>();
 
-const { t, locale } = useI18n();
+const { t } = useI18n();
 
 const AVATAR_COLORS = ['#3b82f6', '#22c55e', '#a855f7', '#f59e0b', '#ec4899', '#14b8a6'];
 const resolvedAvatars = reactive<Record<string, string | null>>({});
@@ -67,10 +67,8 @@ function initialOf(name: string): string {
 }
 
 function countLabel(count: number): string {
-  if (locale.value === 'en') {
-    return count === 1 ? '1 photo' : `${count} photos`;
-  }
-  return `${count} фото`;
+  const key = count === 1 ? 'galleryPeoplePhotoOne' : 'galleryPeoplePhotoMany';
+  return t(key).replace('{n}', String(count));
 }
 
 function onPersonClick(e: MouseEvent, person: GalleryPerson): void {

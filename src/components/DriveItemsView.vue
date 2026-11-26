@@ -41,7 +41,7 @@
 
 <script setup lang="ts">
 import { onBeforeUnmount, reactive, watch } from 'vue';
-import { driveApi, resolveDownloadUrl, type DriveItem } from '../api/drive';
+import { driveApi, resolveDownloadUrl, type DriveItem, type DriveThumbLink } from '../api/drive';
 import { hasCardPicture } from '../dashboard/thumb-kinds';
 import DriveItemCard from './DriveItemCard.vue';
 import DriveItemRow from './DriveItemRow.vue';
@@ -75,13 +75,19 @@ function isThumbCandidate(item: DriveItem): boolean {
   return (item.kind === 'file' || item.kind === 'photo' || item.kind === 'video') && hasCardPicture(item);
 }
 
+const THUMB_LINKS_BATCH_SIZE = 500;
+
 async function fetchThumbLinks(fileIds: string[], retry = true): Promise<void> {
   if (!fileIds.length || typeof driveApi.getThumbLinks !== 'function') return;
   const gen = fetchGeneration;
   try {
-    const response = await driveApi.getThumbLinks(fileIds);
-    if (gen !== fetchGeneration) return;
-    const links = response?.links ?? {};
+    const links: Record<string, DriveThumbLink> = {};
+    for (let i = 0; i < fileIds.length; i += THUMB_LINKS_BATCH_SIZE) {
+      const chunk = fileIds.slice(i, i + THUMB_LINKS_BATCH_SIZE);
+      const response = await driveApi.getThumbLinks(chunk);
+      if (gen !== fetchGeneration) return;
+      Object.assign(links, response?.links ?? {});
+    }
     const pending: string[] = [];
     for (const id of fileIds) {
       const link = links[id];

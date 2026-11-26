@@ -323,7 +323,7 @@ function onDelete(): void {
   max-width: min(296px, calc(100vw - 16px));
   padding: 6px;
   border-radius: 13px;
-  background: var(--ui-glass-tint), var(--ui-glass-bg-deep, var(--ui-surface-elevated));
+  background: var(--ui-glass-tint), var(--explorer-glass-bg-deep, var(--ui-surface-elevated));
   border: 1px solid var(--ui-glass-border, var(--ui-border));
   box-shadow: var(--ui-glass-surface-shadow, var(--shadow-dropdown));
   backdrop-filter: blur(var(--ui-glass-blur, 18px)) saturate(1.25);

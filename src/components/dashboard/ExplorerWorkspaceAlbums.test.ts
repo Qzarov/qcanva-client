@@ -401,13 +401,9 @@ describe('AlbumShareDialog', () => {
     vi.clearAllMocks();
     localStorage.clear();
     useI18n().setLocale('ru');
-    Object.defineProperty(navigator, 'clipboard', {
-      value: { writeText: vi.fn().mockResolvedValue(undefined) },
-      configurable: true,
-    });
   });
 
-  it('toggles public web link, copies URL with visual feedback, invites, changes role, and removes member', async () => {
+  it('invites, changes role, and removes member without fake public link toggle', async () => {
     const baseSpace = makeSpaceDetails();
     const afterInvite = makeSpaceDetails({
       members: [
@@ -435,19 +431,9 @@ describe('AlbumShareDialog', () => {
       props: { space: baseSpace, meId: 'u-1' },
     });
 
-    expect(wrapper.text()).toContain('Q Space/public');
     expect(wrapper.text()).toContain('Q Space/shared');
-
-    // Toggle public link on and copy
+    expect(wrapper.find('[data-album-public-toggle]').exists()).toBe(false);
     expect(wrapper.find('[data-album-public-url]').exists()).toBe(false);
-    await wrapper.get('[data-album-public-toggle]').trigger('click');
-    const urlInput = wrapper.get('[data-album-public-url]');
-    expect((urlInput.element as HTMLInputElement).value).toContain('/dashboard?section=space&spaceId=space-1');
-
-    await wrapper.get('[data-album-copy-link]').trigger('click');
-    await flushPromises();
-    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(expect.stringContaining('/dashboard?section=space&spaceId=space-1'));
-    expect(wrapper.get('[data-album-copy-link]').text()).toContain('Ссылка скопирована');
 
     // Invite member
     await wrapper.get('[data-space-invite-email]').setValue('boris@example.com');
@@ -657,5 +643,48 @@ describe('DriveItemsView + DriveItemCard real thumbnails', () => {
     await nextTick();
     expect(imgCard.find('[data-drive-thumb]').exists()).toBe(false);
     expect(imgCard.find('.drive-card-file-mock').exists()).toBe(true);
+  });
+
+  it('chunks getThumbLinks calls into batches of at most 500 IDs and merges links', async () => {
+    const items: DriveItem[] = Array.from({ length: 501 }, (_, idx) => ({
+      kind: 'file',
+      id: `img-${idx + 1}`,
+      name: `Photo-${idx + 1}.jpg`,
+      mime: 'image/jpeg',
+      sizeBytes: 1024,
+      sortDate: '2026-11-10T10:00:00Z',
+      updatedAt: '2026-11-10T10:00:00Z',
+      ownerId: 'u-1',
+      folderId: 'f-1',
+    }));
+
+    vi.mocked(driveApi.getThumbLinks)
+      .mockResolvedValueOnce({
+        links: {
+          'img-1': { status: 'ready', url: '/api/drive/thumbs/img-1.webp?token=b1' },
+        },
+      })
+      .mockResolvedValueOnce({
+        links: {
+          'img-501': { status: 'ready', url: '/api/drive/thumbs/img-501.webp?token=b2' },
+        },
+      });
+
+    const wrapper = mount(DriveItemsView, {
+      props: {
+        items,
+        viewMode: 'grid',
+        activeFileMenuId: null,
+        phoneActive: false,
+        itemDrivePath: () => undefined,
+      },
+    });
+    await flushPromises();
+
+    expect(driveApi.getThumbLinks).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(driveApi.getThumbLinks).mock.calls[0]![0]).toHaveLength(500);
+    expect(vi.mocked(driveApi.getThumbLinks).mock.calls[1]![0]).toEqual(['img-501']);
+    expect(wrapper.get('[data-drive-item="img-1"] [data-drive-thumb]').attributes('src')).toContain('/api/drive/thumbs/img-1.webp?token=b1');
+    expect(wrapper.get('[data-drive-item="img-501"] [data-drive-thumb]').attributes('src')).toContain('/api/drive/thumbs/img-501.webp?token=b2');
   });
 });

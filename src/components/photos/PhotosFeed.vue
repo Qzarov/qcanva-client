@@ -904,6 +904,8 @@ function onTileKeydown(e: KeyboardEvent, item: FeedItem): void {
 
 // ----- marquee selection -----
 
+let stopMarquee: (() => void) | null = null;
+
 function onScrollerPointerDown(e: PointerEvent): void {
   cancelPending();
   if (e.button !== 0) return;
@@ -917,6 +919,7 @@ function onScrollerPointerDown(e: PointerEvent): void {
 
   const sc = scroller.value;
   if (!sc) return;
+  stopMarquee?.();
   e.stopPropagation();
   const sx = e.clientX;
   const sy = e.clientY;
@@ -946,11 +949,16 @@ function onScrollerPointerDown(e: PointerEvent): void {
     emit('set-selection', [...next]);
   };
 
-  const onUp = () => {
+  const cleanup = () => {
     marqueeRect.value = null;
     window.removeEventListener('pointermove', onMove);
     window.removeEventListener('pointerup', onUp);
     window.removeEventListener('pointercancel', onUp);
+    if (stopMarquee === cleanup) stopMarquee = null;
+  };
+
+  const onUp = () => {
+    cleanup();
     if (dragging) {
       lastMarqueeTs = Date.now();
     } else if (!target.closest('[data-file-id]') && !additive && props.selected.size > 0) {
@@ -958,6 +966,7 @@ function onScrollerPointerDown(e: PointerEvent): void {
     }
   };
 
+  stopMarquee = cleanup;
   window.addEventListener('pointermove', onMove);
   window.addEventListener('pointerup', onUp);
   window.addEventListener('pointercancel', onUp);
@@ -1162,6 +1171,7 @@ defineExpose({ orderedItems, refresh, refreshAlbums, patchItem, loadMore });
 
 onBeforeUnmount(() => {
   epoch++;
+  stopMarquee?.();
   if (jumpTimer !== null) clearTimeout(jumpTimer);
   if (dragGhostEl) {
     dragGhostEl.remove();
