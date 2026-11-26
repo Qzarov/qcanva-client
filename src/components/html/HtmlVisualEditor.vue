@@ -384,11 +384,10 @@ function onHistoryShortcut(event: KeyboardEvent) {
 function onPreviewBridgeMessage(event: MessageEvent) {
   if (!isBridgeMessageFromFrame(event, [previewFrame.value], previewBridgeToken)) return;
   if (event.data.type === 'image-error' && props.onImageError) {
-    const src = typeof event.data.src === 'string' ? event.data.src : '';
-    const imageId = extractImageIdFromSrc(src) || src || 'image';
-    if (imageId) {
-      void props.onImageError(imageId, src);
-    }
+    const src = typeof event.data.src === 'string' ? event.data.src.trim() : '';
+    if (!src) return;
+    const imageId = extractImageIdFromSrc(src) || src;
+    void props.onImageError(imageId, src);
   }
 }
 

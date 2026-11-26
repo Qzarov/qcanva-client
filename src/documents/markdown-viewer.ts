@@ -49,7 +49,7 @@ function normalizeUrlForCheck(value: string): string {
 function isSafeMarkdownHref(raw: string): boolean {
   const normalized = normalizeUrlForCheck(raw);
   if (!normalized) return false;
-  if (normalized.startsWith('//') || normalized.startsWith('/\\')) return false;
+  if (normalized.startsWith('//') || normalized.startsWith('/\\') || normalized.startsWith('\\')) return false;
   if (normalized.startsWith('#') || normalized.startsWith('/')) return true;
   const lower = normalized.toLowerCase();
   if (lower.startsWith('http://') || lower.startsWith('https://') || lower.startsWith('mailto:')) {
@@ -63,7 +63,7 @@ function isSafeMarkdownHref(raw: string): boolean {
 function isSafeMarkdownImageSrc(raw: string): boolean {
   const normalized = normalizeUrlForCheck(raw);
   if (!normalized) return false;
-  if (normalized.startsWith('//') || normalized.startsWith('/\\')) return false;
+  if (normalized.startsWith('//') || normalized.startsWith('/\\') || normalized.startsWith('\\')) return false;
   if (normalized.startsWith('/')) return true;
   const lower = normalized.toLowerCase();
   if (lower.startsWith('http://') || lower.startsWith('https://')) return true;

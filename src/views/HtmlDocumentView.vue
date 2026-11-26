@@ -888,7 +888,11 @@ export default defineComponent({
 
     async function persistChecklistChange(checkId: string, checked: boolean) {
       if (!checkId || checkId.length > 128) return;
-      await htmlDocuments.checklist(resolvedId.value, checkId, checked);
+      try {
+        await htmlDocuments.checklist(resolvedId.value, checkId, checked);
+      } catch {
+        // Ignore 403/network errors on background checklist toggle sync from preview bridge.
+      }
     }
 
     function onPreviewBridgeMessage(event: MessageEvent) {

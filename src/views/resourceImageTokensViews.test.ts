@@ -258,6 +258,13 @@ describe('Resource Image Tokens - Views and Lifecycle Contract', () => {
       }));
       expect(onImageError).not.toHaveBeenCalled();
 
+      // Empty src from the preview iframe must be ignored
+      window.dispatchEvent(new MessageEvent('message', {
+        source: fakeContentWindow,
+        data: { channel: 'qcanva-html-preview', token: bridgeToken, type: 'image-error', src: '' },
+      }));
+      expect(onImageError).not.toHaveBeenCalled();
+
       // Message from the preview iframe triggers refresh
       window.dispatchEvent(new MessageEvent('message', {
         source: fakeContentWindow,

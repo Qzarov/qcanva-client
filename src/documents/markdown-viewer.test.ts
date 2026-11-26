@@ -120,6 +120,8 @@ describe('renderMarkdownDocument', () => {
       '<p style="position:fixed;inset:0">Styled</p>',
       '<a href="//evil.example/steal">ProtoRel</a>',
       '<a href="/\\evil.example/steal">BackslashRel</a>',
+      '<a href="\\\\evil.example/steal">DoubleBackslashRel</a>',
+      '<a href="\\/evil.example/steal">LeadingBackslashRel</a>',
       '<a href="vbscript:msgbox(1)">VBScript</a>',
       '<input type="text" value="injected">',
     ].join('\n\n');
@@ -138,6 +140,8 @@ describe('renderMarkdownDocument', () => {
     expect(result.html).not.toContain('vbscript:');
     expect(result.html).not.toContain('//evil.example');
     expect(result.html).not.toContain('/\\evil.example');
+    expect(result.html).not.toContain('\\\\evil.example');
+    expect(result.html).not.toContain('\\/evil.example');
     expect(result.html).not.toContain('type="text"');
   });
 
