@@ -778,35 +778,8 @@ const showPeopleGrid = computed(
     && !searchActive.value,
 );
 
-const cachedFeedPeople = ref<GalleryPerson[]>([]);
-
-function computePeopleFromFeed(): GalleryPerson[] {
-  const byOwner = new Map<string, GalleryPerson>();
-  for (const it of feedRef.value?.orderedItems() ?? []) {
-    if (!it.share?.ownerId && !it.share?.ownerName) continue;
-    const id = it.share.ownerId || it.share.ownerName;
-    const name = it.share.ownerName || it.share.ownerId;
-    const existing = byOwner.get(id);
-    if (existing) {
-      existing.count += 1;
-    } else {
-      byOwner.set(id, {
-        id,
-        name,
-        count: 1,
-        coverHash: it.processed ? it.hash : null,
-      });
-    }
-  }
-  return [...byOwner.values()];
-}
-
-const derivedPeople = computed<GalleryPerson[]>(() => {
-  if (props.people !== undefined) return [...props.people];
-  const live = computePeopleFromFeed();
-  if (live.length > 0) return live;
-  return cachedFeedPeople.value;
-});
+// Face recognition is not available yet (T-039): people only come from explicit props.
+const derivedPeople = computed<GalleryPerson[]>(() => (props.people ? [...props.people] : []));
 
 const resolvedPeople = computed(() => derivedPeople.value);
 const selectedPeopleLabels = computed(() => {
@@ -1337,8 +1310,6 @@ function onFeedSummary(total: number): void {
 }
 
 function onFeedUnitsLoaded(): void {
-  const live = computePeopleFromFeed();
-  if (live.length > 0) cachedFeedPeople.value = live;
   const nextPeople = resolvedPeople.value.length;
   if (lastSidebarCounts.people !== nextPeople) {
     lastSidebarCounts = { ...lastSidebarCounts, people: nextPeople };

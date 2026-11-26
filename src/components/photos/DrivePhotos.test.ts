@@ -361,6 +361,21 @@ describe('DrivePhotos', () => {
     expect(w.findAll('[data-testid="photos-search-grid"] [data-file-id]').length).toBe(2);
   });
 
+  it('does not derive people from share owners (no face recognition yet): no people section in suggestions, people count 0', async () => {
+    extraFeedItems = [
+      mkItem(3, { share: { ownerId: 'owner-1', ownerName: 'Оля', rootFolderId: 'fold1', rootName: 'Shared' } }),
+    ];
+    const w = mountIt();
+    await flushPromises();
+    await w.get('[data-stub-units-loaded]').trigger('click');
+    await flushPromises();
+    const countsEmits = w.emitted('update:counts') ?? [];
+    const lastCounts = countsEmits[countsEmits.length - 1]?.[0] as { people?: number } | undefined;
+    expect(lastCounts?.people ?? 0).toBe(0);
+    await w.get('[data-photos-search-input]').trigger('focus');
+    expect(w.find('[data-suggest-person="owner-1"]').exists()).toBe(false);
+  });
+
   it('shows People grid only when activeSection is "people"', async () => {
     const w = mountIt({ activeSection: 'library' });
     await flushPromises();
@@ -635,10 +650,7 @@ describe('DrivePhotos', () => {
   });
 
   it('refreshes people count on units-loaded, clears text query on toggleSuggestedPerson, closes popover on chip Escape, and refreshes albums on ctxAddToAlbum', async () => {
-    extraFeedItems = [
-      mkItem(3, { share: { ownerId: 'owner-1', ownerName: 'Оля', rootFolderId: 'fold1', rootName: 'Shared' } }),
-    ];
-    const w = mountIt();
+    const w = mountIt({ people: [{ id: 'owner-1', name: 'Оля', count: 1, coverHash: null }] });
     await flushPromises();
 
     // Units loaded updates counts.people reactively

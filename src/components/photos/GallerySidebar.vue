@@ -435,6 +435,7 @@ function onFolderDrop(e: DragEvent, folderId: string): void {
 }
 
 function onSelectSection(section: GallerySection): void {
+  if (section === 'people') return;
   collapseUnrelatedFolders(null, false);
   emit('select-section', section);
 }
@@ -466,10 +467,11 @@ const libItems = computed<Array<{
   key: GallerySection;
   label: string;
   count?: number;
+  soon?: boolean;
   icon: typeof ImageIcon;
 }>>(() => [
   { key: 'library', label: t('galleryLibrary'), count: props.counts.library, icon: ImageIcon },
-  { key: 'people', label: t('galleryPeople'), count: props.counts.people, icon: Users },
+  { key: 'people', label: t('galleryPeople'), soon: true, icon: Users },
   { key: 'favorites', label: t('galleryFavorites'), count: props.counts.favorites, icon: Heart },
   { key: 'recent', label: t('galleryRecent'), count: props.counts.recent, icon: Clock },
   { key: 'videos', label: t('galleryVideos'), count: props.counts.videos, icon: Video },
@@ -533,11 +535,14 @@ onBeforeUnmount(() => {
         class="gs-row"
         :class="{
           active: isLibrarySectionActive(item.key),
+          'gs-row-soon': item.soon,
           'drag-over': item.key === 'favorites' && isDropActive('favorites', 'favorites'),
         }"
         :data-gallery-section="item.key"
         :data-drop-favorites="item.key === 'favorites' ? 'true' : undefined"
         :aria-current="isLibrarySectionActive(item.key) ? 'page' : undefined"
+        :aria-disabled="item.soon ? 'true' : undefined"
+        :disabled="item.soon"
         :title="compact ? item.label : undefined"
         @click="onSelectSection(item.key)"
         @dragenter.prevent="item.key === 'favorites' ? onFavDragOver() : undefined"
@@ -549,7 +554,8 @@ onBeforeUnmount(() => {
           <component :is="item.icon" :size="16" />
         </span>
         <span class="gs-name">{{ item.label }}</span>
-        <span v-if="item.count !== undefined" class="gs-meta">{{ item.count }}</span>
+        <span v-if="item.soon" class="gs-soon-pill">{{ t('explorerSoon') }}</span>
+        <span v-else-if="item.count !== undefined" class="gs-meta">{{ item.count }}</span>
       </button>
 
       <button
@@ -1087,6 +1093,12 @@ onBeforeUnmount(() => {
 }
 .gs-row-disabled .gs-row {
   cursor: default;
+}
+.gs-row-soon,
+.gs-row-soon:hover {
+  cursor: default;
+  background: transparent;
+  opacity: 0.6;
 }
 .gs-soon-pill {
   flex: none;

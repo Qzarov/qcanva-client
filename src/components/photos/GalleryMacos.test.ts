@@ -197,7 +197,14 @@ describe('macOS Photos Gallery (T-021)', () => {
     // Section Фото + live counts
     expect(wrapper.get('[data-gallery-section="library"]').text()).toContain('Медиатека');
     expect(wrapper.get('[data-gallery-section="library"] .gs-meta').text()).toBe('42');
-    expect(wrapper.get('[data-gallery-section="people"]').text()).toContain('Люди');
+    const peopleRow = wrapper.get('[data-gallery-section="people"]');
+    expect(peopleRow.text()).toContain('Люди');
+    expect(peopleRow.attributes('aria-disabled')).toBe('true');
+    expect(peopleRow.attributes('disabled')).toBeDefined();
+    expect(peopleRow.find('.gs-soon-pill').text()).toBe('скоро');
+    expect(peopleRow.find('.gs-meta').exists()).toBe(false);
+    await peopleRow.trigger('click');
+    expect(wrapper.emitted('select-section')).toBeUndefined();
     expect(wrapper.get('[data-gallery-section="favorites"]').text()).toContain('Избранное');
     expect(wrapper.get('[data-gallery-section="recent"]').text()).toContain('Недавние');
     expect(wrapper.get('[data-gallery-section="videos"]').text()).toContain('Видео');
