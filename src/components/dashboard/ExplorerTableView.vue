@@ -695,14 +695,14 @@ function onRowDrop(event: DragEvent, row: ExplorerTableRow): void {
 }
 
 @media (max-width: 720px) {
-  .exp-table-shell .exp-table-head,
-  .exp-table-shell .exp-row {
+  :global(.is-android-app) .exp-table-shell .exp-table-head,
+  :global(.is-android-app) .exp-table-shell .exp-row {
     grid-template-columns: minmax(0, 1fr) 74px !important;
   }
-  .col-hide-sm {
+  :global(.is-android-app) .col-hide-sm {
     display: none !important;
   }
-  .exp-row {
+  :global(.is-android-app) .exp-row {
     height: 38px;
   }
 }

@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { nextTick } from 'vue';
 import { spacesApi } from '../../api/spaces';
 import { resetActivityJournalForTests, useActivityJournal } from '../../composables/useActivityJournal';
+import { LAYOUT } from '../../composables/layoutMedia';
 import { resetExplorerGroupDnd, SPRING_EXPAND_DELAY_MS } from '../../composables/useExplorerGroupDnd';
 import { resetExplorerLayoutPrefs, useExplorerLayoutPrefs } from '../../composables/useExplorerLayoutPrefs';
 import { useI18n } from '../../composables/useI18n';
@@ -392,6 +393,7 @@ describe('DashboardSidebar unified tree, accordion, spring-loaded DnD, resize sa
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.unstubAllGlobals();
     document.body.innerHTML = '';
   });
 
@@ -560,5 +562,23 @@ describe('DashboardSidebar unified tree, accordion, spring-loaded DnD, resize sa
     await nextTick();
 
     expect(useExplorerLayoutPrefs().activityJournalPos.value).not.toBeNull();
+    expect(wrapper.get('[data-activity-journal]').classes()).not.toContain('is-android-app');
+  });
+
+  it('emits toggle-mobile-drawer instead of desktop update:collapsed when clicking active Activity Bar icon at narrow width (<= 768px)', async () => {
+    vi.stubGlobal('matchMedia', vi.fn((query: string) => ({
+      matches: query === LAYOUT.dashboardDrawer,
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })));
+
+    const wrapper = mountUnified({ activeSection: { kind: 'folder', folderId: 'f-alpha' }, activeActivity: 'explorer' });
+    await wrapper.get('[data-activity="explorer"]').trigger('click');
+    expect(wrapper.emitted('toggle-mobile-drawer')).toHaveLength(1);
+    expect(wrapper.emitted('update:collapsed')).toBeUndefined();
   });
 });

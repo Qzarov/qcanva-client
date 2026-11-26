@@ -292,6 +292,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch, type CSSPro
 import { spacesApi, type SpaceDetails } from '../../api/spaces';
 import { yandexDisk, type YandexItem } from '../../api/yandexDisk';
 import { SOURCE_CODE_URL } from '../../app-info';
+import { LAYOUT, matchesMedia } from '../../composables/layoutMedia';
 import { hasDataTransferFiles } from '../../composables/useDriveDropzone';
 import { useExplorerGroupDnd, type GroupDragEntry, type GroupDragPayload } from '../../composables/useExplorerGroupDnd';
 import {
@@ -382,6 +383,7 @@ const props = withDefaults(defineProps<{
   panelMode?: ExplorerSidebarPanel;
   activeActivity?: ExplorerActivityId;
   mobileOpen: boolean;
+  androidApp?: boolean;
   folders: readonly DashboardSidebarNavItem[];
   admin?: boolean;
   spaces?: boolean;
@@ -397,6 +399,7 @@ const props = withDefaults(defineProps<{
   collapsed: undefined,
   panelMode: undefined,
   activeActivity: undefined,
+  androidApp: false,
   admin: false,
   spaces: true,
   yandexRefreshKey: 0,
@@ -409,6 +412,7 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   select: [section: DashboardSection];
   'select-activity': [activity: ExplorerActivityId];
+  'toggle-mobile-drawer': [];
   'toggle-width': [];
   'update:collapsed': [collapsed: boolean];
   'update:sidebarWidth': [width: number];
@@ -1541,13 +1545,17 @@ function onRowDrop(event: DragEvent, row: TreeRow) {
 
 // Activity Bar handlers (never force-open collapsed sidebar on select-activity!)
 function onActivitySelect(activity: ExplorerActivityId) {
-  emit('select-activity', activity);
   if (activity === 'home') emit('select', { kind: 'recent' });
   else if (activity === 'trash') emit('select', { kind: 'trash' });
   else if (activity === 'gallery') emit('select', { kind: 'gallery' });
+  emit('select-activity', activity);
 }
 
 function onToggleCollapse() {
+  if (matchesMedia(LAYOUT.dashboardDrawer)) {
+    emit('toggle-mobile-drawer');
+    return;
+  }
   const next = !isCollapsed.value;
   setSidebarCollapsed(next);
   emit('update:collapsed', next);

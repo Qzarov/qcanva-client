@@ -8,6 +8,7 @@
       'is-running': summary.running > 0,
       'is-error': summary.running === 0 && summary.error > 0,
       'is-dragging': isDragging,
+      'is-android-app': isAndroidApp,
     }"
     :style="asideStyle"
     data-activity-journal
@@ -155,6 +156,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { Capacitor } from '@capacitor/core';
 import {
   Check,
   ChevronDown,
@@ -184,6 +186,7 @@ const VIEWPORT_PADDING_PX = 8;
 
 useActivityJournalHost();
 const { t } = useI18n();
+const isAndroidApp = computed(() => Capacitor.isNativePlatform());
 const { tasks, expanded, visible, summary, cancelTask, clearCompleted, dismiss, setExpanded } = useActivityJournal();
 const { activityJournalPos, setActivityJournalPos } = useExplorerLayoutPrefs();
 
@@ -799,13 +802,18 @@ function statusLabel(status: ActivityStatus): string {
 }
 
 @media (max-width: 768px) {
-  .activity-journal {
+  .activity-journal.is-android-app {
     right: 74px;
     bottom: calc(76px + env(safe-area-inset-bottom, 0px));
   }
 
-  .activity-journal.is-expanded {
+  .activity-journal.is-android-app.is-expanded {
     left: 12px;
+  }
+
+  .activity-journal:not(.is-android-app).is-expanded {
+    left: 62px;
+    right: 16px;
   }
 
   .activity-journal-drawer {

@@ -1371,7 +1371,6 @@ body.resizing * {
 }
 
 @media (max-width: 768px) {
-  .explorer-activity-bar.activity-bar,
   .sb-sash,
   .explorer-headroom .nav-arrows {
     display: none;
@@ -1410,9 +1409,11 @@ body.resizing * {
     max-width: none;
     height: 30px;
     z-index: 8;
-    background: var(--explorer-glass-bg-deep);
+    background: var(--ui-glass-tint), var(--explorer-glass-bg-deep);
     border-color: var(--ui-glass-accent-border);
     box-shadow: var(--ui-glass-accent-shadow);
+    backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.25);
+    -webkit-backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.25);
   }
 
   .explorer-headroom .ws-header.is-mobile-search-open .headroom-search-mobile-close {
@@ -1421,7 +1422,7 @@ body.resizing * {
 
   .explorer-headroom,
   .explorer-headroom .ws-header {
-    max-width: 100vw;
+    max-width: 100%;
     min-width: 0;
   }
 
@@ -1461,12 +1462,137 @@ body.resizing * {
     bottom: calc(74px + env(safe-area-inset-bottom, 0px));
   }
 
-  .dashboard-app-shell {
+  .dashboard-app-shell.dashboard-app-shell-public {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .dashboard-app-shell .dashboard-sidebar-frame,
-  .dashboard-sidebar-frame {
+  .dashboard-app-shell.dashboard-app-shell-public .dashboard-central-shell {
+    grid-column: 1;
+    grid-row: 1;
+    height: 100vh;
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+    width: 100%;
+  }
+
+  /* ===== Narrow Web Browser (<= 768px, !isAndroidApp): Desktop VS Code Activity Bar + Slide-Out Drawer ===== */
+  .dashboard-view:not(.is-android-app) .dashboard-app-shell:not(.dashboard-app-shell-public) {
+    grid-template-columns: 50px minmax(0, 1fr) !important;
+  }
+
+  .dashboard-view:not(.is-android-app) .dashboard-sidebar-frame {
+    position: relative;
+    width: 50px;
+    height: 100vh;
+    height: 100dvh;
+    z-index: 295;
+    pointer-events: auto;
+    display: flex;
+  }
+
+  .dashboard-view:not(.is-android-app) .explorer-activity-bar.activity-bar {
+    display: flex !important;
+    width: 50px;
+    flex: none;
+    position: relative;
+    z-index: 301;
+  }
+
+  .dashboard-view:not(.is-android-app) .dashboard-app-shell:not(.dashboard-app-shell-public) .dashboard-central-shell {
+    grid-column: 2;
+    grid-row: 1;
+    height: 100vh;
+    height: 100dvh;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+    width: 100%;
+  }
+
+  .dashboard-view:not(.is-android-app) .dashboard-central-shell .app-main:not(.app-main-gallery) {
+    padding-bottom: 24px;
+  }
+
+  .dashboard-view:not(.is-android-app) .dashboard-sidebar-frame > .dashboard-sidebar-backdrop {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 50px;
+    z-index: 296;
+    display: block;
+    background: var(--ui-overlay);
+    pointer-events: auto;
+  }
+
+  .dashboard-view:not(.is-android-app) .dashboard-sidebar-frame > .dashboard-sidebar-backdrop.dashboard-sidebar-backdrop-leave-active {
+    pointer-events: none;
+  }
+
+  .dashboard-view:not(.is-android-app) .dashboard-sidebar.explorer-sidebar {
+    position: fixed;
+    top: 0;
+    left: 50px;
+    bottom: 0;
+    width: min(280px, calc(100vw - 56px)) !important;
+    padding: 0;
+    z-index: 300;
+    transform: translateX(-110%);
+    visibility: hidden;
+    pointer-events: none;
+    transition: transform 0.2s ease, visibility 0.2s ease;
+    box-shadow: var(--ui-glass-surface-shadow);
+  }
+
+  .dashboard-view:not(.is-android-app) .dashboard-sidebar.explorer-sidebar.mobile-open {
+    position: fixed;
+    top: 0;
+    left: 50px;
+    bottom: 0;
+    width: min(280px, calc(100vw - 56px)) !important;
+    transform: translateX(0) !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+    opacity: 1 !important;
+    z-index: 300;
+  }
+
+  .dashboard-view:not(.is-android-app) .exp-table-shell {
+    overflow-x: auto;
+  }
+
+  .dashboard-view:not(.is-android-app) .exp-table-head,
+  .dashboard-view:not(.is-android-app) .exp-row {
+    min-width: 760px;
+  }
+
+  .dashboard-view:not(.is-android-app) .exp-table-shell.hide-source .exp-table-head,
+  .dashboard-view:not(.is-android-app) .exp-table-shell.hide-source .exp-row {
+    min-width: 680px;
+  }
+
+  .dashboard-view:not(.is-android-app) .exp-table-shell.hide-albums .exp-table-head,
+  .dashboard-view:not(.is-android-app) .exp-table-shell.hide-albums .exp-row {
+    min-width: 640px;
+  }
+
+  .dashboard-view:not(.is-android-app) .exp-table-shell.hide-source.hide-albums .exp-table-head,
+  .dashboard-view:not(.is-android-app) .exp-table-shell.hide-source.hide-albums .exp-row {
+    min-width: 530px;
+  }
+
+  /* ===== Native Android App (<= 768px, .is-android-app): Bottom Tab Bar + Full-Width Drawer ===== */
+  .dashboard-view.is-android-app .explorer-activity-bar.activity-bar {
+    display: none;
+  }
+
+  .dashboard-view.is-android-app .dashboard-app-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dashboard-view.is-android-app .dashboard-app-shell .dashboard-sidebar-frame,
+  .dashboard-view.is-android-app .dashboard-sidebar-frame {
     position: fixed;
     top: 0;
     left: 0;
@@ -1477,7 +1603,7 @@ body.resizing * {
     pointer-events: none;
   }
 
-  .dashboard-sidebar-frame > .dashboard-sidebar-backdrop {
+  .dashboard-view.is-android-app .dashboard-sidebar-frame > .dashboard-sidebar-backdrop {
     position: fixed;
     inset: 0;
     z-index: 296;
@@ -1486,12 +1612,12 @@ body.resizing * {
     pointer-events: auto;
   }
 
-  .dashboard-sidebar-frame > .dashboard-sidebar-backdrop.dashboard-sidebar-backdrop-leave-active {
+  .dashboard-view.is-android-app .dashboard-sidebar-frame > .dashboard-sidebar-backdrop.dashboard-sidebar-backdrop-leave-active {
     pointer-events: none;
   }
 
-  .dashboard-app-shell .dashboard-central-shell,
-  .dashboard-central-shell {
+  .dashboard-view.is-android-app .dashboard-app-shell .dashboard-central-shell,
+  .dashboard-view.is-android-app .dashboard-central-shell {
     grid-column: 1;
     grid-row: 1;
     height: 100vh;
@@ -1501,11 +1627,11 @@ body.resizing * {
     width: 100%;
   }
 
-  .dashboard-central-shell .app-main:not(.app-main-gallery) {
+  .dashboard-view.is-android-app .dashboard-central-shell .app-main:not(.app-main-gallery) {
     padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
   }
 
-  .dashboard-sidebar.explorer-sidebar {
+  .dashboard-view.is-android-app .dashboard-sidebar.explorer-sidebar {
     position: fixed;
     top: 0;
     left: 0;
@@ -1520,7 +1646,7 @@ body.resizing * {
     box-shadow: var(--ui-glass-surface-shadow);
   }
 
-  .dashboard-sidebar.explorer-sidebar.mobile-open {
+  .dashboard-view.is-android-app .dashboard-sidebar.explorer-sidebar.mobile-open {
     position: fixed;
     top: 0;
     left: 0;
@@ -1533,11 +1659,11 @@ body.resizing * {
     z-index: 300;
   }
 
-  .dashboard-sidebar.explorer-sidebar.mobile-open .dashboard-sidebar-footer {
+  .dashboard-view.is-android-app .dashboard-sidebar.explorer-sidebar.mobile-open .dashboard-sidebar-footer {
     padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
   }
 
-  .explorer-mobile-tabbar.mobile-tabbar {
+  .dashboard-view.is-android-app .explorer-mobile-tabbar.mobile-tabbar {
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 4px;
@@ -1556,7 +1682,7 @@ body.resizing * {
     -webkit-backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.25);
   }
 
-  .explorer-mobile-tabbar .m-tab {
+  .dashboard-view.is-android-app .explorer-mobile-tabbar .m-tab {
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -1573,32 +1699,32 @@ body.resizing * {
     cursor: pointer;
   }
 
-  .explorer-mobile-tabbar .m-tab span {
+  .dashboard-view.is-android-app .explorer-mobile-tabbar .m-tab span {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     max-width: 100%;
   }
 
-  .explorer-mobile-tabbar .m-tab.active {
+  .dashboard-view.is-android-app .explorer-mobile-tabbar .m-tab.active {
     background: var(--ui-glass-accent-tint), var(--ui-glass-accent-bg);
     border-color: var(--ui-glass-accent-border);
     color: var(--ui-glass-accent-text);
     font-weight: 600;
   }
 
-  .exp-table-head,
-  .exp-row {
+  .dashboard-view.is-android-app .exp-table-head,
+  .dashboard-view.is-android-app .exp-row {
     grid-template-columns: minmax(0, 1fr) 72px;
   }
 
-  .exp-table-head .col-hide-sm,
-  .exp-row .col-hide-sm {
+  .dashboard-view.is-android-app .exp-table-head .col-hide-sm,
+  .dashboard-view.is-android-app .exp-row .col-hide-sm {
     display: none;
   }
 
-  .fab-create,
-  .dashboard-view .dashboard-fab {
+  .dashboard-view.is-android-app .fab-create,
+  .dashboard-view.is-android-app .dashboard-fab {
     right: 14px;
     bottom: calc(74px + env(safe-area-inset-bottom, 0px));
     width: 46px;

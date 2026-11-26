@@ -1,6 +1,7 @@
 <template>
   <div
     class="app-layout dashboard-view"
+    :class="{ 'is-android-app': isAndroidApp }"
     @click.capture="onAppClickCapture"
     @keydown.capture="onAppKeydownCapture"
     @click="closeCardMenu"
@@ -23,6 +24,7 @@
         :panel-mode="sidebarPanelMode"
         :active-activity="activeActivity"
         :mobile-open="mobileSidebarOpen"
+        :android-app="isAndroidApp"
         :folders="sidebarFolders"
         :spaces="isLoggedIn"
         :yandex-refresh-key="yandexRefreshKey"
@@ -32,6 +34,7 @@
         :search-items="searchSidebarItems"
         @select="onSidebarSelect"
         @select-activity="onSelectActivity"
+        @toggle-mobile-drawer="onToggleMobileDrawer"
         @update:collapsed="onSidebarCollapsedChange"
         @open-yandex-file="openYandexSidebarFile"
         @create-space="createSpace"
@@ -129,6 +132,7 @@
       :can-go-up="activeSection.kind === 'folder' || activeSection.kind === 'space' || activeSection.kind === 'yandex'"
       :show-nav-arrows="true"
       :show-mobile-menu-button="true"
+      :android-app="isAndroidApp"
       :path-error="pathBarError"
       v-model:search-query="searchQuery"
       :search-placeholder="folderSearchPlaceholder"
@@ -148,7 +152,7 @@
           :tags="allTagNames"
           :selected-tags="selectedTags"
           :with-files="activeSection.kind === 'folder' || activeSection.kind === 'home'"
-          :sheet="isMobileHeadroom"
+          :sheet="isAndroidApp && isMobileHeadroom"
           @toggle="toggleToolbarMenu('filter:desktop')"
           @update:types="contentTypes = $event"
           @toggle-tag="toggleSelectedTag"
@@ -158,7 +162,7 @@
           v-if="spaceId === null"
           :open="openControlMenu === 'sort:desktop'"
           :mode="sortMode"
-          :sheet="isMobileHeadroom"
+          :sheet="isAndroidApp && isMobileHeadroom"
           @toggle="toggleToolbarMenu('sort:desktop')"
           @select="selectSortMode"
         />
@@ -980,7 +984,7 @@
         @click.stop="openAddDialog({ folderId: activeSection.kind === 'folder' ? activeFolder?.id : undefined })"
       ><Plus :size="24" aria-hidden="true" /></button>
       <ExplorerMobileTabBar
-        v-if="isLoggedIn"
+        v-if="isLoggedIn && isAndroidApp"
         :active-activity="mobileTabActivity"
         @select-activity="onSelectActivity"
         @open-menu="openMobileSidebar"
@@ -1414,7 +1418,8 @@ export default defineComponent({
     const isRefreshing = ref(false);
     const dashboardMain = ref<HTMLElement | null>(null);
     const dashboardPullDistance = ref(0);
-    const isNativeDashboard = Capacitor.isNativePlatform();
+    const isAndroidApp = computed(() => Capacitor.isNativePlatform());
+    const isNativeDashboard = isAndroidApp.value;
     let dashboardPullStartY: number | null = null;
     const searchQuery = ref('');
     /**
@@ -5082,7 +5087,13 @@ export default defineComponent({
       return found?.name || t('home');
     });
 
+    const onToggleMobileDrawer = () => {
+      if (mobileSidebarOpen.value) closeMobileSidebar();
+      else openMobileSidebar();
+    };
+
     const onSelectActivity = (activity: ExplorerActivityId) => {
+      const narrowBrowser = !isAndroidApp.value && matchesMedia(LAYOUT.dashboardDrawer);
       if (activity === 'search') {
         searchPanelActive.value = true;
         if (sidebarCollapsed.value) onSidebarCollapsedChange(false);
@@ -5096,6 +5107,7 @@ export default defineComponent({
       }
       if (activity === 'gallery') {
         selectDashboardSection({ kind: 'gallery' });
+        if (narrowBrowser) openMobileSidebar();
         return;
       }
       if (activity === 'trash') {
@@ -5106,11 +5118,12 @@ export default defineComponent({
       const remembered = layoutPrefs.lastExplorerRoute.value;
       if (remembered) {
         selectDashboardSection(remembered);
-        return;
+      } else {
+        const firstOwn = ownResourceFolders.value.find((f) => !isTechnicalFolder(f)) || allFolderSummaries.value[0];
+        if (firstOwn) selectFolder(firstOwn.id);
+        else selectDashboardSection({ kind: 'shared' });
       }
-      const firstOwn = ownResourceFolders.value.find((f) => !isTechnicalFolder(f)) || allFolderSummaries.value[0];
-      if (firstOwn) selectFolder(firstOwn.id);
-      else selectDashboardSection({ kind: 'shared' });
+      if (narrowBrowser) openMobileSidebar();
     };
 
     const explorerPathInfo = computed(() => buildExplorerPath(activeSection.value, {
@@ -6577,6 +6590,7 @@ export default defineComponent({
       activeFolderBody,
       hasTagOverflow,
       dashboardMain,
+      isAndroidApp,
       isNativeDashboard,
       dashboardPullDistance,
       DASHBOARD_PULL_THRESHOLD,
@@ -6657,6 +6671,7 @@ export default defineComponent({
       onSelectPathSegment,
       onNavigatePath,
       onSelectActivity,
+      onToggleMobileDrawer,
       onSidebarCollapsedChange,
       searchSidebarFolders,
       searchSidebarAlbums,

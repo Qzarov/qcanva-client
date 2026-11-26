@@ -1,7 +1,7 @@
 <template>
   <div
     class="top-chrome explorer-headroom"
-    :class="{ 'is-hidden': headroomHidden, 'is-elevated': elevated }"
+    :class="{ 'is-hidden': headroomHidden, 'is-elevated': elevated, 'is-android-app': androidApp }"
     data-headroom-bar
   >
     <header class="ws-header" :class="{ 'is-mobile-search-open': mobileSearchOpen }">
@@ -266,6 +266,7 @@ const props = withDefaults(defineProps<{
   canGoUp?: boolean;
   showNavArrows?: boolean;
   showMobileMenuButton?: boolean;
+  androidApp?: boolean;
   pathError?: boolean;
   searchQuery?: string;
   searchPlaceholder?: string;
@@ -281,6 +282,7 @@ const props = withDefaults(defineProps<{
   canGoUp: false,
   showNavArrows: true,
   showMobileMenuButton: true,
+  androidApp: false,
   pathError: false,
   searchQuery: '',
   searchPlaceholder: '',

@@ -6,6 +6,7 @@ import { accessRequests, canvas, htmlDocuments, interactiveTemplates, recentReso
 import { driveApi } from '../api/drive';
 import { spacesApi } from '../api/spaces';
 import { currentAppDialog } from '../composables/appDialog';
+import { LAYOUT } from '../composables/layoutMedia';
 import { resetExplorerGroupDnd } from '../composables/useExplorerGroupDnd';
 import { PREF_KEYS, resetExplorerLayoutPrefs, useExplorerLayoutPrefs } from '../composables/useExplorerLayoutPrefs';
 import { buildExplorerPath, buildFolderExplorerTableRows, resolveExplorerPath } from '../composables/useExplorerWorkspaceHelpers';
@@ -13,6 +14,16 @@ import { useI18n } from '../composables/useI18n';
 import { resetSpaces, useSpaces } from '../composables/useSpaces';
 import { resetYandexDiskStatus, useYandexDisk } from '../composables/useYandexDisk';
 import DashboardView from './DashboardView.vue';
+
+const isNativePlatform = vi.hoisted(() => vi.fn(() => false));
+vi.mock('@capacitor/core', () => ({
+  Capacitor: { isNativePlatform },
+}));
+vi.mock('@capacitor/app', () => ({
+  App: {
+    addListener: vi.fn(() => Promise.resolve({ remove: vi.fn() })),
+  },
+}));
 
 const push = vi.fn();
 const replace = vi.fn();
@@ -197,6 +208,7 @@ function mountDashboard() {
 describe('DashboardView T-021 + T-018 Explorer Redesign Integration', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    isNativePlatform.mockReturnValue(false);
     dashboardRoute.query = {};
     localStorage.clear();
     resetExplorerLayoutPrefs(true);
@@ -207,6 +219,7 @@ describe('DashboardView T-021 + T-018 Explorer Redesign Integration', () => {
   });
 
   afterEach(() => {
+    vi.unstubAllGlobals();
     document.body.innerHTML = '';
   });
 
@@ -708,6 +721,7 @@ describe('DashboardView T-021 + T-018 Explorer Redesign Integration', () => {
   });
 
   it('opens mobile drawer and expands collapsed sidebar on Поиск, and prioritizes search sidebar over Gallery mode', async () => {
+    isNativePlatform.mockReturnValue(true);
     const wrapper = mountDashboard();
     await flushPromises();
 
@@ -960,5 +974,81 @@ describe('DashboardView T-021 + T-018 Explorer Redesign Integration', () => {
     (wrapper.vm as any).openYandexPath('/');
     await nextTick();
     expect(searchInput.attributes('placeholder')).toBe('Поиск в Яндекс Диске…');
+  });
+
+  it('B-008: never enables Android mode in a narrow web browser (<= 768px), keeps Activity Bar + desktop popovers + slide-out drawer, and enables Android mode only when Capacitor.isNativePlatform() === true', async () => {
+    const stubNarrowMatchMedia = () => {
+      vi.stubGlobal('matchMedia', vi.fn((query: string) => ({
+        matches: query === LAYOUT.dashboardDrawer,
+        media: query,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })));
+    };
+
+    // 1. Narrow web browser (Capacitor.isNativePlatform() === false, viewport <= 768px)
+    isNativePlatform.mockReturnValue(false);
+    stubNarrowMatchMedia();
+    const webWrapper = mountDashboard();
+    await flushPromises();
+
+    expect(webWrapper.get('.dashboard-view').classes()).not.toContain('is-android-app');
+    expect(webWrapper.find('[data-mobile-tabbar]').exists()).toBe(false);
+    expect(webWrapper.find('[data-activity-bar]').exists()).toBe(true);
+
+    // Filter & Sort menus stay crisp desktop dropdowns (NOT phone bottom sheets)
+    await webWrapper.get('[data-filter-menu-trigger]').trigger('click');
+    await nextTick();
+    expect(webWrapper.find('[data-filter-menu]').exists()).toBe(true);
+    expect(webWrapper.get('[data-filter-menu]').classes()).not.toContain('dashboard-menu-sheet');
+
+    await webWrapper.get('[data-sort-menu-trigger]').trigger('click');
+    await nextTick();
+    expect(webWrapper.find('[data-sort-menu]').exists()).toBe(true);
+    expect(webWrapper.get('[data-sort-menu]').classes()).not.toContain('dashboard-menu-sheet');
+
+    // Clicking Проводник, Поиск, and Галерея on Activity Bar in narrow browser opens the overlay drawer,
+    // and clicking the active icon toggles it closed/open
+    await webWrapper.get('[data-activity="explorer"]').trigger('click');
+    await nextTick();
+    expect((webWrapper.vm as any).mobileSidebarOpen).toBe(true);
+    expect(webWrapper.get('.dashboard-sidebar').classes()).toContain('mobile-open');
+
+    await webWrapper.get('[data-activity="explorer"]').trigger('click');
+    await nextTick();
+    expect((webWrapper.vm as any).mobileSidebarOpen).toBe(false);
+
+    await webWrapper.get('[data-activity="search"]').trigger('click');
+    await nextTick();
+    expect((webWrapper.vm as any).mobileSidebarOpen).toBe(true);
+    expect((webWrapper.vm as any).sidebarPanelMode).toBe('search');
+
+    await webWrapper.get('[data-activity="gallery"]').trigger('click');
+    await nextTick();
+    expect((webWrapper.vm as any).activeSection).toEqual({ kind: 'gallery' });
+    expect((webWrapper.vm as any).mobileSidebarOpen).toBe(true);
+
+    webWrapper.unmount();
+
+    // 2. Native Android app (Capacitor.isNativePlatform() === true, viewport <= 768px)
+    isNativePlatform.mockReturnValue(true);
+    stubNarrowMatchMedia();
+    const androidWrapper = mountDashboard();
+    await flushPromises();
+
+    expect(androidWrapper.get('.dashboard-view').classes()).toContain('is-android-app');
+    expect(androidWrapper.find('[data-mobile-tabbar]').exists()).toBe(true);
+
+    // Filter & Sort menus open as phone bottom sheets teleported to body
+    await androidWrapper.get('[data-filter-menu-trigger]').trigger('click');
+    await nextTick();
+    expect(document.body.querySelector('[data-filter-menu]')?.classList.contains('dashboard-menu-sheet')).toBe(true);
+
+    await androidWrapper.get('[data-sort-menu-trigger]').trigger('click');
+    await nextTick();
+    expect(document.body.querySelector('[data-sort-menu]')?.classList.contains('dashboard-menu-sheet')).toBe(true);
   });
 });
