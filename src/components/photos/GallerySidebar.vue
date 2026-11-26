@@ -107,15 +107,17 @@ interface UnifiedAlbumEntry {
 
 const albumsList = computed<UnifiedAlbumEntry[]>(() => {
   const src = props.albums ?? spaces.value;
-  return src.map((item) => {
-    const sp = item as Partial<SpaceSummary> & Partial<Album>;
-    return {
-      id: item.id,
-      name: item.name,
-      count: sp.mediaCount ?? sp.itemCount ?? sp.count ?? sp.sourceCount ?? 0,
-      coverFileIds: sp.coverFileIds ?? [],
-    };
-  });
+  return src
+    .filter((item) => !(item as Partial<SpaceSummary>).unlisted)
+    .map((item) => {
+      const sp = item as Partial<SpaceSummary> & Partial<Album>;
+      return {
+        id: item.id,
+        name: item.name,
+        count: sp.mediaCount ?? sp.itemCount ?? sp.count ?? sp.sourceCount ?? 0,
+        coverFileIds: sp.coverFileIds ?? [],
+      };
+    });
 });
 
 const effectiveActiveAlbumId = computed(() => props.activeAlbumId ?? props.activeSpaceId ?? null);
@@ -217,7 +219,7 @@ async function ensureFolderFiles(folderId: string): Promise<void> {
     if (!alive) return;
     folderFiles[folderId] = (res.items ?? []).filter((it) => it.kind !== 'folder' && !it.deletedAt);
   } catch {
-    // Folder may have no media or drive disabled
+    if (alive) folderFiles[folderId] = [];
   } finally {
     loadingFolderFiles.delete(folderId);
   }
@@ -281,6 +283,18 @@ watch(showFilesInTree, (on) => {
   }
 });
 
+watch(
+  [() => showFilesInTree.value, () => allFolders.value.map((f) => f.id).join(',')],
+  ([on]) => {
+    if (!on) return;
+    void ensureFolderFiles('root');
+    for (const folder of allFolders.value) {
+      void ensureFolderFiles(folder.id);
+    }
+  },
+  { immediate: true },
+);
+
 function toggleFolderExpand(folderId: string): void {
   const next = new Set(expandedFolders.value);
   if (next.has(folderId)) {
@@ -307,8 +321,8 @@ function buildTreeRowsFor(
     for (const folder of folders) {
       const subFolders = byParent.get(folder.id) ?? [];
       const files = showFilesInTree.value ? (folderFiles[folder.id] ?? []) : [];
-      const hasChildren = subFolders.length > 0 || showFilesInTree.value;
-      const isExpanded = expandedFolders.value.has(folder.id);
+      const hasChildren = subFolders.length > 0 || (showFilesInTree.value && files.length > 0);
+      const isExpanded = hasChildren && expandedFolders.value.has(folder.id);
       out.push({
         kind: 'folder',
         key: `f:${folder.id}`,
@@ -346,13 +360,30 @@ type QspaceRenderRow =
   | { kind: 'home-root'; key: string }
   | TreeRow;
 
+const homeHasChildren = computed(
+  () => ownFolders.value.length > 0 || (showFilesInTree.value && (folderFiles['root']?.length ?? 0) > 0),
+);
+
 const qspaceVisibleRows = computed<QspaceRenderRow[]>(() => {
   if (!openGroups.value.has('qspace')) return [];
   const rows: QspaceRenderRow[] = [{ kind: 'shared-root', key: 'qs:shared' }];
   if (openGroups.value.has('shared')) rows.push(...sharedTreeRows.value);
   rows.push({ kind: 'public-root', key: 'qs:public' });
   rows.push({ kind: 'home-root', key: 'qs:home' });
-  if (openGroups.value.has('home')) rows.push(...homeTreeRows.value);
+  if (homeHasChildren.value && openGroups.value.has('home')) {
+    rows.push(...homeTreeRows.value);
+    if (showFilesInTree.value) {
+      for (const file of folderFiles['root'] ?? []) {
+        rows.push({
+          kind: 'file',
+          key: `file:root:${file.id}`,
+          item: file,
+          folderId: 'root',
+          depth: 2,
+        });
+      }
+    }
+  }
   return rows;
 });
 
@@ -360,15 +391,18 @@ const qspaceVisibleRows = computed<QspaceRenderRow[]>(() => {
 const yandexExpanded = ref(false);
 const yandexDirs = ref<YandexItem[]>([]);
 const yandexLoading = ref(false);
+const yandexLoaded = ref(false);
 
 async function toggleYandexRoot(): Promise<void> {
   yandexExpanded.value = !yandexExpanded.value;
-  if (yandexExpanded.value && yandexDirs.value.length === 0 && !yandexLoading.value) {
+  if (yandexExpanded.value && !yandexLoaded.value && !yandexLoading.value) {
     yandexLoading.value = true;
     try {
       const listing = await yandexDisk.list('/', { limit: 30, sort: 'name' });
       if (alive) {
         yandexDirs.value = (listing.items ?? []).filter((it) => it.type === 'dir');
+        yandexLoaded.value = true;
+        if (yandexDirs.value.length === 0) yandexExpanded.value = false;
       }
     } catch (err) {
       noteYandexError(err);
@@ -722,13 +756,14 @@ onBeforeUnmount(() => {
         <div
           v-else-if="row.kind === 'home-root'"
           role="treeitem"
-          :aria-expanded="openGroups.has('home')"
+          :aria-expanded="homeHasChildren ? openGroups.has('home') : undefined"
           class="gs-row-wrap gs-tree-row"
           :class="{ active: activeFolderId === 'root' }"
           :style="rowIndent(1)"
           data-gallery-tree-root="home"
         >
           <button
+            v-if="homeHasChildren"
             type="button"
             class="gs-caret-btn"
             :aria-label="openGroups.has('home') ? t('collapseSubfolders') : t('expandSubfolders')"
@@ -737,6 +772,7 @@ onBeforeUnmount(() => {
             <ChevronDown v-if="openGroups.has('home')" :size="13" aria-hidden="true" />
             <ChevronRight v-else :size="13" aria-hidden="true" />
           </button>
+          <span v-else class="gs-caret-spacer" aria-hidden="true"></span>
           <button
             type="button"
             class="gs-row gs-row-main"
@@ -851,14 +887,14 @@ onBeforeUnmount(() => {
         <template v-if="yandexStatus?.enabled">
           <div
             role="treeitem"
-            :aria-expanded="yandexStatus.connected ? yandexExpanded : undefined"
+            :aria-expanded="yandexStatus.connected && (!yandexLoaded || yandexDirs.length > 0) ? yandexExpanded : undefined"
             class="gs-row-wrap gs-tree-row"
             :class="{ active: activeYandexPath === '/' }"
             :style="rowIndent(1)"
             data-gallery-yandex="/"
           >
             <button
-              v-if="yandexStatus.connected"
+              v-if="yandexStatus.connected && (!yandexLoaded || yandexDirs.length > 0)"
               type="button"
               class="gs-caret-btn"
               :aria-label="yandexExpanded ? t('collapseSubfolders') : t('expandSubfolders')"

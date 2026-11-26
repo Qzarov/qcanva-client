@@ -193,7 +193,7 @@ describe('DashboardSidebar', () => {
     expect(wrapper.get('[data-sidebar-trash-btn]').attributes('aria-label')).toBe('Trash');
     expect(wrapper.get('[data-mode-btn="files"]').text()).toContain('Files');
     expect(wrapper.get('[data-mode-btn="media"]').text()).toContain('Media');
-    expect(wrapper.get('[data-sidebar-devices-btn]').attributes('aria-label')).toBe('Devices & Sync');
+    expect(wrapper.find('[data-sidebar-devices-btn]').exists()).toBe(false);
     expect(wrapper.get('[data-dashboard-section="public"]').attributes('aria-label')).toBe('Public');
   });
 
@@ -406,12 +406,10 @@ describe('DashboardSidebar', () => {
     resetSpaces();
   });
 
-  it('renders Devices & Sync button in the footer and Download apps inside AccountMenu', async () => {
+  it('omits Devices & Sync button from the footer while keeping Download apps inside AccountMenu', async () => {
     const expanded = mountSidebar({ devicesOnlineCount: 2 });
-    const devices = expanded.get('[data-sidebar-devices-btn]');
-    expect(devices.attributes('href')).toBe('/drive/devices');
-    expect(devices.attributes('aria-label')).toBe('Devices & Sync');
-    expect(devices.find('.sb-devices-dot').exists()).toBe(true);
+    expect(expanded.find('[data-sidebar-devices-btn]').exists()).toBe(false);
+    expect(expanded.find('.sb-devices-btn').exists()).toBe(false);
 
     const withMenu = mount(DashboardSidebar, {
       props: { activeSection: { kind: 'home' }, widthState: 'expanded', mobileOpen: false, folders },

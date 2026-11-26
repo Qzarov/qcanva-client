@@ -18,6 +18,7 @@ export type SpaceSummary = {
   itemCount?: number;
   mediaCount?: number;
   coverFileIds?: string[];
+  unlisted?: boolean;
   updatedAt: string;
 };
 
@@ -47,6 +48,7 @@ export type SpaceDetails = {
   itemCount?: number;
   mediaCount?: number;
   coverFileIds?: string[];
+  unlisted?: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -91,8 +93,12 @@ const noContent = (call: Promise<unknown>) => call.then(() => undefined).catch((
 });
 
 export const spacesApi = {
-  list: () => request<{ spaces: SpaceSummary[] }>('/spaces'),
-  create: (name: string) => request<SpaceDetails>('/spaces', json('POST', { name })),
+  list: () => request<{ spaces: SpaceSummary[] }>('/spaces').then((res) => ({
+    ...res,
+    spaces: (res?.spaces ?? []).filter((s) => !s.unlisted),
+  })),
+  create: (name: string, options?: { unlisted?: boolean }) =>
+    request<SpaceDetails>('/spaces', json('POST', { name, ...(options?.unlisted ? { unlisted: true } : {}) })),
   get: (id: string) => request<SpaceDetails>(`/spaces/${encodeURIComponent(id)}`),
   rename: (id: string, name: string) => request<SpaceDetails>(`/spaces/${encodeURIComponent(id)}`, json('PATCH', { name })),
   remove: (id: string) => noContent(request(`/spaces/${encodeURIComponent(id)}`, { method: 'DELETE' })),

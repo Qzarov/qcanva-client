@@ -18,7 +18,7 @@ async function load(force = false): Promise<SpaceSummary[]> {
   loading = Promise.resolve()
     .then(() => spacesApi.list())
     .then(({ spaces: list }) => {
-      spaces.value = Array.isArray(list) ? list : [];
+      spaces.value = Array.isArray(list) ? list.filter((s) => !s.unlisted) : [];
       loaded.value = true;
       return spaces.value;
     })

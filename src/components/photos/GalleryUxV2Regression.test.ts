@@ -3,12 +3,15 @@
 import { enableAutoUnmount, flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { nextTick } from 'vue';
+import { resolveDownloadUrl } from '../../api/drive';
 import { hubPhotosApi, type FeedItem } from '../../api/photos';
 import { resetExplorerGroupDnd } from '../../composables/useExplorerGroupDnd';
-import { resetExplorerLayoutPrefs } from '../../composables/useExplorerLayoutPrefs';
+import { resetExplorerLayoutPrefs, useExplorerLayoutPrefs } from '../../composables/useExplorerLayoutPrefs';
 import { useI18n } from '../../composables/useI18n';
-import { resetSpaces } from '../../composables/useSpaces';
-import { resetYandexDiskStatus } from '../../composables/useYandexDisk';
+import { resetSpaces, useSpaces } from '../../composables/useSpaces';
+import { resetYandexDiskStatus, useYandexDisk } from '../../composables/useYandexDisk';
+import DashboardView from '../../views/DashboardView.vue';
+import AlbumShareDialog from '../dashboard/AlbumShareDialog.vue';
 import DrivePhotos from './DrivePhotos.vue';
 import drivePhotosSource from './DrivePhotos.vue?raw';
 import GallerySidebar from './GallerySidebar.vue';
@@ -31,16 +34,68 @@ const putPrefSpy = vi.hoisted(() => vi.fn());
 const renditionMock = vi.hoisted(() => vi.fn());
 const spacesListMock = vi.hoisted(() => vi.fn());
 const spacesGetMock = vi.hoisted(() => vi.fn());
+const spacesCreateMock = vi.hoisted(() => vi.fn());
+const spacesAddItemsMock = vi.hoisted(() => vi.fn());
+const spacesRemoveMock = vi.hoisted(() => vi.fn());
 const getTrashMock = vi.hoisted(() => vi.fn());
 const trashFileMock = vi.hoisted(() => vi.fn());
 const getFolderMock = vi.hoisted(() => vi.fn());
+const getFolderItemsMock = vi.hoisted(() => vi.fn());
+const getDownloadLinkMock = vi.hoisted(() => vi.fn());
 const resourceFoldersListMock = vi.hoisted(() => vi.fn());
+const yandexStatusMock = vi.hoisted(() => vi.fn());
+const yandexListMock = vi.hoisted(() => vi.fn());
+
+vi.mock('@capacitor/core', () => ({
+  Capacitor: { isNativePlatform: () => false },
+}));
+
+vi.mock('@capacitor/app', () => ({
+  App: {
+    addListener: vi.fn(() => Promise.resolve({ remove: vi.fn() })),
+  },
+}));
+
+const dashboardRoute = { query: {} as Record<string, unknown> };
+vi.mock('vue-router', () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), currentRoute: { value: dashboardRoute } }),
+  useRoute: () => dashboardRoute,
+}));
 
 vi.mock('../../api/client', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../api/client')>();
   return {
     ...actual,
+    onAuthCleared: vi.fn(),
+    clearToken: vi.fn(),
+    getCurrentUser: vi.fn(() => ({ id: 'u1', email: 'vlad@example.com', name: 'Vlad' })),
     isAuthenticated: () => true,
+    isAdmin: vi.fn(() => false),
+    refreshCurrentUserRole: vi.fn().mockResolvedValue(false),
+    accessRequests: { incoming: vi.fn().mockResolvedValue([]) },
+    canvas: {
+      ...actual.canvas,
+      list: vi.fn().mockResolvedValue({ own: [], shared: [], public: [], welcome: null }),
+    },
+    htmlDocuments: {
+      ...actual.htmlDocuments,
+      list: vi.fn().mockResolvedValue({ documents: [] }),
+      publicList: vi.fn().mockResolvedValue({ documents: [] }),
+    },
+    textDocuments: {
+      ...actual.textDocuments,
+      list: vi.fn().mockResolvedValue({ documents: [] }),
+      publicList: vi.fn().mockResolvedValue({ documents: [] }),
+    },
+    interactiveTemplates: {
+      ...actual.interactiveTemplates,
+      list: vi.fn().mockResolvedValue({ templates: [] }),
+    },
+    recentResources: {
+      list: vi.fn().mockResolvedValue([]),
+      markOpened: vi.fn().mockResolvedValue({}),
+    },
+    tags: { list: vi.fn().mockResolvedValue({ tags: [] }) },
     request: requestMock,
     resourceFolders: {
       ...actual.resourceFolders,
@@ -63,6 +118,8 @@ vi.mock('../../api/photos', async (importOriginal) => {
       albums: albumsMock,
       details: detailsMock,
       edit: editMock,
+      feed: vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
+      people: vi.fn().mockResolvedValue([]),
       getPreference: getPrefMock,
       putPreference: (...args: Parameters<typeof actual.hubPhotosApi.putPreference>) => {
         putPrefSpy(...args);
@@ -82,7 +139,10 @@ vi.mock('../../api/drive', async (importOriginal) => {
       getTrash: getTrashMock,
       trashFile: trashFileMock,
       getFolder: getFolderMock,
-      getFolderItems: vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
+      getFolderItems: getFolderItemsMock,
+      getFolderFileCounts: vi.fn().mockResolvedValue({ counts: {} }),
+      getThumbLinks: vi.fn().mockResolvedValue({ links: {} }),
+      getDownloadLink: getDownloadLinkMock,
     },
   };
 });
@@ -91,9 +151,12 @@ vi.mock('../../api/spaces', () => ({
   spacesApi: {
     list: spacesListMock,
     get: spacesGetMock,
-    addItems: vi.fn().mockResolvedValue({ added: 0 }),
-    create: vi.fn().mockResolvedValue({ id: 'sp-new' }),
+    addItems: spacesAddItemsMock,
+    create: spacesCreateMock,
+    remove: spacesRemoveMock,
     removeItems: vi.fn().mockResolvedValue({ removed: 0 }),
+    feed: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+    feedTypes: vi.fn().mockResolvedValue({ types: [] }),
   },
 }));
 
@@ -103,8 +166,8 @@ vi.mock('../../api/yandexDisk', async (importOriginal) => {
     ...actual,
     yandexDisk: {
       ...actual.yandexDisk,
-      status: vi.fn().mockResolvedValue({ connected: false }),
-      list: vi.fn().mockResolvedValue({ items: [] }),
+      status: yandexStatusMock,
+      list: yandexListMock,
     },
   };
 });
@@ -223,10 +286,28 @@ describe('Gallery UX v2 & B-009/B-011/B-014 regressions', () => {
       space: { id: 'alb-1', name: 'Отпуск' },
       sources: [],
     });
+    spacesCreateMock.mockReset().mockResolvedValue({
+      id: 'sp-new',
+      name: 'Общие фото',
+      role: 'owner',
+      owner: { id: 'u1', name: 'Vlad', email: 'vlad@example.com' },
+      members: [],
+      sources: [],
+      unlisted: true,
+      createdAt: '2026-11-26T10:00:00Z',
+      updatedAt: '2026-11-26T10:00:00Z',
+    });
+    spacesAddItemsMock.mockReset().mockResolvedValue({ added: 2 });
+    spacesRemoveMock.mockReset().mockResolvedValue(undefined);
     getTrashMock.mockReset().mockResolvedValue({ items: [] });
     trashFileMock.mockReset().mockResolvedValue({});
     getFolderMock.mockReset().mockResolvedValue({ folder: { id: 'fold-1', name: 'Алтай' }, path: [] });
+    getFolderItemsMock.mockReset().mockResolvedValue({ items: [], nextCursor: null });
+    getDownloadLinkMock.mockReset().mockResolvedValue({ url: '/api/drive/files/f1?token=tok', expiresAt: '' });
     resourceFoldersListMock.mockReset().mockResolvedValue({ own: [], shared: [] });
+    yandexStatusMock.mockReset().mockResolvedValue({ enabled: true, connected: false, reconnectRequired: false, login: null, displayName: null });
+    yandexListMock.mockReset().mockResolvedValue({ path: '/', total: 0, items: [] });
+    dashboardRoute.query = {};
   });
 
   afterEach(() => {
@@ -490,5 +571,288 @@ describe('Gallery UX v2 & B-009/B-011/B-014 regressions', () => {
     await w.get('[data-s2-input]').trigger('focus');
     await nextTick();
     expect(s2Wrap.classes()).toContain('is-open');
+  });
+
+  it('Item #1 (B-015): filters unlisted shares everywhere, shows Share photos copy without public links, resolves full clipboard URL, and cleans up empty unlisted share', async () => {
+    // 1. Real spacesApi.list() filters out unlisted: true and spacesApi.create sends { unlisted: true }
+    const actualSpaces = await vi.importActual<typeof import('../../api/spaces')>('../../api/spaces');
+    requestMock.mockResolvedValueOnce({
+      spaces: [
+        { id: 'sp-vis', name: 'Видимый', role: 'owner', ownerId: 'u1', memberCount: 1, updatedAt: '' },
+        { id: 'sp-unl', name: 'Общие фото', role: 'owner', ownerId: 'u1', memberCount: 1, unlisted: true, updatedAt: '' },
+      ],
+    });
+    const listRes = await actualSpaces.spacesApi.list();
+    expect(listRes.spaces.map((s) => s.id)).toEqual(['sp-vis']);
+
+    requestMock.mockResolvedValueOnce({ id: 'sp-created', unlisted: true });
+    await actualSpaces.spacesApi.create('Общие фото', { unlisted: true });
+    expect(requestMock).toHaveBeenLastCalledWith('/spaces', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ name: 'Общие фото', unlisted: true }),
+    }));
+
+    // 2. useSpaces() and GallerySidebar filter out unlisted: true
+    spacesListMock.mockResolvedValueOnce({
+      spaces: [
+        { id: 'sp-vis', name: 'Видимый', role: 'owner', ownerId: 'u1', memberCount: 1, updatedAt: '' },
+        { id: 'sp-unl', name: 'Скрытый', role: 'owner', ownerId: 'u1', memberCount: 1, unlisted: true, updatedAt: '' },
+      ],
+    });
+    await useSpaces().load(true);
+    expect(useSpaces().spaces.value.map((s) => s.id)).toEqual(['sp-vis']);
+
+    const gs = mount(GallerySidebar, {
+      attachTo: document.body,
+      props: {
+        activeSection: 'library',
+        albums: [
+          { id: 'sp-vis', name: 'Видимый', role: 'owner', ownerId: 'u1', memberCount: 1, sourceCount: 0, updatedAt: '' },
+          { id: 'sp-unl', name: 'Скрытый', role: 'owner', ownerId: 'u1', memberCount: 1, sourceCount: 0, unlisted: true, updatedAt: '' },
+        ],
+      },
+    });
+    await settle();
+    expect(gs.find('[data-gallery-album="sp-vis"]').exists()).toBe(true);
+    expect(gs.find('[data-gallery-album="sp-unl"]').exists()).toBe(false);
+    gs.unmount();
+
+    // 3. AlbumShareDialog with unlisted: true in RU and EN, and zero public link controls
+    const unlistedSpace = {
+      id: 'sp-unl',
+      name: 'Общие фото (26 нояб.)',
+      role: 'owner' as const,
+      owner: { id: 'u1', name: 'Vlad', email: 'vlad@example.com' },
+      members: [],
+      sources: [],
+      unlisted: true,
+      createdAt: '2026-11-26T10:00:00Z',
+      updatedAt: '2026-11-26T10:00:00Z',
+    };
+    const dlgRu = mount(AlbumShareDialog, {
+      attachTo: document.body,
+      props: { space: unlistedSpace, meId: 'u1' },
+    });
+    expect(dlgRu.get('.album-share-modal h3').text()).toBe('Поделиться фото');
+    expect(dlgRu.get('.album-share-hint').text()).toBe('Приглашённые участники увидят выбранные фото в своей медиатеке');
+    expect(dlgRu.text()).not.toContain('Совместный альбом');
+    expect(dlgRu.text()).not.toContain('Публичная ссылка');
+    expect(dlgRu.find('input[readonly]').exists()).toBe(false);
+    expect(dlgRu.find('[data-copy-link]').exists()).toBe(false);
+    dlgRu.unmount();
+
+    useI18n().setLocale('en');
+    const dlgEn = mount(AlbumShareDialog, {
+      attachTo: document.body,
+      props: { space: unlistedSpace, meId: 'u1' },
+    });
+    expect(dlgEn.get('.album-share-modal h3').text()).toBe('Share photos');
+    expect(dlgEn.get('.album-share-hint').text()).toBe('Invited users will see the selected photos in their library');
+    expect(dlgEn.text()).not.toContain('Shared album');
+    expect(dlgEn.text()).not.toContain('Copy link');
+    dlgEn.unmount();
+    useI18n().setLocale('ru');
+
+    // 4. DrivePhotos shareSingleItem writes full resolveDownloadUrl(res.url) to clipboard
+    const writeTextMock = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: writeTextMock },
+    });
+    getDownloadLinkMock.mockResolvedValueOnce({ url: '/api/drive/files/f1?token=share-tok', expiresAt: '' });
+
+    const dp = mountDrivePhotos();
+    await settle();
+    await dp.get('[data-file-id="f1"]').trigger('contextmenu');
+    await nextTick();
+    await dp.get('[data-ctx-share]').trigger('click');
+    await settle();
+    expect(getDownloadLinkMock).toHaveBeenCalledWith('f1');
+    expect(writeTextMock).toHaveBeenCalledWith(resolveDownloadUrl('/api/drive/files/f1?token=share-tok'));
+    expect(writeTextMock.mock.calls[0]![0]).toMatch(/^https?:\/\/.*\/api\/drive\/files\/f1\?token=share-tok$/);
+    dp.unmount();
+
+    // 5. DashboardView onGallerySharePhotos creates { unlisted: true }, does NOT refresh visible spaces, and deletes on close without inviting
+    resetSpaces();
+    spacesListMock.mockResolvedValue({
+      spaces: [{ id: 'sp-vis', name: 'Видимый', role: 'owner', ownerId: 'u1', memberCount: 1, updatedAt: '' }],
+    });
+    spacesGetMock.mockResolvedValueOnce({
+      id: 'sp-new',
+      name: 'Общие фото',
+      role: 'owner',
+      owner: { id: 'u1', name: 'Vlad', email: 'vlad@example.com' },
+      members: [],
+      sources: [],
+      createdAt: '2026-11-26T10:00:00Z',
+      updatedAt: '2026-11-26T10:00:00Z',
+    });
+    dashboardRoute.query = { activity: 'gallery' };
+
+    const dash = mount(DashboardView, {
+      attachTo: document.body,
+      global: {
+        stubs: {
+          RouterLink: { props: ['to'], template: '<a :href="typeof to === \'string\' ? to : \'\'"><slot /></a>' },
+          DrivePhotos: {
+            props: ['activeSection', 'externalAlbumId', 'externalAlbumMembersCount', 'externalFolderId', 'folders'],
+            emits: ['share-photos'],
+            template: '<button type="button" data-stub-share-photos @click="$emit(\'share-photos\', [\'f1\', \'f2\'])">SharePhotos</button>',
+          },
+          DashboardTrash: { template: '<div />' },
+          DashboardYandexDisk: { template: '<div />' },
+        },
+      },
+    });
+    await settle();
+
+    const listCallsBefore = spacesListMock.mock.calls.length;
+    await dash.get('[data-stub-share-photos]').trigger('click');
+    await settle();
+
+    expect(spacesCreateMock).toHaveBeenCalledWith(expect.any(String), { unlisted: true });
+    expect(spacesAddItemsMock).toHaveBeenCalledWith('sp-new', ['f1', 'f2']);
+    expect(spacesListMock.mock.calls.length).toBe(listCallsBefore);
+    expect(dash.get('[data-album-share-dialog] h3').text()).toBe('Поделиться фото');
+
+    // Closing AlbumShareDialog without inviting calls spacesApi.remove(id)
+    await dash.get('[data-album-share-dialog] .dashboard-modal-close').trigger('click');
+    await settle();
+    expect(dash.find('[data-album-share-dialog]').exists()).toBe(false);
+    // In VTU, stubbed <Transition> does not emit @after-leave automatically; fire the close event that @after-leave emits
+    dash.getComponent(AlbumShareDialog).vm.$emit('close');
+    await settle();
+    expect(spacesRemoveMock).toHaveBeenCalledWith('sp-new');
+    expect(spacesListMock.mock.calls.length).toBe(listCallsBefore);
+  });
+
+  it('Item #4 (B-016): DrivePhotos/PhotosFeed filters externalFolderId="root" (own nested folders, excluding shared) and "parent-1" recursively in both Feed and S2 SearchGrid', async () => {
+    const folders = [
+      { id: 'unsorted', name: 'Unsorted', parentId: null, role: 'owner' as const },
+      { id: 'parent-1', name: 'Путешествия', parentId: null, role: 'owner' as const },
+      { id: 'child-1', name: 'Алтай', parentId: 'parent-1', role: 'owner' as const },
+      { id: 'grandchild-1', name: 'Озеро', parentId: 'child-1', role: 'owner' as const },
+      { id: 'shared-fold', name: 'Чужая', parentId: null, role: 'read' as const },
+    ];
+    const allFeedItems: FeedItem[] = [
+      mkItem(1, { fileId: 'f-root', name: 'root.jpg', folderId: null, share: null }),
+      mkItem(2, { fileId: 'f-unsorted', name: 'unsorted.jpg', folderId: 'unsorted', share: null }),
+      mkItem(3, { fileId: 'f-parent', name: 'parent.jpg', folderId: 'parent-1', share: null }),
+      mkItem(4, { fileId: 'f-child', name: 'child.jpg', folderId: 'child-1', share: null }),
+      mkItem(5, { fileId: 'f-grandchild', name: 'grandchild.jpg', folderId: 'grandchild-1', share: null }),
+      mkItem(6, { fileId: 'f-shared-flag', name: 'shared-flag.jpg', folderId: null, share: { rootFolderId: 'shared-root', rootName: 'Shared', ownerId: 'u2', ownerName: 'Оля' } }),
+      mkItem(7, { fileId: 'f-shared-folder', name: 'shared-folder.jpg', folderId: 'shared-fold', share: null }),
+    ];
+
+    summaryMock.mockResolvedValue({
+      groups: [{ key: '2026-10', title: 'Октябрь 2026', count: allFeedItems.length, subs: null }],
+    });
+    itemsMock.mockResolvedValue({ items: allFeedItems, nextCursor: null });
+    searchMock.mockResolvedValue({ items: allFeedItems, nextCursor: null });
+
+    const w = mountDrivePhotos({ externalFolderId: 'root', folders });
+    await settle();
+
+    // Root shows root + Unsorted + parent + child + grandchild, excluding shared items and role='read' folders
+    const rootIds = w.findAll('[data-testid="photos-feed"] [data-file-id]').map((el) => el.attributes('data-file-id'));
+    expect(rootIds).toEqual(expect.arrayContaining(['f-root', 'f-unsorted', 'f-parent', 'f-child', 'f-grandchild']));
+    expect(rootIds).not.toContain('f-shared-flag');
+    expect(rootIds).not.toContain('f-shared-folder');
+
+    // Selecting parent-1 shows parent + child + grandchild recursively in PhotosFeed
+    await w.setProps({ externalFolderId: 'parent-1' });
+    await settle();
+    const parentIds = w.findAll('[data-testid="photos-feed"] [data-file-id]').map((el) => el.attributes('data-file-id'));
+    expect(parentIds).toHaveLength(3);
+    expect(parentIds).toEqual(expect.arrayContaining(['f-parent', 'f-child', 'f-grandchild']));
+
+    // S2 search within parent-1 scope filters PhotosSearchGrid recursively as well
+    const input = w.get('[data-s2-input]');
+    await input.setValue('отпуск');
+    await input.trigger('keydown', { key: 'Enter' });
+    await settle();
+
+    expect(searchMock).toHaveBeenCalledWith('отпуск', expect.any(Object));
+    const searchGrid = w.get('[data-testid="photos-search-grid"]');
+    const searchIds = searchGrid.findAll('[data-file-id]').map((el) => el.attributes('data-file-id'));
+    expect(searchIds).toHaveLength(3);
+    expect(searchIds).toEqual(expect.arrayContaining(['f-parent', 'f-child', 'f-grandchild']));
+  });
+
+  it('Item #5 (B-017 Медиа): GallerySidebar hides > on media-only folders when showFilesInTree is false, on empty folders in both modes, and on empty home / Yandex root', async () => {
+    const layoutPrefs = useExplorerLayoutPrefs();
+
+    getFolderItemsMock.mockImplementation(async (folderId: string) => {
+      if (folderId === 'f-media-only') {
+        return {
+          items: [{ id: 'm1', name: 'beach.jpg', kind: 'photo', deletedAt: null }],
+          nextCursor: null,
+        };
+      }
+      return { items: [], nextCursor: null };
+    });
+
+    // 1. Folders with subfolder, media-only, and empty
+    const gs = mount(GallerySidebar, {
+      attachTo: document.body,
+      props: {
+        activeSection: 'library',
+        highlightedFolderId: 'f-parent',
+        folders: [
+          { id: 'f-parent', name: 'С подпапкой', parentId: null, role: 'owner' },
+          { id: 'f-child', name: 'Внутри', parentId: 'f-parent', role: 'owner' },
+          { id: 'f-media-only', name: 'Только медиа', parentId: null, role: 'owner' },
+          { id: 'f-empty', name: 'Пустая', parentId: null, role: 'owner' },
+        ],
+        albums: [],
+      },
+    });
+    await settle();
+
+    expect(layoutPrefs.showFilesInTree.value).toBe(false);
+    expect(gs.find('[data-gallery-folder="f-parent"] .gs-caret-btn').exists()).toBe(true);
+    expect(gs.find('[data-gallery-folder="f-media-only"] .gs-caret-btn').exists()).toBe(false);
+    expect(gs.find('[data-gallery-folder="f-media-only"] .gs-caret-spacer').exists()).toBe(true);
+    expect(gs.find('[data-gallery-folder="f-empty"] .gs-caret-btn').exists()).toBe(false);
+    expect(gs.find('[data-gallery-folder="f-empty"] .gs-caret-spacer').exists()).toBe(true);
+
+    // Enable showFilesInTree -> f-media-only gains > chevron, f-empty still has NO > chevron
+    layoutPrefs.setShowFilesInTree(true);
+    await settle();
+    expect(gs.find('[data-gallery-folder="f-media-only"] .gs-caret-btn').exists()).toBe(true);
+    expect(gs.find('[data-gallery-folder="f-empty"] .gs-caret-btn').exists()).toBe(false);
+    gs.unmount();
+
+    // 2. Empty home and empty Yandex Disk root hide >
+    layoutPrefs.setShowFilesInTree(false);
+    resetYandexDiskStatus();
+    useYandexDisk().status.value = {
+      enabled: true,
+      connected: true,
+      reconnectRequired: false,
+      login: 'vlad',
+      displayName: 'Vlad',
+      email: null,
+      avatarUrl: null,
+    };
+    yandexListMock.mockResolvedValueOnce({ path: '/', total: 0, items: [] });
+
+    const gsEmpty = mount(GallerySidebar, {
+      attachTo: document.body,
+      props: {
+        activeSection: 'library',
+        folders: [],
+        albums: [],
+      },
+    });
+    await settle();
+
+    expect(gsEmpty.find('[data-gallery-tree-root="home"] .gs-caret-btn').exists()).toBe(false);
+    expect(gsEmpty.find('[data-gallery-tree-root="home"] .gs-caret-spacer').exists()).toBe(true);
+
+    await gsEmpty.get('[data-gallery-yandex="/"] .gs-caret-btn').trigger('click');
+    await settle();
+    expect(gsEmpty.find('[data-gallery-yandex="/"] .gs-caret-btn').exists()).toBe(false);
+    expect(gsEmpty.find('[data-gallery-yandex="/"] .gs-caret-spacer').exists()).toBe(true);
   });
 });

@@ -321,16 +321,6 @@
         <footer class="dashboard-sidebar-footer sb-footer">
           <div class="sb-foot-row">
             <AccountMenu placement="sidebar" :compact="false" :show-plugins="true" :show-admin="admin" glass />
-            <router-link
-              to="/drive/devices"
-              class="sb-devices-btn"
-              :aria-label="t('explorerDevicesSync')"
-              :title="devicesTitle"
-              data-sidebar-devices-btn
-            >
-              <MonitorSmartphone :size="16" aria-hidden="true" />
-              <span v-if="devicesOnlineCount > 0 || devicesPaired" class="sb-devices-dot" aria-hidden="true"></span>
-            </router-link>
           </div>
           <div class="dashboard-sidebar-version sb-version">
             QCanva v{{ appVersion }} ·
@@ -379,7 +369,6 @@ import {
   House,
   Image as ImageIcon,
   Images,
-  MonitorSmartphone,
   PanelLeft,
   Plus,
   Send,
@@ -579,15 +568,6 @@ const collapseSidebarLabel = computed(() => (
   locale.value === 'ru' ? 'Свернуть сайдбар' : 'Collapse sidebar'
 ));
 
-const devicesTitle = computed(() => {
-  if (props.devicesOnlineCount > 0) {
-    return locale.value === 'ru'
-      ? `${t('explorerDevicesSync')} (${props.devicesOnlineCount} онлайн)`
-      : `${t('explorerDevicesSync')} (${props.devicesOnlineCount} online)`;
-  }
-  return t('explorerDevicesSync');
-});
-
 // Root sections state (Q Space, home, Clouds, Альбомы)
 const openRoots = ref<Set<string>>(new Set(['root:qspace', 'qspace:home', 'root:clouds', 'root:albums']));
 
@@ -615,7 +595,10 @@ const yandexOpen = ref<string[]>([]);
 const isYandexOpen = (path: string) => yandexOpen.value.includes(path);
 
 async function readYandexPath(path: string) {
-  const node = (yandexNodes[path] ??= { items: null, total: 0, loading: false });
+  if (!yandexNodes[path]) {
+    yandexNodes[path] = { items: null, total: 0, loading: false };
+  }
+  const node = yandexNodes[path];
   node.loading = true;
   try {
     const listing = await yandexDisk.list(path, { limit: SIDEBAR_FOLDER_CHILD_LIMIT + 1, sort: 'name' });
@@ -641,6 +624,14 @@ async function toggleYandexPath(path: string) {
   }
   if (!yandexNodes[path]?.items) await readYandexPath(path);
   if (!isYandexOpen(path)) yandexOpen.value = [...yandexOpen.value, path];
+  const dirs = (yandexNodes[path]?.items ?? [])
+    .filter((i) => i.type === 'dir')
+    .slice(0, SIDEBAR_FOLDER_CHILD_LIMIT);
+  for (const dir of dirs) {
+    if (!yandexNodes[dir.path]?.items && !yandexNodes[dir.path]?.loading) {
+      void readYandexPath(dir.path);
+    }
+  }
 }
 
 // Albums (`spaces`) lazy source expansion
@@ -844,14 +835,23 @@ const visibleRows = computed<TreeRow[]>(() => {
       sectionKind: 'public',
     });
 
-    const homeOpen = openRoots.value.has('qspace:home');
+    const hasTopSubfolders = [...folderLookup.value.values()].some(
+      (f) => !f.parentId || !folderLookup.value.has(f.parentId),
+    );
+    const hasHomeRootFiles = props.folders.some(
+      (item) => item.kind === 'file' && (item.folderId === 'root' || item.folderId === ''),
+    );
+    const homeExpandable = showFilesInTree.value
+      ? (hasTopSubfolders || hasHomeRootFiles)
+      : hasTopSubfolders;
+    const homeOpen = homeExpandable && openRoots.value.has('qspace:home');
     rows.push({
       key: 'qspace:home',
       parentKey: 'root:qspace',
       kind: 'section',
       label: 'home',
       depth: 1,
-      expandable: true,
+      expandable: homeExpandable,
       expanded: homeOpen,
       active: homeGroupActive.value,
       draggable: false,
@@ -882,14 +882,22 @@ const visibleRows = computed<TreeRow[]>(() => {
     const yandexEnabled = yandexStatus.value?.enabled !== false;
     const yandexConnected = Boolean(yandexStatus.value?.connected);
     if (yandexEnabled) {
-      const rootOpen = yandexConnected && isYandexOpen('/');
+      const yandexRootNode = yandexNodes['/'];
+      const yandexRootExpandable = !yandexConnected
+        ? false
+        : yandexRootNode?.items
+          ? (showFilesInTree.value
+              ? yandexRootNode.items.length > 0
+              : yandexRootNode.items.some((i) => i.type === 'dir'))
+          : true;
+      const rootOpen = yandexRootExpandable && isYandexOpen('/');
       rows.push({
         key: 'clouds:yandex',
         parentKey: 'root:clouds',
         kind: 'yandex-root',
         label: t('yandexDisk'),
         depth: 1,
-        expandable: yandexConnected,
+        expandable: yandexRootExpandable,
         expanded: rootOpen,
         active: isSectionActive({ kind: 'yandex', path: '/' }),
         draggable: false,
@@ -916,7 +924,8 @@ const visibleRows = computed<TreeRow[]>(() => {
   }
 
   // 3. Альбомы (Spaces)
-  const albumsOpen = openRoots.value.has('root:albums');
+  const albumsExpandable = spaces.value.length > 0;
+  const albumsOpen = albumsExpandable && openRoots.value.has('root:albums');
   rows.push({
     key: 'root:albums',
     parentKey: null,
@@ -924,7 +933,7 @@ const visibleRows = computed<TreeRow[]>(() => {
     label: t('spaces'),
     depth: 0,
     isGroup: true,
-    expandable: true,
+    expandable: albumsExpandable,
     expanded: albumsOpen,
     active: isSectionActive({ kind: 'spaces' }),
     draggable: false,
@@ -936,16 +945,17 @@ const visibleRows = computed<TreeRow[]>(() => {
     const sortedAlbums = [...spaces.value].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
     for (const album of sortedAlbums) {
       const aKey = `album:${album.id}`;
-      const isExp = openAlbums.value.has(album.id);
       const details = albumDetailsCache[album.id];
       const sources = details?.sources ?? [];
+      const hasSources = details ? sources.length > 0 : (album.sourceCount ?? 0) > 0;
+      const isExp = hasSources && openAlbums.value.has(album.id);
       rows.push({
         key: aKey,
         parentKey: 'root:albums',
         kind: 'album',
         label: album.name,
         depth: 1,
-        expandable: (album.sourceCount ?? 0) > 0 || sources.length > 0,
+        expandable: hasSources,
         expanded: isExp,
         active: isSectionActive({ kind: 'space', spaceId: album.id }),
         draggable: false,
@@ -1006,7 +1016,9 @@ function appendQspaceFolderRows(rows: TreeRow[], parentRowKey: string, baseDepth
       const fKey = `folder:${folder.id}`;
       const subSubFolders = childFolders.get(folder.id) ?? [];
       const files = showFilesInTree.value ? (childFiles.get(folder.id) ?? []) : [];
-      const expandable = folder.hasChildren || subSubFolders.length > 0 || files.length > 0;
+      const expandable = showFilesInTree.value
+        ? Boolean(folder.hasChildren || subSubFolders.length > 0 || files.length > 0 || childMore.has(folder.id))
+        : Boolean(folder.hasChildren || subSubFolders.length > 0);
       const expanded = expandable && isFolderExpanded(folder);
       rows.push({
         key: fKey,
@@ -1078,14 +1090,20 @@ function appendYandexRows(rows: TreeRow[], path: string, parentKey: string, dept
 
   for (const dir of dirs.slice(0, SIDEBAR_FOLDER_CHILD_LIMIT)) {
     const key = `yandex:${dir.path}`;
-    const open = isYandexOpen(dir.path);
+    const childNode = yandexNodes[dir.path];
+    const dirExpandable = childNode?.items
+      ? (showFilesInTree.value
+          ? childNode.items.length > 0
+          : childNode.items.some((i) => i.type === 'dir'))
+      : true;
+    const open = dirExpandable && isYandexOpen(dir.path);
     rows.push({
       key,
       parentKey,
       kind: 'yandex-dir',
       label: dir.name,
       depth,
-      expandable: true,
+      expandable: dirExpandable,
       expanded: open,
       active: isSectionActive({ kind: 'yandex', path: dir.path }),
       draggable: false,

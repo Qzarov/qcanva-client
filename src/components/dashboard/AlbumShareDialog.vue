@@ -16,7 +16,7 @@
           </button>
         </div>
 
-        <p class="album-share-hint">{{ t('explorerAlbumSharedHint') }}</p>
+        <p class="album-share-hint">{{ modalHint }}</p>
 
         <form v-if="isOwner" class="space-invite" data-space-invite novalidate @submit.prevent="invite">
           <ContactEmailInput
@@ -111,7 +111,16 @@ const email = ref('');
 const role = ref<'editor' | 'viewer'>('editor');
 
 const isOwner = computed(() => props.space.role === 'owner');
-const modalTitle = computed(() => t('explorerAlbumShareTitle').replace('{name}', props.space.name));
+const modalTitle = computed(() => (
+  props.space.unlisted
+    ? t('explorerSharePhotosTitle')
+    : t('explorerAlbumShareTitle').replace('{name}', props.space.name)
+));
+const modalHint = computed(() => (
+  props.space.unlisted
+    ? t('explorerSharePhotosHint')
+    : t('explorerAlbumSharedHint')
+));
 const inSpaceEmails = computed(() =>
   [props.space.owner.email, ...props.space.members.map((member) => member.email)].filter((item): item is string => Boolean(item)),
 );

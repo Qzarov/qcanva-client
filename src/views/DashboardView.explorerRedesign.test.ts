@@ -170,6 +170,7 @@ vi.mock('../api/spaces', () => ({
       updatedAt: '2026-11-26T10:00:00Z',
     })),
     addItems: vi.fn(async () => ({ added: 1 })),
+    remove: vi.fn(async () => undefined),
     addQspaceFolder: vi.fn(async () => ({})),
     feed: vi.fn(async () => ({ items: [], total: 0 })),
     feedTypes: vi.fn(async () => ({ types: [] })),
@@ -869,11 +870,20 @@ describe('DashboardView T-021 + T-018 Explorer Redesign Integration', () => {
     expect((wrapper.vm as any).galleryAlbumId).toBe('alb-1');
     expect(wrapper.get('[data-drive-photos-stub]').attributes('data-album')).toBe('alb-1');
 
+    const listCallsBefore = vi.mocked(spacesApi.list).mock.calls.length;
     await wrapper.get('[data-stub-share-photos]').trigger('click');
     await flushPromises();
-    expect(spacesApi.create).toHaveBeenCalledTimes(1);
+    expect(spacesApi.create).toHaveBeenCalledWith(expect.any(String), { unlisted: true });
     expect(spacesApi.addItems).toHaveBeenCalledWith('alb-shared-new', ['f0', 'f1']);
     expect((wrapper.vm as any).sharingAlbum?.id).toBe('alb-shared-new');
+    expect((wrapper.vm as any).sharingAlbum?.unlisted).toBe(true);
+    expect(vi.mocked(spacesApi.list).mock.calls.length).toBe(listCallsBefore);
+
+    // Closing without inviting deletes the empty unlisted share
+    (wrapper.vm as any).onCloseSharingAlbum();
+    await flushPromises();
+    expect(spacesApi.remove).toHaveBeenCalledWith('alb-shared-new');
+    expect((wrapper.vm as any).sharingAlbum).toBeNull();
   });
 
   it('restores DashboardSortMenu in ExplorerHeadroomBar and syncs sort order across both Grid tiles and ExplorerTableView rows', async () => {

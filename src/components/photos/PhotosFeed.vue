@@ -63,6 +63,8 @@ const props = withDefaults(defineProps<{
   tileHeight?: number;
   aspectMode?: 'square' | 'ratio';
   folderFilterId?: string | null;
+  folderFilterIds?: ReadonlySet<string> | null;
+  folderIncludeRoot?: boolean;
   peopleFilter?: readonly string[];
   recentLimit?: number | null;
   selected: Set<string>;
@@ -72,6 +74,8 @@ const props = withDefaults(defineProps<{
   tileHeight: undefined,
   aspectMode: undefined,
   folderFilterId: null,
+  folderFilterIds: null,
+  folderIncludeRoot: false,
   peopleFilter: () => [],
   recentLimit: null,
 });
@@ -191,10 +195,15 @@ function findItem(fileId: string): FeedItem | null {
 }
 
 function itemMatchesExternalFilters(item: FeedItem): boolean {
-  if (props.folderFilterId) {
-    if (props.folderFilterId === 'root') {
-      if (item.folderId !== null) return false;
-    } else if (item.folderId !== props.folderFilterId) {
+  if (props.folderFilterId || (props.folderFilterIds && props.folderFilterIds.size > 0) || props.folderIncludeRoot) {
+    if (props.folderFilterId === 'root' || props.folderIncludeRoot) {
+      if (item.share) return false;
+      if (props.folderFilterIds && props.folderFilterIds.size > 0) {
+        if (item.folderId !== null && !props.folderFilterIds.has(item.folderId)) return false;
+      }
+    } else if (props.folderFilterIds && props.folderFilterIds.size > 0) {
+      if (!item.folderId || !props.folderFilterIds.has(item.folderId)) return false;
+    } else if (props.folderFilterId && item.folderId !== props.folderFilterId) {
       return false;
     }
   }
@@ -207,8 +216,12 @@ function itemMatchesExternalFilters(item: FeedItem): boolean {
   return true;
 }
 
+const hasActiveFolderFilter = computed(
+  () => Boolean(props.folderFilterId) || Boolean(props.folderIncludeRoot) || Boolean(props.folderFilterIds && props.folderFilterIds.size > 0),
+);
+
 const filteredItemsMap = computed(() => {
-  const hasFilter = Boolean(props.folderFilterId) || (props.peopleFilter?.length ?? 0) > 0 || (props.recentLimit ?? 0) > 0;
+  const hasFilter = hasActiveFolderFilter.value || (props.peopleFilter?.length ?? 0) > 0 || (props.recentLimit ?? 0) > 0;
   if (!hasFilter) return items.value;
   const out = new Map<string, FeedItem[]>();
   let remaining = props.recentLimit && props.recentLimit > 0 ? props.recentLimit : Infinity;
@@ -231,7 +244,7 @@ function buildLayoutGroups(): LayoutGroup[] {
   const l2 = level2.value;
   headInfo.clear();
   unitCount.clear();
-  const hasClientFilter = Boolean(props.folderFilterId) || (props.peopleFilter?.length ?? 0) > 0;
+  const hasClientFilter = hasActiveFolderFilter.value || (props.peopleFilter?.length ?? 0) > 0;
   const out: LayoutGroup[] = [];
   for (const g of groups.value) {
     const info = groupTitle(l1, g, p.period, locale.value);
@@ -1117,7 +1130,16 @@ function scheduleMeasure(): void {
 watch(width, () => relayout());
 watch(viewportH, () => ensureLoaded());
 watch(() => [props.tile, props.tileHeight, props.aspectMode] as const, () => relayout());
-watch(() => [props.folderFilterId, props.peopleFilter?.join(','), props.recentLimit] as const, () => relayout());
+watch(
+  () => [
+    props.folderFilterId,
+    props.folderIncludeRoot,
+    props.folderFilterIds ? [...props.folderFilterIds].join(',') : '',
+    props.peopleFilter?.join(','),
+    props.recentLimit,
+  ] as const,
+  () => relayout(),
+);
 watch(collapsedShares, () => relayout());
 watch(locale, () => relayout());
 watch(

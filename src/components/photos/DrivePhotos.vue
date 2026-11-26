@@ -279,6 +279,8 @@
           :tile-height="prefs.photoTileH.value"
           :aspect-mode="prefs.galleryAspectMode.value"
           :folder-filter-id="externalFolderId"
+          :folder-filter-ids="effectiveAllowedFolderIds"
+          :folder-include-root="externalFolderId === 'root'"
           :people-filter="selectedPeople"
           :recent-limit="activeSection === 'recent' ? 24 : null"
           :selected="selected"
@@ -508,7 +510,8 @@ import {
   X,
 } from '@lucide/vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
-import { downloadDriveFile, driveApi } from '../../api/drive';
+import { resourceFolders, type ResourceFolderSummary } from '../../api/client';
+import { downloadDriveFile, driveApi, resolveDownloadUrl } from '../../api/drive';
 import { isPhotosMock, isSearchUnavailable, photosApi, type Album, type FeedItem, type FeedPeriod } from '../../api/photos';
 import { spacesApi } from '../../api/spaces';
 import {
@@ -534,7 +537,7 @@ import PhotosFeed from './PhotosFeed.vue';
 import PhotosSearchGrid from './PhotosSearchGrid.vue';
 import PhotosViewBar from './PhotosViewBar.vue';
 import PhotoViewer from './PhotoViewer.vue';
-import type { GallerySection, GallerySidebarCounts } from './GallerySidebar.vue';
+import type { GallerySection, GallerySidebarCounts, GalleryStorageFolder } from './GallerySidebar.vue';
 import { addGalleryAlbumItems, listGalleryAlbums, usePhotoSelectionActions } from './usePhotoSelectionActions';
 import { usePhotosView } from './usePhotosView';
 
@@ -543,6 +546,7 @@ const props = withDefaults(defineProps<{
   externalAlbumId?: string | null;
   externalAlbumMembersCount?: number | null;
   externalFolderId?: string | null;
+  folders?: readonly GalleryStorageFolder[];
   hideInternalTabs?: boolean;
   showSidebarExpand?: boolean;
   people?: readonly GalleryPerson[];
@@ -551,6 +555,7 @@ const props = withDefaults(defineProps<{
   externalAlbumId: null,
   externalAlbumMembersCount: null,
   externalFolderId: null,
+  folders: undefined,
   hideInternalTabs: false,
   showSidebarExpand: false,
   people: undefined,
@@ -601,6 +606,75 @@ const folderName = ref('');
 const albumSourceFolderIds = ref<Set<string>>(new Set());
 const effectiveAlbumId = computed(() => props.externalAlbumId ?? internalAlbumId.value);
 
+const loadedStorageFolders = ref<GalleryStorageFolder[]>([]);
+const allStorageFolders = computed<readonly GalleryStorageFolder[]>(() => props.folders ?? loadedStorageFolders.value);
+let storageFoldersRequested = false;
+
+async function ensureStorageFolders(): Promise<void> {
+  if (props.folders !== undefined || storageFoldersRequested) return;
+  storageFoldersRequested = true;
+  try {
+    if (typeof resourceFolders?.list !== 'function') return;
+    const res = await resourceFolders.list();
+    const own = (res.own ?? []).map((f: ResourceFolderSummary) => ({
+      id: f.id,
+      name: f.name,
+      parentId: f.parentId ?? null,
+      sortOrder: f.sortOrder,
+      role: f.role ?? ('owner' as const),
+    }));
+    const shared = (res.shared ?? []).map((f: ResourceFolderSummary) => ({
+      id: f.id,
+      name: f.name,
+      parentId: f.parentId ?? null,
+      sortOrder: f.sortOrder,
+      role: f.role ?? ('read' as const),
+    }));
+    loadedStorageFolders.value = [...own, ...shared];
+  } catch {
+    // Standalone or mock mode without resource folders API
+  }
+}
+
+function collectSubtreeIds(rootId: string, list: readonly GalleryStorageFolder[]): Set<string> {
+  const byParent = new Map<string, string[]>();
+  for (const f of list) {
+    if (!f.parentId) continue;
+    const bucket = byParent.get(f.parentId) ?? [];
+    bucket.push(f.id);
+    byParent.set(f.parentId, bucket);
+  }
+  const out = new Set<string>([rootId]);
+  const queue: string[] = [rootId];
+  while (queue.length > 0) {
+    const cur = queue.shift()!;
+    for (const childId of byParent.get(cur) ?? []) {
+      if (!out.has(childId)) {
+        out.add(childId);
+        queue.push(childId);
+      }
+    }
+  }
+  return out;
+}
+
+const ownHomeSubtreeIds = computed<Set<string>>(() => {
+  const ids = new Set<string>();
+  for (const f of allStorageFolders.value) {
+    if (f.role !== 'read') ids.add(f.id);
+  }
+  return ids;
+});
+
+const effectiveAllowedFolderIds = computed<ReadonlySet<string> | null>(() => {
+  const fid = props.externalFolderId;
+  if (!fid) return null;
+  if (fid === 'root') {
+    return ownHomeSubtreeIds.value.size > 0 ? ownHomeSubtreeIds.value : null;
+  }
+  return collectSubtreeIds(fid, allStorageFolders.value);
+});
+
 const selected = shallowRef<Set<string>>(new Set());
 const focusedId = ref<string | null>(null);
 const panelOpen = ref(false);
@@ -640,6 +714,24 @@ const scopeLabel = computed<string>(() => {
   return t('galleryLibrary');
 });
 
+function matchesActiveFolderScope(item: FeedItem): boolean {
+  const fid = props.externalFolderId;
+  if (!fid) return true;
+  if (fid === 'root') {
+    if (item.share) return false;
+    const allowed = effectiveAllowedFolderIds.value;
+    if (allowed && allowed.size > 0) {
+      return item.folderId === null || allowed.has(item.folderId);
+    }
+    return true;
+  }
+  const allowed = effectiveAllowedFolderIds.value;
+  if (allowed && allowed.size > 0) {
+    return Boolean(item.folderId && allowed.has(item.folderId));
+  }
+  return item.folderId === fid;
+}
+
 function itemMatchesScope(item: FeedItem): boolean {
   if (searchScopeMode.value !== 'current') return true;
   if (effectiveAlbumId.value) {
@@ -648,9 +740,7 @@ function itemMatchesScope(item: FeedItem): boolean {
     return false;
   }
   if (props.externalFolderId) {
-    return props.externalFolderId === 'root'
-      ? item.folderId === null
-      : item.folderId === props.externalFolderId;
+    return matchesActiveFolderScope(item);
   }
   return true;
 }
@@ -870,10 +960,13 @@ watch(
     clearSelection();
     folderName.value = '';
     if (!id) return;
+    if (props.folders === undefined) void ensureStorageFolders();
     if (id === 'root') {
       folderName.value = t('home');
       return;
     }
+    const localMatch = allStorageFolders.value.find((f) => f.id === id);
+    if (localMatch?.name) folderName.value = localMatch.name;
     void loadFolderName(id);
   },
   { immediate: true },
@@ -1118,8 +1211,9 @@ async function toggleFavoriteAction(): Promise<void> {
 async function shareSingleItem(item: FeedItem): Promise<void> {
   try {
     const res = await driveApi.getDownloadLink(item.fileId);
+    const fullUrl = resolveDownloadUrl(res.url);
     if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(res.url);
+      await navigator.clipboard.writeText(fullUrl);
     }
     toast.show(t('explorerAlbumLinkCopied'), 'success');
   } catch {

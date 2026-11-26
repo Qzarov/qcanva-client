@@ -3,8 +3,25 @@ import { mount } from '@vue/test-utils';
 import { defineComponent } from 'vue';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { resetExplorerLayoutPrefs } from '../../composables/useExplorerLayoutPrefs';
+import type { DashboardFolderNavItem } from '../../dashboard/navigation';
 import DashboardSidebar from './DashboardSidebar.vue';
 import { readGlobalCss } from '../../../tests/helpers/read-global-css';
+
+const sampleFolders: DashboardFolderNavItem[] = [
+  {
+    id: 'f-home-sample',
+    name: 'Folder',
+    parentId: null,
+    depth: 0,
+    role: 'owner',
+    technical: false,
+    expanded: false,
+    hasChildren: false,
+    draggable: true,
+    dropActive: false,
+    reorderTarget: false,
+  },
+];
 
 let stylesheet: HTMLStyleElement;
 
@@ -14,6 +31,9 @@ const LayoutHarness = defineComponent({
     collapsed: { type: Boolean, default: false },
     mobileOpen: { type: Boolean, default: false },
   },
+  data() {
+    return { sampleFolders };
+  },
   template: `
     <div class="dashboard-app-shell" :class="{ 'sidebar-collapsed': collapsed }">
       <DashboardSidebar
@@ -21,7 +41,7 @@ const LayoutHarness = defineComponent({
         :width-state="collapsed ? 'collapsed' : 'expanded'"
         :collapsed="collapsed"
         :mobile-open="mobileOpen"
-        :folders="[]"
+        :folders="sampleFolders"
       />
       <div class="dashboard-central-shell">
         <header class="app-header">

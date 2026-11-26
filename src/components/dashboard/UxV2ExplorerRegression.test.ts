@@ -4,23 +4,128 @@ import path from 'node:path';
 import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { nextTick } from 'vue';
-import { resetExplorerLayoutPrefs } from '../../composables/useExplorerLayoutPrefs';
+import { resourceFolders } from '../../api/client';
+import { yandexDisk, type YandexItem } from '../../api/yandexDisk';
+import { resetExplorerLayoutPrefs, useExplorerLayoutPrefs } from '../../composables/useExplorerLayoutPrefs';
 import { useI18n } from '../../composables/useI18n';
 import { resetSpaces, useSpaces } from '../../composables/useSpaces';
-import { resetYandexDiskStatus } from '../../composables/useYandexDisk';
+import { resetYandexDiskStatus, useYandexDisk } from '../../composables/useYandexDisk';
+import DashboardView from '../../views/DashboardView.vue';
 import DashboardAddDialog from './DashboardAddDialog.vue';
 import DashboardSidebar from './DashboardSidebar.vue';
 import ExplorerInlineSearch from './ExplorerInlineSearch.vue';
 import ExplorerTableView from './ExplorerTableView.vue';
 
-vi.mock('vue-router', () => ({
-  useRouter: () => ({ push: vi.fn() }),
+vi.mock('@capacitor/core', () => ({
+  Capacitor: { isNativePlatform: () => false },
 }));
 
-vi.mock('../../api/client', () => ({
-  clearToken: vi.fn(),
-  getCurrentUser: vi.fn(() => ({ id: 'u1', email: 'vlad@example.com', name: 'Vlad' })),
-  isAuthenticated: vi.fn(() => true),
+vi.mock('@capacitor/app', () => ({
+  App: {
+    addListener: vi.fn(() => Promise.resolve({ remove: vi.fn() })),
+  },
+}));
+
+vi.mock('vue-router', () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), currentRoute: { value: { query: {} } } }),
+  useRoute: () => ({ query: {} }),
+}));
+
+vi.mock('../../api/client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../api/client')>();
+  return {
+    ...actual,
+    onAuthCleared: vi.fn(),
+    clearToken: vi.fn(),
+    getCurrentUser: vi.fn(() => ({ id: 'u1', email: 'vlad@example.com', name: 'Vlad' })),
+    isAuthenticated: vi.fn(() => true),
+    isAdmin: vi.fn(() => false),
+    refreshCurrentUserRole: vi.fn().mockResolvedValue(false),
+    accessRequests: { incoming: vi.fn().mockResolvedValue([]) },
+    canvas: {
+      ...actual.canvas,
+      list: vi.fn().mockResolvedValue({ own: [], shared: [], public: [], welcome: null }),
+    },
+    htmlDocuments: {
+      ...actual.htmlDocuments,
+      list: vi.fn().mockResolvedValue({ documents: [] }),
+      publicList: vi.fn().mockResolvedValue({ documents: [] }),
+    },
+    textDocuments: {
+      ...actual.textDocuments,
+      list: vi.fn().mockResolvedValue({ documents: [] }),
+      publicList: vi.fn().mockResolvedValue({ documents: [] }),
+    },
+    interactiveTemplates: {
+      ...actual.interactiveTemplates,
+      list: vi.fn().mockResolvedValue({ templates: [] }),
+    },
+    recentResources: {
+      list: vi.fn().mockResolvedValue([]),
+      markOpened: vi.fn().mockResolvedValue({}),
+    },
+    resourceFolders: {
+      ...actual.resourceFolders,
+      list: vi.fn().mockResolvedValue({ own: [], shared: [] }),
+    },
+    tags: { list: vi.fn().mockResolvedValue({ tags: [] }) },
+  };
+});
+
+vi.mock('../../api/drive', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../api/drive')>();
+  return {
+    ...actual,
+    driveApi: {
+      ...actual.driveApi,
+      getFolderFileCounts: vi.fn().mockResolvedValue({ counts: {} }),
+      getFolderItems: vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
+      getThumbLinks: vi.fn().mockResolvedValue({ links: {} }),
+    },
+  };
+});
+
+vi.mock('../../api/spaces', () => ({
+  spacesApi: {
+    list: vi.fn().mockResolvedValue({ spaces: [] }),
+    get: vi.fn().mockResolvedValue({
+      id: 'alb-1',
+      name: 'Отпуск',
+      role: 'owner',
+      owner: { id: 'u1', name: 'Vlad', email: 'vlad@example.com' },
+      members: [],
+      sources: [],
+      createdAt: '2026-11-20T10:00:00Z',
+      updatedAt: '2026-11-20T10:00:00Z',
+    }),
+    feed: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+    feedTypes: vi.fn().mockResolvedValue({ types: [] }),
+  },
+}));
+
+vi.mock('../../api/photos', () => ({
+  photosApi: {
+    albums: vi.fn().mockResolvedValue([]),
+    feed: vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
+    search: vi.fn().mockResolvedValue({ items: [] }),
+    people: vi.fn().mockResolvedValue([]),
+  },
+}));
+
+vi.mock('../../api/yandexDisk', () => ({
+  isYandexReconnectError: () => false,
+  yandexDisk: {
+    status: vi.fn().mockResolvedValue({
+      enabled: true,
+      connected: false,
+      reconnectRequired: false,
+      login: null,
+      displayName: null,
+      email: null,
+      avatarUrl: null,
+    }),
+    list: vi.fn().mockResolvedValue({ path: '/', total: 0, items: [] }),
+  },
 }));
 
 const routerLinkStub = {
@@ -116,7 +221,7 @@ describe('UX v2 Explorer & B-011/B-012/B-013/B-014 regressions', () => {
     expect(document.body.querySelector('[data-s2-popover]')).toBeNull();
   });
 
-  it('B-012 + UX v2 + B-014: DashboardSidebar clears stale album highlight on Trash, renders mode switch, compact + on Albums, devices btn, and AccountMenu links', async () => {
+  it('B-012 + UX v2 + B-014 + Item #3: DashboardSidebar clears stale album highlight on Trash, renders mode switch, compact + on Albums, removes devices btn, and keeps AccountMenu links', async () => {
     useSpaces().spaces.value = [
       { id: 'alb-1', name: 'Отпуск', role: 'owner', ownerId: 'u1', memberCount: 2, sourceCount: 0, itemCount: 3, updatedAt: '2026-11-20T10:00:00Z' },
     ];
@@ -130,6 +235,7 @@ describe('UX v2 Explorer & B-011/B-012/B-013/B-014 regressions', () => {
         folders: [],
         spaces: true,
         admin: false,
+        devicesOnlineCount: 2,
       },
       global: {
         stubs: { RouterLink: routerLinkStub },
@@ -141,10 +247,12 @@ describe('UX v2 Explorer & B-011/B-012/B-013/B-014 regressions', () => {
     expect(wrapper.find('[data-sidebar-new-album]').exists()).toBe(false);
     expect(wrapper.text()).not.toContain('Новый альбом');
 
-    // Bottom [ Файлы | Медиа ] mode switch and .sb-devices-btn
+    // Bottom [ Файлы | Медиа ] mode switch; [data-sidebar-devices-btn] (.sb-devices-btn) is NOT rendered while AccountMenu remains
     expect(wrapper.get('[data-mode-btn="files"]').text()).toContain('Файлы');
     expect(wrapper.get('[data-mode-btn="media"]').text()).toContain('Медиа');
-    expect(wrapper.get('[data-sidebar-devices-btn]').attributes('href')).toBe('/drive/devices');
+    expect(wrapper.find('[data-sidebar-devices-btn]').exists()).toBe(false);
+    expect(wrapper.find('.sb-devices-btn').exists()).toBe(false);
+    expect(wrapper.find('.sb-footer [data-account-menu-trigger]').exists()).toBe(true);
 
     // Click album (sets treeSelectedKeys + emits select) then switch activeSection to Trash
     await wrapper.get('[data-album-id="alb-1"]').trigger('click');
@@ -278,5 +386,220 @@ describe('UX v2 Explorer & B-011/B-012/B-013/B-014 regressions', () => {
     await wrapper.get('[data-row-key="canvas:c1"]').trigger('contextmenu');
     expect(wrapper.emitted('contextmenu')).toHaveLength(1);
     expect(wrapper.emitted('empty-contextmenu')).toHaveLength(1);
+  });
+
+  it('Item #2: #feed-folders renders compact [data-feed-folders-add] even when recentFolderTiles.length > 0 and opens create-folder modal', async () => {
+    vi.mocked(resourceFolders.list).mockResolvedValueOnce({
+      own: [
+        {
+          id: 'folder-home',
+          name: 'Поездки',
+          role: 'owner',
+          parentId: null,
+          canvases: [],
+          htmlDocuments: [],
+          textDocuments: [],
+        },
+      ],
+      shared: [],
+    } as never);
+
+    const wrapper = mount(DashboardView, {
+      attachTo: document.body,
+      global: {
+        stubs: {
+          RouterLink: routerLinkStub,
+          DrivePhotos: { template: '<div data-drive-photos-stub>Gallery</div>' },
+          DashboardTrash: { template: '<div data-dashboard-view="trash">Trash</div>' },
+          DashboardYandexDisk: { template: '<div data-dashboard-view="yandex">Yandex</div>' },
+        },
+      },
+    });
+    await flushPromises();
+
+    // Non-empty recentFolderTiles rendered AND compact + button inside #feed-folders
+    expect(wrapper.findAll('[data-recent-folders] .subfolder-card').length).toBeGreaterThan(0);
+    expect(wrapper.find('#feed-folders [data-feed-folders-add]').exists()).toBe(true);
+    const addBtn = wrapper.get('#feed-folders [data-feed-folders-add]');
+
+    // Clicking + opens the create-folder modal
+    expect(wrapper.find('.dashboard-modal [data-folder-modal-actions]').exists()).toBe(false);
+    await addBtn.trigger('click');
+    await nextTick();
+    expect(wrapper.find('.dashboard-modal [data-folder-modal-actions]').exists()).toBe(true);
+    expect(wrapper.get('.dashboard-modal h3').text()).toBe('Создать папку');
+  });
+
+  it('Item #5 (B-017 Файлы): hides > chevron on empty nodes and file-only folders when showFilesInTree is false', async () => {
+    const layoutPrefs = useExplorerLayoutPrefs();
+    const { t } = useI18n();
+
+    // 1. Empty home, empty Альбомы, and empty Yandex root -> NO > chevrons
+    useSpaces().spaces.value = [];
+    useSpaces().loaded.value = true;
+    useYandexDisk().status.value = {
+      enabled: true,
+      connected: true,
+      reconnectRequired: false,
+      login: 'vlad',
+      displayName: 'Vlad',
+      email: null,
+      avatarUrl: null,
+    };
+    const mkYandexItem = (over: Partial<YandexItem> & Pick<YandexItem, 'name' | 'path' | 'type'>): YandexItem => ({
+      size: null,
+      mime: null,
+      mediaType: null,
+      md5: null,
+      createdAt: null,
+      modifiedAt: null,
+      publicUrl: null,
+      previewUrl: null,
+      ...over,
+    });
+    const mkYandexListing = (dirPath: string, items: YandexItem[]) => ({
+      item: mkYandexItem({
+        name: dirPath === '/' ? 'disk:' : dirPath.split('/').pop() || dirPath,
+        path: dirPath,
+        type: 'dir',
+      }),
+      items,
+      total: items.length,
+      offset: 0,
+      limit: 20,
+    });
+    vi.mocked(yandexDisk.list).mockResolvedValueOnce(mkYandexListing('/', []));
+
+    const emptySidebar = mount(DashboardSidebar, {
+      attachTo: document.body,
+      props: {
+        activeSection: { kind: 'home' },
+        mobileOpen: false,
+        folders: [],
+        spaces: true,
+      },
+      global: { stubs: { RouterLink: routerLinkStub } },
+    });
+    await flushPromises();
+
+    expect(emptySidebar.find('[data-home-disclosure]').exists()).toBe(false);
+    expect(emptySidebar.find('[data-tree-key="qspace:home"] .tree-spacer').exists()).toBe(true);
+    expect(emptySidebar.find('[data-tree-toggle="root:albums"]').exists()).toBe(false);
+    expect(emptySidebar.find('[data-tree-key="root:albums"] .tree-spacer').exists()).toBe(true);
+
+    // Initially Yandex root is optimistic until clicked; once loaded with 0 items its chevron disappears
+    await emptySidebar.get('[data-yandex-toggle="/"]').trigger('click');
+    await flushPromises();
+    await nextTick();
+    expect(emptySidebar.find('[data-yandex-toggle="/"]').exists()).toBe(false);
+    expect(emptySidebar.find('[data-tree-key="clouds:yandex"] .tree-spacer').exists()).toBe(true);
+    emptySidebar.unmount();
+
+    // 2. Folder with only files vs completely empty folder vs album sourceCount: 0 vs Yandex subdirs
+    resetYandexDiskStatus();
+    useYandexDisk().status.value = {
+      enabled: true,
+      connected: true,
+      reconnectRequired: false,
+      login: 'vlad',
+      displayName: 'Vlad',
+      email: null,
+      avatarUrl: null,
+    };
+    vi.mocked(yandexDisk.list).mockImplementation(async (dirPath: string) => {
+      if (dirPath === '/') {
+        return mkYandexListing('/', [
+          mkYandexItem({ name: 'EmptyDir', path: '/EmptyDir', type: 'dir' }),
+          mkYandexItem({ name: 'FilesOnlyDir', path: '/FilesOnlyDir', type: 'dir' }),
+        ]);
+      }
+      if (dirPath === '/FilesOnlyDir') {
+        return mkYandexListing('/FilesOnlyDir', [
+          mkYandexItem({ name: 'doc.md', path: '/FilesOnlyDir/doc.md', type: 'file', size: 120, mime: 'text/markdown' }),
+        ]);
+      }
+      return mkYandexListing(dirPath, []);
+    });
+
+    useSpaces().spaces.value = [
+      { id: 'alb-empty', name: 'Пустой', role: 'owner', ownerId: 'u1', memberCount: 1, sourceCount: 0, itemCount: 0, updatedAt: '2026-11-20T10:00:00Z' },
+      { id: 'alb-src', name: 'С папкой', role: 'owner', ownerId: 'u1', memberCount: 1, sourceCount: 1, itemCount: 2, updatedAt: '2026-11-20T10:00:00Z' },
+    ];
+    useSpaces().loaded.value = true;
+
+    const sidebar = mount(DashboardSidebar, {
+      attachTo: document.body,
+      props: {
+        activeSection: { kind: 'home' },
+        mobileOpen: false,
+        spaces: true,
+        folders: [
+          {
+            id: 'f-files-only',
+            name: 'Только файлы',
+            parentId: null,
+            depth: 0,
+            role: 'owner',
+            technical: false,
+            expanded: true,
+            hasChildren: false,
+            draggable: false,
+            dropActive: false,
+            reorderTarget: false,
+          },
+          {
+            kind: 'file',
+            key: 'f-files-only/canvas:c1',
+            id: 'c1',
+            type: 'canvas',
+            title: 'План',
+            folderId: 'f-files-only',
+            depth: 1,
+          },
+          {
+            id: 'f-empty',
+            name: 'Пустая',
+            parentId: null,
+            depth: 0,
+            role: 'owner',
+            technical: false,
+            expanded: true,
+            hasChildren: false,
+            draggable: false,
+            dropActive: false,
+            reorderTarget: false,
+          },
+        ],
+      },
+      global: { stubs: { RouterLink: routerLinkStub } },
+    });
+    await flushPromises();
+
+    // showFilesInTree === false: both file-only folder and empty folder have NO > chevron
+    expect(layoutPrefs.showFilesInTree.value).toBe(false);
+    expect(sidebar.find('[data-folder-toggle="f-files-only"]').exists()).toBe(false);
+    expect(sidebar.find('[data-folder-toggle="f-empty"]').exists()).toBe(false);
+    expect(sidebar.find('[data-home-disclosure]').exists()).toBe(true);
+    expect(sidebar.find('[data-tree-toggle="root:albums"]').exists()).toBe(true);
+    expect(sidebar.find('[data-album-toggle="alb-empty"]').exists()).toBe(false);
+    expect(sidebar.find('[data-album-toggle="alb-src"]').exists()).toBe(true);
+
+    // Expand Yandex root -> pre-fetches /EmptyDir (0 items) and /FilesOnlyDir (only file)
+    await sidebar.get('[data-yandex-toggle="/"]').trigger('click');
+    await flushPromises();
+    await flushPromises();
+    await nextTick();
+    expect(sidebar.find('[data-yandex-toggle="/EmptyDir"]').exists()).toBe(false);
+    expect(sidebar.find('[data-yandex-toggle="/FilesOnlyDir"]').exists()).toBe(false);
+
+    // Toggle showFilesInTree === true -> file-only folder & file-only Yandex dir show >, empty nodes stay without >
+    layoutPrefs.setShowFilesInTree(true);
+    await nextTick();
+    expect(sidebar.find('[data-folder-toggle="f-files-only"]').exists()).toBe(true);
+    expect(sidebar.find('[data-folder-toggle="f-empty"]').exists()).toBe(false);
+    expect(sidebar.find('[data-yandex-toggle="/EmptyDir"]').exists()).toBe(false);
+    expect(sidebar.find('[data-yandex-toggle="/FilesOnlyDir"]').exists()).toBe(true);
+    expect(sidebar.find('[data-album-toggle="alb-empty"]').exists()).toBe(false);
+    expect(t('folders')).toBe('Папки');
   });
 });

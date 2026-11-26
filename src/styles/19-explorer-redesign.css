@@ -641,6 +641,29 @@ body.resizing * {
   color: var(--ui-glass-accent-text);
 }
 
+#feed-folders.dashboard-recent-folders-head {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.dashboard-feed-folders-add {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  border: 1px solid var(--ui-glass-border);
+  background: var(--ui-glass-btn-bg);
+  box-shadow: var(--ui-glass-inset-highlight);
+  color: var(--explorer-text-2);
+  margin-left: 0;
+}
+
+.dashboard-feed-folders-add:hover {
+  background: var(--ui-glass-btn-hover);
+  color: var(--ui-text);
+}
+
 .tree-sep-line {
   height: 1px;
   background: var(--ui-glass-border);

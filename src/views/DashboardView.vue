@@ -403,6 +403,16 @@
 
       <div id="feed-folders" class="dash-section-head dashboard-recent-folders-head dashboard-feed-anchor" data-feed-anchor="folders">
         <h2>{{ t('folders') }}</h2>
+        <button
+          type="button"
+          class="tree-alb-add-btn dashboard-feed-folders-add"
+          data-feed-folders-add
+          :aria-label="t('explorerNewFolder')"
+          :title="t('explorerNewFolder')"
+          @click.stop="openCreateGroupModal()"
+        >
+          <Plus :size="14" aria-hidden="true" />
+        </button>
       </div>
       <div v-if="recentFolderTiles.length" class="dash-grid subfolder-grid" data-recent-folders>
         <button
@@ -790,6 +800,7 @@
           :external-album-id="galleryAlbumId"
           :external-album-members-count="galleryAlbumMembersCount"
           :external-folder-id="galleryFolderId"
+          :folders="galleryStorageFolders"
           :hide-internal-tabs="true"
           :show-sidebar-expand="showSidebarExpand"
           @expand-sidebar="onExpandSidebar"
@@ -1058,7 +1069,7 @@
       :space="sharingAlbum"
       :me-id="currentUser?.id || ''"
       @changed="onSharingAlbumChanged"
-      @close="sharingAlbum = null"
+      @close="onCloseSharingAlbum"
     />
 
     <ResourceSharePanel
@@ -2157,8 +2168,10 @@ export default defineComponent({
       role: folder.role,
       technical: isTechnicalFolder(folder),
       expanded: isTreeExpanded(folder.id),
-      // Files count as children too: an opened folder lists them under its subfolders.
-      hasChildren: Boolean(folder.hasChildren || folder.items.length || folderFiles.counts[folder.id]),
+      // Files count as children only when showFilesInTree is enabled; otherwise only subfolders count.
+      hasChildren: layoutPrefs.showFilesInTree.value
+        ? Boolean(folder.hasChildren || folder.items.length > 0 || (folderFiles.counts[folder.id] ?? 0) > 0)
+        : Boolean(folder.hasChildren),
       draggable: canReorderFolder(folder),
       dropActive: canDropToFolder(folder) && dragTargetFolder.value === folder.id,
       reorderTarget: folderDragOverId.value === folder.id,
@@ -5645,8 +5658,18 @@ export default defineComponent({
       }
     };
     const onSharingAlbumChanged = (next: SpaceDetails | null) => {
-      sharingAlbum.value = next;
-      void loadSpaces(true);
+      const wasUnlisted = Boolean(sharingAlbum.value?.unlisted || next?.unlisted);
+      sharingAlbum.value = next && wasUnlisted ? { ...next, unlisted: true } : next;
+      if (!wasUnlisted) {
+        void loadSpaces(true);
+      }
+    };
+    const onCloseSharingAlbum = () => {
+      const current = sharingAlbum.value;
+      sharingAlbum.value = null;
+      if (current?.unlisted && current.members.length === 0) {
+        void spacesApi.remove(current.id).catch(() => {});
+      }
     };
 
     // Resource Share Panel (canvas / html-document / text-document / interactive-template)
@@ -6538,10 +6561,10 @@ export default defineComponent({
           month: 'short',
         });
         const prefix = locale.value === 'ru' ? 'Общие фото' : 'Shared photos';
-        const created = await spacesApi.create(`${prefix} (${dateLabel})`);
+        const created = await spacesApi.create(`${prefix} (${dateLabel})`, { unlisted: true });
         await spacesApi.addItems(created.id, fileIds);
-        void loadSpaces(true);
-        sharingAlbum.value = await spacesApi.get(created.id).catch(() => created);
+        const details = await spacesApi.get(created.id).catch(() => created);
+        sharingAlbum.value = { ...details, unlisted: true };
       } catch (err) {
         setFeedback('error', err instanceof Error && err.message ? err.message : t('spaceActionFailed'));
       }
@@ -6917,6 +6940,7 @@ export default defineComponent({
       sharingAlbum,
       openAlbumShareById,
       onSharingAlbumChanged,
+      onCloseSharingAlbum,
       resourceShare,
       resourceShareSlugPrefix,
       resourceShareUrl,

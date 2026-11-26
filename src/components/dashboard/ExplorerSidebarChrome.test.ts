@@ -157,7 +157,7 @@ describe('DashboardSidebar UX v2 chrome (no ActivityBar)', () => {
     document.body.innerHTML = '';
   });
 
-  it('renders [Файлы | Медиа] switcher, .sb-home-btn with badge, .tree-alb-add-btn, Корзина, and .sb-devices-btn without ActivityBar', async () => {
+  it('renders [Файлы | Медиа] switcher, .sb-home-btn with badge, .tree-alb-add-btn, and Корзина without .sb-devices-btn or ActivityBar', async () => {
     const wrapper = mount(DashboardSidebar, {
       props: {
         activeSection: { kind: 'recent' },
@@ -189,10 +189,9 @@ describe('DashboardSidebar UX v2 chrome (no ActivityBar)', () => {
     await trashRow.trigger('click');
     expect(wrapper.emitted('select')?.[0]).toEqual([{ kind: 'trash' }]);
 
-    // .sb-devices-btn links to /drive/devices with online dot
-    const devicesBtn = wrapper.get('[data-sidebar-devices-btn].sb-devices-btn');
-    expect(devicesBtn.attributes('href')).toBe('/drive/devices');
-    expect(devicesBtn.find('.sb-devices-dot').exists()).toBe(true);
+    // .sb-devices-btn is removed from sidebar footer even when devices are online
+    expect(wrapper.find('[data-sidebar-devices-btn]').exists()).toBe(false);
+    expect(wrapper.find('.sb-devices-btn').exists()).toBe(false);
 
     // Bottom [ Файлы | Медиа ] mode switcher
     const filesBtn = wrapper.get('[data-mode-btn="files"]');
