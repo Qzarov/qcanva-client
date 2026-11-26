@@ -378,7 +378,7 @@ function statusLabel(status: ActivityStatus): string {
 <style scoped>
 .activity-journal {
   position: fixed;
-  right: 20px;
+  right: 80px;
   bottom: calc(20px + env(safe-area-inset-bottom, 0px));
   z-index: 335;
   pointer-events: none;
@@ -800,8 +800,8 @@ function statusLabel(status: ActivityStatus): string {
 
 @media (max-width: 768px) {
   .activity-journal {
-    right: 12px;
-    bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+    right: 74px;
+    bottom: calc(76px + env(safe-area-inset-bottom, 0px));
   }
 
   .activity-journal.is-expanded {
