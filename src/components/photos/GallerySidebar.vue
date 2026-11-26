@@ -18,7 +18,7 @@ import {
   Users,
   Video,
 } from '@lucide/vue';
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch, type CSSProperties } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch, type CSSProperties } from 'vue';
 import { resourceFolders, type ResourceFolderSummary } from '../../api/client';
 import { driveApi, type DriveItem } from '../../api/drive';
 import { photosApi, renditionUrl, type Album } from '../../api/photos';
@@ -90,6 +90,7 @@ const emit = defineEmits<{
 }>();
 
 const { t, locale } = useI18n();
+const rootEl = ref<HTMLElement | null>(null);
 const prefs = useExplorerLayoutPrefs();
 const dnd = useExplorerGroupDnd();
 const { spaces, load: loadSpaces } = useSpaces();
@@ -244,11 +245,33 @@ function collapseUnrelatedFolders(targetId: string | null, expandSelf: boolean):
   }
 }
 
+function ensureFolderGroupOpen(id: string): void {
+  const targetGroup = id !== 'root' && folderMap.value.get(id)?.role === 'read' ? 'shared' : 'home';
+  if (!openGroups.value.has('qspace') || !openGroups.value.has(targetGroup)) {
+    const next = new Set(openGroups.value);
+    next.add('qspace');
+    next.add(targetGroup);
+    openGroups.value = next;
+  }
+}
+
+function scrollActiveFolderIntoView(id: string): void {
+  void nextTick(() => {
+    const nav = rootEl.value;
+    if (!nav) return;
+    const safe = id.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    const selector = id === 'root' ? '[data-gallery-tree-root="home"]' : `[data-gallery-folder="${safe}"]`;
+    nav.querySelector<HTMLElement>(selector)?.scrollIntoView?.({ block: 'nearest' });
+  });
+}
+
 watch(
   () => props.activeFolderId,
   (id) => {
     if (id) {
+      ensureFolderGroupOpen(id);
       collapseUnrelatedFolders(id, true);
+      scrollActiveFolderIntoView(id);
     } else if (!props.highlightedFolderId) {
       collapseUnrelatedFolders(null, false);
     }
@@ -260,7 +283,7 @@ watch(
   () => props.highlightedFolderId,
   (id) => {
     if (id) {
-      collapseUnrelatedFolders(id, showFilesInTree.value);
+      collapseUnrelatedFolders(id, showFilesInTree.value || id === props.activeFolderId);
     } else if (!props.activeFolderId) {
       collapseUnrelatedFolders(null, false);
     }
@@ -269,8 +292,12 @@ watch(
 );
 
 watch(allFolders, () => {
-  if (props.activeFolderId) collapseUnrelatedFolders(props.activeFolderId, true);
-  else if (props.highlightedFolderId) collapseUnrelatedFolders(props.highlightedFolderId, showFilesInTree.value);
+  if (props.activeFolderId) {
+    ensureFolderGroupOpen(props.activeFolderId);
+    collapseUnrelatedFolders(props.activeFolderId, true);
+  } else if (props.highlightedFolderId) {
+    collapseUnrelatedFolders(props.highlightedFolderId, showFilesInTree.value || props.highlightedFolderId === props.activeFolderId);
+  }
 });
 
 watch(showFilesInTree, (on) => {
@@ -559,7 +586,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <nav class="gs" :class="{ compact }" :aria-label="t('gallerySectionPhoto')" data-testid="gallery-sidebar">
+  <nav ref="rootEl" class="gs" :class="{ compact }" :aria-label="t('gallerySectionPhoto')" data-testid="gallery-sidebar">
     <!-- Section: Фото -->
     <div class="gs-section-label">{{ t('gallerySectionPhoto') }}</div>
     <div class="gs-list" role="list">

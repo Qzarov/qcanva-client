@@ -16,6 +16,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'open', item: FeedItem): void;
   (e: 'activate', item: FeedItem): void;
+  (e: 'contextmenu', event: MouseEvent, item: FeedItem): void;
   (e: 'more'): void;
 }>();
 
@@ -118,6 +119,7 @@ onBeforeUnmount(() => {
           :aria-label="label(item)"
           @click="emit('open', item)"
           @dblclick="emit('activate', item)"
+          @contextmenu.prevent.stop="emit('contextmenu', $event, item)"
         >
           <img
             v-if="thumbs.get(item.hash)"

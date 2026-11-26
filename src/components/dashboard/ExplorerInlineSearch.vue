@@ -318,6 +318,14 @@ const popoverRef = ref<HTMLElement | null>(null);
 
 const isOpen = ref(false);
 const popoverPos = ref<{ top: string; left: string; width?: string }>({ top: '56px', left: '12px' });
+let suppressFocusOpen = false;
+
+function suppressFocusOpenForTick() {
+  suppressFocusOpen = true;
+  queueMicrotask(() => {
+    suppressFocusOpen = false;
+  });
+}
 
 const localScopeMode = ref<InlineSearchScopeMode>(props.scopeMode ?? 'current');
 watch(() => props.scopeMode, (val) => {
@@ -524,6 +532,7 @@ function close() {
 }
 
 async function focus() {
+  suppressFocusOpen = false;
   openPopover();
   await nextTick();
   inputRef.value?.focus();
@@ -571,15 +580,20 @@ function clearQuery() {
 }
 
 function onBoxClick() {
+  suppressFocusOpen = false;
   inputRef.value?.focus();
   openPopover();
 }
 
-function onInputFocus() {
+function onInputFocus(event?: FocusEvent) {
+  if (suppressFocusOpen) return;
+  const from = event?.relatedTarget as HTMLElement | null | undefined;
+  if (from?.closest?.('[role="dialog"], .modal-backdrop, .ui-modal-backdrop')) return;
   openPopover();
 }
 
 function onInputClick() {
+  suppressFocusOpen = false;
   openPopover();
 }
 
@@ -592,11 +606,14 @@ function handleEscape(): boolean {
   if (isOpen.value) {
     close();
     if (!props.modelValue && effectiveTypeFilter.value === 'all') {
+      suppressFocusOpenForTick();
       inputRef.value?.blur();
     }
     return true;
   }
   if (Boolean(props.modelValue) || effectiveTypeFilter.value !== 'all') {
+    suppressFocusOpenForTick();
+    close();
     emit('update:modelValue', '');
     if (effectiveTypeFilter.value !== 'all') {
       localTypeFilter.value = 'all';
@@ -606,6 +623,8 @@ function handleEscape(): boolean {
     return true;
   }
   if (typeof document !== 'undefined' && document.activeElement === inputRef.value) {
+    suppressFocusOpenForTick();
+    close();
     inputRef.value?.blur();
     return true;
   }
@@ -687,6 +706,7 @@ watch(isOpen, (open) => {
 });
 
 onBeforeUnmount(() => {
+  suppressFocusOpen = false;
   detachListeners();
 });
 

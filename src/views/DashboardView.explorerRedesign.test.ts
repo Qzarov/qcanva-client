@@ -208,9 +208,9 @@ function mountDashboard() {
       stubs: {
         RouterLink: { props: ['to'], template: '<a :href="typeof to === \'string\' ? to : \'\'"><slot /></a>' },
         DrivePhotos: {
-          props: ['activeSection', 'externalAlbumId', 'externalAlbumMembersCount'],
-          emits: ['clear-album', 'select-album', 'share-album', 'share-photos', 'open-trash', 'update:counts'],
-          template: '<div data-drive-photos-stub :data-album="externalAlbumId ?? \'\'" :data-section="activeSection"><button type="button" data-stub-clear-album @click="$emit(\'clear-album\')">Clear</button><button type="button" data-stub-select-album @click="$emit(\'select-album\', \'alb-1\')">SelectAlbum</button><button type="button" data-stub-share-photos @click="$emit(\'share-photos\', [\'f0\', \'f1\'])">SharePhotos</button><button type="button" data-stub-open-trash @click="$emit(\'open-trash\')">Trash</button>Gallery</div>',
+          props: ['activeSection', 'externalAlbumId', 'externalAlbumMembersCount', 'externalFolderId'],
+          emits: ['clear-album', 'select-album', 'share-album', 'share-photos', 'open-trash', 'update:counts', 'show-folder-in-gallery', 'focus-photo'],
+          template: '<div data-drive-photos-stub :data-album="externalAlbumId ?? \'\'" :data-folder="externalFolderId ?? \'\'" :data-section="activeSection"><button type="button" data-stub-clear-album @click="$emit(\'clear-album\')">Clear</button><button type="button" data-stub-select-album @click="$emit(\'select-album\', \'alb-1\')">SelectAlbum</button><button type="button" data-stub-share-photos @click="$emit(\'share-photos\', [\'f0\', \'f1\'])">SharePhotos</button><button type="button" data-stub-open-trash @click="$emit(\'open-trash\')">Trash</button><button type="button" data-stub-show-folder @click="$emit(\'show-folder-in-gallery\', \'folder-child\', \'df-photo-1\')">ShowFolder</button><button type="button" data-stub-show-root @click="$emit(\'show-folder-in-gallery\', \'root\', \'df-root-1\')">ShowRoot</button>Gallery</div>',
         },
         DashboardTrash: { template: '<div data-dashboard-view="trash">Trash</div>' },
         DashboardYandexDisk: { template: '<div data-dashboard-view="yandex">Yandex</div>' },
@@ -1258,5 +1258,140 @@ describe('DashboardView T-021 + T-018 Explorer Redesign Integration', () => {
     await vi.waitFor(() => {
       expect(wrapper.find('[data-properties-backdrop]').exists()).toBe(true);
     });
+  });
+
+  it('keeps Gallery mode on show-folder-in-gallery and expands GallerySidebar branch for nested folder and root', async () => {
+    dashboardRoute.query = { activity: 'gallery' };
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    // Start in an album inside Gallery
+    (wrapper.vm as any).galleryAlbumId = 'alb-1';
+    await nextTick();
+    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'gallery' });
+
+    // Collapse Q Space tree group in GallerySidebar
+    await wrapper.get('[data-gallery-tree-group="qspace"] .gs-group-btn').trigger('click');
+    await nextTick();
+    expect(wrapper.find('[data-gallery-folder="folder-child"]').exists()).toBe(false);
+
+    // Emit show-folder-in-gallery for nested folder-child
+    await wrapper.get('[data-stub-show-folder]').trigger('click');
+    await flushPromises();
+
+    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'gallery' });
+    expect((wrapper.vm as any).gallerySection).toBe('library');
+    expect((wrapper.vm as any).galleryAlbumId).toBeNull();
+    expect((wrapper.vm as any).galleryFolderId).toBe('folder-child');
+    expect(wrapper.get('[data-drive-photos-stub]').attributes('data-folder')).toBe('folder-child');
+    expect(wrapper.find('[data-gallery-folder="folder-child"]').exists()).toBe(true);
+    expect(wrapper.get('[data-gallery-folder="folder-child"]').classes()).toContain('active');
+
+    // Emit show-folder-in-gallery for root
+    await wrapper.get('[data-stub-show-root]').trigger('click');
+    await flushPromises();
+    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'gallery' });
+    expect((wrapper.vm as any).galleryFolderId).toBe('root');
+    expect(wrapper.get('[data-gallery-tree-root="home"]').classes()).toContain('active');
+  });
+
+  it('transfers Gallery photo focus to Файлы in both Grid and Table modes and ignores cleared focus after Esc', async () => {
+    vi.mocked(driveApi.getFolderItems).mockImplementation(async (folderId: string, opts?: { slice?: string }) => {
+      if (folderId === 'folder-child' && opts?.slice === 'media') {
+        return {
+          items: [
+            {
+              kind: 'photo',
+              id: 'df-photo-1',
+              name: 'georgia.jpg',
+              mime: 'image/jpeg',
+              sizeBytes: 4096,
+              sortDate: '2026-11-22T10:00:00Z',
+              updatedAt: '2026-11-22T10:00:00Z',
+              ownerId: 'user-1',
+              folderId: 'folder-child',
+            },
+          ],
+          nextCursor: null,
+        };
+      }
+      if (folderId === 'root' && opts?.slice === 'media') {
+        return {
+          items: [
+            {
+              kind: 'photo',
+              id: 'df-root-1',
+              name: 'home-pic.jpg',
+              mime: 'image/jpeg',
+              sizeBytes: 2048,
+              sortDate: '2026-11-22T10:00:00Z',
+              updatedAt: '2026-11-22T10:00:00Z',
+              ownerId: 'user-1',
+              folderId: null,
+            },
+          ],
+          nextCursor: null,
+        };
+      }
+      return { items: [], nextCursor: null };
+    });
+
+    let activeTransfer: { fileId: string; folderId: string | null; shared: boolean; selectedIds: string[] } | null = null;
+    dashboardRoute.query = { activity: 'gallery' };
+
+    const wrapper = mount(DashboardView, {
+      attachTo: document.body,
+      global: {
+        stubs: {
+          RouterLink: { props: ['to'], template: '<a :href="typeof to === \'string\' ? to : \'\'"><slot /></a>' },
+          DrivePhotos: {
+            props: ['activeSection', 'externalAlbumId', 'externalAlbumMembersCount', 'externalFolderId'],
+            methods: {
+              getActiveFocusTransfer() {
+                return activeTransfer;
+              },
+            },
+            template: '<div data-drive-photos-stub>Gallery</div>',
+          },
+          DashboardTrash: { template: '<div />' },
+          DashboardYandexDisk: { template: '<div />' },
+        },
+      },
+    });
+    await flushPromises();
+
+    // 1. Folder photo transfer in Grid mode
+    activeTransfer = { fileId: 'df-photo-1', folderId: 'folder-child', shared: false, selectedIds: ['df-photo-1'] };
+    await wrapper.get('[data-mode-btn="files"]').trigger('click');
+    await flushPromises();
+    await nextTick();
+
+    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'folder', folderId: 'folder-child' });
+    expect((wrapper.vm as any).selectedKeys).toEqual(['drive-file:df-photo-1']);
+    expect(wrapper.get('[data-dashboard-view="folder"] [data-select-key="drive-file:df-photo-1"]').attributes('data-selected')).toBe('true');
+
+    // 2. Root photo transfer in Table mode
+    useExplorerLayoutPrefs().setViewMode('table');
+    await wrapper.get('[data-mode-btn="media"]').trigger('click');
+    await nextTick();
+    activeTransfer = { fileId: 'df-root-1', folderId: null, shared: false, selectedIds: ['df-root-1'] };
+    await wrapper.get('[data-mode-btn="files"]').trigger('click');
+    await flushPromises();
+    await nextTick();
+
+    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'home' });
+    expect((wrapper.vm as any).selectedKeys).toEqual(['drive-file:df-root-1']);
+    expect(wrapper.get('[data-dashboard-view="home"] [data-explorer-table] [data-select-key="drive-file:df-root-1"]').attributes('data-selected')).toBe('true');
+
+    // 3. Cleared focus (e.g. after Esc in Gallery) -> switching to Files does NOT select stale photo
+    await wrapper.get('[data-mode-btn="media"]').trigger('click');
+    await nextTick();
+    activeTransfer = null;
+    await wrapper.get('[data-mode-btn="files"]').trigger('click');
+    await flushPromises();
+    await nextTick();
+
+    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'home' });
+    expect((wrapper.vm as any).selectedKeys).toEqual([]);
   });
 });

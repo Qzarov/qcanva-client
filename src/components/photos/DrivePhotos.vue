@@ -210,6 +210,7 @@
             :has-more="searchCursor !== null && !searchLoading"
             @open="onOpen"
             @activate="onActivate"
+            @contextmenu="onFeedContextMenu"
             @more="loadMoreSearch"
           />
         </template>
@@ -247,7 +248,7 @@
           :selected="selected"
           :current="currentId"
           @open="onOpen"
-          @focus-photo="emit('focus-photo', $event)"
+          @focus-photo="onFeedFocusPhoto"
           @activate="onActivate"
           @toggle-select="onToggleSelect"
           @set-selection="onSetSelection"
@@ -370,6 +371,18 @@
           <span>{{ t('photosSelRemoveFromAlbum') }}</span>
         </button>
 
+        <button
+          v-if="ctxShowFolderTarget"
+          type="button"
+          role="menuitem"
+          class="dp-ctx-item"
+          data-ctx-show-folder
+          @click="ctxShowFolder"
+        >
+          <FolderOpen :size="14" aria-hidden="true" />
+          <span>{{ t('photosShowFolder') }}</span>
+        </button>
+
         <button type="button" role="menuitem" class="dp-ctx-item" data-ctx-move @click="ctxOpenMove">
           <FolderInput :size="14" aria-hidden="true" />
           <span>
@@ -473,6 +486,7 @@ import {
   ChevronLeft,
   Download,
   FolderInput,
+  FolderOpen,
   FolderPlus,
   Heart,
   Info,
@@ -535,8 +549,16 @@ const props = withDefaults(defineProps<{
   people: undefined,
 });
 
+export interface GalleryFocusTransfer {
+  fileId: string;
+  folderId: string | null;
+  shared: boolean;
+  selectedIds: string[];
+}
+
 const emit = defineEmits<{
   (e: 'openFolder', folderId: string, fileId: string): void;
+  (e: 'show-folder-in-gallery', folderId: string, fileId: string): void;
   (e: 'focus-photo', item: FeedItem): void;
   (e: 'share-album', id: string): void;
   (e: 'share-photos', ids: string[]): void;
@@ -651,6 +673,8 @@ const effectiveAllowedFolderIds = computed<ReadonlySet<string> | null>(() => {
 
 const selected = shallowRef<Set<string>>(new Set());
 const focusedId = ref<string | null>(null);
+const focusedItemCache = ref<FeedItem | null>(null);
+let preserveFocusForShowFolder = false;
 const panelOpen = ref(false);
 const panelId = ref<string | null>(null);
 const panelEpoch = ref(0);
@@ -900,8 +924,12 @@ watch(
     clearSelection();
     if (sec === 'trash') {
       focusedId.value = null;
+      focusedItemCache.value = null;
       panelId.value = null;
       panelOpen.value = false;
+    } else if (!preserveFocusForShowFolder) {
+      focusedId.value = null;
+      focusedItemCache.value = null;
     }
     applySectionFilter(sec);
   },
@@ -918,6 +946,10 @@ watch(
     prefs.setHeadroomHidden(false);
     clearSearch();
     clearSelection();
+    if (!preserveFocusForShowFolder) {
+      focusedId.value = null;
+      focusedItemCache.value = null;
+    }
     albumName.value = '';
     albumSourceFolderIds.value = new Set();
     if (id) void loadAlbumName(id);
@@ -932,6 +964,10 @@ watch(
     prefs.setHeadroomHidden(false);
     clearSearch();
     clearSelection();
+    if (!preserveFocusForShowFolder) {
+      focusedId.value = null;
+      focusedItemCache.value = null;
+    }
     folderName.value = '';
     if (!id) return;
     if (props.folders === undefined) void ensureStorageFolders();
@@ -1030,10 +1066,21 @@ function onToggleSelect(fileIds: string[], on: boolean): void {
     else next.delete(id);
   }
   selected.value = next;
+  if (!focusedId.value && next.size > 0) {
+    focusedItemCache.value = findLoadedItem([...next][0]!) ?? null;
+  } else if (!focusedId.value && next.size === 0) {
+    focusedItemCache.value = null;
+  }
 }
 
 function onSetSelection(fileIds: string[]): void {
-  selected.value = new Set(fileIds);
+  const next = new Set(fileIds);
+  selected.value = next;
+  if (!focusedId.value && next.size > 0) {
+    focusedItemCache.value = findLoadedItem([...next][0]!) ?? null;
+  } else if (!focusedId.value && next.size === 0) {
+    focusedItemCache.value = null;
+  }
 }
 
 function clearSelection(): void {
@@ -1236,6 +1283,24 @@ const ctxTargetIds = computed(() => ctxMenu.value?.targets ?? []);
 const ctxAllFavorite = computed(() =>
   ctxTargetIds.value.length > 0 && ctxTargetIds.value.every((id) => findLoadedItem(id)?.favorite === true),
 );
+const ctxShowFolderTarget = computed<string | null>(() => {
+  if (!ctxMenu.value) return null;
+  const ids = ctxTargetIds.value;
+  if (ids.length === 0) return null;
+  const fallback = ctxMenu.value.item;
+  const items = ids
+    .map((id) => findLoadedItem(id) ?? (fallback.fileId === id ? fallback : undefined))
+    .filter((x): x is FeedItem => Boolean(x));
+  if (items.length !== ids.length) return null;
+  const resolveTarget = (item: FeedItem): string | null => {
+    if (typeof item.folderId === 'string' && item.folderId.length > 0) return item.folderId;
+    if (!item.share) return 'root';
+    return null;
+  };
+  const first = resolveTarget(items[0]!);
+  if (!first) return null;
+  return items.every((item) => resolveTarget(item) === first) ? first : null;
+});
 
 async function setFavoriteForIds(ids: string[], nextFav: boolean): Promise<void> {
   if (ids.length === 0) return;
@@ -1365,6 +1430,29 @@ async function ctxRemoveFromAlbum(): Promise<void> {
   }
 }
 
+function ctxShowFolder(): void {
+  const folderId = ctxShowFolderTarget.value;
+  const item = ctxMenu.value?.item ?? null;
+  const fileId = item?.fileId ?? ctxTargetIds.value[0] ?? '';
+  closeCtxMenu();
+  if (!folderId) return;
+  preserveFocusForShowFolder = true;
+  searchTypeFilter.value = 'all';
+  clearSearch();
+  internalAlbumId.value = null;
+  albumName.value = '';
+  albumSourceFolderIds.value = new Set();
+  if (fileId) {
+    focusedId.value = fileId;
+    if (item) focusedItemCache.value = item;
+  }
+  emit('show-folder-in-gallery', folderId, fileId);
+  void nextTick(() => {
+    preserveFocusForShowFolder = false;
+    if (fileId) focusTile(fileId);
+  });
+}
+
 function ctxOpenMove(): void {
   const ids = [...ctxTargetIds.value];
   closeCtxMenu();
@@ -1393,10 +1481,12 @@ async function ctxDownload(): Promise<void> {
 }
 
 function ctxOpenProperties(): void {
-  const id = ctxMenu.value?.item.fileId ?? ctxTargetIds.value[0] ?? null;
+  const item = ctxMenu.value?.item ?? null;
+  const id = item?.fileId ?? ctxTargetIds.value[0] ?? null;
   closeCtxMenu();
   if (id) {
     focusedId.value = id;
+    if (item) focusedItemCache.value = item;
     panelId.value = id;
   }
   panelOpen.value = true;
@@ -1406,6 +1496,10 @@ async function deleteFileIds(ids: string[]): Promise<void> {
   if (ids.length === 0) return;
   await Promise.allSettled(ids.map((id) => driveApi.trashFile(id)));
   clearSelection();
+  if (focusedId.value && ids.includes(focusedId.value)) {
+    focusedId.value = null;
+    focusedItemCache.value = null;
+  }
   if (panelId.value && ids.includes(panelId.value)) panelId.value = null;
   feedRef.value?.removeItems?.(ids);
   if (searchItems.value.some((i) => ids.includes(i.fileId))) {
@@ -1442,13 +1536,17 @@ async function onViewerDelete(item: FeedItem): Promise<void> {
     const nextItems = v.items.filter((i) => i.fileId !== item.fileId);
     if (nextItems.length === 0) {
       viewer.value = null;
-      if (focusedId.value === item.fileId) focusedId.value = null;
+      if (focusedId.value === item.fileId) {
+        focusedId.value = null;
+        focusedItemCache.value = null;
+      }
       if (panelId.value === item.fileId) panelId.value = null;
     } else {
       const nextIndex = Math.min(v.index, nextItems.length - 1);
       const nextItem = nextItems[nextIndex]!;
       viewer.value = { items: nextItems, index: nextIndex };
       focusedId.value = nextItem.fileId;
+      focusedItemCache.value = nextItem;
       if (panelOpen.value && panelId.value) panelId.value = nextItem.fileId;
       emit('focus-photo', nextItem);
       maybeLoadMoreForViewer(nextIndex, nextItems);
@@ -1521,6 +1619,7 @@ function onWindowKeydown(e: KeyboardEvent): void {
     e.preventDefault();
     clearSelection();
     focusedId.value = null;
+    focusedItemCache.value = null;
     return;
   }
   if (panelOpen.value) {
@@ -1692,9 +1791,18 @@ function onPanelSashDown(e: PointerEvent): void {
 
 function onOpen(item: FeedItem): void {
   focusedId.value = item.fileId;
+  focusedItemCache.value = item;
+  emit('focus-photo', item);
   if (panelOpen.value) {
     panelId.value = item.fileId;
   }
+}
+
+function onFeedFocusPhoto(item: FeedItem): void {
+  if (focusedId.value === item.fileId && focusedItemCache.value?.fileId === item.fileId) return;
+  focusedId.value = item.fileId;
+  focusedItemCache.value = item;
+  emit('focus-photo', item);
 }
 
 function maybeLoadMoreForViewer(index: number, items: FeedItem[]): void {
@@ -1720,6 +1828,8 @@ function onActivate(item: FeedItem): void {
   const index = items.findIndex((i) => i.fileId === item.fileId);
   if (index < 0) return;
   focusedId.value = item.fileId;
+  focusedItemCache.value = item;
+  emit('focus-photo', item);
   if (panelOpen.value) panelId.value = item.fileId;
   viewer.value = { items, index };
   maybeLoadMoreForViewer(index, items);
@@ -1733,6 +1843,7 @@ function stepViewer(delta: number): void {
   const next = v.items[index]!;
   viewer.value = { items: v.items, index };
   focusedId.value = next.fileId;
+  focusedItemCache.value = next;
   if (panelOpen.value && panelId.value) panelId.value = next.fileId;
   emit('focus-photo', next);
   maybeLoadMoreForViewer(index, v.items);
@@ -1744,6 +1855,7 @@ function jumpViewer(index: number): void {
   const next = v.items[index]!;
   viewer.value = { items: v.items, index };
   focusedId.value = next.fileId;
+  focusedItemCache.value = next;
   if (panelOpen.value && panelId.value) panelId.value = next.fileId;
   emit('focus-photo', next);
   maybeLoadMoreForViewer(index, v.items);
@@ -1763,6 +1875,9 @@ function focusTile(fileId: string): void {
 function focusFile(fileId: string): void {
   if (!fileId) return;
   focusedId.value = fileId;
+  const found = findLoadedItem(fileId);
+  if (found) focusedItemCache.value = found;
+  else if (focusedItemCache.value?.fileId !== fileId) focusedItemCache.value = null;
   panelId.value = fileId;
   focusTile(fileId);
   void nextTick(() => focusTile(fileId));
@@ -1772,7 +1887,32 @@ function focusSearch(): void {
   inlineSearchRef.value?.focus();
 }
 
-defineExpose({ focusFile, focusSearch });
+function getActiveFocusTransfer(): GalleryFocusTransfer | null {
+  const primaryId = focusedId.value ?? (selected.value.size > 0 ? [...selected.value][0]! : null);
+  if (!primaryId) return null;
+  const item = findLoadedItem(primaryId)
+    ?? (focusedItemCache.value?.fileId === primaryId ? focusedItemCache.value : null);
+  const resolvedFolderId = item ? item.folderId : (folderOf(primaryId) ?? null);
+  const primaryShared = Boolean(item?.share);
+  const matchingSelectedIds = selected.value.size >= 2
+    ? [...selected.value].filter((id) => {
+      if (id === primaryId) return true;
+      const candidate = findLoadedItem(id);
+      const candFolderId = candidate ? candidate.folderId : (folderOf(id) ?? null);
+      const candShared = Boolean(candidate?.share);
+      return candFolderId === resolvedFolderId && candShared === primaryShared;
+    })
+    : [primaryId];
+  if (!matchingSelectedIds.includes(primaryId)) matchingSelectedIds.unshift(primaryId);
+  return {
+    fileId: primaryId,
+    folderId: resolvedFolderId,
+    shared: primaryShared,
+    selectedIds: matchingSelectedIds,
+  };
+}
+
+defineExpose({ focusFile, focusSearch, getActiveFocusTransfer });
 
 function closePanel(restoreFocus = true): void {
   const id = panelId.value;

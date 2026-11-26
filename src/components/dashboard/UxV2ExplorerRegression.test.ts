@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { nextTick } from 'vue';
+import { nextTick, ref } from 'vue';
 import { resourceFolders } from '../../api/client';
 import { yandexDisk, type YandexItem } from '../../api/yandexDisk';
 import { resetExplorerLayoutPrefs, useExplorerLayoutPrefs } from '../../composables/useExplorerLayoutPrefs';
@@ -12,6 +12,7 @@ import { resetSpaces, useSpaces } from '../../composables/useSpaces';
 import { resetYandexDiskStatus, useYandexDisk } from '../../composables/useYandexDisk';
 import DashboardView from '../../views/DashboardView.vue';
 import DashboardAddDialog from './DashboardAddDialog.vue';
+import DashboardModalLayer from './DashboardModalLayer.vue';
 import DashboardSidebar from './DashboardSidebar.vue';
 import ExplorerInlineSearch from './ExplorerInlineSearch.vue';
 import ExplorerTableView from './ExplorerTableView.vue';
@@ -670,5 +671,115 @@ describe('UX v2 Explorer & B-011/B-012/B-013/B-014 regressions', () => {
     expect(searchSrc).toContain('name="s2-pill-pop"');
     const cssSrc = fs.readFileSync(path.resolve(__dirname, '../../styles/19-explorer-redesign.css'), 'utf8');
     expect(cssSrc).toContain('height: 50px;');
+  });
+
+  it('QA micro-polishes: S2 search suppresses popover reopen on focus after 2nd Esc / modal close, Create Folder modal auto-focuses input with createGroup aria-label, and PhotosGroupHead light count has crisp contrast', async () => {
+    // 1. S2 search: focus right after 2nd Esc or restored from a dialog must NOT re-open popover
+    const s2 = mount(ExplorerInlineSearch, {
+      attachTo: document.body,
+      props: { modelValue: 'горы', typeFilter: 'media' },
+    });
+    const input = s2.get('[data-s2-input]');
+    await input.trigger('focus');
+    await nextTick();
+    expect(document.body.querySelector('[data-s2-popover]')).not.toBeNull();
+
+    // 1st Esc closes popover, 2nd Esc clears query & blurs without synchronously re-opening popover
+    await input.trigger('keydown', { key: 'Escape' });
+    await nextTick();
+    input.element.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    // Synchronous focus bounce during 2nd Esc blur must NOT re-open popover
+    input.element.dispatchEvent(new FocusEvent('focus'));
+    await nextTick();
+    expect(document.body.querySelector('[data-s2-popover]')).toBeNull();
+
+    // After microtask settles, an explicit focus or click re-opens popover cleanly
+    await input.trigger('focus');
+    await nextTick();
+    expect(document.body.querySelector('[data-s2-popover]')).not.toBeNull();
+
+    // Close popover, then simulate focus returning from a closing [role="dialog"]
+    (s2.vm as unknown as { close: () => void }).close();
+    await nextTick();
+    const fakeDialog = document.createElement('div');
+    fakeDialog.setAttribute('role', 'dialog');
+    const dialogBtn = document.createElement('button');
+    fakeDialog.appendChild(dialogBtn);
+    document.body.appendChild(fakeDialog);
+    await input.trigger('focus', { relatedTarget: dialogBtn });
+    await nextTick();
+    expect(document.body.querySelector('[data-s2-popover]')).toBeNull();
+    fakeDialog.remove();
+    s2.unmount();
+
+    // 2. Create Folder modal in DashboardModalLayer auto-focuses input & uses createGroup aria-label
+    const { t } = useI18n();
+    const folderModal = ref({ open: false, resourceId: '', resourceType: 'canvas', folderId: '', value: '' });
+    const modalLayer = mount(DashboardModalLayer, {
+      attachTo: document.body,
+      props: {
+        context: {
+          t,
+          isBusy: ref(false),
+          actionLabel: (_k: string, label: string) => label,
+          MAX_DESCRIPTION_LENGTH: 2000,
+          tagSheetOpen: ref(false),
+          closeTagSheet: vi.fn(),
+          allTagNames: ref([]),
+          tagSheetDraft: ref([]),
+          toggleDraftTag: vi.fn(),
+          resetTagSheetDraft: vi.fn(),
+          applyTagSheet: vi.fn(),
+          folderModal,
+          closeFolderModal: vi.fn(),
+          folderModalMoves: ref(false),
+          folderOptions: ref([]),
+          canSaveFolderModal: ref(false),
+          saveFolderModal: vi.fn(),
+          subfolderModal: ref({ open: false, parentId: '', parentName: '', value: '' }),
+          closeSubfolderModal: vi.fn(),
+          saveSubfolderModal: vi.fn(),
+          folderParentModal: ref({ open: false, id: '', name: '', targetId: '' }),
+          folderParentOptions: ref([]),
+          closeFolderParentModal: vi.fn(),
+          saveFolderParentModal: vi.fn(),
+          descriptionModal: ref({ open: false, title: '', value: '' }),
+          closeDescriptionModal: vi.fn(),
+          saveDescriptionModal: vi.fn(),
+          renameFolderModal: ref({ open: false, id: '', value: '' }),
+          closeRenameFolderModal: vi.fn(),
+          saveRenameFolderModal: vi.fn(),
+          folderShareModal: ref({ open: false, folder: null, email: '', role: 'read', permissions: [] }),
+          closeFolderShareModal: vi.fn(),
+          shareFolder: vi.fn(),
+          revokeFolderAccess: vi.fn(),
+          tagsModal: ref({ open: false, title: '', tags: [], input: '', color: '' }),
+          tagSuggestions: ref([]),
+          addSuggestedTag: vi.fn(),
+          tagColors: [],
+          removeTag: vi.fn(),
+          addTag: vi.fn(),
+          closeTagsModal: vi.fn(),
+          saveTagsModal: vi.fn(),
+          transferModal: ref({ open: false, title: '', email: '' }),
+          closeTransferModal: vi.fn(),
+          saveTransferModal: vi.fn(),
+        },
+      },
+    });
+    folderModal.value = { open: true, resourceId: '', resourceType: 'canvas', folderId: '', value: '' };
+    await nextTick();
+    await nextTick();
+
+    const dialog = modalLayer.get('[role="dialog"]');
+    expect(dialog.attributes('aria-label')).toBe(t('createGroup'));
+    expect(dialog.attributes('aria-label')).not.toBe(t('moveToGroupTitle'));
+    const nameInput = dialog.get('input.dashboard-modal-input').element as HTMLInputElement;
+    expect(document.activeElement).toBe(nameInput);
+    modalLayer.unmount();
+
+    // 3. PhotosGroupHead light-theme curtain count contrast
+    const pghSrc = fs.readFileSync(path.resolve(__dirname, '../photos/PhotosGroupHead.vue'), 'utf8');
+    expect(pghSrc).toMatch(/:root\[data-theme='light'\]\s+\.pgh-curtain\s+\.pgh-count\s*\{[^}]*color:\s*rgba\(15,\s*36,\s*20,\s*0\.78\);[^}]*font-weight:\s*600;/);
   });
 });

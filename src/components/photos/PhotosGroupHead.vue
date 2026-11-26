@@ -87,7 +87,11 @@ const { t } = useI18n();
   color: var(--ui-text);
   text-shadow: none;
 }
-:root[data-theme='light'] .pgh-curtain .pgh-count,
+:root[data-theme='light'] .pgh-curtain .pgh-count {
+  color: rgba(15, 36, 20, 0.78);
+  font-weight: 600;
+  text-shadow: none;
+}
 :root[data-theme='light'] .pgh-curtain .pgh-path {
   color: var(--ui-text-muted);
   text-shadow: none;

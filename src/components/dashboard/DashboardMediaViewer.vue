@@ -212,18 +212,34 @@ function resetZoom() {
 }
 
 /** The picture's centre and size before any zoom (layout boxes ignore transforms). */
-function imageFrame() {
+function imageFrame(fallbackX = 0, fallbackY = 0) {
   const img = imageEl.value;
-  const stage = img?.offsetParent as HTMLElement | null;
-  if (!img || !stage) return null;
-  const rect = stage.getBoundingClientRect();
+  if (!img) return null;
+  const offsetParent = img.offsetParent as HTMLElement | null;
+  const stage = offsetParent ?? img.parentElement;
+  const stageRect = stage?.getBoundingClientRect();
+  if (offsetParent && img.offsetWidth > 0 && img.offsetHeight > 0 && stageRect) {
+    return {
+      cx: stageRect.left + img.offsetLeft + img.offsetWidth / 2,
+      cy: stageRect.top + img.offsetTop + img.offsetHeight / 2,
+      width: img.offsetWidth,
+      height: img.offsetHeight,
+      stageWidth: stageRect.width,
+      stageHeight: stageRect.height,
+    };
+  }
+  const imgRect = img.getBoundingClientRect();
+  const width = imgRect.width;
+  const height = imgRect.height;
+  const stageWidth = stageRect?.width ?? 0;
+  const stageHeight = stageRect?.height ?? 0;
   return {
-    cx: rect.left + img.offsetLeft + img.offsetWidth / 2,
-    cy: rect.top + img.offsetTop + img.offsetHeight / 2,
-    width: img.offsetWidth,
-    height: img.offsetHeight,
-    stageWidth: rect.width,
-    stageHeight: rect.height,
+    cx: width > 0 ? imgRect.left + width / 2 : stageWidth > 0 && stageRect ? stageRect.left + stageWidth / 2 : fallbackX,
+    cy: height > 0 ? imgRect.top + height / 2 : stageHeight > 0 && stageRect ? stageRect.top + stageHeight / 2 : fallbackY,
+    width,
+    height,
+    stageWidth,
+    stageHeight,
   };
 }
 
@@ -243,7 +259,7 @@ function clampPan() {
 
 /** To `scale`, the point (px, py) on screen staying where it is. */
 function zoomAt(scale: number, px: number, py: number) {
-  const frame = imageFrame();
+  const frame = imageFrame(px, py);
   const next = Math.min(MAX_SCALE, Math.max(1, scale));
   if (!frame) return;
   if (next === 1) {
@@ -355,8 +371,9 @@ function onDoubleClick(event: MouseEvent) {
 function onWheel(event: WheelEvent) {
   if (!zoomable(event)) return;
   event.preventDefault();
-  const step = event.ctrlKey ? 0.01 : 0.0015;
-  zoomAt(zoom.scale * Math.exp(-event.deltaY * step), event.clientX, event.clientY);
+  const dy = event.deltaMode === 1 ? event.deltaY * 32 : event.deltaMode === 2 ? event.deltaY * 300 : event.deltaY;
+  const step = event.ctrlKey || event.metaKey ? 0.01 : 0.0015;
+  zoomAt(zoom.scale * Math.exp(-dy * step), event.clientX, event.clientY);
 }
 
 function close() {

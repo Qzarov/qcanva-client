@@ -814,6 +814,7 @@
           @share-photos="onGallerySharePhotos"
           @open-trash="onGalleryOpenTrash"
           @update:counts="gallerySidebarCounts = $event"
+          @show-folder-in-gallery="onGalleryShowFolder"
           @open-folder="(folderId) => selectFolder(folderId)"
         />
       </section>
@@ -1211,7 +1212,7 @@ import AlbumShareDialog from '../components/dashboard/AlbumShareDialog.vue';
 const DriveFileProperties = defineAsyncComponent(() => import('../components/DriveFileProperties.vue'));
 import DashboardFilterMenu from '../components/dashboard/DashboardFilterMenu.vue';
 import DashboardSortMenu from '../components/dashboard/DashboardSortMenu.vue';
-import DrivePhotos from '../components/photos/DrivePhotos.vue';
+import DrivePhotos, { type GalleryFocusTransfer } from '../components/photos/DrivePhotos.vue';
 import GallerySidebar, { type GallerySection, type GallerySidebarCounts, type GalleryStorageFolder } from '../components/photos/GallerySidebar.vue';
 import { photosApi, type FeedItem as PhotoFeedItem } from '../api/photos';
 import { createHeadroomScrollHandler, useExplorerLayoutPrefs } from '../composables/useExplorerLayoutPrefs';
@@ -3564,9 +3565,15 @@ export default defineComponent({
         allOnScreenSelected.value = onScreen.length > 0 && onScreen.every((key) => selectedKeys.value.includes(key));
       });
     });
+    const galleryFocusedPhoto = ref<PhotoFeedItem | null>(null);
+    const pendingExplorerSelectionKeys = ref<string[] | null>(null);
+    const transferredExplorerKeys = ref<Set<string> | null>(null);
+    const pendingScrollToSelectKey = ref<string | null>(null);
     const clearSelection = () => {
       selectedKeys.value = [];
       selectionAnchor = '';
+      transferredExplorerKeys.value = null;
+      pendingScrollToSelectKey.value = null;
     };
     const toggleSelected = (key: string) => {
       selectedKeys.value = toggleSelection(selectedKeys.value, key);
@@ -3577,7 +3584,16 @@ export default defineComponent({
     };
     // Another section, another folder: the selection was of what is gone.
     watch(activeSection, (next) => {
-      clearSelection();
+      if (pendingExplorerSelectionKeys.value && next.kind !== 'gallery') {
+        selectedKeys.value = pendingExplorerSelectionKeys.value;
+        selectionAnchor = pendingExplorerSelectionKeys.value[0] ?? '';
+        pendingExplorerSelectionKeys.value = null;
+      } else {
+        clearSelection();
+      }
+      if (next.kind === 'gallery') {
+        galleryFocusedPhoto.value = null;
+      }
       layoutPrefs.setHeadroomHidden(false);
       headroomElevated.value = false;
       if (next.kind !== 'space') {
@@ -3586,17 +3602,36 @@ export default defineComponent({
       }
     });
     // After a reload, whatever no longer exists drops out.
-    watch([itemsBySelectionKey, driveFilesByKey, yandexFilesByKey, spaceItemsByKey, allFolderSummaries], ([items, files, yandex, spaceItems, folders]) => {
+    watch([itemsBySelectionKey, driveFilesByKey, yandexFilesByKey, spaceItemsByKey, allFolderSummaries, transferredExplorerKeys], ([items, files, yandex, spaceItems, folders]) => {
       const folderIds = new Set(folders.map((f) => f.id));
       const known = (key: string) =>
         items.has(key)
         || files.has(key)
         || yandex.has(key)
         || spaceItems.has(key)
-        || (key.startsWith('folder:') && folderIds.has(key.slice('folder:'.length)));
+        || (key.startsWith('folder:') && folderIds.has(key.slice('folder:'.length)))
+        || Boolean(pendingExplorerSelectionKeys.value?.includes(key))
+        || Boolean(transferredExplorerKeys.value?.has(key));
       if (selectedKeys.value.some((key) => !known(key))) {
         selectedKeys.value = selectedKeys.value.filter(known);
       }
+    });
+    watch([folderDriveFiles, homeRootDriveFiles, activeSection], () => {
+      const key = pendingScrollToSelectKey.value;
+      if (!key || activeSection.value.kind === 'gallery') return;
+      void nextTick(() => {
+        if (pendingScrollToSelectKey.value !== key) return;
+        const safeKey = key.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+        const selector = explorerViewMode.value === 'table'
+          ? `[data-explorer-table] [data-select-key="${safeKey}"]`
+          : `[data-select-key="${safeKey}"]`;
+        const el = dashboardMain.value?.querySelector<HTMLElement>(selector);
+        if (el) {
+          el.scrollIntoView?.({ block: 'nearest' });
+          pendingScrollToSelectKey.value = null;
+          transferredExplorerKeys.value = null;
+        }
+      });
     });
 
     const { marquee, startMarquee } = useDashboardMarquee({ enabled: isLoggedIn, dashboardShell, selectedKeys });
@@ -5234,6 +5269,35 @@ export default defineComponent({
         selectDashboardSection({ kind: 'gallery' });
         return;
       }
+      if (activeSection.value.kind === 'gallery') {
+        const view = galleryViewRef.value as { getActiveFocusTransfer?: () => GalleryFocusTransfer | null } | null;
+        const transfer: GalleryFocusTransfer | null = typeof view?.getActiveFocusTransfer === 'function'
+          ? view.getActiveFocusTransfer()
+          : (galleryFocusedPhoto.value
+            ? {
+                fileId: galleryFocusedPhoto.value.fileId,
+                folderId: galleryFocusedPhoto.value.folderId ?? null,
+                shared: Boolean(galleryFocusedPhoto.value.share),
+                selectedIds: [galleryFocusedPhoto.value.fileId],
+              }
+            : null);
+        if (transfer) {
+          const keys = transfer.selectedIds.map((id) => `drive-file:${id}`);
+          const primaryKey = `drive-file:${transfer.fileId}`;
+          pendingExplorerSelectionKeys.value = keys;
+          transferredExplorerKeys.value = new Set(keys);
+          pendingScrollToSelectKey.value = primaryKey;
+          if (transfer.folderId) {
+            selectFolder(transfer.folderId);
+          } else if (!transfer.shared) {
+            selectDashboardSection({ kind: 'home' });
+          } else {
+            selectDashboardSection({ kind: 'shared' });
+          }
+          mobileSidebarOpen.value = false;
+          return;
+        }
+      }
       const remembered = layoutPrefs.lastExplorerRoute.value;
       if (remembered) {
         selectDashboardSection(remembered);
@@ -6631,18 +6695,21 @@ export default defineComponent({
       gallerySection.value = section;
       galleryAlbumId.value = null;
       galleryFolderId.value = null;
+      galleryFocusedPhoto.value = null;
     };
 
     const onGalleryOpenTrash = () => {
       gallerySection.value = 'trash';
       galleryAlbumId.value = null;
       galleryFolderId.value = null;
+      galleryFocusedPhoto.value = null;
     };
 
     const onGallerySelectAlbum = (albumId: string) => {
       galleryAlbumId.value = albumId;
       galleryFolderId.value = null;
       gallerySection.value = 'library';
+      galleryFocusedPhoto.value = null;
     };
 
     const onGalleryClearAlbum = () => {
@@ -6670,6 +6737,20 @@ export default defineComponent({
       galleryFolderId.value = folderId;
       galleryAlbumId.value = null;
       gallerySection.value = 'library';
+      galleryFocusedPhoto.value = null;
+    };
+
+    const onGalleryShowFolder = (folderId: string, fileId: string) => {
+      gallerySection.value = 'library';
+      galleryAlbumId.value = null;
+      galleryFolderId.value = folderId;
+      galleryHighlightFolderId.value = folderId === 'root' ? null : folderId;
+      galleryHighlightFileId.value = fileId || null;
+      if (fileId) {
+        void nextTick(() => {
+          (galleryViewRef.value as { focusFile?: (id: string) => void } | null)?.focusFile?.(fileId);
+        });
+      }
     };
 
     const onGallerySelectFile = (fileId: string, folderId: string | null) => {
@@ -6682,6 +6763,7 @@ export default defineComponent({
     };
 
     const onGalleryFocusPhoto = (item: PhotoFeedItem) => {
+      galleryFocusedPhoto.value = item;
       galleryHighlightFolderId.value = item.folderId ?? null;
       galleryHighlightFileId.value = item.fileId;
     };
@@ -7097,6 +7179,7 @@ export default defineComponent({
       onGalleryClearAlbum,
       onGallerySharePhotos,
       onGallerySelectFolder,
+      onGalleryShowFolder,
       onGallerySelectFile,
       onGalleryFocusPhoto,
       onGalleryDropFavorites,

@@ -1001,4 +1001,231 @@ describe('Gallery UX v2 & B-009/B-011/B-014 regressions', () => {
     expect(w.find('[data-testid="sticky-head"] .pgh-curtain').exists()).toBe(true);
     expect(w.find('[data-testid="sticky-head"] .pgh-pill').exists()).toBe(false);
   });
+
+  it('ПКМ -> Показать папку works in both PhotosFeed and PhotosSearchGrid, handles root/shared/multi-select, and expands collapsed branch in GallerySidebar', async () => {
+    const subItem = mkItem(1, { fileId: 'f-sub-1', name: 'sub.jpg', folderId: 'f-sub', share: null });
+    const rootItem = mkItem(2, { fileId: 'f-root-1', name: 'root.jpg', folderId: null, share: null });
+    const sharedNullItem = mkItem(3, {
+      fileId: 'f-shared-null',
+      name: 'shared.jpg',
+      folderId: null,
+      share: { rootFolderId: 's-root', rootName: 'Shared', ownerId: 'u2', ownerName: 'Оля' },
+    });
+    const otherSubItem = mkItem(4, { fileId: 'f-sub-2', name: 'sub2.jpg', folderId: 'f-sub', share: null });
+
+    const all = [subItem, rootItem, sharedNullItem, otherSubItem];
+    summaryMock.mockResolvedValue({
+      groups: [{ key: '2026-10', title: 'Октябрь 2026', count: all.length, subs: null }],
+    });
+    itemsMock.mockResolvedValue({ items: all, nextCursor: null });
+    searchMock.mockResolvedValue({ items: [subItem, rootItem], nextCursor: null });
+
+    const w = mountDrivePhotos();
+    await settle();
+
+    // 1. Feed right-click on folder photo -> shows "Показать папку" and emits show-folder-in-gallery('f-sub', 'f-sub-1')
+    await w.get('[data-file-id="f-sub-1"]').trigger('contextmenu');
+    await nextTick();
+    const showBtn = w.get('[data-testid="gallery-context-menu"] [data-ctx-show-folder]');
+    expect(showBtn.text()).toContain('Показать папку');
+    await showBtn.trigger('click');
+    await nextTick();
+    expect(w.find('[data-testid="gallery-context-menu"]').exists()).toBe(false);
+    expect(w.emitted('show-folder-in-gallery')?.[0]).toEqual(['f-sub', 'f-sub-1']);
+
+    // 2. Feed right-click on root photo (folderId === null, !share) -> emits ('root', 'f-root-1')
+    await w.get('[data-file-id="f-root-1"]').trigger('contextmenu');
+    await nextTick();
+    await w.get('[data-testid="gallery-context-menu"] [data-ctx-show-folder]').trigger('click');
+    await nextTick();
+    expect(w.emitted('show-folder-in-gallery')?.[1]).toEqual(['root', 'f-root-1']);
+
+    // 3. Feed right-click on shared photo with folderId === null -> hides [data-ctx-show-folder]
+    await w.get('[data-file-id="f-shared-null"]').trigger('contextmenu');
+    await nextTick();
+    expect(w.find('[data-testid="gallery-context-menu"] [data-ctx-show-folder]').exists()).toBe(false);
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }));
+    await nextTick();
+
+    // 4. Multi-select: same folder shows button, mixed folders hides button
+    await w.get('[data-file-id="f-sub-1"]').trigger('click');
+    await w.get('[data-file-id="f-sub-2"]').trigger('click', { ctrlKey: true });
+    await nextTick();
+    await w.get('[data-file-id="f-sub-2"]').trigger('contextmenu');
+    await nextTick();
+    expect(w.find('[data-testid="gallery-context-menu"] [data-ctx-show-folder]').exists()).toBe(true);
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }));
+    await nextTick();
+
+    await w.get('[data-file-id="f-root-1"]').trigger('click', { ctrlKey: true });
+    await nextTick();
+    await w.get('[data-file-id="f-root-1"]').trigger('contextmenu');
+    await nextTick();
+    expect(w.find('[data-testid="gallery-context-menu"] [data-ctx-show-folder]').exists()).toBe(false);
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }));
+    await nextTick();
+
+    // 5. PhotosSearchGrid right-click opens .dp-ctx-menu, clicking "Показать папку" clears search & emits show-folder-in-gallery
+    const input = w.get('[data-s2-input]');
+    await input.setValue('горы');
+    await input.trigger('keydown', { key: 'Enter' });
+    await settle();
+    expect(w.find('[data-testid="photos-search-grid"]').exists()).toBe(true);
+
+    await w.get('[data-testid="photos-search-grid"] [data-file-id="f-sub-1"]').trigger('contextmenu');
+    await nextTick();
+    const searchShowBtn = w.get('[data-testid="gallery-context-menu"] [data-ctx-show-folder]');
+    await searchShowBtn.trigger('click');
+    await settle();
+    expect(w.emitted('show-folder-in-gallery')?.[2]).toEqual(['f-sub', 'f-sub-1']);
+    expect(w.find('[data-testid="photos-search-grid"]').exists()).toBe(false);
+    expect((input.element as HTMLInputElement).value).toBe('');
+    w.unmount();
+
+    // 6. GallerySidebar re-opens collapsed Q Space / home / shared groups and expands ancestors when activeFolderId changes
+    const scrollSpy = vi.fn();
+    const origScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = scrollSpy;
+    try {
+      const gs = mount(GallerySidebar, {
+        attachTo: document.body,
+        props: {
+          activeSection: 'library',
+          activeFolderId: null,
+          folders: [
+            { id: 'f-parent', name: 'Путешествия', parentId: null, role: 'owner' },
+            { id: 'f-sub', name: 'Алтай', parentId: 'f-parent', role: 'owner' },
+            { id: 'f-shared', name: 'Общая', parentId: null, role: 'read' },
+          ],
+          albums: [],
+        },
+      });
+      await settle();
+
+      // Collapse Q Space completely
+      await gs.get('[data-gallery-tree-group="qspace"] .gs-group-btn').trigger('click');
+      await nextTick();
+      expect(gs.find('[data-gallery-folder="f-sub"]').exists()).toBe(false);
+
+      // Setting BOTH activeFolderId and highlightedFolderId to f-parent in the same tick keeps f-parent expanded (child f-sub visible) even with showFilesInTree=false
+      await gs.setProps({ activeFolderId: 'f-parent', highlightedFolderId: 'f-parent' });
+      await settle();
+      expect(gs.get('[data-gallery-folder="f-parent"]').classes()).toContain('active');
+      expect(gs.find('[data-gallery-folder="f-sub"]').exists()).toBe(true);
+
+      // Setting activeFolderId='f-sub' opens qspace + home, expands f-parent, and scrolls f-sub into view
+      await gs.setProps({ activeFolderId: 'f-sub', highlightedFolderId: 'f-sub' });
+      await settle();
+      expect(gs.find('[data-gallery-folder="f-sub"]').exists()).toBe(true);
+      expect(gs.get('[data-gallery-folder="f-sub"]').classes()).toContain('active');
+      expect(scrollSpy).toHaveBeenCalledWith({ block: 'nearest' });
+
+      // Setting activeFolderId='f-shared' opens shared group too
+      await gs.setProps({ activeFolderId: 'f-shared' });
+      await settle();
+      expect(gs.find('[data-gallery-folder="f-shared"]').exists()).toBe(true);
+      expect(gs.get('[data-gallery-folder="f-shared"]').classes()).toContain('active');
+
+      // Setting activeFolderId='root' activates home-root
+      await gs.setProps({ activeFolderId: 'root' });
+      await settle();
+      expect(gs.get('[data-gallery-tree-root="home"]').classes()).toContain('active');
+      gs.unmount();
+    } finally {
+      HTMLElement.prototype.scrollIntoView = origScrollIntoView;
+    }
+  });
+
+  it('Gallery -> Файлы focus transfer: clicking a photo in real DrivePhotos transfers folder + selectedKeys on mode switch, and Esc clears stale transfer', async () => {
+    const subPhoto = mkItem(1, { fileId: 'df-photo-1', name: 'altai.jpg', folderId: 'f-sub', share: null });
+    const rootPhoto = mkItem(2, { fileId: 'df-photo-root', name: 'root.jpg', folderId: null, share: null });
+
+    summaryMock.mockResolvedValue({
+      groups: [{ key: '2026-10', title: 'Октябрь 2026', count: 2, subs: null }],
+    });
+    itemsMock.mockResolvedValue({ items: [subPhoto, rootPhoto], nextCursor: null });
+    resourceFoldersListMock.mockResolvedValue({
+      own: [
+        { id: 'f-parent', name: 'Поездки', parentId: null, role: 'owner', canvases: [], htmlDocuments: [] },
+        { id: 'f-sub', name: 'Алтай', parentId: 'f-parent', role: 'owner', canvases: [], htmlDocuments: [] },
+      ],
+      shared: [],
+    });
+    getFolderItemsMock.mockImplementation(async (folderId: string, opts?: { slice?: string }) => {
+      if (folderId === 'f-sub' && opts?.slice === 'media') {
+        return {
+          items: [{ id: 'df-photo-1', kind: 'photo', name: 'altai.jpg', mime: 'image/jpeg', sizeBytes: 1024, folderId: 'f-sub', deletedAt: null }],
+          nextCursor: null,
+        };
+      }
+      if (folderId === 'root' && opts?.slice === 'media') {
+        return {
+          items: [{ id: 'df-photo-root', kind: 'photo', name: 'root.jpg', mime: 'image/jpeg', sizeBytes: 2048, folderId: null, deletedAt: null }],
+          nextCursor: null,
+        };
+      }
+      return { items: [], nextCursor: null };
+    });
+
+    dashboardRoute.query = { activity: 'gallery' };
+    const dash = mount(DashboardView, {
+      attachTo: document.body,
+      global: {
+        stubs: {
+          RouterLink: { props: ['to'], template: '<a :href="typeof to === \'string\' ? to : \'\'"><slot /></a>' },
+          DashboardTrash: { template: '<div />' },
+          DashboardYandexDisk: { template: '<div />' },
+        },
+      },
+    });
+    await settle();
+
+    // 1. Click photo in f-sub -> switch to Файлы -> navigates to { kind: 'folder', folderId: 'f-sub' } with selectedKeys=['drive-file:df-photo-1']
+    await dash.get('[data-file-id="df-photo-1"]').trigger('click');
+    await nextTick();
+    await dash.get('[data-mode-btn="files"]').trigger('click');
+    await settle();
+
+    expect((dash.vm as any).activeSection).toEqual({ kind: 'folder', folderId: 'f-sub' });
+    expect((dash.vm as any).selectedKeys).toEqual(['drive-file:df-photo-1']);
+    expect(dash.get('[data-select-key="drive-file:df-photo-1"]').attributes('data-selected')).toBe('true');
+
+    // 2. Switch back to Media, click root photo (folderId: null) -> switch to Файлы -> navigates to { kind: 'home' } with selectedKeys=['drive-file:df-photo-root']
+    await dash.get('[data-mode-btn="media"]').trigger('click');
+    await settle();
+    await dash.get('[data-file-id="df-photo-root"]').trigger('click');
+    await nextTick();
+    await dash.get('[data-mode-btn="files"]').trigger('click');
+    await settle();
+
+    expect((dash.vm as any).activeSection).toEqual({ kind: 'home' });
+    expect((dash.vm as any).selectedKeys).toEqual(['drive-file:df-photo-root']);
+    expect(dash.get('[data-select-key="drive-file:df-photo-root"]').attributes('data-selected')).toBe('true');
+
+    // 3. Multi-select across DIFFERENT folders (df-photo-1 in f-sub + df-photo-root in root) -> switching to Файлы selects ONLY matching folder's photo (no orphaned cross-folder key!)
+    await dash.get('[data-mode-btn="media"]').trigger('click');
+    await settle();
+    await dash.get('[data-file-id="df-photo-root"]').trigger('click');
+    await dash.get('[data-file-id="df-photo-1"]').trigger('click', { ctrlKey: true });
+    await nextTick();
+    await dash.get('[data-mode-btn="files"]').trigger('click');
+    await settle();
+
+    expect((dash.vm as any).activeSection).toEqual({ kind: 'folder', folderId: 'f-sub' });
+    expect((dash.vm as any).selectedKeys).toEqual(['drive-file:df-photo-1']);
+
+    // 4. Switch back to Media, click photo in f-sub, press Esc to clear focus -> switch to Файлы -> does NOT select stale photo
+    await dash.get('[data-mode-btn="media"]').trigger('click');
+    await settle();
+    await dash.get('[data-file-id="df-photo-1"]').trigger('click');
+    await nextTick();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }));
+    await nextTick();
+
+    await dash.get('[data-mode-btn="files"]').trigger('click');
+    await settle();
+
+    expect((dash.vm as any).activeSection).toEqual({ kind: 'folder', folderId: 'f-sub' });
+    expect((dash.vm as any).selectedKeys).toEqual([]);
+  });
 });
