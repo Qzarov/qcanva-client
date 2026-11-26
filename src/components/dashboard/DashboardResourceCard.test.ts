@@ -6,6 +6,9 @@ import DashboardResourceCard from './DashboardResourceCard.vue';
 import DashboardFolderResourceGrid from './DashboardFolderResourceGrid.vue';
 import DashboardFolderFiles from './DashboardFolderFiles.vue';
 import DashboardActiveSubfolders from './DashboardActiveSubfolders.vue';
+import DashboardRecentResources from './DashboardRecentResources.vue';
+import DashboardFeedResourceGrid from './DashboardFeedResourceGrid.vue';
+import DashboardInteractiveFeedGrid from './DashboardInteractiveFeedGrid.vue';
 import { resetExplorerGroupDnd, useExplorerGroupDnd } from '../../composables/useExplorerGroupDnd';
 import { driveApi } from '../../api/drive';
 
@@ -47,14 +50,22 @@ const baseProps = {
 };
 
 describe('DashboardResourceCard', () => {
-  it('keeps the dashboard selection and resource metadata contract', () => {
+  it('keeps the dashboard selection and resource metadata contract without hover checkboxes', async () => {
     const wrapper = mount(DashboardResourceCard, { props: baseProps });
 
+    expect(wrapper.find('.card-select, [data-select-box]').exists()).toBe(false);
     expect(wrapper.get('[data-select-key]').attributes('data-select-key')).toBe('canvas:canvas-1');
+    expect(wrapper.get('[data-select-key]').attributes('data-selected')).toBeUndefined();
     expect(wrapper.get('.card-title-text').text()).toBe('Roadmap');
     expect(wrapper.get('.card-tag').text()).toBe('#work');
     expect(wrapper.get('.card-date').text()).toBe('9 Nov');
     expect(wrapper.get('[data-card-menu]').attributes('data-card-menu')).toBe('canvas-1');
+
+    await wrapper.setProps({ selected: true });
+    expect(wrapper.get('[data-select-key]').attributes('data-selected')).toBe('true');
+
+    await wrapper.get('[data-select-key]').trigger('contextmenu');
+    expect(wrapper.emitted('contextmenu')).toHaveLength(1);
   });
 
   it('emits card interactions instead of owning dashboard business logic', async () => {
@@ -251,5 +262,115 @@ describe('Explorer Grid & Folder DnD wiring', () => {
 
     await wrapper.setProps({ isOwner: false });
     expect(tile.attributes('draggable')).toBeUndefined();
+  });
+
+  it('emits contextmenu with (event, item) and removes .card-select across all card/grid components', async () => {
+    vi.mocked(driveApi.getFolderItems).mockResolvedValueOnce({
+      items: [{ id: 'f1', kind: 'file', name: 'notes.txt', sizeBytes: 120, updatedAt: '2026-11-09T12:00:00.000Z', folderId: 'folder-1' } as any],
+      nextCursor: null,
+    }).mockResolvedValueOnce({ items: [], nextCursor: null });
+
+    const gridItem = { id: 'c1', type: 'canvas', title: 'Canvas One', updatedAt: '2026-11-09T12:00:00.000Z' };
+    const folderGrid = mount(DashboardFolderResourceGrid, {
+      props: {
+        items: [gridItem],
+        isLoggedIn: true,
+        isBusy: false,
+        draggingResourceId: null,
+        selectedKeys: [],
+        openMenuCanvasId: '',
+        renamingId: '',
+        cardMenuStyle: null,
+        selectionKey: (it: any) => `${it.type}:${it.id}`,
+        isSelected: () => false,
+        isOwnedResource: () => true,
+        formatDate: () => '9 Nov',
+        formatCardDateMobile: () => '09.11',
+        interactiveTemplateTypeLabel: () => 'Template',
+        resourceActions: () => [],
+      },
+    });
+    expect(folderGrid.find('.card-select, [data-select-box]').exists()).toBe(false);
+    await folderGrid.get('[data-select-key="canvas:c1"]').trigger('contextmenu');
+    expect(folderGrid.emitted('contextmenu')?.[0]?.[1]).toEqual(gridItem);
+
+    const folderFiles = mount(DashboardFolderFiles, {
+      props: { folderId: 'folder-1', selectable: true, selectedKeys: [] },
+      global: { stubs: { RouterLink: true } },
+    });
+    await flushPromises();
+    expect(folderFiles.find('.card-select, [data-select-box]').exists()).toBe(false);
+    await folderFiles.get('[data-folder-file="f1"]').trigger('contextmenu');
+    expect(folderFiles.emitted('contextmenu')?.[0]?.[1]).toMatchObject({ id: 'f1', name: 'notes.txt' });
+
+    const sub = { id: 'sub-1', name: 'Archive', count: 3 };
+    const subfolders = mount(DashboardActiveSubfolders, {
+      props: {
+        subfolders: [sub],
+        activeFolderEmpty: false,
+        hasActiveFilter: false,
+        isOwner: true,
+        formatDate: () => '9 Nov',
+      },
+    });
+    await subfolders.get('.subfolder-card').trigger('contextmenu');
+    expect(subfolders.emitted('contextmenu')?.[0]?.[1]).toEqual(sub);
+
+    const recentItem = { id: 'r1', type: 'canvas', title: 'Recent Canvas', openedAt: Date.now() };
+    const recents = mount(DashboardRecentResources, {
+      props: {
+        items: [recentItem],
+        recentViewMode: 'grid',
+        isLoggedIn: true,
+        selectionKey: (it: any) => `${it.type}:${it.id}`,
+        isSelected: () => false,
+        folderPath: () => null,
+        formatOpenedAt: () => 'now',
+        formatMobileDate: () => '09.11',
+      },
+    });
+    expect(recents.find('.card-select, [data-select-box]').exists()).toBe(false);
+    await recents.get('[data-select-key="canvas:r1"]').trigger('contextmenu');
+    expect(recents.emitted('contextmenu')?.[0]?.[1]).toEqual(recentItem);
+
+    const feedItem = { id: 's1', type: 'text-document', title: 'Shared Doc', updatedAt: '2026-11-09T12:00:00.000Z' };
+    const feedGrid = mount(DashboardFeedResourceGrid, {
+      props: {
+        items: [feedItem],
+        scope: 'shared',
+        isLoggedIn: true,
+        isBusy: false,
+        openMenuCanvasId: '',
+        cardMenuStyle: null,
+        selectionKey: (it: any) => `${it.type}:${it.id}`,
+        isSelected: () => false,
+        cardFolderPath: () => '',
+        formatDate: () => '9 Nov',
+        resourceActions: () => [],
+      },
+    });
+    expect(feedGrid.find('.card-select, [data-select-box]').exists()).toBe(false);
+    await feedGrid.get('[data-select-key="text-document:s1"]').trigger('contextmenu');
+    expect(feedGrid.emitted('contextmenu')?.[0]?.[1]).toEqual(feedItem);
+
+    const tmplItem = { id: 'tmpl-1', title: 'Board', templateType: 'trello-board', updatedAt: '2026-11-09T12:00:00.000Z' };
+    const interactiveGrid = mount(DashboardInteractiveFeedGrid, {
+      props: {
+        items: [tmplItem],
+        isLoggedIn: true,
+        isBusy: false,
+        openMenuCanvasId: '',
+        cardMenuStyle: null,
+        selectionKey: (it: any) => `interactive-template:${it.id}`,
+        isSelected: () => false,
+        cardFolderPath: () => '',
+        formatDate: () => '9 Nov',
+        interactiveTemplateTypeLabel: () => 'Board',
+        resourceActions: () => [],
+      },
+    });
+    expect(interactiveGrid.find('.card-select, [data-select-box]').exists()).toBe(false);
+    await interactiveGrid.get('[data-template-resource="tmpl-1"]').trigger('contextmenu');
+    expect(interactiveGrid.emitted('contextmenu')?.[0]?.[1]).toEqual(tmplItem);
   });
 });

@@ -489,4 +489,47 @@ describe('usePhotosView', () => {
     expect(st.dirs).toEqual({ date: false, folder: false, album: false, size: false });
     expect(st.subs).toEqual({ folder: 'created', album: 'name' });
   });
+
+  it('strips legacy default captions without explicit marker, preserves explicit toggleCaption', async () => {
+    localStorage.setItem(
+      'qcanva:photos:view:v1',
+      JSON.stringify({
+        sort: [],
+        captions: ['folder', 'album'],
+      }),
+    );
+    let mod = await load();
+    let view = mod.usePhotosView();
+    expect(view.state.value.captions).toEqual([]);
+
+    view.toggleCaption('folder');
+    expect(view.state.value.captions).toEqual(['folder']);
+
+    vi.resetModules();
+    mod = await load();
+    view = mod.usePhotosView();
+    expect(view.state.value.captions).toEqual(['folder']);
+  });
+
+  it('serializes in-flight putPreference saves without overlapping PUTs', async () => {
+    let resolveFirst!: () => void;
+    putPrefMock.mockImplementationOnce(() => new Promise<void>((r) => { resolveFirst = r; }));
+    const { usePhotosView } = await load();
+    const { setPeriod } = usePhotosView();
+
+    setPeriod('year');
+    await vi.advanceTimersByTimeAsync(500);
+    expect(putPrefMock).toHaveBeenCalledTimes(1);
+
+    // Trigger another save while first PUT is still in flight
+    setPeriod('day');
+    await vi.advanceTimersByTimeAsync(500);
+    expect(putPrefMock).toHaveBeenCalledTimes(1);
+
+    resolveFirst();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(putPrefMock).toHaveBeenCalledTimes(2);
+    expect(putPrefMock.mock.calls[1]![1]).toMatchObject({ period: 'day' });
+  });
 });

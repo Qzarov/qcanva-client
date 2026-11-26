@@ -95,5 +95,20 @@ describe('dashboard sidebar layout contract', () => {
 
     expect(wrapper.get('.dashboard-sidebar').classes()).toContain('mobile-open');
     expect(getComputedStyle(wrapper.get('[data-home-link]').element).display).not.toBe('none');
+    expect(getComputedStyle(wrapper.get('[data-home-link] .tree-name').element).opacity).toBe('1');
+    expect(getComputedStyle(wrapper.get('[data-home-link] .tree-name').element).animationName).toBe('none');
+  });
+
+  it('keeps tree labels visible without fade-in animation and configures mobile drawer frame to zero grid space', () => {
+    const wrapper = mountLayout(false, false);
+    const labelStyle = getComputedStyle(wrapper.get('[data-home-link] .tree-name').element);
+    expect(labelStyle.opacity).toBe('1');
+    expect(labelStyle.visibility).toBe('visible');
+    expect(labelStyle.animationName).toBe('none');
+
+    const css = readGlobalCss();
+    expect(css).toContain('.dashboard-app-shell .dashboard-sidebar-frame');
+    expect(css).toContain('padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px))');
+    expect(css).toContain('.canvas-card .card-select');
   });
 });

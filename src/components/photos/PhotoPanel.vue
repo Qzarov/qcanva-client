@@ -8,18 +8,54 @@
     @keydown.esc="close"
   >
     <div class="pp-top">
-      <h3 :id="headingId" class="pp-title" data-panel-title>{{ details ? details.item.name : t('photosLoading') }}</h3>
+      <h3 :id="headingId" class="pp-title" data-panel-title>
+        {{ isGroup ? groupHeading : (details ? details.item.name : t('photosLoading')) }}
+      </h3>
       <button type="button" class="pp-x" :aria-label="t('photosClose')" data-panel-close @click="close">
         <X :size="18" aria-hidden="true" />
       </button>
     </div>
 
-    <div v-if="error" class="pp-error" role="alert" data-panel-error>
+    <div v-if="isGroup" class="pp-group" data-panel-group>
+      <section class="pp-sec" :aria-label="t('photosPanelDetails')">
+        <dl class="pp-kv" data-panel-group-info>
+          <dt>{{ t('galleryGroupTotalSize') }}</dt>
+          <dd>{{ formatFileSize(groupTotalBytes) }}</dd>
+          <dt>{{ t('galleryGroupDateRange') }}</dt>
+          <dd>{{ groupDateRange }}</dd>
+        </dl>
+      </section>
+
+      <div class="pp-group-acts">
+        <button type="button" class="pp-act pp-group-act" data-panel-group-fav @click="emit('group-favorite')">
+          <Heart :size="15" aria-hidden="true" />
+          <span>{{ t('galleryFavoriteToggle') }}</span>
+        </button>
+        <button type="button" class="pp-act pp-group-act" data-panel-group-share @click="emit('group-share')">
+          <Share2 :size="15" aria-hidden="true" />
+          <span>{{ t('galleryShare') }}</span>
+        </button>
+        <button type="button" class="pp-act pp-group-act" data-panel-group-album @click="emit('group-album')">
+          <FolderPlus :size="15" aria-hidden="true" />
+          <span>{{ t('galleryAddToAlbum') }}</span>
+        </button>
+        <button type="button" class="pp-act pp-group-act" data-panel-group-download @click="emit('group-download')">
+          <Download :size="15" aria-hidden="true" />
+          <span>{{ t('photosDownload') }}</span>
+        </button>
+        <button type="button" class="pp-act pp-group-act pp-group-danger" data-panel-group-delete @click="emit('group-delete')">
+          <Trash2 :size="15" aria-hidden="true" />
+          <span>{{ t('galleryDelete') }}</span>
+        </button>
+      </div>
+    </div>
+
+    <div v-else-if="error" class="pp-error" role="alert" data-panel-error>
       <p>{{ error }}</p>
       <button type="button" class="pp-act" @click="load">{{ t('photosRetry') }}</button>
     </div>
 
-    <template v-if="details">
+    <template v-else-if="details">
       <div class="pp-prev" data-panel-preview>
         <img v-if="previewSrc" :src="previewSrc" alt="" @error="onPreviewError" />
         <span v-else class="pp-prev-ph">{{ t('photosThumbUnavailable') }}</span>
@@ -35,9 +71,6 @@
         >
           <Heart :size="15" aria-hidden="true" :fill="favorite ? 'currentColor' : 'none'" />
           {{ favorite ? t('photosFavorite') : t('photosFavAdd') }}
-        </button>
-        <button type="button" class="pp-act" data-panel-open @click="emit('open-viewer', details.item.fileId)">
-          {{ t('photosOpen') }}
         </button>
         <button type="button" class="pp-act" data-panel-download @click="download">
           {{ t('photosDownload') }}
@@ -151,23 +184,33 @@
 </template>
 
 <script setup lang="ts">
-import { Check, Heart, Plus, X } from '@lucide/vue';
+import { Check, Download, FolderPlus, Heart, Plus, Share2, Trash2, X } from '@lucide/vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import { downloadDriveFile, formatFileSize } from '../../api/drive';
 import {
   photosApi,
   renditionUrl,
   type Album,
+  type FeedItem,
   type PhotoDetails,
   type PhotoReplica,
 } from '../../api/photos';
 import { alertDialog, promptDialog } from '../../composables/appDialog';
 import { useI18n } from '../../composables/useI18n';
+import {
+  addGalleryAlbumItems,
+  createGalleryAlbum,
+  listGalleryAlbums,
+  removeGalleryAlbumItems,
+} from './usePhotoSelectionActions';
 
 const props = withDefaults(defineProps<{
-  fileId: string;
+  fileId?: string;
+  selectedItems?: readonly FeedItem[];
   hideOpenFolder?: boolean;
 }>(), {
+  fileId: '',
+  selectedItems: () => [],
   hideOpenFolder: false,
 });
 
@@ -175,7 +218,11 @@ const emit = defineEmits<{
   (e: 'close'): void;
   (e: 'open-folder', folderId: string): void;
   (e: 'open-album', albumId: string): void;
-  (e: 'open-viewer', fileId: string): void;
+  (e: 'group-favorite'): void;
+  (e: 'group-share'): void;
+  (e: 'group-album'): void;
+  (e: 'group-download'): void;
+  (e: 'group-delete'): void;
   /** The photo's favorite flag or album membership changed here; the feed may refresh it. */
   (e: 'changed', change: { fileId: string; favorite?: boolean; albumIds?: string[] }): void;
 }>();
@@ -183,6 +230,45 @@ const emit = defineEmits<{
 const { t, locale } = useI18n();
 const headingId = useId();
 const descId = useId();
+
+const isGroup = computed(() => (props.selectedItems?.length ?? 0) > 1);
+const groupHeading = computed(() =>
+  t('galleryGroupSelected').replace('{n}', String(props.selectedItems?.length ?? 0)),
+);
+
+const groupTotalBytes = computed(() => {
+  const list = props.selectedItems ?? [];
+  return list.reduce((sum, item) => {
+    const raw = (item as FeedItem & { size?: number }).size ?? item.bytes ?? 0;
+    return sum + (Number.isFinite(raw) ? raw : 0);
+  }, 0);
+});
+
+const groupDateRange = computed(() => {
+  const list = props.selectedItems ?? [];
+  const timestamps: Array<{ ms: number; isLocal: boolean }> = [];
+  for (const item of list) {
+    const ext = item as FeedItem & { createdAt?: string | null };
+    const iso = item.localTakenAt ?? item.takenAt ?? ext.createdAt;
+    if (!iso) continue;
+    const ms = Date.parse(iso);
+    if (!Number.isNaN(ms)) {
+      timestamps.push({ ms, isLocal: Boolean(item.localTakenAt) });
+    }
+  }
+  if (timestamps.length === 0) return '—';
+  timestamps.sort((a, b) => a.ms - b.ms);
+  const first = timestamps[0]!;
+  const last = timestamps[timestamps.length - 1]!;
+  const fmtDate = (entry: { ms: number; isLocal: boolean }) =>
+    new Intl.DateTimeFormat(locale.value === 'ru' ? 'ru-RU' : 'en-US', {
+      dateStyle: 'medium',
+      ...(entry.isLocal ? { timeZone: 'UTC' } : {}),
+    }).format(new Date(entry.ms));
+  const a = fmtDate(first);
+  const b = fmtDate(last);
+  return a === b ? a : `${a} — ${b}`;
+});
 
 const details = ref<PhotoDetails | null>(null);
 const loading = ref(false);
@@ -202,6 +288,12 @@ let request = 0;
 async function load(): Promise<void> {
   const my = ++request;
   const fileId = props.fileId;
+  if (!fileId) {
+    loading.value = false;
+    details.value = null;
+    error.value = '';
+    return;
+  }
   loading.value = true;
   error.value = '';
   details.value = null;
@@ -226,9 +318,14 @@ async function load(): Promise<void> {
 // The panel follows the current photo: opening the same photo again does not reload it.
 // Flush a pending description first: load() replaces the details it belongs to.
 watch(
-  () => props.fileId,
-  () => {
+  () => [props.fileId, isGroup.value] as const,
+  ([fileId, group]) => {
     flushDescription();
+    if (group || !fileId) {
+      request++;
+      loading.value = false;
+      return;
+    }
     void load();
   },
   { immediate: true },
@@ -365,7 +462,7 @@ async function toggleMenu(): Promise<void> {
   menuOpen.value = !menuOpen.value;
   if (!menuOpen.value) return;
   try {
-    allAlbums.value = await photosApi.albums();
+    allAlbums.value = await listGalleryAlbums();
   } catch (e) {
     menuOpen.value = false;
     await reportSaveError(e);
@@ -384,8 +481,8 @@ async function toggleAlbum(id: string, name: string): Promise<void> {
   const member = memberIds.value.has(id);
   albums.value = member ? before.filter((a) => a.id !== id) : [...before, { id, name }];
   try {
-    if (member) await photosApi.removeFromAlbum(id, [fileId]);
-    else await photosApi.addToAlbum(id, [fileId]);
+    if (member) await removeGalleryAlbumItems(id, [fileId]);
+    else await addGalleryAlbumItems(id, [fileId]);
     if (details.value === d) emitAlbums(fileId);
   } catch (e) {
     if (details.value === d) {
@@ -412,11 +509,11 @@ async function newAlbum(): Promise<void> {
   )?.trim();
   if (!name) return;
   try {
-    const { id } = await photosApi.createAlbum(name);
-    await photosApi.addToAlbum(id, [d.item.fileId]);
+    const { id } = await createGalleryAlbum(name);
+    await addGalleryAlbumItems(id, [d.item.fileId]);
     if (details.value !== d) return;
     albums.value = [...albums.value, { id, name }];
-    allAlbums.value = await photosApi.albums();
+    allAlbums.value = await listGalleryAlbums();
     emitAlbums(d.item.fileId);
   } catch (e) {
     await reportSaveError(e);
@@ -618,6 +715,31 @@ const storageRows = computed<StorageRow[]>(() => {
 
 .pp-act[aria-pressed='true'] {
   color: var(--ui-glass-accent-text);
+}
+
+.pp-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pp-group-acts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--ui-border);
+}
+
+.pp-group-act {
+  flex: none;
+  justify-content: flex-start;
+  padding: 8px 12px;
+  gap: 9px;
+}
+
+.pp-group-danger {
+  color: var(--ui-danger, #e5484d);
 }
 
 .pp-sec {

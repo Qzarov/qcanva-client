@@ -30,6 +30,7 @@ import {
   formatDragCountLabel,
   useExplorerGroupDnd,
 } from '../../composables/useExplorerGroupDnd';
+import { useSpaces } from '../../composables/useSpaces';
 import { usePhotosView, type CaptionKey } from './usePhotosView';
 import {
   anchorAt,
@@ -83,6 +84,7 @@ const emit = defineEmits<{
   (e: 'contextmenu', event: MouseEvent, item: FeedItem): void;
   (e: 'toggle-favorite', item: FeedItem): void;
   (e: 'zoom', tileHeight: number): void;
+  (e: 'summary', totalCount: number): void;
 }>();
 
 /** Thumbnail row height fallback per discrete tile preset, px. */
@@ -156,6 +158,7 @@ const hasMultiSelect = computed(() => props.selected.size >= 2);
 const collapsedShares = computed(() => new Set(view.state.value.collapsedShares));
 const level1 = computed<SortKey>(() => appliedParams.value.levels[0] ?? 'date');
 const level2 = computed<SortKey | undefined>(() => appliedParams.value.levels[1]);
+const isOverlayDateWall = computed(() => level1.value === 'date' && !level2.value);
 const headroomHidden = computed(() => prefs.headroomHidden.value);
 
 const selectionAnchorId = ref<string | null>(null);
@@ -351,6 +354,7 @@ function relayout(): void {
     gap: GALLERY_WALL_GAP,
     collapsedShares: collapsedShares.value,
     aspectMode: resolvedAspectMode.value,
+    overlayH1: isOverlayDateWall.value,
   });
   layout.value = next;
   rebuildIndexes(next);
@@ -518,6 +522,17 @@ function requestFolder(id: string): Promise<void> {
 function requestAlbums(): void {
   if (albumsRequested) return;
   albumsRequested = true;
+  if (!isPhotosMock()) {
+    useSpaces()
+      .load()
+      .then((list) => {
+        albumNames.value = new Map(list.map((s) => [s.id, s.name]));
+      })
+      .catch(() => {
+        albumsRequested = false;
+      });
+    return;
+  }
   photosApi
     .albums()
     .then((list) => {
@@ -613,6 +628,7 @@ async function refresh(): Promise<void> {
     failed.clear();
     status.value = 'ready';
     pending = null;
+    emit('summary', res.groups.reduce((s, g) => s + g.count, 0));
     if (anchor && res.groups.length > 0) {
       const units = targetUnits(anchor, anchorItem, res.groups, params);
       if (units.length > 0) pending = { anchor, units, pages: 0 };
@@ -1076,10 +1092,23 @@ function rowKey(row: Row): string {
 // ----- lifecycle -----
 
 let ro: ResizeObserver | null = null;
+let roRaf = 0;
 
 function measure(): void {
   width.value = sizer.value?.clientWidth ?? 0;
   viewportH.value = scroller.value?.clientHeight ?? 0;
+}
+
+function scheduleMeasure(): void {
+  if (typeof requestAnimationFrame !== 'function') {
+    measure();
+    return;
+  }
+  if (roRaf) cancelAnimationFrame(roRaf);
+  roRaf = requestAnimationFrame(() => {
+    roRaf = 0;
+    measure();
+  });
 }
 
 watch(width, () => relayout());
@@ -1104,7 +1133,7 @@ watch(() => props.captionOnTile.join(','), () => ensureLoaded());
 onMounted(() => {
   measure();
   if (typeof ResizeObserver !== 'undefined') {
-    ro = new ResizeObserver(measure);
+    ro = new ResizeObserver(scheduleMeasure);
     if (scroller.value) ro.observe(scroller.value);
     if (sizer.value) ro.observe(sizer.value);
   }
@@ -1167,12 +1196,20 @@ async function loadMore(): Promise<boolean> {
   return false;
 }
 
-defineExpose({ orderedItems, refresh, refreshAlbums, patchItem, loadMore });
+function totalCount(): number {
+  return groups.value.reduce((s, g) => s + g.count, 0);
+}
+
+defineExpose({ orderedItems, refresh, refreshAlbums, patchItem, loadMore, totalCount });
 
 onBeforeUnmount(() => {
   epoch++;
   stopMarquee?.();
   if (jumpTimer !== null) clearTimeout(jumpTimer);
+  if (roRaf && typeof cancelAnimationFrame === 'function') {
+    cancelAnimationFrame(roRaf);
+    roRaf = 0;
+  }
   if (dragGhostEl) {
     dragGhostEl.remove();
     dragGhostEl = null;
@@ -1213,6 +1250,7 @@ onBeforeUnmount(() => {
             :folder="headFor(stuck.row)?.isFolder"
             :pressed="groupPressed(stuck.row.groupKey)"
             :selecting="hasMultiSelect"
+            :pill="true"
             @pick="pickGroup(stuck.row.groupKey)"
           />
         </div>
@@ -1223,7 +1261,7 @@ onBeforeUnmount(() => {
           <div
             v-if="!(row.kind === 'h1' && stuck && stuck.row.groupKey === row.groupKey)"
             class="pf-row"
-            :class="`pf-${row.kind}`"
+            :class="[`pf-${row.kind}`, { 'is-overlay': row.kind === 'h1' && isOverlayDateWall }]"
             :data-kind="row.kind"
             :data-group="row.groupKey"
             :style="{ top: `${row.top}px`, height: `${row.height}px` }"
@@ -1237,6 +1275,7 @@ onBeforeUnmount(() => {
               :folder="headFor(row)?.isFolder"
               :pressed="groupPressed(row.groupKey, row.subKey)"
               :selecting="hasMultiSelect"
+              :pill="row.kind === 'h1' && isOverlayDateWall"
               @pick="pickGroup(row.groupKey, row.subKey)"
             />
 
@@ -1395,9 +1434,18 @@ onBeforeUnmount(() => {
   padding-left: 8px;
   pointer-events: none;
 }
+.pf-h1.is-overlay {
+  align-items: flex-start;
+  padding: 8px 10px 0;
+  z-index: 6;
+  pointer-events: none;
+}
 .pf-h1 > :deep(.pgh),
 .pf-h2 > :deep(.pgh) {
   width: 100%;
+}
+.pf-h1.is-overlay > :deep(.pgh) {
+  width: auto;
 }
 .pf-h2 {
   display: flex;
@@ -1418,29 +1466,13 @@ onBeforeUnmount(() => {
 }
 .pf-stick-inner {
   position: absolute;
-  left: 6px;
-  right: 6px;
-  height: 44px;
+  left: 0;
+  right: 0;
   box-sizing: border-box;
   display: flex;
-  align-items: center;
-  padding: 0 10px;
+  align-items: flex-start;
+  padding: 8px 10px 0;
   pointer-events: none;
-}
-.pf-stick-inner > :deep(.pgh) {
-  width: auto;
-  max-width: 100%;
-  padding: 3px 10px;
-  border-radius: 8px;
-  background: rgba(12, 20, 15, 0.56);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  backdrop-filter: blur(10px) saturate(1.18);
-  -webkit-backdrop-filter: blur(10px) saturate(1.18);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.22);
-}
-:root[data-theme='light'] .pf-stick-inner > :deep(.pgh) {
-  background: rgba(255, 255, 255, 0.86);
-  border-color: rgba(15, 36, 20, 0.14);
 }
 .pf-skeleton {
   width: 100%;

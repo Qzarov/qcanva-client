@@ -6,11 +6,77 @@
  */
 import { ref, type Ref } from 'vue';
 import { driveApi } from '../../api/drive';
-import { photosApi, photosMockDrive, type Album } from '../../api/photos';
+import { isPhotosMock, photosApi, photosMockDrive, type Album } from '../../api/photos';
+import { spacesApi, type SpaceSummary } from '../../api/spaces';
 import { promptDialog } from '../../composables/appDialog';
 import { useI18n } from '../../composables/useI18n';
+import { useSpaces } from '../../composables/useSpaces';
 import { useToast } from '../../composables/useToast';
 import type { PickedFolder } from '../FolderPickerDialog.vue';
+
+function isMockPhotosMode(): boolean {
+  return typeof isPhotosMock === 'function' && isPhotosMock();
+}
+
+export function spaceToAlbum(s: SpaceSummary): Album {
+  return {
+    id: s.id,
+    name: s.name,
+    count: s.mediaCount ?? s.itemCount ?? s.sourceCount ?? 0,
+    bytes: 0,
+    createdAt: s.updatedAt ?? '',
+    addedAt: s.updatedAt ?? '',
+    coverFileIds: s.coverFileIds ?? [],
+  };
+}
+
+export async function listGalleryAlbums(): Promise<Album[]> {
+  if (isMockPhotosMode()) return photosApi.albums();
+  const { spaces } = useSpaces();
+  const res = await spacesApi.list();
+  const list = Array.isArray(res.spaces) ? res.spaces : [];
+  spaces.value = list;
+  return list.map(spaceToAlbum);
+}
+
+export async function createGalleryAlbum(name: string): Promise<{ id: string }> {
+  if (isMockPhotosMode()) return photosApi.createAlbum(name);
+  const created = await spacesApi.create(name);
+  await useSpaces().load(true);
+  return { id: created.id };
+}
+
+export async function addGalleryAlbumItems(albumId: string, fileIds: readonly string[]): Promise<number> {
+  if (isMockPhotosMode()) return photosApi.addToAlbum(albumId, [...fileIds]);
+  const res = await spacesApi.addItems(albumId, fileIds);
+  void useSpaces().load(true);
+  return res.added;
+}
+
+export async function removeGalleryAlbumItems(albumId: string, fileIds: readonly string[]): Promise<number> {
+  if (isMockPhotosMode()) return photosApi.removeFromAlbum(albumId, [...fileIds]);
+  const res = await spacesApi.removeItems(albumId, fileIds);
+  void useSpaces().load(true);
+  return res.removed;
+}
+
+export async function renameGalleryAlbum(albumId: string, name: string): Promise<void> {
+  if (isMockPhotosMode()) {
+    await photosApi.renameAlbum(albumId, name);
+    return;
+  }
+  await spacesApi.rename(albumId, name);
+  await useSpaces().load(true);
+}
+
+export async function deleteGalleryAlbum(albumId: string): Promise<void> {
+  if (isMockPhotosMode()) {
+    await photosApi.deleteAlbum(albumId);
+    return;
+  }
+  await spacesApi.remove(albumId);
+  await useSpaces().load(true);
+}
 
 /** At most this many `PATCH /drive/files/:id` in flight. */
 export const MOVE_CONCURRENCY = 6;
@@ -119,7 +185,7 @@ export function usePhotoSelectionActions(opts: PhotoSelectionActionsOptions): Ph
     albumsFailed.value = false;
     albums.value = null;
     try {
-      albums.value = await photosApi.albums();
+      albums.value = await listGalleryAlbums();
     } catch {
       albumsFailed.value = true;
     }
@@ -186,7 +252,7 @@ export function usePhotoSelectionActions(opts: PhotoSelectionActionsOptions): Ph
   async function addIds(albumId: string, albumName: string, ids: string[], created: boolean): Promise<void> {
     let added: number;
     try {
-      added = await photosApi.addToAlbum(albumId, ids);
+      added = await addGalleryAlbumItems(albumId, ids);
     } catch {
       toast.show(t('photosAlbumAddFailedToast'), 'error');
       return;
@@ -235,7 +301,7 @@ export function usePhotoSelectionActions(opts: PhotoSelectionActionsOptions): Ph
     try {
       let id: string;
       try {
-        ({ id } = await photosApi.createAlbum(name));
+        ({ id } = await createGalleryAlbum(name));
       } catch {
         toast.show(t('photosAlbumAddFailedToast'), 'error');
         return;
@@ -254,7 +320,7 @@ export function usePhotoSelectionActions(opts: PhotoSelectionActionsOptions): Ph
     try {
       let removed: number;
       try {
-        removed = await photosApi.removeFromAlbum(albumId, ids);
+        removed = await removeGalleryAlbumItems(albumId, ids);
       } catch {
         toast.show(t('photosAlbumRemoveFailedToast'), 'error');
         return;

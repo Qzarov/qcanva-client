@@ -10,7 +10,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import TextDocumentView from './TextDocumentView.vue';
 import { SLASH_MENU_ITEMS, SlashMenuPluginKey, isInCodeContext } from '../text-documents/slash-menu';
 import { CALLOUT_VARIANTS, DOCUMENT_NODES } from '../documents/document-nodes';
-import { messages } from '../composables/useI18n';
+import { messages, useI18n } from '../composables/useI18n';
 import { withoutBlockIds } from '../test-support/block-id';
 
 const push = vi.fn();
@@ -125,6 +125,7 @@ function findNode(node: any, name: string): any {
 }
 
 beforeEach(() => {
+  useI18n().setLocale('en');
   vi.clearAllMocks();
 });
 

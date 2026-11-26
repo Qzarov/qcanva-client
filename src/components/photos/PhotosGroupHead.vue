@@ -11,6 +11,8 @@ const props = defineProps<{
   pressed: boolean;
   /** Selection mode: the circle is always visible. */
   selecting?: boolean;
+  /** Render as a floating translucent pill over the photo wall. */
+  pill?: boolean;
   level: 'h1' | 'h2';
 }>();
 
@@ -19,7 +21,7 @@ const { t } = useI18n();
 </script>
 
 <template>
-  <div class="pgh" :class="[`pgh-${level}`, { selecting }]">
+  <div class="pgh" :class="[`pgh-${level}`, { selecting, 'pgh-pill': pill }]">
     <button
       type="button"
       class="pgh-pick"
@@ -47,6 +49,41 @@ const { t } = useI18n();
   font-size: 22px;
   font-weight: 700;
   letter-spacing: -0.01em;
+}
+.pgh-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: auto;
+  max-width: 100%;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0;
+  color: #f0fff0;
+  background: rgba(12, 20, 15, 0.68);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(12px) saturate(1.2);
+  -webkit-backdrop-filter: blur(12px) saturate(1.2);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.24);
+  pointer-events: none;
+}
+.pgh-pill .pgh-count {
+  color: rgba(240, 255, 240, 0.72);
+  font-size: 12px;
+}
+.pgh-pill.selecting .pgh-pick {
+  pointer-events: auto;
+}
+:root[data-theme='light'] .pgh-pill {
+  background: rgba(255, 255, 255, 0.9);
+  border-color: rgba(15, 36, 20, 0.16);
+  color: var(--ui-text);
+  box-shadow: 0 2px 10px rgba(15, 36, 20, 0.12);
+}
+:root[data-theme='light'] .pgh-pill .pgh-count {
+  color: var(--ui-text-muted);
 }
 .pgh-h2 {
   align-items: center;

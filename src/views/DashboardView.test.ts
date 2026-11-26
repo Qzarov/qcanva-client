@@ -341,7 +341,8 @@ describe('dashboard sidebar navigation', () => {
     await wrapper.get('[data-dashboard-folder="folder-b"]').trigger('click');
 
     expect((wrapper.vm as any).activeSection).toEqual({ kind: 'folder', folderId: 'folder-b' });
-    expect(wrapper.get('[data-dashboard-view="folder"]').text()).toContain('Target');
+    expect(wrapper.get('[data-headroom-bar]').text()).toContain('Target');
+    expect(wrapper.get('[data-dashboard-view="folder"]').text()).toContain('Doc 1');
   });
 
   it('returns to Recent from a folder view via the Back button', async () => {
@@ -390,7 +391,7 @@ describe('dashboard sidebar navigation', () => {
     expect(wrapper.find('[data-dashboard-folder="folder-c"]').exists()).toBe(false);
     expect(vm.activeSection).toEqual({ kind: 'folder', folderId: 'folder-c' });
     expect(vm.selectedFolderId).toBe('folder-c');
-    expect(wrapper.get('[data-dashboard-view="folder"]').text()).toContain('Archive');
+    expect(wrapper.get('[data-headroom-bar]').text()).toContain('Archive');
   });
 
   it('home is one feed: Recent, Folders, Shared, Interactive, Public in order, each capped with "Show all"', async () => {
@@ -665,7 +666,7 @@ describe('dashboard sidebar navigation', () => {
     expect(vm.activeSection).toEqual({ kind: 'folder', folderId: 'folder-b' });
     expect(vm.selectedFolderId).toBe('folder-b');
     expect(vm.activeFolder.items).toEqual([]);
-    expect(wrapper.get('[data-dashboard-view="folder"]').text()).toContain('Target');
+    expect(wrapper.get('[data-headroom-bar]').text()).toContain('Target');
     expect(wrapper.get('[data-folder-empty]').text()).toContain('Nothing matches the current filters.');
     await wrapper.get('[data-folder-empty] [data-reset-filters]').trigger('click');
     expect(vm.searchQuery).toBe('');
@@ -688,7 +689,7 @@ describe('dashboard sidebar navigation', () => {
 
     expect(vm.selectedFolderId).toBe('folder-c');
     expect(vm.activeSection).toEqual({ kind: 'folder', folderId: 'folder-c' });
-    expect(wrapper.get('[data-dashboard-view="folder"]').text()).toContain('Archive');
+    expect(wrapper.get('[data-headroom-bar]').text()).toContain('Archive');
   });
 
   it('does not render the old in-content folder navigation', async () => {
@@ -1250,7 +1251,7 @@ describe('dashboard sidebar navigation', () => {
     await nextTick();
 
     expect((wrapper.vm as any).mobileSidebarOpen).toBe(false);
-    expect(document.activeElement).toBe(desktopFallback);
+    expect(desktopFallback.contains(document.activeElement)).toBe(true);
     expect(getComputedStyle(document.activeElement as HTMLElement).display).not.toBe('none');
     wrapper.unmount();
   });
@@ -1967,14 +1968,11 @@ describe('DashboardView groups', () => {
       vm.selectFolder('folder-c');
       await nextTick();
 
-      const header = wrapper.find('.folder-manager-main');
-      expect(header.exists()).toBe(true);
-      expect(header.find('.folder-back-button').exists()).toBe(false);
+      expect(wrapper.find('.folder-manager-top').exists()).toBe(false);
+      expect(wrapper.find('.folder-back-button').exists()).toBe(false);
       expect(wrapper.find('[data-headroom-bar] [data-nav-back]').exists()).toBe(true);
-
-      const title = wrapper.find('.folder-manager-title');
-      expect(title.find('.folder-manager-name').text()).toBe('Archive');
-      expect(title.find('.folder-manager-count').exists()).toBe(true);
+      expect(wrapper.get('[data-headroom-bar]').text()).toContain('Archive');
+      expect(wrapper.find('[data-headroom-folder-menu]').exists()).toBe(true);
     });
 
     it('has exactly one back arrow in the Headroom bar: to the parent folder when nested, to Recent at the root', async () => {
@@ -3042,7 +3040,7 @@ describe('Home/Spaces Yandex Disk display', () => {
     document.body.innerHTML = '';
   });
 
-  it('displays connected Yandex Disk in Home/Spaces with item count and account name, and opens Yandex Disk on click', async () => {
+  it('shows Yandex Disk only under Clouds in the sidebar (never under Альбомы on Home) and opens Yandex Disk on click', async () => {
     const { yandexDisk } = await import('../api/yandexDisk');
     const { useYandexDisk } = await import('../composables/useYandexDisk');
     const { useSpaces } = await import('../composables/useSpaces');
@@ -3072,13 +3070,14 @@ describe('Home/Spaces Yandex Disk display', () => {
     const wrapper = mountDashboard();
     await flushPromises();
 
-    const yandexTile = wrapper.get('[data-recent-space-tile="yandex"]');
-    expect(yandexTile.get('.subfolder-card-name').text()).toBe('Yandex Disk');
-    expect(yandexTile.get('[data-recent-yandex-count]').text()).toBe('12');
-    expect(yandexTile.get('[data-recent-yandex-account]').text()).toBe('Ivan Petrov');
+    // Yandex Disk must NOT appear in #feed-spaces on Home; only real spaces appear there
+    expect(wrapper.find('[data-recent-space-tile="yandex"]').exists()).toBe(false);
     expect(wrapper.get('[data-recent-space-tile="space-1"] .subfolder-card-name').text()).toBe('Family');
 
-    await yandexTile.trigger('click');
+    // Yandex Disk lives under Clouds in the sidebar
+    const yandexRow = wrapper.get('[data-space="yandex"]');
+    expect(yandexRow.text()).toContain('Yandex Disk');
+    await yandexRow.trigger('click');
     await flushPromises();
 
     expect((wrapper.vm as any).activeSection).toEqual({ kind: 'yandex', path: '/' });
@@ -3086,7 +3085,7 @@ describe('Home/Spaces Yandex Disk display', () => {
     listSpy.mockRestore();
   });
 
-  it('displays disconnected Yandex Disk in Home/Spaces with Connect/Reconnect status and filters by searchQuery', async () => {
+  it('filters Home/Spaces tiles by searchQuery without showing Yandex Disk', async () => {
     const { useYandexDisk } = await import('../composables/useYandexDisk');
     const { useSpaces } = await import('../composables/useSpaces');
 
@@ -3097,23 +3096,24 @@ describe('Home/Spaces Yandex Disk display', () => {
       login: null,
       displayName: null,
     };
-    useSpaces().spaces.value = [];
+    useSpaces().spaces.value = [
+      { id: 'space-1', name: 'Family', role: 'owner', ownerId: 'user-1', memberCount: 2, sourceCount: 3, updatedAt: '2026-11-07T10:00:00Z' },
+    ];
     useSpaces().loaded.value = true;
 
     const wrapper = mountDashboard();
     await flushPromises();
 
-    const yandexTile = wrapper.get('[data-recent-space-tile="yandex"]');
-    expect(yandexTile.get('.subfolder-card-name').text()).toBe('Yandex Disk');
-    expect(yandexTile.get('[data-recent-yandex-status]').text()).toBe('Connect again');
+    expect(wrapper.find('[data-recent-space-tile="yandex"]').exists()).toBe(false);
+    expect(wrapper.find('[data-recent-space-tile="space-1"]').exists()).toBe(true);
 
     const vm = wrapper.vm as any;
-    vm.searchQuery = 'yandex';
+    vm.searchQuery = 'family';
     await nextTick();
-    expect(wrapper.find('[data-recent-space-tile="yandex"]').exists()).toBe(true);
+    expect(wrapper.find('[data-recent-space-tile="space-1"]').exists()).toBe(true);
 
     vm.searchQuery = 'unmatched-space-query';
     await nextTick();
-    expect(wrapper.find('[data-recent-space-tile="yandex"]').exists()).toBe(false);
+    expect(wrapper.find('[data-recent-space-tile="space-1"]').exists()).toBe(false);
   });
 });

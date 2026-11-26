@@ -29,7 +29,7 @@ async function load(force = false): Promise<SpaceSummary[]> {
 }
 
 export function useSpaces() {
-  return { spaces, loaded, load };
+  return { spaces, loaded, load, refresh: () => load(true) };
 }
 
 /** Tests only. */

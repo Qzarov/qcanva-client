@@ -373,12 +373,38 @@ describe('PhotosFeed', () => {
 
     const st = scroller(w).scrollTop;
     expect(st).toBeGreaterThan(0);
-    // The second group's header (48 px) sits right above its first row of photos.
-    const sepTop = rowTopOfFile(w, 'f100') - 48 - 4;
+    // Date groups use overlay floating pills with zero block-row gap above the first tile row.
+    const sepTop = rowTopOfFile(w, 'f100');
     expect(st).toBeGreaterThan(sepTop - 20);
     expect(st).toBeLessThan(sepTop + 40);
     // The group is now current: its header is pinned at the top.
     expect(w.get('[data-testid="sticky-head"]').text()).toContain('Сентябрь 2026');
+    w.unmount();
+  });
+
+  it('date wall renders continuous 2px gap between date groups with floating overlay pills', async () => {
+    const oct = [mkItem(0), mkItem(1)];
+    const sep = [mkItem(10, { localTakenAt: '2026-09-10T10:00:00.000Z', takenAt: '2026-09-10T10:00:00.000Z' })];
+    summaryMock.mockResolvedValue({
+      groups: [
+        { key: '2026-10', count: 2 },
+        { key: '2026-09', count: 1 },
+      ],
+    });
+    itemsMock.mockImplementation(async (_p, g) => ({ items: g === '2026-10' ? oct : sep, nextCursor: null }));
+
+    const Feed = await load();
+    const w = mountFeed(Feed);
+    await settle();
+
+    const tileRows = w.findAll('.pf-row[data-kind="tiles"]');
+    expect(tileRows.length).toBe(2);
+    const firstEl = tileRows[0]!.element as HTMLElement;
+    const secondEl = tileRows[1]!.element as HTMLElement;
+    const firstBottom = parseFloat(firstEl.style.top) + parseFloat(firstEl.style.height);
+    const secondTop = parseFloat(secondEl.style.top);
+    expect(secondTop - firstBottom).toBeCloseTo(2, 3);
+    expect(w.findAll('.pf-row.pf-h1.is-overlay .pgh-pill').length).toBeGreaterThan(0);
     w.unmount();
   });
 

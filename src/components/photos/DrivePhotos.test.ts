@@ -7,16 +7,40 @@ import { ApiError } from '../../api/client';
 import { isPhotosMock, type FeedItem } from '../../api/photos';
 import { resetExplorerLayoutPrefs, useExplorerLayoutPrefs } from '../../composables/useExplorerLayoutPrefs';
 import { useI18n } from '../../composables/useI18n';
+import { resetSpaces } from '../../composables/useSpaces';
 import DrivePhotos from './DrivePhotos.vue';
 import { usePhotosView } from './usePhotosView';
 
 const searchMock = vi.hoisted(() => vi.fn());
 const albumsMock = vi.hoisted(() => vi.fn());
+const spacesListMock = vi.hoisted(() => vi.fn());
+const spacesGetMock = vi.hoisted(() => vi.fn());
+const spacesAddItemsMock = vi.hoisted(() => vi.fn());
+const getTrashMock = vi.hoisted(() => vi.fn());
+const trashFileMock = vi.hoisted(() => vi.fn());
 const editMock = vi.hoisted(() => vi.fn());
 const feedRefresh = vi.hoisted(() => vi.fn());
 const feedPatch = vi.hoisted(() => vi.fn());
 const feedLoadMore = vi.hoisted(() => vi.fn(async () => false));
 const getDownloadLinkMock = vi.hoisted(() => vi.fn());
+
+vi.mock('../../api/client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../api/client')>();
+  return {
+    ...actual,
+    isAuthenticated: () => true,
+  };
+});
+
+vi.mock('../../api/spaces', () => ({
+  spacesApi: {
+    list: spacesListMock,
+    get: spacesGetMock,
+    addItems: spacesAddItemsMock,
+    create: vi.fn().mockResolvedValue({ id: 'sp-new' }),
+    removeItems: vi.fn().mockResolvedValue({ removed: 0 }),
+  },
+}));
 
 vi.mock('../../api/photos', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../api/photos')>();
@@ -43,7 +67,8 @@ vi.mock('../../api/drive', async (importOriginal) => {
     driveApi: {
       ...actual.driveApi,
       getDownloadLink: getDownloadLinkMock,
-      trashFile: vi.fn().mockResolvedValue({}),
+      getTrash: getTrashMock,
+      trashFile: trashFileMock,
       moveFile: vi.fn().mockResolvedValue({}),
     },
   };
@@ -123,13 +148,20 @@ const FeedStub = defineComponent({
 
 const PanelStub = defineComponent({
   name: 'PhotoPanel',
-  props: ['fileId', 'hideOpenFolder'],
-  emits: ['close', 'open-folder', 'open-album', 'open-viewer', 'changed'],
+  props: ['fileId', 'selectedItems', 'hideOpenFolder'],
+  emits: ['close', 'open-folder', 'open-album', 'group-favorite', 'group-share', 'group-album', 'group-download', 'group-delete', 'changed'],
   setup(props, { emit }) {
     return () =>
-      h('aside', { 'data-photo-panel': '', 'data-panel-file': props.fileId as string }, [
+      h('aside', {
+        'data-photo-panel': '',
+        'data-panel-file': props.fileId as string,
+        'data-panel-selected-count': String((props.selectedItems as FeedItem[] | undefined)?.length ?? 0),
+      }, [
         h('button', { 'data-stub-folder': '', onClick: () => emit('open-folder', 'fold1') }, 'folder'),
         h('button', { 'data-stub-album': '', onClick: () => emit('open-album', 'alb1') }, 'album'),
+        h('button', { 'data-stub-group-fav': '', onClick: () => emit('group-favorite') }, 'gfav'),
+        h('button', { 'data-stub-group-del': '', onClick: () => emit('group-delete') }, 'gdel'),
+        h('button', { 'data-stub-group-alb': '', onClick: () => emit('group-album') }, 'galb'),
         h('button', { 'data-stub-chg-albums': '', onClick: () => emit('changed', { fileId: 'f0', albumIds: [] }) }, 'chg'),
         h('button', { 'data-stub-chg-fav': '', onClick: () => emit('changed', { fileId: 'f0', favorite: false }) }, 'chg'),
         h('button', { 'data-stub-close': '', onClick: () => emit('close') }, 'close'),
@@ -181,6 +213,7 @@ describe('DrivePhotos', () => {
     vi.useFakeTimers();
     localStorage.clear();
     resetExplorerLayoutPrefs(true);
+    resetSpaces();
     useI18n().setLocale('ru');
     usePhotosView().reset();
     extraFeedItems = [];
@@ -189,8 +222,15 @@ describe('DrivePhotos', () => {
     feedLoadMore.mockReset().mockResolvedValue(false);
     editMock.mockReset().mockResolvedValue(undefined);
     getDownloadLinkMock.mockReset().mockResolvedValue({ url: 'https://example.com/file', expiresAt: '' });
+    getTrashMock.mockReset().mockResolvedValue({ items: [{ id: 'tr-1', name: 'old.jpg', kind: 'file', sizeBytes: 100 }], nextCursor: null });
+    trashFileMock.mockReset().mockResolvedValue({});
     searchMock.mockReset().mockResolvedValue({ items: [mkItem(7), mkItem(8)], nextCursor: null });
     albumsMock.mockReset().mockResolvedValue([{ id: 'alb1', name: 'Алтай', count: 2, bytes: 0, coverFileIds: [] }]);
+    spacesListMock.mockReset().mockResolvedValue({
+      spaces: [{ id: 'alb1', name: 'Алтай', role: 'owner', ownerId: 'u1', memberCount: 4, sourceCount: 1, mediaCount: 2, coverFileIds: [], updatedAt: '' }],
+    });
+    spacesGetMock.mockReset().mockResolvedValue({ id: 'alb1', name: 'Алтай' });
+    spacesAddItemsMock.mockReset().mockResolvedValue({ added: 2 });
   });
 
   afterEach(() => {
@@ -210,7 +250,10 @@ describe('DrivePhotos', () => {
     const w = mountIt();
     await flushPromises();
     expect(w.find('[role="tablist"]').exists()).toBe(false);
-    expect(w.find('[data-testid="aspect-toggle"]').exists()).toBe(true);
+    const aspectBtn = w.get('[data-testid="aspect-toggle"]');
+    expect(aspectBtn.find('.dp-aspect-label').exists()).toBe(false);
+    expect(aspectBtn.text()).toBe('');
+    expect(aspectBtn.attributes('aria-label')).toBeTruthy();
     expect(w.find('[data-testid="zoom-slider"]').exists()).toBe(true);
     expect(w.find('[data-testid="period-year"]').text()).toBe('Годы');
     expect(w.find('[data-testid="period-month"]').text()).toBe('Месяцы');
@@ -462,5 +505,70 @@ describe('DrivePhotos', () => {
     await w.get('[data-testid="viewer-stub"]').trigger('click');
     await w.get('[data-testid="viewer-stub"]').trigger('click');
     expect(w.get('[data-testid="viewer-stub"]').text()).toBe('f99');
+  });
+
+  it('renders in-Gallery Recently Deleted view when activeSection is "trash" and emits update:counts', async () => {
+    const w = mountIt({ activeSection: 'library' });
+    await flushPromises();
+    expect(w.emitted('update:counts')?.length).toBeGreaterThan(0);
+
+    await w.setProps({ activeSection: 'trash' });
+    await flushPromises();
+    expect(w.find('[data-testid="gallery-trash-view"]').exists()).toBe(true);
+    expect(w.find('[data-trash-view]').exists()).toBe(true);
+    expect(w.get('[data-testid="trash-topbar-title"]').text()).toBe('Недавно удалённые');
+    expect(w.find('[data-testid="feed-stub"]').exists()).toBe(false);
+  });
+
+  it('opens search suggestions popover on input focus/click with semantic tags (no #) and people chips, closes on Escape or selection', async () => {
+    const w = mountIt({
+      people: [{ id: 'p1', name: 'Анна', count: 3, coverHash: null }],
+    });
+    await flushPromises();
+    expect(w.find('[data-gallery-suggest-pop]').exists()).toBe(false);
+
+    const input = w.get('[data-photos-search-input]');
+    await input.trigger('focus');
+    const pop = w.get('[data-gallery-suggest-pop]');
+    expect(pop.text()).toContain('Смысловые теги');
+    expect(pop.text()).toContain('Люди');
+    expect(pop.text()).not.toContain('#');
+
+    await input.trigger('keydown', { key: 'Escape' });
+    expect(w.find('[data-gallery-suggest-pop]').exists()).toBe(false);
+
+    await input.trigger('click');
+    await w.get('[data-suggest-tag="природа"]').trigger('click');
+    await flushPromises();
+    expect(w.find('[data-gallery-suggest-pop]').exists()).toBe(false);
+    expect(searchMock).toHaveBeenCalledWith('природа', expect.any(Object));
+
+    await w.get('[data-photos-search-clear]').trigger('click');
+    await input.trigger('focus');
+    await w.get('[data-suggest-person="p1"]').trigger('click');
+    expect(w.find('[data-gallery-suggest-pop]').exists()).toBe(false);
+    expect(w.get('[data-testid="gallery-people-crumb"]').text()).toContain('Анна');
+  });
+
+  it('passes selectedItems to PhotoPanel for 2+ group inspector and wires group actions', async () => {
+    const w = mountIt();
+    await flushPromises();
+    await w.get('[data-stub-select]').trigger('click');
+    await w.get('[data-testid="info-toggle"]').trigger('click');
+
+    const panel = w.get('[data-photo-panel]');
+    expect(panel.attributes('data-panel-selected-count')).toBe('2');
+
+    await w.get('[data-stub-group-fav]').trigger('click');
+    await flushPromises();
+    expect(editMock).toHaveBeenCalledWith('f0', { favorite: true });
+    expect(editMock).toHaveBeenCalledWith('f1', { favorite: true });
+
+    await w.get('[data-stub-group-alb]').trigger('click');
+    await flushPromises();
+    expect(w.find('[data-testid="gallery-group-album-menu"]').exists()).toBe(true);
+    await w.get('[data-group-album-choice="alb1"]').trigger('click');
+    await flushPromises();
+    expect(spacesAddItemsMock).toHaveBeenCalledWith('alb1', ['f0', 'f1']);
   });
 });

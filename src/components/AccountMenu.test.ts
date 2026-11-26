@@ -3,6 +3,7 @@ import { mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearToken } from '../api/client';
 import AccountMenu from './AccountMenu.vue';
+import { useI18n } from '../composables/useI18n';
 
 const push = vi.fn();
 const resetPlugins = vi.hoisted(() => vi.fn());
@@ -17,6 +18,7 @@ vi.mock('../composables/usePlugins', () => ({
 
 describe('AccountMenu', () => {
   beforeEach(() => {
+    useI18n().setLocale('en');
     localStorage.clear();
     document.documentElement.removeAttribute('data-theme');
     document.body.innerHTML = '';

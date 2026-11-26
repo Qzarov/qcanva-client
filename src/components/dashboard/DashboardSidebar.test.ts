@@ -115,11 +115,11 @@ describe('DashboardSidebar', () => {
     expect(link.attributes('target')).toBe('_blank');
     expect(link.attributes('rel')).toContain('noopener');
     expect(link.text()).toBe('Source code');
-    expect(wrapper.get('.dashboard-sidebar-version').text()).toContain('QCanva v');
+    expect(wrapper.get('.dashboard-sidebar-version').text()).toContain('QCanva v2.2');
   });
 
   it('renders unified tree without Storage wrapper or RU button in header', async () => {
-    const wrapper = mountSidebar({ activeSection: { kind: 'recent' } });
+    const wrapper = mountSidebar({ activeSection: { kind: 'home' } });
 
     expect(wrapper.get('[data-sidebar-title]').text()).toBe('Explorer');
     expect(wrapper.find('[data-sidebar-header] .language-toggle').exists()).toBe(false);
@@ -128,8 +128,10 @@ describe('DashboardSidebar', () => {
     expect(wrapper.find('[data-tree-key="root:albums"]').exists()).toBe(true);
     expect(wrapper.find('[data-home-link]').text()).toContain('home');
     expect(wrapper.get('[data-home-link]').attributes('aria-current')).toBe('page');
-    expect(wrapper.get('[data-dashboard-section="shared"]').text()).toContain('Shared with me');
-    expect(wrapper.get('[data-dashboard-section="public"]').text()).toContain('Public');
+    expect(wrapper.get('[data-dashboard-section="shared"]').text()).toContain('shared');
+    expect(wrapper.get('[data-dashboard-section="shared"]').attributes('aria-label')).toBe('Shared with me');
+    expect(wrapper.get('[data-dashboard-section="public"]').text()).toContain('public');
+    expect(wrapper.get('[data-dashboard-section="public"]').attributes('aria-label')).toBe('Public');
     expect(wrapper.findAll('[data-dashboard-folder]')).toHaveLength(3);
     expect(wrapper.get('[data-dashboard-folder="default"]').text()).toContain('default');
 
@@ -140,13 +142,28 @@ describe('DashboardSidebar', () => {
     expect(wrapper.emitted('select')).toBeUndefined();
   });
 
-  it('opens the feed from home without collapsing its folders', async () => {
+  it('opens Q Space/home from home row without collapsing its folders and keeps recent inactive on home', async () => {
+    const recentWrapper = mountSidebar({ activeSection: { kind: 'recent' } });
+    expect(recentWrapper.get('[data-home-link]').attributes('aria-current')).toBeUndefined();
+    expect(recentWrapper.get('[data-home-link]').classes()).not.toContain('active');
+
     const wrapper = mountSidebar({ activeSection: { kind: 'shared' } });
 
     await wrapper.get('[data-home-link]').trigger('click');
 
-    expect(wrapper.emitted('select')?.[0]).toEqual([{ kind: 'recent' }]);
+    expect(wrapper.emitted('select')?.[0]).toEqual([{ kind: 'home' }]);
     expect(wrapper.get('[data-home-disclosure]').attributes('aria-expanded')).toBe('true');
+  });
+
+  it('marks qspace:home active when a child folder is active while home is collapsed, and collapses unrelated folders on home navigation', async () => {
+    const wrapper = mountSidebar({ activeSection: { kind: 'folder', folderId: 'project' } });
+
+    await wrapper.get('[data-home-disclosure]').trigger('click');
+    expect(wrapper.get('[data-home-link]').classes()).toContain('active');
+
+    await wrapper.setProps({ activeSection: { kind: 'home' } });
+    expect(wrapper.get('[data-home-disclosure]').attributes('aria-expanded')).toBe('true');
+    expect(wrapper.emitted('toggle-folder')?.some(([id]) => id === 'project')).toBe(true);
   });
 
   it('emits typed destination selection and exposes the active destination', async () => {
@@ -364,7 +381,7 @@ describe('DashboardSidebar', () => {
       avatarUrl: null,
     };
     useSpaces().spaces.value = [
-      { id: 'space-1', name: 'Family', role: 'owner', ownerId: 'user-1', memberCount: 2, sourceCount: 1, updatedAt: '2026-11-07T10:00:00Z' },
+      { id: 'space-1', name: 'Family', role: 'owner', ownerId: 'user-1', memberCount: 2, sourceCount: 1, itemCount: 7, updatedAt: '2026-11-07T10:00:00Z' },
     ];
     useSpaces().loaded.value = true;
 
@@ -375,6 +392,7 @@ describe('DashboardSidebar', () => {
     expect(wrapper.get('[data-cloud="telegram"]').text()).toContain('Telegram');
     expect(wrapper.get('[data-cloud="telegram"]').attributes('aria-disabled')).toBe('true');
     expect(wrapper.get('[data-shared-space="space-1"]').text()).toContain('Family');
+    expect(wrapper.get('[data-shared-space="space-1"] .tree-meta').text()).toBe('7');
 
     await wrapper.get('[data-space="yandex"]').trigger('click');
     expect(wrapper.emitted('select')?.[0]).toEqual([{ kind: 'yandex', path: '/' }]);
@@ -393,5 +411,48 @@ describe('DashboardSidebar', () => {
     const collapsedLink = collapsed.get('[data-sidebar-downloads]');
     expect(collapsedLink.attributes('aria-label')).toBe('Download apps');
     expect(collapsedLink.attributes('title')).toBe('Download apps');
+  });
+
+  it('resolves file labels safely with fallback to name or untitled and emits toggle-folder when showFilesInTree turns on', async () => {
+    const wrapper = mountSidebar({
+      folders: [
+        {
+          id: 'f-open',
+          name: 'OpenFolder',
+          parentId: null,
+          depth: 0,
+          role: 'owner',
+          technical: false,
+          expanded: true,
+          hasChildren: true,
+          draggable: true,
+          dropActive: false,
+          reorderTarget: false,
+        },
+        { kind: 'file', key: 'f-open/drive-file:1', id: '1', type: 'drive-file', title: '', folderId: 'f-open', depth: 1, name: 'photo.jpg' } as never,
+        { kind: 'file', key: 'f-open/drive-file:2', id: '2', type: 'drive-file', title: '   ', folderId: 'f-open', depth: 1 },
+        {
+          id: 'f-closed',
+          name: 'ClosedFolder',
+          parentId: null,
+          depth: 0,
+          role: 'owner',
+          technical: false,
+          expanded: false,
+          hasChildren: true,
+          draggable: true,
+          dropActive: false,
+          reorderTarget: false,
+        },
+      ],
+    });
+
+    await wrapper.get('[data-folder-toggle="f-closed"]').trigger('click');
+    expect(wrapper.emitted('toggle-folder')?.[0]).toEqual(['f-closed']);
+
+    await wrapper.get('[data-sidebar-toggle-files]').trigger('click');
+    expect(wrapper.get('[data-sidebar-file="f-open/drive-file:1"]').text()).toBe('photo.jpg');
+    expect(wrapper.get('[data-sidebar-file="f-open/drive-file:2"]').text()).toBe('Untitled');
+    expect(wrapper.emitted('toggle-folder')?.filter(([id]) => id === 'f-closed')).toHaveLength(2);
   });
 });

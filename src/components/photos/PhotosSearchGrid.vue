@@ -63,9 +63,23 @@ function fillCheck(): void {
 }
 
 let ro: ResizeObserver | null = null;
+let roRaf = 0;
+
+function scheduleFillCheck(): void {
+  if (typeof requestAnimationFrame !== 'function') {
+    fillCheck();
+    return;
+  }
+  if (roRaf) cancelAnimationFrame(roRaf);
+  roRaf = requestAnimationFrame(() => {
+    roRaf = 0;
+    fillCheck();
+  });
+}
+
 onMounted(() => {
   if (typeof ResizeObserver !== 'undefined' && root.value) {
-    ro = new ResizeObserver(() => fillCheck());
+    ro = new ResizeObserver(scheduleFillCheck);
     ro.observe(root.value);
   }
   void nextTick(fillCheck);
@@ -83,6 +97,10 @@ function label(item: FeedItem): string {
 
 onBeforeUnmount(() => {
   alive = false;
+  if (roRaf && typeof cancelAnimationFrame === 'function') {
+    cancelAnimationFrame(roRaf);
+    roRaf = 0;
+  }
   ro?.disconnect();
   ro = null;
 });

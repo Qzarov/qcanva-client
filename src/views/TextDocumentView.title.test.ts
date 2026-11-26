@@ -9,6 +9,7 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import TextDocumentView from './TextDocumentView.vue';
+import { useI18n } from '../composables/useI18n';
 
 const mocks = vi.hoisted(() => ({
   push: vi.fn().mockResolvedValue(undefined),
@@ -92,6 +93,7 @@ async function mountDoc(role: 'owner' | 'read' = 'owner'): Promise<any> {
 }
 
 beforeEach(() => {
+  useI18n().setLocale('en');
   vi.clearAllMocks();
 });
 

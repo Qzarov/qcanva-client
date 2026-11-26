@@ -30,6 +30,8 @@ export type LayoutInput = {
   gap?: number /* default GAP */;
   collapsedShares: Set<string>;
   aspectMode?: 'square' | 'ratio';
+  /** When true, h1 headers float over the first photo row with zero vertical block-row gap. */
+  overlayH1?: boolean;
 };
 
 export type RowKind = 'h1' | 'h2' | 'share' | 'tiles' | 'placeholder';
@@ -263,14 +265,19 @@ export function computeLayout(input: LayoutInput): Layout {
   for (const group of input.groups) {
     const h1Top = nextTop();
     groupTops.set(group.key, h1Top);
-    addRow({
+    const h1Row: Row = {
       kind: 'h1',
       top: h1Top,
       height: H1_HEIGHT,
       groupKey: group.key,
       title: group.title,
       count: group.count,
-    });
+    };
+    if (input.overlayH1) {
+      rows.push(h1Row);
+    } else {
+      addRow(h1Row);
+    }
 
     if (group.subs && group.subs.length > 0) {
       for (const sub of group.subs) {

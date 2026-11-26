@@ -17,7 +17,7 @@ const initialLocale = (): UiLocale => {
     // Storage is optional in private and embedded browsing contexts.
   }
   if (stored === 'ru' || stored === 'en') return stored;
-  return typeof navigator !== 'undefined' && navigator.language.toLowerCase().startsWith('ru') ? 'ru' : 'en';
+  return 'ru';
 };
 
 const locale = ref<UiLocale>(initialLocale());
@@ -1051,6 +1051,14 @@ export const messages = {
     galleryBack: 'Назад',
     galleryFilmstrip: 'Лента миниатюр',
     galleryResizePanel: 'Изменить ширину панели свойств',
+    galleryGroupSelected: 'Выбрано: {n}',
+    galleryGroupTotalSize: 'Общий размер',
+    galleryGroupDateRange: 'Период',
+    gallerySearchTags: 'Смысловые теги',
+    gallerySearchPeople: 'Люди',
+    galleryAddToAlbum: 'В альбом',
+    galleryDelete: 'Удалить',
+    explorerAddEllipsis: 'Добавить…',
   },
   en: {
     markdownOpenAsDoc: 'Open as document', markdownOpenAsDocFailed: 'Could not create document', markdownEmpty: 'Document is empty', markdownLoadFailed: 'Could not load document', markdownSaved: 'Document saved', markdownSaveFailed: 'Could not save document', openDocument: 'Open document',
@@ -2076,6 +2084,14 @@ export const messages = {
     galleryBack: 'Back',
     galleryFilmstrip: 'Filmstrip',
     galleryResizePanel: 'Resize info panel',
+    galleryGroupSelected: 'Selected: {n}',
+    galleryGroupTotalSize: 'Total size',
+    galleryGroupDateRange: 'Date range',
+    gallerySearchTags: 'Semantic tags',
+    gallerySearchPeople: 'People',
+    galleryAddToAlbum: 'Add to album',
+    galleryDelete: 'Delete',
+    explorerAddEllipsis: 'Add…',
   },
 } as const;
 

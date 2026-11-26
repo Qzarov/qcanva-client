@@ -1,9 +1,13 @@
 // @vitest-environment jsdom
 import { mount } from '@vue/test-utils';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import CanvasDrawingPanel from './CanvasDrawingPanel.vue';
+import { useI18n } from '../composables/useI18n';
 
 describe('CanvasDrawingPanel', () => {
+  beforeEach(() => {
+    useI18n().setLocale('en');
+  });
   it('keeps drawing controls available while tools float separately, without a header', async () => {
     const wrapper = mount(CanvasDrawingPanel, { props: { tool: 'pen', color: '#1971c2', width: 4, popup: null }, global: { stubs: { teleport: true } } });
     await wrapper.get('.drawing-tool-trigger').trigger('click');

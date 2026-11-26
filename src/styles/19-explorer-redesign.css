@@ -222,10 +222,27 @@ body.resizing * {
   height: auto;
   opacity: 1;
   position: static;
-  overflow: visible;
+  overflow: hidden;
   pointer-events: auto;
   clip-path: none;
   transform: none;
+}
+
+.dashboard-sidebar.explorer-sidebar:not(.collapsed) .tree-name,
+.dashboard-sidebar.explorer-sidebar:not(.collapsed) .dashboard-sidebar-label,
+.dashboard-sidebar.explorer-sidebar.mobile-open .tree-name,
+.dashboard-sidebar.explorer-sidebar.mobile-open .dashboard-sidebar-label {
+  opacity: 1 !important;
+  animation: none !important;
+  visibility: visible !important;
+  transform: none !important;
+}
+
+.dashboard-sidebar.explorer-sidebar.mobile-open .dashboard-sidebar-label {
+  position: static !important;
+  width: auto !important;
+  height: auto !important;
+  clip-path: none !important;
 }
 
 .dashboard-sidebar.explorer-sidebar.collapsed.mobile-open .dashboard-sidebar-footer {
@@ -597,12 +614,17 @@ body.resizing * {
   gap: 6px;
 }
 
-.explorer-sidebar .sb-version {
+.explorer-sidebar .sb-version,
+.explorer-sidebar .dashboard-sidebar-version {
+  display: block;
   font-size: 11px;
   color: var(--explorer-muted);
-  display: flex;
-  align-items: center;
-  gap: 4px;
+  padding: 0 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .explorer-sidebar .sb-version a {
@@ -714,6 +736,10 @@ body.resizing * {
 }
 
 /* ===== Headroom 46px Top Chrome & Editable Glass Path Bar ===== */
+.dashboard-central-shell > .top-chrome.explorer-headroom {
+  grid-row: 1;
+}
+
 .top-chrome.explorer-headroom {
   position: sticky;
   top: 0;
@@ -770,7 +796,7 @@ body.resizing * {
   height: 31px;
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 0;
   padding: 0 8px;
   border-radius: 10px;
   border: 1px solid var(--ui-glass-border);
@@ -810,7 +836,7 @@ body.resizing * {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 3px 6px;
+  padding: 3px 4px;
   border-radius: 6px;
   border: 0;
   background: transparent;
@@ -834,6 +860,7 @@ body.resizing * {
 }
 
 .crumb-sep {
+  padding: 0 1px;
   color: var(--explorer-muted);
   font-size: 11px;
   flex: none;
@@ -1178,6 +1205,12 @@ body.resizing * {
   filter: brightness(1.14);
 }
 
+/* Item 19: Calm single-select focus ring without hover checkboxes */
+.canvas-card .card-select,
+.subfolder-card .card-select {
+  display: none !important;
+}
+
 /* ===== Mobile <= 768px / 390px Responsive Layout & Bottom Tab Bar ===== */
 .explorer-mobile-tabbar.mobile-tabbar {
   display: none;
@@ -1198,12 +1231,53 @@ body.resizing * {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .dashboard-app-shell .dashboard-sidebar-frame,
+  .dashboard-sidebar-frame {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 0;
+    height: 0;
+    overflow: visible;
+    z-index: 295;
+    pointer-events: none;
+  }
+
+  .dashboard-sidebar-frame > .dashboard-sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 296;
+    display: block;
+    background: var(--ui-overlay);
+    pointer-events: auto;
+  }
+
+  .dashboard-sidebar-frame > .dashboard-sidebar-backdrop.dashboard-sidebar-backdrop-leave-active {
+    pointer-events: none;
+  }
+
+  .dashboard-app-shell .dashboard-central-shell,
+  .dashboard-central-shell {
+    grid-column: 1;
+    grid-row: 1;
+    height: 100vh;
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+    width: 100%;
+  }
+
+  .dashboard-central-shell .app-main:not(.app-main-gallery) {
+    padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+  }
+
   .dashboard-sidebar.explorer-sidebar {
     position: fixed;
     top: 0;
     left: 0;
     bottom: 0;
     width: min(296px, 86vw) !important;
+    padding: 0;
     z-index: 300;
     transform: translateX(-104%);
     visibility: hidden;
@@ -1213,10 +1287,16 @@ body.resizing * {
   }
 
   .dashboard-sidebar.explorer-sidebar.mobile-open {
-    transform: translateX(0);
-    visibility: visible;
-    pointer-events: auto;
-    opacity: 1;
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: min(296px, 86vw) !important;
+    transform: translateX(0) !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+    opacity: 1 !important;
+    z-index: 300;
   }
 
   .dashboard-sidebar.explorer-sidebar.mobile-open .dashboard-sidebar-footer {

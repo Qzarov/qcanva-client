@@ -71,9 +71,9 @@
             <button
               type="button"
               class="crumb"
-              :class="{ current: seg.current || idx === segments.length - 1 }"
+              :class="{ current: isCurrentSegment(seg, idx) }"
               :data-path-segment="seg.id"
-              @click.stop="emit('select-segment', seg)"
+              @click.stop="onSegmentClick(seg, idx)"
             >
               <component :is="segmentIcon(seg.icon)" v-if="seg.icon && idx === 0" :size="14" aria-hidden="true" />
               <span>{{ seg.label }}</span>
@@ -291,10 +291,26 @@ function onInputBlur() {
   editing.value = false;
 }
 
+function isCurrentSegment(seg: ExplorerPathSegment, idx: number): boolean {
+  return Boolean(seg.current || idx === props.segments.length - 1);
+}
+
+function onSegmentClick(seg: ExplorerPathSegment, idx: number) {
+  if (isCurrentSegment(seg, idx)) {
+    void startPathEdit();
+    return;
+  }
+  emit('select-segment', seg);
+}
+
 function onPathFrameClick(event: MouseEvent) {
   if (editing.value) return;
   const target = event.target as HTMLElement | null;
-  if (target === pathFrameRef.value || target?.classList.contains('path-fill')) {
+  if (
+    target === pathFrameRef.value
+    || target?.classList.contains('path-fill')
+    || target?.classList.contains('crumb-sep')
+  ) {
     void startPathEdit();
   }
 }
@@ -310,7 +326,7 @@ function selectAlbumViewMode(mode: AlbumViewMode) {
 }
 
 function onWindowKeydown(event: KeyboardEvent) {
-  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'l') {
+  if ((event.ctrlKey || event.metaKey) && (event.key.toLowerCase() === 'l' || event.code === 'KeyL')) {
     event.preventDefault();
     void startPathEdit();
   }

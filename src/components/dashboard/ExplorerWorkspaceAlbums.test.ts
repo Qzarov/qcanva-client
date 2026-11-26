@@ -260,6 +260,8 @@ describe('DashboardAddDialog redesign', () => {
     expect(wrapper.find('[data-add-drop]').exists()).toBe(true);
     expect(wrapper.get('[data-add-drop]').text()).toContain('Перетащите файлы сюда или нажмите, чтобы выбрать');
     expect(wrapper.get('[data-add-target-folder]').text()).toContain('Работа');
+    expect(wrapper.find('[data-add-actions]').exists()).toBe(false);
+    expect(wrapper.find('[data-add-submit]').exists()).toBe(false);
 
     // Clicking a tile unfolds inline name input and submits to initialFolderId
     await wrapper.get('[data-add-create="canvas"]').trigger('click');
@@ -453,6 +455,18 @@ describe('AlbumShareDialog', () => {
     expect(spacesApi.removeMember).toHaveBeenCalledWith('space-1', 'u-2');
     expect(wrapper.emitted('changed')?.length).toBeGreaterThanOrEqual(3);
   });
+
+  it('closes AlbumShareDialog on Escape even when no input inside has focus', async () => {
+    const wrapper = mount(AlbumShareDialog, {
+      attachTo: document.body,
+      props: { space: makeSpaceDetails(), meId: 'u-1' },
+    });
+
+    expect(wrapper.find('[data-album-share-dialog]').exists()).toBe(true);
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    await flushPromises();
+    expect(wrapper.find('[data-album-share-dialog]').exists()).toBe(false);
+  });
 });
 
 describe('ExplorerContextMenu & ExplorerDragBadge', () => {
@@ -503,6 +517,34 @@ describe('ExplorerContextMenu & ExplorerDragBadge', () => {
     // Esc closes menu
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     expect(wrapper.emitted('close')?.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('renders empty-area context menu with create-folder, add, and refresh actions and closes on click', async () => {
+    const wrapper = mount(ExplorerContextMenu, {
+      props: {
+        open: true,
+        x: 120,
+        y: 160,
+        items: [],
+        emptyArea: true,
+      },
+    });
+
+    const menu = wrapper.get('[data-explorer-context-menu]');
+    const items = menu.findAll('[role="menuitem"]');
+    expect(items).toHaveLength(3);
+    expect(menu.get('[data-ctx-action="create-folder"]').text()).toContain('Создать папку');
+    expect(menu.get('[data-ctx-action="add"]').text()).toContain('Добавить…');
+    expect(menu.get('[data-ctx-action="refresh"]').text()).toContain('Обновить');
+
+    await menu.get('[data-ctx-action="create-folder"]').trigger('click');
+    await menu.get('[data-ctx-action="add"]').trigger('click');
+    await menu.get('[data-ctx-action="refresh"]').trigger('click');
+
+    expect(wrapper.emitted('create-folder')).toHaveLength(1);
+    expect(wrapper.emitted('add')).toHaveLength(1);
+    expect(wrapper.emitted('refresh')).toHaveLength(1);
+    expect(wrapper.emitted('close')).toHaveLength(3);
   });
 
   it('renders ExplorerDragBadge with pluralized Russian / English label and pointer-events: none', async () => {

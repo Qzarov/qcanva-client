@@ -571,4 +571,28 @@ describe('photoGridLayout', () => {
     const row = layout.rows.find((r) => r.kind === 'tiles')!;
     expect(row.tiles![0]!.width).toBeCloseTo(row.height, 5);
   });
+
+  it('overlayH1 keeps continuous gap between groups without h1 block-row break', () => {
+    const layout = computeLayout({
+      groups: [
+        { key: '2026-10', title: 'Oct 2026', count: 2 },
+        { key: '2026-09', title: 'Sep 2026', count: 2 },
+      ],
+      items: new Map<string, FeedItem[]>([
+        ['2026-10', [mkItem(0), mkItem(1)]],
+        ['2026-09', [mkItem(2), mkItem(3)]],
+      ]),
+      width: 600,
+      rowHeight: 150,
+      gap: 2,
+      collapsedShares: new Set(),
+      overlayH1: true,
+    });
+    const tileRows = layout.rows.filter((r) => r.kind === 'tiles');
+    expect(tileRows).toHaveLength(2);
+    expect(tileRows[0]!.top).toBe(0);
+    expect(tileRows[1]!.top - (tileRows[0]!.top + tileRows[0]!.height)).toBeCloseTo(2, 5);
+    expect(layout.groupTops.get('2026-10')).toBe(0);
+    expect(layout.groupTops.get('2026-09')).toBe(tileRows[1]!.top);
+  });
 });

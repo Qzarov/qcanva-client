@@ -1,7 +1,7 @@
 <template>
   <Transition name="card-menu-pop">
     <div
-      v-if="open && items.length"
+      v-if="open && (emptyArea || items.length > 0)"
       ref="menuEl"
       class="explorer-ctx-menu"
       role="menu"
@@ -11,9 +11,45 @@
       @click.stop
       @contextmenu.prevent
     >
-      <div v-if="count > 1" class="explorer-ctx-header" data-ctx-header>
-        <span>{{ selectedHeaderLabel }}</span>
-      </div>
+      <template v-if="emptyArea">
+        <button
+          type="button"
+          class="explorer-ctx-item"
+          role="menuitem"
+          data-ctx-action="create-folder"
+          @click="onCreateFolder"
+        >
+          <FolderPlus :size="15" aria-hidden="true" />
+          <span>{{ t('createGroup') }}</span>
+        </button>
+
+        <button
+          type="button"
+          class="explorer-ctx-item"
+          role="menuitem"
+          data-ctx-action="add"
+          @click="onAdd"
+        >
+          <Plus :size="15" aria-hidden="true" />
+          <span>{{ t('explorerAddEllipsis') }}</span>
+        </button>
+
+        <button
+          type="button"
+          class="explorer-ctx-item"
+          role="menuitem"
+          data-ctx-action="refresh"
+          @click="onRefresh"
+        >
+          <RefreshCw :size="15" aria-hidden="true" />
+          <span>{{ t('refresh') }}</span>
+        </button>
+      </template>
+
+      <template v-else>
+        <div v-if="count > 1" class="explorer-ctx-header" data-ctx-header>
+          <span>{{ selectedHeaderLabel }}</span>
+        </div>
 
       <button
         v-if="count === 1"
@@ -130,6 +166,7 @@
           <span>{{ deleteLabel }}</span>
         </button>
       </template>
+      </template>
     </div>
   </Transition>
 </template>
@@ -152,20 +189,37 @@ export interface ExplorerContextMenuAlbum {
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
-import { Check, ChevronRight, Download, Eye, FolderHeart, FolderInput, Heart, Pencil, Share2, Trash2 } from '@lucide/vue';
+import {
+  Check,
+  ChevronRight,
+  Download,
+  Eye,
+  FolderHeart,
+  FolderInput,
+  FolderPlus,
+  Heart,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Share2,
+  Trash2,
+} from '@lucide/vue';
 import { useI18n } from '../../composables/useI18n';
 
 const props = withDefaults(defineProps<{
   open: boolean;
   x: number;
   y: number;
-  items: ReadonlyArray<ExplorerContextMenuItem>;
+  items?: ReadonlyArray<ExplorerContextMenuItem>;
+  emptyArea?: boolean;
   canMove?: boolean;
   canDelete?: boolean;
   canRename?: boolean;
   isFavorite?: boolean;
   albums?: ReadonlyArray<ExplorerContextMenuAlbum>;
 }>(), {
+  items: () => [],
+  emptyArea: false,
   canMove: true,
   canDelete: true,
   canRename: true,
@@ -182,6 +236,9 @@ const emit = defineEmits<{
   rename: [item: ExplorerContextMenuItem];
   download: [items: ReadonlyArray<ExplorerContextMenuItem>];
   delete: [items: ReadonlyArray<ExplorerContextMenuItem>];
+  'create-folder': [];
+  add: [];
+  refresh: [];
 }>();
 
 const { t } = useI18n();
@@ -311,6 +368,21 @@ function onDownload(): void {
 
 function onDelete(): void {
   emit('delete', props.items);
+  emit('close');
+}
+
+function onCreateFolder(): void {
+  emit('create-folder');
+  emit('close');
+}
+
+function onAdd(): void {
+  emit('add');
+  emit('close');
+}
+
+function onRefresh(): void {
+  emit('refresh');
   emit('close');
 }
 </script>

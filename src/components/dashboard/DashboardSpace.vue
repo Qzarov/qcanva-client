@@ -3,7 +3,7 @@
        Filter, icon-only [Feed | Table] toggle, actions menu), NO top subfolder
        filter pills, NO Split/Guests/Upload-destination clutter. -->
   <div class="folder-manager-row space-view" data-space-view>
-    <div class="folder-manager-top">
+    <div v-if="!hideHeader" class="folder-manager-top">
       <div class="folder-manager-main">
         <span class="folder-manager-title">
           <span class="folder-manager-name" data-space-title>{{ space?.name ?? '' }}</span>
@@ -69,6 +69,25 @@
       </template>
     </div>
 
+    <div v-if="hideHeader && space && filterMenuOpen" class="space-filter-modal-only">
+      <SpaceFilterDialog
+        :open="filterMenuOpen"
+        :types="filterTypes"
+        :type-counts="typeCounts"
+        :added-by="filterPeople"
+        :people="adders"
+        :owners="filterOwners"
+        :owner-people="space?.owners ?? []"
+        :exts="filterExts"
+        @toggle="filterMenuOpen = !filterMenuOpen"
+        @reset="resetFilters"
+        @toggle-type="toggleType"
+        @toggle-person="togglePerson"
+        @toggle-owner="toggleOwner"
+        @update:exts="setExts"
+      />
+    </div>
+
     <div class="folder-manager-body">
       <div v-if="error" class="dash-empty" role="alert" data-space-error>
         {{ error }}
@@ -109,7 +128,7 @@
               :data-space-item="item.key"
               :data-select-key="selectKeyOf(item)"
               :data-selected="isSelected(item) || undefined"
-              @click="open(item)"
+              @click="onTileClick($event, item)"
               @keydown.enter.prevent="open(item)"
               @contextmenu.prevent.stop="openItemContextMenu($event, item)"
               @dragstart="onFeedDragStart($event, item)"
@@ -118,16 +137,6 @@
             >
               <ResourceThumb :kind="thumbKind(item)" :id="item.id!" :version="item.updatedAt" />
               <div class="card-title card-title-with-icon">
-                <span
-                  class="card-select"
-                  data-select-box
-                  role="checkbox"
-                  tabindex="0"
-                  :aria-checked="isSelected(item)"
-                  :aria-label="t('selectItem')"
-                  @keydown.enter.prevent.stop="emit('toggle-select', selectKeyOf(item))"
-                  @keydown.space.prevent.stop="emit('toggle-select', selectKeyOf(item))"
-                ><Check :size="12" aria-hidden="true" /></span>
                 <ResourceIcon :kind="item.kind" :template-type="templateType(item)" />
                 <span class="card-title-text">{{ item.name || t('untitled') }}</span>
               </div>
@@ -149,7 +158,7 @@
               :data-select-key="selectKeyOf(item)"
               :data-selected="isSelected(item) || undefined"
               v-file-info="infoOf(item)"
-              @click="open(item)"
+              @click="onTileClick($event, item)"
               @keydown.enter.prevent="open(item)"
               @contextmenu.prevent.stop="openItemContextMenu($event, item)"
               @dragstart="onFeedDragStart($event, item)"
@@ -157,16 +166,6 @@
               @dragend="onFeedDragEnd"
             >
               <div class="card-title card-title-with-icon">
-                <span
-                  class="card-select"
-                  data-select-box
-                  role="checkbox"
-                  tabindex="0"
-                  :aria-checked="isSelected(item)"
-                  :aria-label="t('selectItem')"
-                  @keydown.enter.prevent.stop="emit('toggle-select', selectKeyOf(item))"
-                  @keydown.space.prevent.stop="emit('toggle-select', selectKeyOf(item))"
-                ><Check :size="12" aria-hidden="true" /></span>
                 <span class="folder-file-kind" aria-hidden="true">
                   <Video v-if="isVideo(item)" :size="16" />
                   <ImageIcon v-else-if="isPicture(item)" :size="16" />
@@ -268,7 +267,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { Check, File as FileIcon, Image as ImageIcon, Play, Plus, Share2, Video } from '@lucide/vue';
+import { File as FileIcon, Image as ImageIcon, Play, Plus, Share2, Video } from '@lucide/vue';
 import { spacesApi, type SpaceDetails, type SpaceFeedItem, type SpaceFeedType, type SpaceSource } from '../../api/spaces';
 import SpaceFilterDialog from './SpaceFilterDialog.vue';
 
@@ -283,6 +282,7 @@ import { useSpaces } from '../../composables/useSpaces';
 import { useYandexDisk } from '../../composables/useYandexDisk';
 import { vFileInfo } from '../../directives/fileInfo';
 import { fileInfo, nameParts } from '../../dashboard/file-info';
+import { selectRange, toggleSelection } from '../../dashboard/selection';
 import { hasCardPicture, isMarkdownFile, isPictureFile, isVideoFile } from '../../dashboard/thumb-kinds';
 import { fetchMarkdownTextFromUrl } from '../../documents/markdown-viewer';
 import type { MarkdownViewerItem } from '../MarkdownDocumentViewer.vue';
@@ -300,7 +300,7 @@ import type { MediaViewerItem } from './DashboardMediaViewer.vue';
 
 type ViewMode = 'grid' | 'list';
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   spaceId: string;
   viewMode?: ViewMode;
   query?: string;
@@ -313,7 +313,11 @@ const props = defineProps<{
   sourceFilterId?: string | null;
   /** Hide internal view toggle when ExplorerHeadroomBar owns it. */
   hideViewToggle?: boolean;
-}>();
+  /** Hide internal header bar when ExplorerHeadroomBar owns it. */
+  hideHeader?: boolean;
+}>(), {
+  hideHeader: false,
+});
 
 const emit = defineEmits<{
   'update:viewMode': [mode: ViewMode];
@@ -349,6 +353,7 @@ const error = ref('');
 const busy = ref(false);
 const menu = ref('');
 const localSelectedKeys = ref<string[]>([]);
+const selectionAnchorKey = ref('');
 
 const filterTypes = ref<SpaceFeedType[]>([]);
 const filterPeople = ref<string[]>([]);
@@ -656,13 +661,41 @@ const ctxAllFavorite = computed(() =>
 );
 
 function openItemContextMenu(event: MouseEvent, item: SpaceFeedItem): void {
-  const selected = isSelected(item) && effectiveSelectedKeys.value.length > 1
-    ? shown.value.filter((candidate) => effectiveSelectedKeys.value.includes(candidate.key))
-    : [item];
+  const key = selectKeyOf(item);
+  let selectedItems: SpaceFeedItem[];
+  if (effectiveSelectedKeys.value.includes(key)) {
+    selectedItems = shown.value.filter((candidate) => effectiveSelectedKeys.value.includes(candidate.key));
+    if (!selectedItems.length) selectedItems = [item];
+  } else {
+    selectionAnchorKey.value = key;
+    onTableSelection([key]);
+    selectedItems = [item];
+  }
   ctxMenu.x = event.clientX;
   ctxMenu.y = event.clientY;
-  ctxMenu.items = selected;
+  ctxMenu.items = selectedItems;
   ctxMenu.open = true;
+}
+
+function onTileClick(event: MouseEvent, item: SpaceFeedItem): void {
+  const key = selectKeyOf(item);
+  if (event.shiftKey) {
+    event.preventDefault();
+    event.stopPropagation();
+    const onScreen = shown.value.map(selectKeyOf);
+    const anchor = selectionAnchorKey.value || effectiveSelectedKeys.value[effectiveSelectedKeys.value.length - 1] || key;
+    if (!selectionAnchorKey.value) selectionAnchorKey.value = anchor;
+    onTableSelection(selectRange(effectiveSelectedKeys.value, onScreen, anchor, key));
+    return;
+  }
+  if (event.ctrlKey || event.metaKey) {
+    event.preventDefault();
+    event.stopPropagation();
+    selectionAnchorKey.value = key;
+    onTableSelection(toggleSelection(effectiveSelectedKeys.value, key));
+    return;
+  }
+  void open(item);
 }
 
 function onCtxOpen(entry: ExplorerContextMenuItem): void {
@@ -902,10 +935,17 @@ onBeforeUnmount(() => {
   emit('space', null);
 });
 
-defineExpose({ reload, startAdd, openMembers });
+function toggleFilters(): void {
+  filterMenuOpen.value = !filterMenuOpen.value;
+}
+
+defineExpose({ reload, startAdd, openMembers, rename, removeSpace, leave, space, countLabel, canAdd, filterMenuOpen, toggleFilters });
 </script>
 
 <style scoped>
+.space-filter-modal-only :deep(.space-filter-trigger) {
+  display: none;
+}
 .space-share-btn {
   display: inline-flex;
   align-items: center;

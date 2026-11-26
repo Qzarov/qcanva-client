@@ -8,6 +8,7 @@
       :class="{ 'is-dragging-group': Boolean(dnd.activeDrag.value?.keys.includes('folder:' + child.id)) }"
       :draggable="isOwner || undefined"
       @click="emit('select', child.id)"
+      @contextmenu.prevent.stop="emit('contextmenu', $event, child)"
       @dragstart="onSubfolderDragStart($event, child)"
       @drag="onSubfolderDragMove"
       @dragend="onSubfolderDragEnd"
@@ -34,8 +35,10 @@ import { Plus } from '@lucide/vue';
 import { useExplorerGroupDnd } from '../../composables/useExplorerGroupDnd';
 import { useI18n } from '../../composables/useI18n';
 
-const props = defineProps<{ subfolders: Array<{ id: string; name: string; count?: number | string; latest?: string | null }>; activeFolderEmpty: boolean; hasActiveFilter: boolean; isOwner: boolean; formatDate: (value: string) => string }>();
-const emit = defineEmits<{ select: [id: string]; reset: []; add: [] }>();
+type SubfolderItem = { id: string; name: string; count?: number | string; latest?: string | null };
+
+const props = defineProps<{ subfolders: SubfolderItem[]; activeFolderEmpty: boolean; hasActiveFilter: boolean; isOwner: boolean; formatDate: (value: string) => string }>();
+const emit = defineEmits<{ select: [id: string]; reset: []; add: []; contextmenu: [event: MouseEvent, folder: SubfolderItem] }>();
 const { t } = useI18n();
 const dnd = useExplorerGroupDnd();
 

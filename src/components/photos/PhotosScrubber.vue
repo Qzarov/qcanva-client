@@ -187,15 +187,33 @@ function onLeave(): void {
 }
 
 let ro: ResizeObserver | null = null;
+let roRaf = 0;
+
+function scheduleMeasure(): void {
+  if (typeof requestAnimationFrame !== 'function') {
+    measure();
+    return;
+  }
+  if (roRaf) cancelAnimationFrame(roRaf);
+  roRaf = requestAnimationFrame(() => {
+    roRaf = 0;
+    measure();
+  });
+}
+
 onMounted(() => {
   measure();
   if (typeof ResizeObserver !== 'undefined' && root.value) {
-    ro = new ResizeObserver(measure);
+    ro = new ResizeObserver(scheduleMeasure);
     ro.observe(root.value);
   }
   window.addEventListener('resize', measure);
 });
 onBeforeUnmount(() => {
+  if (roRaf && typeof cancelAnimationFrame === 'function') {
+    cancelAnimationFrame(roRaf);
+    roRaf = 0;
+  }
   ro?.disconnect();
   window.removeEventListener('resize', measure);
 });

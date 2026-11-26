@@ -129,12 +129,20 @@ export function buildExplorerPath(
     return { segments, editablePath: `${qSpaceLabel}/${trashLabel}` };
   }
 
-  // Home / Recent / Interactive / Spaces overview
+  if (section.kind === 'home') {
+    const segments: ExplorerPathSegment[] = [
+      { id: 'root:qspace', label: qSpaceLabel, icon: 'qspace' },
+      { id: 'root:home', label: 'home', icon: 'home', current: true },
+    ];
+    return { segments, editablePath: `${qSpaceLabel}/home` };
+  }
+
+  // Recent (Главная) / Interactive / Spaces overview
+  const homeLabel = ctx.t('home') || 'Главная';
   const segments: ExplorerPathSegment[] = [
-    { id: 'root:qspace', label: qSpaceLabel, icon: 'qspace' },
-    { id: 'root:home', label: 'home', icon: 'home', current: true },
+    { id: 'root:recent', label: homeLabel, icon: 'home', current: true },
   ];
-  return { segments, editablePath: `${qSpaceLabel}/home` };
+  return { segments, editablePath: homeLabel };
 }
 
 /**
@@ -152,6 +160,12 @@ export function resolveExplorerPath(
   if (!parts.length) return { kind: 'recent' };
 
   const first = parts[0]!.toLocaleLowerCase();
+  const homeLabelLower = (ctx.t('home') || '').toLocaleLowerCase();
+
+  // Главная / Home resolves to Recent overview
+  if (parts.length === 1 && (first === 'главная' || first === 'home' || (homeLabelLower && first === homeLabelLower))) {
+    return { kind: 'recent' };
+  }
 
   // Clouds / Yandex Disk
   if (first === 'clouds' || first === 'yandex disk' || first === 'яндекс диск') {
@@ -175,19 +189,19 @@ export function resolveExplorerPath(
 
   // Strip optional leading "Q Space"
   const qsParts = (first === 'q space' || first === 'qspace') ? parts.slice(1) : parts;
-  if (!qsParts.length) return { kind: 'recent' };
+  if (!qsParts.length) return { kind: 'home' };
 
   const root = qsParts[0]!.toLocaleLowerCase();
   if (root === 'shared' && qsParts.length === 1) return { kind: 'shared' };
   if (root === 'public' && qsParts.length === 1) return { kind: 'public' };
   if ((root === 'trash' || root === 'корзина') && qsParts.length === 1) return { kind: 'trash' };
-  if (root === 'home' && qsParts.length === 1) return { kind: 'recent' };
+  if (root === 'home' && qsParts.length === 1) return { kind: 'home' };
 
   const folderSegments = (root === 'home' || root === 'shared' || root === 'public')
     ? qsParts.slice(1)
     : qsParts;
 
-  if (!folderSegments.length) return { kind: 'recent' };
+  if (!folderSegments.length) return { kind: 'home' };
 
   // Walk folder hierarchy segment by segment
   let parentId: string | null = null;
@@ -205,6 +219,8 @@ export function resolveExplorerPath(
   }
   return currentFolder ? { kind: 'folder', folderId: currentFolder.id } : null;
 }
+
+export const parseExplorerPath = resolveExplorerPath;
 
 export interface ResourceLike {
   type: string;

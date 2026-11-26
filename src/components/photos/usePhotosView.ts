@@ -34,6 +34,7 @@ export type PhotosViewState = {
 };
 
 export const PHOTOS_VIEW_STORAGE_KEY = 'qcanva:photos:view:v1';
+export const PHOTOS_VIEW_CAPTIONS_EXPLICIT_KEY = 'qcanva:photos:view:captions-explicit:v1';
 export const PHOTOS_VIEW_PREFERENCE_KEY = 'photos.view';
 export const PHOTOS_VIEW_SAVE_DELAY_MS = 500;
 
@@ -223,7 +224,17 @@ export function normalizePhotosViewState(raw: unknown): PhotosViewState {
   }
   // Only the key order of the stored sort is used; direction and sub come from dirs/subs.
   const sort = normalizeSort(obj.sort, defaults.sort).map((s) => makeSpec(s.key, dirs, subs));
-  const captions = normalizeCaptions(obj.captions);
+  let captions = normalizeCaptions(obj.captions);
+  const explicitMarker = obj.captionsExplicit === true || obj.captionsTouched === true || hasCaptionsExplicit();
+  if (
+    !explicitMarker
+    && sort.length === 0
+    && captions.length > 0
+    && captions.every((c) => c === 'folder' || c === 'album')
+    && captions.includes('folder')
+  ) {
+    captions = [];
+  }
   const collapsedShares = normalizeCollapsedShares(obj.collapsedShares);
 
   return {
@@ -245,7 +256,28 @@ const readonlyState = readonly(state) as unknown as Readonly<Ref<PhotosViewState
 
 let initialized = false;
 let touched = false;
+let captionsExplicit = false;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+let saveInFlight: Promise<void> | null = null;
+let saveQueued = false;
+
+function hasCaptionsExplicit(): boolean {
+  if (captionsExplicit) return true;
+  try {
+    return getStorage()?.getItem(PHOTOS_VIEW_CAPTIONS_EXPLICIT_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function markCaptionsExplicit(): void {
+  captionsExplicit = true;
+  try {
+    getStorage()?.setItem(PHOTOS_VIEW_CAPTIONS_EXPLICIT_KEY, '1');
+  } catch {
+    // ignore storage errors
+  }
+}
 
 export function resetPhotosView(): void {
   if (debounceTimer !== null) {
@@ -254,9 +286,13 @@ export function resetPhotosView(): void {
   }
   initialized = false;
   touched = false;
+  captionsExplicit = false;
+  saveInFlight = null;
+  saveQueued = false;
   state.value = defaultPhotosViewState();
   try {
     getStorage()?.removeItem(PHOTOS_VIEW_STORAGE_KEY);
+    getStorage()?.removeItem(PHOTOS_VIEW_CAPTIONS_EXPLICIT_KEY);
   } catch {
     // ignore storage errors
   }
@@ -280,20 +316,39 @@ function saveToLocalStorage(val: PhotosViewState): void {
   }
 }
 
+function flushHubSave(): void {
+  if (saveInFlight) {
+    saveQueued = true;
+    return;
+  }
+  let payload: unknown;
+  try {
+    payload = JSON.parse(JSON.stringify(state.value));
+  } catch {
+    return;
+  }
+  saveQueued = false;
+  const run = Promise.resolve(photosApi.putPreference(PHOTOS_VIEW_PREFERENCE_KEY, payload))
+    .catch(() => {
+      // Swallowed: hub failure leaves local state untouched
+    })
+    .finally(() => {
+      if (saveInFlight === run) saveInFlight = null;
+      if (saveQueued) {
+        saveQueued = false;
+        flushHubSave();
+      }
+    });
+  saveInFlight = run;
+}
+
 function scheduleHubSave(): void {
   if (debounceTimer !== null) {
     clearTimeout(debounceTimer);
   }
   debounceTimer = setTimeout(() => {
     debounceTimer = null;
-    try {
-      const payload = JSON.parse(JSON.stringify(state.value));
-      Promise.resolve(photosApi.putPreference(PHOTOS_VIEW_PREFERENCE_KEY, payload)).catch(() => {
-        // Swallowed: hub failure leaves local state untouched
-      });
-    } catch {
-      // Swallowed
-    }
+    flushHubSave();
   }, PHOTOS_VIEW_SAVE_DELAY_MS);
 }
 
@@ -424,6 +479,7 @@ function setFilter(f: PhotosViewState['filter']): void {
 }
 
 function toggleCaption(c: CaptionKey): void {
+  markCaptionsExplicit();
   mutate((prev) => {
     const exists = prev.captions.includes(c);
     return {

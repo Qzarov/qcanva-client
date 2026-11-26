@@ -20,23 +20,12 @@
     @click="open(file)"
     @keydown.enter.prevent="open(file)"
     @keydown.space.prevent="open(file)"
+    @contextmenu.prevent.stop="emit('contextmenu', $event, file)"
     @dragstart="onFileDragStart($event, file)"
     @drag="onFileDragMove"
     @dragend="onFileDragEnd"
   >
     <div class="card-title card-title-with-icon">
-      <!-- Ticked like any other item of the dashboard (the dashboard handles the click). -->
-      <span
-        v-if="selectable"
-        class="card-select"
-        data-select-box
-        role="checkbox"
-        tabindex="0"
-        :aria-checked="selectedKeys?.includes('drive-file:' + file.id) ?? false"
-        :aria-label="t('selectItem')"
-        @keydown.enter.prevent.stop="emit('toggle-select', 'drive-file:' + file.id)"
-        @keydown.space.prevent.stop="emit('toggle-select', 'drive-file:' + file.id)"
-      ><Check :size="12" aria-hidden="true" /></span>
       <span class="folder-file-kind" aria-hidden="true">
         <Video v-if="isVideo(file)" :size="16" />
         <ImageIcon v-else-if="isImage(file)" :size="16" />
@@ -92,7 +81,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { Check, File as FileIcon, Image as ImageIcon, Play, Video } from '@lucide/vue';
+import { File as FileIcon, Image as ImageIcon, Play, Video } from '@lucide/vue';
 import {
   driveApi,
   downloadDriveFile,
@@ -140,6 +129,7 @@ const emit = defineEmits<{
   'open-image': [file: DriveItem];
   /** A Markdown file was clicked: the dashboard opens it as a document. */
   'open-markdown': [file: DriveItem];
+  'contextmenu': [event: MouseEvent, file: DriveItem];
 }>();
 const { t, locale } = useI18n();
 const journal = useActivityJournal();

@@ -7,17 +7,18 @@ import type { FeedItem } from '../../api/photos';
 import { resetExplorerGroupDnd, useExplorerGroupDnd } from '../../composables/useExplorerGroupDnd';
 import { resetExplorerLayoutPrefs, useExplorerLayoutPrefs } from '../../composables/useExplorerLayoutPrefs';
 import { useI18n } from '../../composables/useI18n';
+import { resetSpaces } from '../../composables/useSpaces';
 import drivePhotosSource from './DrivePhotos.vue?raw';
 import { computeLayout } from './photoGridLayout';
 
-const albumsMock = vi.fn();
-const detailsMock = vi.fn();
-const renditionMock = vi.fn();
-const resourceFoldersListMock = vi.fn();
-const getFolderItemsMock = vi.fn();
-const spacesListMock = vi.fn();
-const yandexStatusMock = vi.fn();
-const yandexListMock = vi.fn();
+const albumsMock = vi.hoisted(() => vi.fn());
+const detailsMock = vi.hoisted(() => vi.fn());
+const renditionMock = vi.hoisted(() => vi.fn());
+const resourceFoldersListMock = vi.hoisted(() => vi.fn());
+const getFolderItemsMock = vi.hoisted(() => vi.fn());
+const spacesListMock = vi.hoisted(() => vi.fn());
+const yandexStatusMock = vi.hoisted(() => vi.fn());
+const yandexListMock = vi.hoisted(() => vi.fn());
 
 vi.mock('../../api/photos', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../api/photos')>();
@@ -110,11 +111,10 @@ describe('macOS Photos Gallery (T-021)', () => {
     localStorage.clear();
     resetExplorerLayoutPrefs(true);
     resetExplorerGroupDnd();
+    resetSpaces();
     useI18n().setLocale('ru');
 
-    albumsMock.mockReset().mockResolvedValue([
-      { id: 'alb-1', name: 'Путешествия', count: 12, bytes: 0, createdAt: '', addedAt: '', coverFileIds: ['cov-1'] },
-    ]);
+    albumsMock.mockReset().mockResolvedValue([]);
     detailsMock.mockReset().mockResolvedValue({
       item: mkItem(1, { fileId: 'cov-1', hash: 'hash-cov-1' }),
       meta: null,
@@ -134,12 +134,34 @@ describe('macOS Photos Gallery (T-021)', () => {
       shared: [],
     });
     getFolderItemsMock.mockReset().mockResolvedValue({
-      items: [{ id: 'f1', name: 'sunset.jpg', kind: 'photo', deletedAt: null }],
+      items: [
+        { id: 'f1', name: 'sunset.jpg', kind: 'photo', deletedAt: null },
+        { id: 'f-empty', name: '', kind: 'photo', deletedAt: null },
+      ],
       nextCursor: null,
     });
     spacesListMock.mockReset().mockResolvedValue({
       spaces: [
-        { id: 'sp-1', name: 'Семья', role: 'owner', ownerId: 'u1', memberCount: 4, sourceCount: 2, updatedAt: '' },
+        {
+          id: 'sp-1',
+          name: 'Семья',
+          role: 'owner',
+          ownerId: 'u1',
+          memberCount: 4,
+          sourceCount: 2,
+          mediaCount: 12,
+          coverFileIds: ['cov-1'],
+          updatedAt: '',
+        },
+        {
+          id: 'sp-2',
+          name: 'Походы',
+          role: 'editor',
+          ownerId: 'u2',
+          memberCount: 2,
+          sourceCount: 3,
+          updatedAt: '',
+        },
       ],
     });
     yandexStatusMock.mockReset().mockResolvedValue({
@@ -158,54 +180,84 @@ describe('macOS Photos Gallery (T-021)', () => {
     document.body.innerHTML = '';
   });
 
-  it('GallerySidebar renders Фото, Альбомы (with mini covers + spaces share), Папки хранилища with accordion & auto-highlight, and handles Group DnD', async () => {
+  it('GallerySidebar renders Фото with counts, ONE unified Альбомы (spaces with mini covers + share), Q Space/Clouds hierarchy with auto-collapse & Group DnD', async () => {
     const { default: GallerySidebar } = await import('./GallerySidebar.vue');
     wrapper = mount(GallerySidebar, {
       props: {
         activeSection: 'library',
         highlightedFolderId: 'fold-a',
         highlightedFileId: 'f1',
+        counts: { library: 42, people: 2, favorites: 5, recent: 24, videos: 3, trash: 1 },
       },
       attachTo: document.body,
     });
     await flushPromises();
     await flushPromises();
 
-    // Section Фото
+    // Section Фото + live counts
     expect(wrapper.get('[data-gallery-section="library"]').text()).toContain('Медиатека');
+    expect(wrapper.get('[data-gallery-section="library"] .gs-meta').text()).toBe('42');
     expect(wrapper.get('[data-gallery-section="people"]').text()).toContain('Люди');
     expect(wrapper.get('[data-gallery-section="favorites"]').text()).toContain('Избранное');
     expect(wrapper.get('[data-gallery-section="recent"]').text()).toContain('Недавние');
     expect(wrapper.get('[data-gallery-section="videos"]').text()).toContain('Видео');
     expect(wrapper.get('[data-gallery-section="trash"]').text()).toContain('Недавно удалённые');
+    expect(wrapper.get('[data-gallery-section="trash"] .gs-meta').text()).toBe('1');
 
-    await wrapper.get('[data-gallery-section="trash"]').trigger('click');
-    expect(wrapper.emitted('open-trash')).toHaveLength(1);
-
-    // Mini cover for album & share button on space and photo album
-    const albImg = wrapper.get('[data-gallery-album="alb-1"] .gs-cover img');
+    // ONE unified Альбомы list backed by useSpaces() (no duplicate data-gallery-space list)
+    expect(wrapper.findAll('[data-gallery-space]')).toHaveLength(0);
+    expect(wrapper.findAll('[data-gallery-album]')).toHaveLength(2);
+    expect(wrapper.get('[data-gallery-album="sp-1"] .gs-meta').text()).toBe('12');
+    expect(wrapper.get('[data-gallery-album="sp-2"] .gs-meta').text()).toBe('3');
+    const albImg = wrapper.get('[data-gallery-album="sp-1"] .gs-cover img');
     expect(albImg.attributes('src')).toBe('blob:hash-cov-1');
-    await wrapper.get('[data-share-space="sp-1"]').trigger('click');
-    expect(wrapper.emitted('share-album')![0]).toEqual(['sp-1', 'space']);
-    await wrapper.get('[data-share-album="alb-1"]').trigger('click');
-    expect(wrapper.emitted('share-album')![1]).toEqual(['alb-1', 'photo-album']);
+
+    await wrapper.get('[data-share-album="sp-1"]').trigger('click');
+    expect(wrapper.emitted('share-album')![0]).toEqual(['sp-1']);
+
+    // Real hierarchy: Q Space -> shared, public, home; Clouds -> Yandex Disk, Telegram (soon)
+    expect(wrapper.get('[data-gallery-tree-root="shared"]').text()).toContain('shared');
+    expect(wrapper.get('[data-gallery-tree-root="public"]').text()).toContain('public');
+    expect(wrapper.get('[data-gallery-tree-root="home"]').text()).toContain('home');
+    expect(wrapper.get('[data-gallery-yandex="/"]').text()).toContain('Яндекс Диск');
+    expect(wrapper.get('[data-gallery-cloud="telegram"]').text()).toContain('Telegram');
+    expect(wrapper.get('[data-gallery-cloud="telegram"]').text()).toContain('скоро');
 
     // Auto-highlight of fold-a & ancestor fold-root expanded while fold-b-sub is collapsed
     expect(wrapper.get('[data-gallery-folder="fold-a"]').classes()).toContain('is-highlighted');
     expect(wrapper.find('[data-gallery-folder="fold-b-sub"]').exists()).toBe(false);
     expect(wrapper.text()).not.toContain('В проводнике');
 
-    // Enabling showFilesInTree renders highlighted file inside fold-a
+    // Enabling showFilesInTree renders highlighted file AND never renders empty filename rows
     useExplorerLayoutPrefs().setShowFilesInTree(true);
     await flushPromises();
     await flushPromises();
     expect(wrapper.get('[data-gallery-tree-file="f1"]').classes()).toContain('is-highlighted');
+    expect(wrapper.get('[data-gallery-tree-file="f-empty"] .gs-name').text()).toBe('Без названия');
 
     // Auto-collapse accordion when switching to fold-b-sub
     await wrapper.setProps({ highlightedFolderId: 'fold-b-sub' });
     await flushPromises();
     expect(wrapper.find('[data-gallery-folder="fold-a"]').exists()).toBe(false);
     expect(wrapper.get('[data-gallery-folder="fold-b-sub"]').classes()).toContain('is-highlighted');
+
+    // Auto-collapse on exit: activeFolderId -> null collapses open folder branches
+    await wrapper.setProps({ highlightedFolderId: null, activeFolderId: 'fold-b-sub' });
+    await flushPromises();
+    expect(wrapper.find('[data-gallery-folder="fold-b-sub"]').exists()).toBe(true);
+    await wrapper.setProps({ activeFolderId: null });
+    await flushPromises();
+    expect(wrapper.find('[data-gallery-folder="fold-b-sub"]').exists()).toBe(false);
+
+    // Selecting album & trash emits expected events
+    await wrapper.get('[data-gallery-album="sp-1"] .gs-row-main').trigger('click');
+    expect(wrapper.emitted('select-album')![0]).toEqual(['sp-1']);
+
+    await wrapper.get('[data-gallery-section="trash"]').trigger('click');
+    expect(wrapper.emitted('select-section')![0]).toEqual(['trash']);
+    expect(wrapper.emitted('open-trash')).toHaveLength(1);
+    await wrapper.setProps({ activeSection: 'trash' });
+    expect(wrapper.get('[data-gallery-section="trash"]').classes()).toContain('active');
 
     // Group DnD drops onto Favorites, Album, and Folder
     const dnd = useExplorerGroupDnd();
@@ -223,15 +275,8 @@ describe('macOS Photos Gallery (T-021)', () => {
       source: 'gallery',
       items: [{ key: 'photo:f3', id: 'f3', kind: 'photo' }],
     });
-    await wrapper.get('[data-gallery-album="alb-1"]').trigger('drop');
-    expect(wrapper.emitted('drop-album')![0]).toEqual(['alb-1', ['f3'], 'photo-album']);
-
-    dnd.startGroupDrag({
-      source: 'gallery',
-      items: [{ key: 'photo:f5', id: 'f5', kind: 'photo' }],
-    });
-    await wrapper.get('[data-gallery-space="sp-1"]').trigger('drop');
-    expect(wrapper.emitted('drop-album')![1]).toEqual(['sp-1', ['f5'], 'space']);
+    await wrapper.get('[data-gallery-album="sp-1"]').trigger('drop');
+    expect(wrapper.emitted('drop-album')![0]).toEqual(['sp-1', ['f3']]);
 
     dnd.startGroupDrag({
       source: 'gallery',

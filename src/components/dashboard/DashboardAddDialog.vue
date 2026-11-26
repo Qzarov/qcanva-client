@@ -111,7 +111,7 @@
         </li>
       </ul>
 
-      <div class="dashboard-modal-actions dashboard-modal-actions-row">
+      <div v-if="entries.length" class="dashboard-modal-actions dashboard-modal-actions-row" data-add-actions>
         <UiButton class="btn-ghost" variant="ghost" @click="emit('close')">{{ t('cancel') }}</UiButton>
         <UiButton class="btn-primary" variant="primary" data-add-submit :disabled="busy || !readyCount || checking" @click="submit">
           {{ t('importRun').replace('{n}', String(readyCount)) }}

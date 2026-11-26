@@ -9,7 +9,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import TextDocumentView from './TextDocumentView.vue';
 import { BubbleMenu } from '@tiptap/vue-3';
 import { BUBBLE_MARK_BUTTONS, shouldShowBubbleMenu } from '../text-documents/bubble-menu';
-import { messages } from '../composables/useI18n';
+import { messages, useI18n } from '../composables/useI18n';
 
 const push = vi.fn();
 const replace = vi.fn();
@@ -128,6 +128,7 @@ function linkHref(json: any): string | null {
 }
 
 beforeEach(() => {
+  useI18n().setLocale('en');
   vi.clearAllMocks();
 });
 

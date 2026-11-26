@@ -6,10 +6,10 @@
       :data-selected="isSelected(item) || undefined"
       class="canvas-card"
       @click="emit('open-canvas', item.slug || item.id)"
+      @contextmenu.prevent.stop="emit('contextmenu', $event, item)"
     >
       <ResourceThumb :kind="item.type" :id="item.id" :version="item.updatedAt" />
       <div class="card-title card-title-with-icon">
-        <span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="emit('toggle-selected', selectionKey(item))" @keydown.space.prevent.stop="emit('toggle-selected', selectionKey(item))"><Check :size="12" aria-hidden="true" /></span>
         <ResourceIcon kind="canvas" data-resource-icon="canvas" aria-label="Canvas" />
         <span class="card-title-text">{{ item.title || 'Untitled' }}</span>
         <span v-if="scope === 'shared' || item.allowPublicEdit" class="badge card-title-badge" :class="scope === 'shared' ? 'badge-shared' : 'badge-public'">{{ scope === 'shared' ? item.role : t('publicEditShort') }}</span>
@@ -38,10 +38,10 @@
       :data-selected="isSelected(item) || undefined"
       class="canvas-card html-doc-card"
       @click="emit('open-html', item.slug || item.id)"
+      @contextmenu.prevent.stop="emit('contextmenu', $event, item)"
     >
       <ResourceThumb :kind="item.type" :id="item.id" :version="item.updatedAt" />
       <div class="card-title card-title-with-icon">
-        <span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="emit('toggle-selected', selectionKey(item))" @keydown.space.prevent.stop="emit('toggle-selected', selectionKey(item))"><Check :size="12" aria-hidden="true" /></span>
         <ResourceIcon kind="html-document" data-resource-icon="html-document" aria-label="HTML document" />
         <span class="card-title-text">{{ item.title || 'Untitled HTML' }}</span>
         <span v-if="scope === 'shared'" class="badge badge-shared card-title-badge">{{ item.role || t('sharedWithMe') }}</span>
@@ -70,10 +70,10 @@
       :data-selected="isSelected(item) || undefined"
       class="canvas-card html-doc-card"
       @click="emit('open-text', item.slug || item.id)"
+      @contextmenu.prevent.stop="emit('contextmenu', $event, item)"
     >
       <ResourceThumb :kind="item.type" :id="item.id" :version="item.updatedAt" />
       <div class="card-title card-title-with-icon">
-        <span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="emit('toggle-selected', selectionKey(item))" @keydown.space.prevent.stop="emit('toggle-selected', selectionKey(item))"><Check :size="12" aria-hidden="true" /></span>
         <ResourceIcon kind="text-document" data-resource-icon="text-document" aria-label="Document" />
         <span class="card-title-text">{{ item.title || 'Untitled document' }}</span>
         <span v-if="scope === 'shared'" class="badge badge-shared card-title-badge">{{ item.role || t('sharedWithMe') }}</span>
@@ -99,15 +99,17 @@
 </template>
 
 <script setup lang="ts">
-import { Check, Folder } from '@lucide/vue';
+import { Folder } from '@lucide/vue';
 import { useI18n } from '../../composables/useI18n';
 import DashboardResourceMenu from './DashboardResourceMenu.vue';
 import ResourceThumb from './ResourceThumb.vue';
 import ResourceIcon from '../ResourceIcon.vue';
 import type { DashboardResourceAction, DashboardResourceActionItem } from './resource-card.types';
 
+type FeedResourceItem = any;
+
 const props = defineProps<{
-  items: any[];
+  items: FeedResourceItem[];
   scope: 'shared' | 'public';
   isLoggedIn: boolean;
   isBusy: boolean;
@@ -127,6 +129,7 @@ const emit = defineEmits<{
   'toggle-selected': [key: string];
   'toggle-menu': [id: string, event: Event];
   'select-action': [item: any, action: DashboardResourceAction];
+  'contextmenu': [event: MouseEvent, item: FeedResourceItem];
 }>();
 
 const { t } = useI18n();

@@ -141,7 +141,8 @@
             :draggable="row.draggable"
             :aria-current="row.active ? 'page' : undefined"
             :aria-disabled="row.disabled ? 'true' : undefined"
-            :aria-label="row.label"
+            :aria-label="row.ariaLabel ?? row.label"
+            :title="row.title"
             @click="onRowClick($event, row)"
             @contextmenu.prevent.stop="onRowContextMenu($event, row)"
             @dragstart="onRowDragStart($event, row)"
@@ -312,7 +313,6 @@ import {
   type SidebarWidthState,
 } from '../../dashboard/navigation';
 import { isMarkdownFile } from '../../dashboard/thumb-kinds';
-import packageJson from '../../../package.json';
 import AccountMenu from '../AccountMenu.vue';
 import ResourceIcon from '../ResourceIcon.vue';
 import SharedSidebarShell from '../SharedSidebarShell.vue';
@@ -348,6 +348,8 @@ interface TreeRow {
     | 'album'
     | 'album-source';
   label: string;
+  ariaLabel?: string;
+  title?: string;
   depth: number;
   isGroup?: boolean;
   expandable: boolean;
@@ -369,7 +371,7 @@ interface TreeRow {
   sourceYandexPath?: string | null;
 }
 
-const appVersion = packageJson.version;
+const appVersion = '2.2';
 
 const props = withDefaults(defineProps<{
   activeSection: DashboardSection;
@@ -619,7 +621,7 @@ watch(() => props.activeSection, (next, prev) => {
       if (!folder.expanded) emit('toggle-folder', folder.id);
     }
   }
-  if (next.kind === 'folder') {
+  if (next.kind === 'folder' || next.kind === 'home') {
     const roots = new Set(openRoots.value);
     roots.add('root:qspace');
     roots.add('qspace:home');
@@ -653,10 +655,8 @@ const feedTopLevelInView = computed(() => (
 ));
 
 const homeGroupActive = computed(() => (
-  !feedTopLevelInView.value && (
-    props.activeSection.kind === 'home'
-    || props.activeSection.kind === 'recent'
-  )
+  props.activeSection.kind === 'home'
+  || (props.activeSection.kind === 'folder' && !openRoots.value.has('qspace:home'))
 ));
 
 function isSectionActive(section: DashboardSection): boolean {
@@ -688,7 +688,9 @@ const visibleRows = computed<TreeRow[]>(() => {
       key: 'qspace:shared',
       parentKey: 'root:qspace',
       kind: 'section',
-      label: t('sharedWithMe'),
+      label: 'shared',
+      ariaLabel: t('sharedWithMe'),
+      title: t('sharedWithMe'),
       depth: 1,
       expandable: false,
       expanded: false,
@@ -701,7 +703,9 @@ const visibleRows = computed<TreeRow[]>(() => {
       key: 'qspace:public',
       parentKey: 'root:qspace',
       kind: 'section',
-      label: t('public'),
+      label: 'public',
+      ariaLabel: t('public'),
+      title: t('public'),
       depth: 1,
       expandable: false,
       expanded: false,
@@ -721,7 +725,7 @@ const visibleRows = computed<TreeRow[]>(() => {
       expanded: homeOpen,
       active: homeGroupActive.value,
       draggable: false,
-      sectionKind: 'recent',
+      sectionKind: 'home',
     });
 
     if (homeOpen) {
@@ -811,12 +815,12 @@ const visibleRows = computed<TreeRow[]>(() => {
         kind: 'album',
         label: album.name,
         depth: 1,
-        expandable: album.sourceCount > 0 || sources.length > 0,
+        expandable: (album.sourceCount ?? 0) > 0 || sources.length > 0,
         expanded: isExp,
         active: isSectionActive({ kind: 'space', spaceId: album.id }),
         draggable: false,
         albumId: album.id,
-        meta: album.sourceCount,
+        meta: album.itemCount ?? album.sourceCount ?? undefined,
       });
 
       if (isExp && sources.length > 0) {
@@ -891,15 +895,18 @@ function appendQspaceFolderRows(rows: TreeRow[], parentRowKey: string, baseDepth
       if (expanded) {
         walk(folder.id, fKey, depth + 1);
         if (showFilesInTree.value) {
+          const resolveFileName = (file: DashboardFileNavItem) => (
+            file.title || (file as unknown as { name?: string }).name || ''
+          ).trim();
           const sortedFiles = [...files].sort((a, b) => (
-            (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' })
+            resolveFileName(a).localeCompare(resolveFileName(b), undefined, { sensitivity: 'base' })
           ));
           for (const file of sortedFiles) {
             rows.push({
               key: `file:${file.key}`,
               parentKey: fKey,
               kind: 'file',
-              label: file.title || t('untitled'),
+              label: resolveFileName(file) || t('untitled'),
               depth: depth + 1,
               expandable: false,
               expanded: false,
@@ -990,8 +997,12 @@ async function toggleNodeExpanded(row: TreeRow, forceExpand?: boolean) {
   if (row.kind === 'folder' && row.folderId) {
     const current = row.expanded;
     if (forceExpand !== undefined && current === forceExpand) return;
-    localFolderOverrides[row.folderId] = !current;
-    emit('toggle-folder', row.folderId);
+    const nextExpanded = !current;
+    localFolderOverrides[row.folderId] = nextExpanded;
+    const folder = folderLookup.value.get(row.folderId);
+    if (nextExpanded ? !folder?.expanded : Boolean(folder?.expanded)) {
+      emit('toggle-folder', row.folderId);
+    }
     return;
   }
   if ((row.kind === 'yandex-root' || row.kind === 'yandex-dir') && row.yandexPath) {
@@ -1460,6 +1471,15 @@ function onSashPointerDown(event: PointerEvent) {
   window.addEventListener('pointerup', onSashPointerUp);
   window.addEventListener('pointercancel', onSashPointerUp);
 }
+
+watch(showFilesInTree, (enabled) => {
+  if (!enabled) return;
+  for (const folder of folderLookup.value.values()) {
+    if (isFolderExpanded(folder) && !folder.expanded) {
+      emit('toggle-folder', folder.id);
+    }
+  }
+});
 
 watch(() => props.yandexRefreshKey, () => {
   for (const path of yandexOpen.value) void readYandexPath(path);

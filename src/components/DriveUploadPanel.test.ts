@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { mount } from '@vue/test-utils';
 import DriveUploadPanel, { type DriveUploadItem } from './DriveUploadPanel.vue';
+import { useI18n } from '../composables/useI18n';
 
 const uploads: DriveUploadItem[] = [
   { id: 'up-1', file: new File(['a'], 'a.txt'), name: 'a.txt', size: 1, progress: 40, status: 'uploading' },
@@ -9,6 +10,9 @@ const uploads: DriveUploadItem[] = [
 ];
 
 describe('DriveUploadPanel', () => {
+  beforeEach(() => {
+    useI18n().setLocale('en');
+  });
   it('renders progress and emits cancellation from the presentation layer', async () => {
     const wrapper = mount(DriveUploadPanel, { props: { uploads } });
 

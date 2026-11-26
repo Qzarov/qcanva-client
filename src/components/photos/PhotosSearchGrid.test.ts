@@ -102,6 +102,7 @@ describe('PhotosSearchGrid', () => {
     expect(w.emitted('more')).toBeUndefined();
     clientH = 3000; // taller window: the page no longer fills it
     observers[0]!.cb();
+    await new Promise((r) => requestAnimationFrame(() => r(undefined)));
     expect(w.emitted('more')?.length).toBe(1);
     await w.setProps({ items: [mkItem(0), mkItem(1), mkItem(2), mkItem(3)] });
     await nextTick();

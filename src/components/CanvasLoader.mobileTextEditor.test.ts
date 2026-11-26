@@ -4,6 +4,7 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import CanvasLoader from './CanvasLoader.vue';
 import { runBackHandlers } from '../composables/useBackHandler';
+import { useI18n } from '../composables/useI18n';
 
 vi.mock('../api/client', () => ({
   uploadImage: vi.fn(),
@@ -45,6 +46,10 @@ afterEach(() => {
   wrapper?.unmount();
   wrapper = null;
   vi.unstubAllGlobals();
+});
+
+beforeEach(() => {
+  useI18n().setLocale('en');
 });
 
 describe('CanvasLoader full-screen text editor (phone layout)', () => {

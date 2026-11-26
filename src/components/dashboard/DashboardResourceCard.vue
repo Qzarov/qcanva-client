@@ -7,6 +7,7 @@
     :data-folder-resource="folderResource"
     :draggable="isDraggable"
     @click="emit('open')"
+    @contextmenu.prevent.stop="emit('contextmenu', $event)"
     @dragstart="onDragStart"
     @drag="onDragMove"
     @dragend="onDragEnd"
@@ -20,19 +21,6 @@
       @click.stop="emit('open-link')"
     ></a>
     <div class="card-title card-title-with-icon" @dblclick.stop="renameable && emit('rename')">
-      <span
-        v-if="selectable"
-        class="card-select"
-        data-select-box
-        role="checkbox"
-        tabindex="0"
-        :aria-checked="selected"
-        :aria-label="selectLabel"
-        @keydown.enter.prevent.stop="emit('toggle-select')"
-        @keydown.space.prevent.stop="emit('toggle-select')"
-      >
-        <Check :size="12" aria-hidden="true" />
-      </span>
       <slot name="icon">
         <ResourceIcon :kind="kind" :template-type="resource.templateType" :data-resource-icon="kind" :aria-label="iconLabel" />
       </slot>
@@ -84,7 +72,6 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { Check } from '@lucide/vue';
 import ResourceIcon from '../ResourceIcon.vue';
 import ResourceThumb from './ResourceThumb.vue';
 import DashboardResourceMenu from './DashboardResourceMenu.vue';
@@ -169,6 +156,7 @@ const emit = defineEmits<{
   'toggle-pin': [];
   'toggle-menu': [event: Event];
   'select-action': [action: DashboardResourceAction];
+  'contextmenu': [event: MouseEvent];
 }>();
 
 const dnd = useExplorerGroupDnd();

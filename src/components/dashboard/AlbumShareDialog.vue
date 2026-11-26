@@ -85,7 +85,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { X } from '@lucide/vue';
 import ContactEmailInput from '../ContactEmailInput.vue';
 import { spacesApi, type SpaceDetails, type SpaceMember } from '../../api/spaces';
@@ -171,6 +171,21 @@ async function leave() {
 function close() {
   visible.value = false;
 }
+function onWindowKeydown(event: KeyboardEvent): void {
+  if (event.key === 'Escape' && visible.value) {
+    event.preventDefault();
+    event.stopPropagation();
+    close();
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', onWindowKeydown);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onWindowKeydown);
+});
 </script>
 
 <style scoped>

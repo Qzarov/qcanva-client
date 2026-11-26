@@ -101,7 +101,7 @@ describe('DashboardSpace selection', () => {
     vi.mocked(driveApi.getThumbLinks).mockResolvedValue({ links: {} });
   });
 
-  it('renders selection checkboxes and attributes on document and file cards and emits items & space', async () => {
+  it('renders selection attributes without hover checkboxes, handles modifier click & contextmenu, and supports hideHeader', async () => {
     const wrapper = mount(DashboardSpace, {
       props: {
         spaceId: 'space-1',
@@ -113,19 +113,47 @@ describe('DashboardSpace selection', () => {
     });
     await flushPromises();
 
+    expect(wrapper.find('.card-select, [data-select-box]').exists()).toBe(false);
+    expect(wrapper.find('.folder-manager-top').exists()).toBe(true);
+
     const docCard = wrapper.get('[data-space-item="q:text-document:doc-1"]');
     const fileCard = wrapper.get('[data-space-item="q:file:f-pdf"]');
 
     expect(docCard.attributes('data-select-key')).toBe('q:text-document:doc-1');
     expect(docCard.attributes('data-selected')).toBe('true');
-    expect(docCard.get('[data-select-box]').attributes('aria-checked')).toBe('true');
 
     expect(fileCard.attributes('data-select-key')).toBe('q:file:f-pdf');
     expect(fileCard.attributes('data-selected')).toBeUndefined();
-    expect(fileCard.get('[data-select-box]').attributes('aria-checked')).toBe('false');
 
-    await fileCard.get('[data-select-box]').trigger('keydown', { key: ' ' });
-    expect(wrapper.emitted('toggle-select')).toEqual([['q:file:f-pdf']]);
+    // Ctrl+Click toggles selection without opening the item
+    await fileCard.trigger('click', { ctrlKey: true });
+    expect(wrapper.emitted('update:selectedKeys')?.[0]).toEqual([['q:text-document:doc-1', 'q:file:f-pdf']]);
+    expect(wrapper.emitted('open')).toBeUndefined();
+
+    // Shift+Click selects range
+    await fileCard.trigger('click', { shiftKey: true });
+    expect(wrapper.emitted('update:selectedKeys')?.[1]).toEqual([['q:text-document:doc-1', 'q:file:f-pdf']]);
+
+    // Right-click unselected item selects ONLY it first, then opens ExplorerContextMenu
+    await fileCard.trigger('contextmenu');
+    expect(wrapper.emitted('update:selectedKeys')?.[2]).toEqual([['q:file:f-pdf']]);
+    expect(wrapper.find('[data-explorer-context-menu]').exists()).toBe(true);
+    expect(wrapper.find('[data-ctx-header]').exists()).toBe(false);
+
+    // Right-click already-selected item in multi-selection preserves selection and opens menu for all
+    await wrapper.setProps({ selectedKeys: ['q:text-document:doc-1', 'q:file:f-pdf'] });
+    await docCard.trigger('contextmenu');
+    expect(wrapper.emitted('update:selectedKeys')).toHaveLength(3);
+    expect(wrapper.find('[data-explorer-context-menu]').exists()).toBe(true);
+    expect(wrapper.find('[data-ctx-header]').exists()).toBe(true);
+
+    // hideHeader omits .folder-manager-top and exposes header/action methods
+    await wrapper.setProps({ hideHeader: true });
+    expect(wrapper.find('.folder-manager-top').exists()).toBe(false);
+    const vm = wrapper.vm as unknown as Record<string, unknown>;
+    for (const key of ['startAdd', 'openMembers', 'rename', 'removeSpace', 'leave', 'reload', 'space', 'countLabel', 'canAdd', 'filterMenuOpen', 'toggleFilters']) {
+      expect(vm[key]).toBeDefined();
+    }
 
     const emittedItems = wrapper.emitted('items');
     expect(emittedItems?.[emittedItems.length - 1]?.[0]).toHaveLength(2);

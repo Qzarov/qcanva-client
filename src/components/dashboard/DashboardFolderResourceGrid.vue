@@ -31,6 +31,7 @@
       @toggle-pin="emit('toggle-pinned', item)"
       @toggle-menu="emit('toggle-menu', item.id, $event)"
       @select-action="emit('select-action', item, $event)"
+      @contextmenu="(ev) => emit('contextmenu', ev, item)"
     >
       <template #title>
         <input
@@ -77,6 +78,7 @@
       @toggle-pin="emit('toggle-pinned', item)"
       @toggle-menu="emit('toggle-menu', item.id, $event)"
       @select-action="emit('select-action', item, $event)"
+      @contextmenu="(ev) => emit('contextmenu', ev, item)"
     />
 
     <DashboardResourceCard
@@ -107,6 +109,7 @@
       @toggle-select="emit('toggle-selected', selectionKey(item))"
       @toggle-menu="emit('toggle-menu', `folder:interactive-template:${item.id}`, $event)"
       @select-action="emit('select-action', item, $event)"
+      @contextmenu="(ev) => emit('contextmenu', ev, item)"
     />
 
     <DashboardResourceCard
@@ -139,6 +142,7 @@
       @toggle-pin="emit('toggle-pinned', item)"
       @toggle-menu="emit('toggle-menu', item.id, $event)"
       @select-action="emit('select-action', item, $event)"
+      @contextmenu="(ev) => emit('contextmenu', ev, item)"
     />
   </template>
 </template>
@@ -150,9 +154,10 @@ import DashboardResourceCard from './DashboardResourceCard.vue';
 import type { DashboardResourceAction, DashboardResourceActionItem } from './resource-card.types';
 
 type RecentResourceType = 'html-document' | 'text-document';
+type FolderGridItem = any;
 
 const props = defineProps<{
-  items: any[];
+  items: FolderGridItem[];
   isLoggedIn: boolean;
   isBusy: boolean;
   draggingResourceId: string | null;
@@ -182,6 +187,7 @@ const emit = defineEmits<{
   'toggle-pinned': [item: any];
   'toggle-menu': [id: string, event: Event];
   'select-action': [item: any, action: DashboardResourceAction];
+  'contextmenu': [event: MouseEvent, item: FolderGridItem];
 }>();
 
 const { t } = useI18n();

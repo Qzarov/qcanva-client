@@ -15,6 +15,9 @@ export type SpaceSummary = {
   ownerId: string;
   memberCount: number;
   sourceCount: number;
+  itemCount?: number;
+  mediaCount?: number;
+  coverFileIds?: string[];
   updatedAt: string;
 };
 
@@ -41,6 +44,9 @@ export type SpaceDetails = {
   owner: { id: string; name: string | null; email: string };
   members: SpaceMember[];
   sources: SpaceSource[];
+  itemCount?: number;
+  mediaCount?: number;
+  coverFileIds?: string[];
   createdAt: string;
   updatedAt: string;
 };
@@ -102,6 +108,10 @@ export const spacesApi = {
     request<SpaceDetails>(`/spaces/${encodeURIComponent(id)}/sources`, json('POST', { kind: 'yandex', path })),
   removeSource: (id: string, sourceId: string) =>
     noContent(request(`/spaces/${encodeURIComponent(id)}/sources/${encodeURIComponent(sourceId)}`, { method: 'DELETE' })),
+  addItems: (id: string, fileIds: readonly string[]) =>
+    request<{ added: number }>(`/spaces/${encodeURIComponent(id)}/items`, json('PUT', { fileIds })),
+  removeItems: (id: string, fileIds: readonly string[]) =>
+    request<{ removed: number }>(`/spaces/${encodeURIComponent(id)}/items`, json('DELETE', { fileIds })),
   /** Each kind of file the feed's filters offer, with the extensions it takes. */
   feedTypes: () => request<{ types: Array<{ type: SpaceFeedType; extensions: string[] }> }>('/spaces/feed-types'),
   /**

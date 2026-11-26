@@ -275,6 +275,22 @@ describe('ExplorerHeadroomBar & ExplorerMobileTabBar', () => {
     expect(wrapper.find('[data-path-input]').exists()).toBe(false);
     expect(wrapper.emitted('navigate-path')).toBeUndefined();
 
+    // Clicking non-current ancestor crumb emits select-segment; clicking active crumb or separator enters edit mode
+    await wrapper.get('[data-path-segment="home"]').trigger('click');
+    expect(wrapper.emitted('select-segment')?.[0]?.[0]).toMatchObject({ id: 'home', label: 'home' });
+    expect(wrapper.find('[data-path-input]').exists()).toBe(false);
+
+    await wrapper.get('[data-path-segment="trips"]').trigger('click');
+    const activeCrumbInput = wrapper.get('[data-path-input]');
+    expect((activeCrumbInput.element as HTMLInputElement).value).toBe('Q Space/home/Поездки');
+    expect(document.activeElement).toBe(activeCrumbInput.element);
+    await activeCrumbInput.trigger('keydown', { key: 'Escape' });
+    expect(wrapper.find('[data-path-input]').exists()).toBe(false);
+
+    await wrapper.get('.crumb-sep').trigger('click');
+    expect(wrapper.find('[data-path-input]').exists()).toBe(true);
+    await wrapper.get('[data-path-input]').trigger('keydown', { key: 'Escape' });
+
     // Ctrl+L re-opens edit mode, Enter normalizes spaces around / and emits navigate-path
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'l', ctrlKey: true }));
     await nextTick();
