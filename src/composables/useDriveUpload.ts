@@ -1,5 +1,5 @@
 import { ref, type ComputedRef } from 'vue';
-import { driveApi, formatFileSize } from '../api/drive';
+import { driveApi, formatFileSize, formatUpload413Error, isGeneric413Message, isHtml413Response } from '../api/drive';
 import { uploadClientPreviewForItems } from '../api/clientMediaUpload';
 import type { DriveUploadItem } from '../components/DriveUploadPanel.vue';
 import { useActivityJournal } from './useActivityJournal';
@@ -83,9 +83,25 @@ export function useDriveUpload(options: {
         const found = uploads.value.find((upload) => upload.id === item.id);
         if (!found || found.status === 'cancelled') return;
         found.status = 'error';
-        found.errorMessage = error.status === 413 || error.message?.includes('413') || error.message === t('driveUploadTooLarge')
-          ? t('driveUploadTooLarge')
-          : error.message || t('driveUploadFailed');
+        if (error?.status === 413) {
+          const rawMsg = typeof error?.message === 'string' ? error.message.trim() : '';
+          const hasBody = Boolean(
+            error?.body &&
+            (typeof error.body === 'string' ? error.body.trim().length > 0 : Object.keys(error.body).length > 0),
+          );
+          if (!rawMsg || isGeneric413Message(rawMsg) || isHtml413Response(rawMsg)) {
+            const bodyText = typeof error?.body === 'string'
+              ? error.body
+              : hasBody
+                ? JSON.stringify(error.body)
+                : rawMsg;
+            found.errorMessage = formatUpload413Error(bodyText, undefined, t);
+          } else {
+            found.errorMessage = rawMsg;
+          }
+        } else {
+          found.errorMessage = error?.message || t('driveUploadFailed');
+        }
         if (taskId) journal.failTask(taskId, found.errorMessage);
       } finally {
         taskIds.delete(item.id);

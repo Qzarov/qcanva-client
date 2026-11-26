@@ -1,7 +1,7 @@
 import { API_BASE, ApiError, getAccessToken, request } from './client';
 import { createUploadXhr } from './upload-xhr';
 import { uploadNativelyOr } from './native-upload';
-import { resolveDownloadUrl } from './drive';
+import { formatUpload413Error, resolveDownloadUrl } from './drive';
 import { useI18n } from '../composables/useI18n';
 
 /**
@@ -185,14 +185,14 @@ export function uploadYandexFile(
   );
 }
 
-function parseYandexUploadAnswer(status: number, text: string): YandexItem {
+export function parseYandexUploadAnswer(status: number, text: string, contentType?: string | null): YandexItem {
   const { t } = useI18n();
   let body: any = {};
   try { body = JSON.parse(text || '{}'); } catch { /* empty */ }
   if (status >= 200 && status < 300) return body as YandexItem;
   if (status === 0) throw new ApiError(0, t('driveUploadNetworkError'));
   let message = body?.message || `HTTP ${status}`;
-  if (status === 413) message = t('driveUploadTooLarge');
+  if (status === 413) message = formatUpload413Error(text, contentType, t);
   if (status === 507) message = t('yandexNoSpace');
   if (status === 409 && !isYandexReconnectError({ body })) message = t('yandexAlreadyExists');
   throw new ApiError(status, message, body);
@@ -216,8 +216,9 @@ function xhrUploadYandexFile(url: string, file: File, onProgress?: (percent: num
       let body: any = {};
       try { body = JSON.parse(xhr.responseText || '{}'); } catch { /* empty */ }
       if (xhr.status >= 200 && xhr.status < 300) return resolve(body as YandexItem);
+      const contentType = xhr.getResponseHeader?.('content-type') ?? null;
       let message = body?.message || `HTTP ${xhr.status}`;
-      if (xhr.status === 413) message = t('driveUploadTooLarge');
+      if (xhr.status === 413) message = formatUpload413Error(xhr.responseText || '', contentType, t);
       if (xhr.status === 507) message = t('yandexNoSpace');
       if (xhr.status === 409 && !isYandexReconnectError({ body })) message = t('yandexAlreadyExists');
       reject(new ApiError(xhr.status, message, body));

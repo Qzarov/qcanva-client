@@ -25,6 +25,7 @@ describe('hasDataTransferFiles', () => {
   it('returns true for external file drags and false for non-file payloads', () => {
     const file = new File(['hello'], 'notes.md', { type: 'text/markdown' });
     expect(hasDataTransferFiles(makeDragEvent('dragenter', { types: ['Files'] }))).toBe(true);
+    expect(hasDataTransferFiles(makeDragEvent('dragenter', { types: ['application/x-moz-file'] }))).toBe(true);
     expect(hasDataTransferFiles(makeDragEvent('drop', { files: [file] }))).toBe(true);
     expect(hasDataTransferFiles(makeDragEvent('dragenter', { items: [{ kind: 'file' }] }))).toBe(true);
 

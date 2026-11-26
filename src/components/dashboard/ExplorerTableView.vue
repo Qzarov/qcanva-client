@@ -113,7 +113,7 @@
       @drag="onDragMove"
       @dragend="onDragEnd"
       @dragover="onRowDragOver($event, row)"
-      @dragleave="onRowDragLeave(row)"
+      @dragleave="onRowDragLeave($event, row)"
       @drop="onRowDrop($event, row)"
     >
       <span class="exp-name-cell" role="gridcell">
@@ -191,6 +191,7 @@ export interface ExplorerTableRow<T = unknown> {
 import { computed, ref, watch } from 'vue';
 import { File as FileIcon, Folder, Image as ImageIcon, Video } from '@lucide/vue';
 import { formatFileSize, getFileExtension } from '../../api/drive';
+import { hasDataTransferFiles } from '../../composables/useDriveDropzone';
 import { useExplorerGroupDnd, type GroupDragEntry, type GroupDragPayload, type GroupDragSource } from '../../composables/useExplorerGroupDnd';
 import { useI18n } from '../../composables/useI18n';
 import { formatFileDateTime } from '../../dashboard/file-info';
@@ -221,6 +222,7 @@ const emit = defineEmits<{
   contextmenu: [event: MouseEvent, row: ExplorerTableRow];
   'album-click': [albumIdOrName: string, row: ExplorerTableRow];
   'drop-on-folder': [targetRow: ExplorerTableRow, payload: GroupDragPayload];
+  'drop-external-files': [payload: { folderId: string; files: File[] }];
 }>();
 
 const { t, locale } = useI18n();
@@ -370,8 +372,12 @@ function selectRange(fromIdx: number, toIdx: number): void {
 
 function onRowClick(event: MouseEvent, row: ExplorerTableRow, index: number): void {
   if (event.shiftKey) {
-    const anchor = anchorIdx.value >= 0 ? anchorIdx.value : 0;
-    if (anchorIdx.value < 0) anchorIdx.value = anchor;
+    let anchor = anchorIdx.value;
+    if (anchor < 0) {
+      const selectedIdx = sortedRows.value.findIndex((r) => selectedSet.value.has(r.key));
+      anchor = selectedIdx >= 0 ? selectedIdx : 0;
+      anchorIdx.value = anchor;
+    }
     focusIdx.value = index;
     selectRange(anchor, index);
     return;
@@ -458,14 +464,40 @@ function onDragEnd(): void {
   endGroupDrag();
 }
 
-function onRowDragOver(event: DragEvent, row: ExplorerTableRow): void {
-  if (!isFolderRow(row)) return;
-  if (activeDrag.value?.keys.includes(row.key)) return;
-  event.preventDefault();
-  dragOverKey.value = row.key;
+function resolveGroupDragPayload(event: DragEvent): GroupDragPayload | null {
+  const raw = activeDrag.value ?? readGroupDragFromEvent(event);
+  if (!raw) return null;
+  return {
+    source: raw.source,
+    items: raw.items.map((item) => ({ ...item })),
+    keys: [...raw.keys],
+    count: raw.count,
+  };
 }
 
-function onRowDragLeave(row: ExplorerTableRow): void {
+function onRowDragOver(event: DragEvent, row: ExplorerTableRow): void {
+  if (!isFolderRow(row)) return;
+  const groupPayload = resolveGroupDragPayload(event);
+  if (groupPayload) {
+    if (groupPayload.keys.includes(row.key)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+    dragOverKey.value = row.key;
+    return;
+  }
+  if (!activeDrag.value && hasDataTransferFiles(event)) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+    dragOverKey.value = row.key;
+  }
+}
+
+function onRowDragLeave(event: DragEvent, row: ExplorerTableRow): void {
+  const current = event.currentTarget as HTMLElement | null;
+  const related = event.relatedTarget as Node | null;
+  if (current && related && current.contains(related)) return;
   if (dragOverKey.value === row.key) {
     dragOverKey.value = null;
   }
@@ -473,13 +505,27 @@ function onRowDragLeave(row: ExplorerTableRow): void {
 
 function onRowDrop(event: DragEvent, row: ExplorerTableRow): void {
   if (!isFolderRow(row)) return;
-  event.preventDefault();
-  dragOverKey.value = null;
-  const payload = readGroupDragFromEvent(event);
-  if (payload && !payload.keys.includes(row.key)) {
-    emit('drop-on-folder', row, payload);
+  if (dragOverKey.value === row.key) {
+    dragOverKey.value = null;
   }
-  endGroupDrag();
+  const payload = resolveGroupDragPayload(event);
+  if (payload) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!payload.keys.includes(row.key)) {
+      emit('drop-on-folder', row, payload);
+    }
+    endGroupDrag();
+    return;
+  }
+  if (!activeDrag.value && hasDataTransferFiles(event)) {
+    event.preventDefault();
+    event.stopPropagation();
+    const files = Array.from(event.dataTransfer?.files || []);
+    if (files.length > 0) {
+      emit('drop-external-files', { folderId: row.id, files });
+    }
+  }
 }
 </script>
 

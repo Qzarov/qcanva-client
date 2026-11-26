@@ -270,15 +270,13 @@ describe('DashboardAddDialog redesign', () => {
     await wrapper.get('form').trigger('submit');
     expect(wrapper.emitted('create')).toEqual([['canvas', 'folder-work', 'Схема']]);
 
-    // Dropping a file onto dropzone enables submit and emits import('file', files, 'folder-work')
+    // Dropping a file onto dropzone when initialImport is unset immediately emits import('file', files, 'folder-work')
     const file = new File(['hello'], 'notes.txt', { type: 'text/plain' });
     await wrapper.get('[data-add-drop]').trigger('drop', {
       dataTransfer: { files: [file] },
     });
     await flushPromises();
-    expect(wrapper.find('[data-add-file="notes.txt"]').exists()).toBe(true);
-
-    await wrapper.get('[data-add-submit]').trigger('click');
+    expect(wrapper.find('[data-add-file="notes.txt"]').exists()).toBe(false);
     expect(wrapper.emitted('import')).toEqual([['file', [file], 'folder-work']]);
   });
 });

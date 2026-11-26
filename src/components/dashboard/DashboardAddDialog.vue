@@ -9,6 +9,10 @@
     :label="t('add')"
     data-add-dialog
     @close="emit('close')"
+    @dragenter="onModalDragEnter"
+    @dragover="onModalDragOver"
+    @dragleave="onModalDragLeave"
+    @drop="onModalDrop"
   >
     <header class="dashboard-modal-head dashboard-add-head">
       <h3>{{ t('add') }}</h3>
@@ -78,9 +82,10 @@
         @click="input?.click()"
         @keydown.enter.prevent="input?.click()"
         @keydown.space.prevent="input?.click()"
-        @dragover.prevent="dragOver = true"
-        @dragleave="dragOver = false"
-        @drop.prevent="onDrop"
+        @dragenter.prevent.stop="onDragEnter"
+        @dragover.prevent.stop="onDragOver"
+        @dragleave.stop="onDragLeave"
+        @drop.prevent.stop="onDrop"
       >
         <span class="dashboard-add-option-icon" aria-hidden="true">
           <UploadCloud :size="20" />
@@ -134,6 +139,7 @@ import {
   X,
 } from '@lucide/vue';
 import { useI18n, type MessageKey } from '../../composables/useI18n';
+import { hasDataTransferFiles } from '../../composables/useDriveDropzone';
 import { heightTransitionHooks } from '../../dashboard/motion';
 import { checkImportFile, importAccept, type ImportCheck, type ImportKind, type ImportProblem } from '../../dashboard/import-files';
 import UiButton from '../ui/UiButton.vue';
@@ -170,7 +176,7 @@ const folderId = computed(() => props.initialFolderId || '');
 
 const expanded = ref<'' | CreateTile>('');
 const namedStep = computed(() => expanded.value !== '' && expanded.value !== 'interactive-template');
-const importKind = ref<ImportKind>(props.initialImport || 'file');
+const importKind = computed<ImportKind>(() => props.initialImport || 'file');
 const dialog = ref<{ root: HTMLElement | null } | null>(null);
 const input = ref<HTMLInputElement | null>(null);
 const nameInput = ref<HTMLInputElement | null>(null);
@@ -232,15 +238,85 @@ const addFiles = (files: File[]) => {
   added.forEach((entry) => void check(entries.value.find((item) => item.id === entry.id)!));
 };
 
+const isUntypedSyntheticDrag = (event: DragEvent) => {
+  const dt = event.dataTransfer;
+  if (!dt) return true;
+  return (!dt.types || dt.types.length === 0) && (!dt.files || dt.files.length === 0) && (!dt.items || dt.items.length === 0);
+};
+
+const onDragEnter = (event: DragEvent) => {
+  if (!isUntypedSyntheticDrag(event) && !hasDataTransferFiles(event)) return;
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+  dragOver.value = true;
+};
+
+const onDragOver = (event: DragEvent) => {
+  if (!isUntypedSyntheticDrag(event) && !hasDataTransferFiles(event)) return;
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+  dragOver.value = true;
+};
+
+const onDragLeave = (event: DragEvent) => {
+  const current = event.currentTarget as HTMLElement | null;
+  const related = event.relatedTarget as Node | null;
+  if (!current || !related || !current.contains(related)) {
+    dragOver.value = false;
+  }
+};
+
+const onModalDragEnter = (event: DragEvent) => {
+  if (importKind.value !== 'file' || !hasDataTransferFiles(event)) return;
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+  dragOver.value = true;
+};
+
+const onModalDragOver = (event: DragEvent) => {
+  if (importKind.value !== 'file' || !hasDataTransferFiles(event)) return;
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+  dragOver.value = true;
+};
+
+const onModalDragLeave = (event: DragEvent) => {
+  if (importKind.value !== 'file') return;
+  const current = event.currentTarget as HTMLElement | null;
+  const related = event.relatedTarget as Node | null;
+  if (!current || !related || !current.contains(related)) {
+    dragOver.value = false;
+  }
+};
+
+const onModalDrop = (event: DragEvent) => {
+  if (importKind.value !== 'file' || !hasDataTransferFiles(event)) {
+    dragOver.value = false;
+    return;
+  }
+  event.preventDefault();
+  onDrop(event);
+};
+
 const onPicked = (event: Event) => {
   const target = event.target as HTMLInputElement;
-  addFiles(Array.from(target.files || []));
+  const files = Array.from(target.files || []);
   target.value = '';
+  if (!files.length) return;
+  if (importKind.value === 'file') {
+    emit('import', 'file', files, folderId.value);
+    return;
+  }
+  addFiles(files);
 };
 
 const onDrop = (event: DragEvent) => {
   dragOver.value = false;
-  addFiles(Array.from(event.dataTransfer?.files || []));
+  const files = Array.from(event.dataTransfer?.files || []);
+  if (!files.length) return;
+  if (importKind.value === 'file') {
+    emit('import', 'file', files, folderId.value);
+    return;
+  }
+  addFiles(files);
 };
 
 const removeEntry = (id: number) => {

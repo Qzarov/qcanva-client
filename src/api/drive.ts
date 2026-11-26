@@ -1,7 +1,7 @@
 import { API_BASE, ApiError, getAccessToken, request } from './client';
 import { createUploadXhr } from './upload-xhr';
 import { uploadNativelyOr } from './native-upload';
-import { useI18n } from '../composables/useI18n';
+import { type MessageKey, useI18n } from '../composables/useI18n';
 import { planErrorText } from './plan-errors';
 import type { HubBody, HubResponse, ItemOf, Override, Refine } from './hub-types';
 
@@ -464,14 +464,82 @@ export function uploadFile(
   );
 }
 
+const GENERIC_413_MESSAGES = new Set([
+  'payload too large',
+  'request entity too large',
+  'entity too large',
+  'http 413',
+  '413',
+]);
+
+export function isGeneric413Message(message: string): boolean {
+  return GENERIC_413_MESSAGES.has(message.trim().toLowerCase());
+}
+
+export function isHtml413Response(bodyText: string, contentType?: string | null): boolean {
+  if (contentType && contentType.toLowerCase().includes('text/html')) return true;
+  const lower = bodyText.trim().toLowerCase();
+  if (!lower) return false;
+  return (
+    lower.startsWith('<!doctype') ||
+    lower.startsWith('<html') ||
+    lower.includes('<html') ||
+    lower.includes('413 request entity too large') ||
+    lower.includes('nginx')
+  );
+}
+
+/**
+ * Formats an HTTP 413 upload error from JSON (`limitBytes` / `message`), HTML proxy pages,
+ * or a generic fallback without falsely claiming a hardcoded 2 GB limit when details exist.
+ */
+export function formatUpload413Error(
+  bodyText: string,
+  contentType?: string | null,
+  t: (key: MessageKey) => string = useI18n().t,
+): string {
+  const raw = (bodyText ?? '').trim();
+  const isHtmlContentType = Boolean(contentType && contentType.toLowerCase().includes('text/html'));
+
+  if (!isHtmlContentType && raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        if (typeof parsed.limitBytes === 'number' && Number.isFinite(parsed.limitBytes) && parsed.limitBytes > 0) {
+          return t('driveUploadExceedsLimit').replace('{size}', formatFileSize(parsed.limitBytes));
+        }
+        if (typeof parsed.message === 'string') {
+          const msg = parsed.message.trim();
+          if (msg && !isGeneric413Message(msg)) {
+            return msg;
+          }
+        }
+      }
+    } catch {
+      // Not JSON — fall through to HTML / plain-text checks
+    }
+  }
+
+  if (isHtml413Response(raw, contentType)) {
+    return t('driveUploadProxyTooLarge');
+  }
+
+  if (raw && !raw.startsWith('{') && !raw.startsWith('[') && !isGeneric413Message(raw)) {
+    return raw;
+  }
+
+  return t('driveUploadTooLarge');
+}
+
 /** The hub's answer to an upload, as the page's own request reads it. */
-function parseUploadAnswer(status: number, text: string): { items: DriveItem[] } {
+export function parseUploadAnswer(status: number, text: string, contentType?: string | null): { items: DriveItem[] } {
   let body: any = {};
   try { body = JSON.parse(text || '{}'); } catch { /* empty */ }
   if (status >= 200 && status < 300) return body && typeof body === 'object' ? body : { items: [] };
   if (status === 0) throw new ApiError(0, useI18n().t('driveUploadNetworkError'));
-  let message = planErrorText(body) || body?.message || `HTTP ${status}`;
-  if (status === 413) message = useI18n().t('driveUploadTooLarge');
+  const message = status === 413
+    ? (planErrorText(body) || formatUpload413Error(text, contentType, useI18n().t))
+    : (planErrorText(body) || body?.message || `HTTP ${status}`);
   throw new ApiError(status, message, body);
 }
 
@@ -518,10 +586,10 @@ function xhrUploadFile(
         try {
           body = JSON.parse(xhr.responseText || '{}');
         } catch {}
-        let message = planErrorText(body) || body?.message || `HTTP ${xhr.status}`;
-        if (xhr.status === 413) {
-          message = useI18n().t('driveUploadTooLarge');
-        }
+        const contentType = xhr.getResponseHeader?.('content-type') ?? null;
+        const message = xhr.status === 413
+          ? (planErrorText(body) || formatUpload413Error(xhr.responseText || '', contentType, useI18n().t))
+          : (planErrorText(body) || body?.message || `HTTP ${xhr.status}`);
         reject(new ApiError(xhr.status, message, body));
       }
     };

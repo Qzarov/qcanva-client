@@ -147,10 +147,10 @@
             @contextmenu.prevent.stop="onRowContextMenu($event, row)"
             @dragstart="onRowDragStart($event, row)"
             @dragend="onRowDragEnd($event, row)"
-            @dragenter.prevent="onRowDragEnter($event, row)"
-            @dragover.prevent="onRowDragOver($event, row)"
+            @dragenter="onRowDragEnter($event, row)"
+            @dragover="onRowDragOver($event, row)"
             @dragleave="onRowDragLeave($event, row)"
-            @drop.prevent="onRowDrop($event, row)"
+            @drop="onRowDrop($event, row)"
           >
             <button
               v-if="row.expandable"
@@ -292,6 +292,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch, type CSSPro
 import { spacesApi, type SpaceDetails } from '../../api/spaces';
 import { yandexDisk, type YandexItem } from '../../api/yandexDisk';
 import { SOURCE_CODE_URL } from '../../app-info';
+import { hasDataTransferFiles } from '../../composables/useDriveDropzone';
 import { useExplorerGroupDnd, type GroupDragEntry, type GroupDragPayload } from '../../composables/useExplorerGroupDnd';
 import {
   SIDEBAR_COLLAPSE_THRESHOLD,
@@ -386,6 +387,7 @@ const props = withDefaults(defineProps<{
   spaces?: boolean;
   yandexRefreshKey?: number;
   devicesOnlineCount?: number;
+  folderDragId?: string;
   searchFolders?: readonly SearchFolderEntry[];
   searchAlbums?: readonly SearchAlbumEntry[];
   searchItems?: readonly SearchItemEntry[];
@@ -420,8 +422,9 @@ const emit = defineEmits<{
   'focus-workspace': [];
   'navigate-up': [];
   'tree-contextmenu': [payload: TreeContextMenuPayload];
-  'drop-group-to-folder': [payload: { folderId: string; drag: GroupDragPayload }];
+  'drop-group-to-folder': [payload: { folderId: string | null; drag: GroupDragPayload }];
   'drop-group-to-album': [payload: { albumId: string; drag: GroupDragPayload }];
+  'drop-external-files': [payload: { folderId: string | null; files: File[] }];
   'folder-drag-start': [event: DragEvent, folderId: string];
   'folder-drag-end': [event: DragEvent, folderId: string];
   'folder-drag-enter': [event: DragEvent, folderId: string];
@@ -1107,20 +1110,35 @@ function activateRow(row: TreeRow) {
   }
 }
 
+function resolveShiftAnchorIdx(): number {
+  if (lastSelectedIdx.value >= 0 && lastSelectedIdx.value < visibleRows.value.length) {
+    return lastSelectedIdx.value;
+  }
+  const activeIdx = visibleRows.value.findIndex((r) => r.active && isMultiSelectable(r));
+  if (activeIdx >= 0) return activeIdx;
+  const firstFolderIdx = visibleRows.value.findIndex((r) => r.kind === 'folder');
+  if (firstFolderIdx >= 0) return firstFolderIdx;
+  return visibleRows.value.findIndex((r) => isMultiSelectable(r));
+}
+
 function onRowClick(event: MouseEvent, row: TreeRow) {
   if (row.disabled) return;
   treeFocusKey.value = row.key;
   const idx = visibleRows.value.findIndex((r) => r.key === row.key);
 
-  if (event.shiftKey && lastSelectedIdx.value >= 0 && idx >= 0) {
-    const [from, to] = [Math.min(lastSelectedIdx.value, idx), Math.max(lastSelectedIdx.value, idx)];
-    const next = event.ctrlKey || event.metaKey ? new Set(treeSelectedKeys.value) : new Set<string>();
-    for (let i = from; i <= to; i += 1) {
-      const candidate = visibleRows.value[i];
-      if (candidate && isMultiSelectable(candidate)) next.add(candidate.key);
+  if (event.shiftKey && idx >= 0) {
+    const anchorIdx = resolveShiftAnchorIdx();
+    if (anchorIdx >= 0) {
+      if (lastSelectedIdx.value < 0) lastSelectedIdx.value = anchorIdx;
+      const [from, to] = [Math.min(anchorIdx, idx), Math.max(anchorIdx, idx)];
+      const next = event.ctrlKey || event.metaKey ? new Set(treeSelectedKeys.value) : new Set<string>();
+      for (let i = from; i <= to; i += 1) {
+        const candidate = visibleRows.value[i];
+        if (candidate && isMultiSelectable(candidate)) next.add(candidate.key);
+      }
+      treeSelectedKeys.value = next;
+      return;
     }
-    treeSelectedKeys.value = next;
-    return;
   }
 
   if ((event.ctrlKey || event.metaKey) && isMultiSelectable(row)) {
@@ -1213,6 +1231,9 @@ function onTreeKeydown(event: KeyboardEvent) {
 }
 
 // Group Drag-and-Drop + Spring-Loaded Folders (450ms)
+const externalDropKey = ref<string | null>(null);
+const internalHomeDropOver = ref(false);
+
 function rowToDragEntry(row: TreeRow): GroupDragEntry | null {
   if (row.kind === 'folder' && row.folderId) {
     return { key: row.key, id: row.folderId, kind: 'folder', name: row.label, folderId: row.folderItem?.parentId ?? null };
@@ -1223,7 +1244,44 @@ function rowToDragEntry(row: TreeRow): GroupDragEntry | null {
   return null;
 }
 
+function isFolderDescendantOrSelf(targetFolderId: string, draggedFolderId: string): boolean {
+  if (targetFolderId === draggedFolderId) return true;
+  const visited = new Set<string>();
+  let cur = folderLookup.value.get(targetFolderId);
+  while (cur) {
+    if (cur.id === draggedFolderId) return true;
+    if (visited.has(cur.id)) break;
+    visited.add(cur.id);
+    cur = cur.parentId ? folderLookup.value.get(cur.parentId) : undefined;
+  }
+  return false;
+}
+
+function canDropGroupOnFolder(targetFolderId: string, payload: GroupDragPayload): boolean {
+  for (const entry of payload.items) {
+    if (entry.kind === 'folder' || entry.key.startsWith('folder:')) {
+      const draggedFolderId = entry.id || entry.key.replace(/^folder:/, '');
+      if (draggedFolderId && isFolderDescendantOrSelf(targetFolderId, draggedFolderId)) {
+        return false;
+      }
+    }
+  }
+  return payload.items.length > 0;
+}
+
+function isSingleTreeFolderDrag(event: DragEvent, payload: GroupDragPayload | null): boolean {
+  if (payload) {
+    return payload.source === 'tree' && payload.items.length === 1 && payload.items[0]?.kind === 'folder';
+  }
+  return Boolean(
+    props.folderDragId
+    || Array.from(event.dataTransfer?.types ?? []).includes('application/x-qcanva-folder'),
+  );
+}
+
 function isDropHighlight(row: TreeRow): boolean {
+  if (externalDropKey.value === row.key) return true;
+  if (row.key === 'qspace:home' && internalHomeDropOver.value) return true;
   if (row.folderItem?.dropActive) return true;
   if (row.kind === 'folder' && row.folderId) {
     return dnd.dropTarget.value?.kind === 'folder' && dnd.dropTarget.value.id === row.folderId;
@@ -1237,9 +1295,8 @@ function isDropHighlight(row: TreeRow): boolean {
 function onRowDragStart(event: DragEvent, row: TreeRow) {
   if (!row.draggable) return;
   const rowMap = new Map(visibleRows.value.map((r) => [r.key, r]));
-  const keys = treeSelectedKeys.value.has(row.key) && treeSelectedKeys.value.size > 1
-    ? [...treeSelectedKeys.value]
-    : [row.key];
+  const isMultiGroup = treeSelectedKeys.value.has(row.key) && treeSelectedKeys.value.size > 1;
+  const keys = isMultiGroup ? [...treeSelectedKeys.value] : [row.key];
   const entries = keys
     .map((k) => rowMap.get(k))
     .map((r) => (r ? rowToDragEntry(r) : null))
@@ -1247,12 +1304,14 @@ function onRowDragStart(event: DragEvent, row: TreeRow) {
   if (entries.length) {
     dnd.startGroupDrag({ source: 'tree', items: entries }, event);
   }
-  if (row.kind === 'folder' && row.folderId) {
+  if (!isMultiGroup && entries.length <= 1 && row.kind === 'folder' && row.folderId) {
     emit('folder-drag-start', event, row.folderId);
   }
 }
 
 function onRowDragEnd(event: DragEvent, row: TreeRow) {
+  externalDropKey.value = null;
+  internalHomeDropOver.value = false;
   dnd.endGroupDrag();
   if (row.kind === 'folder' && row.folderId) {
     emit('folder-drag-end', event, row.folderId);
@@ -1267,32 +1326,146 @@ function scheduleSpringIfExpandable(row: TreeRow) {
   }
 }
 
+function resolveGroupDragPayload(event: DragEvent): GroupDragPayload | null {
+  const raw = dnd.activeDrag.value ?? dnd.readGroupDragFromEvent(event);
+  if (!raw) return null;
+  return {
+    source: raw.source,
+    items: raw.items.map((item) => ({ ...item })),
+    keys: [...raw.keys],
+    count: raw.count,
+  };
+}
+
 function onRowDragEnter(event: DragEvent, row: TreeRow) {
-  if (row.kind === 'folder' && row.folderId) {
-    dnd.setGroupDropTarget({ kind: 'folder', id: row.folderId });
-    scheduleSpringIfExpandable(row);
-    emit('folder-drag-enter', event, row.folderId);
-  } else if (row.kind === 'album' && row.albumId) {
-    dnd.setGroupDropTarget({ kind: 'album', id: row.albumId });
-    scheduleSpringIfExpandable(row);
-  } else if (row.expandable && !row.expanded) {
+  const payload = resolveGroupDragPayload(event);
+  if (payload) {
+    if (row.kind === 'folder' && row.folderId) {
+      if (isSingleTreeFolderDrag(event, payload)) {
+        dnd.setGroupDropTarget({ kind: 'folder', id: row.folderId });
+        scheduleSpringIfExpandable(row);
+        emit('folder-drag-enter', event, row.folderId);
+      } else if (canDropGroupOnFolder(row.folderId, payload)) {
+        event.preventDefault();
+        dnd.setGroupDropTarget({ kind: 'folder', id: row.folderId });
+        scheduleSpringIfExpandable(row);
+      }
+    } else if (row.key === 'qspace:home') {
+      event.preventDefault();
+      internalHomeDropOver.value = true;
+      scheduleSpringIfExpandable(row);
+    } else if (row.kind === 'album' && row.albumId) {
+      event.preventDefault();
+      dnd.setGroupDropTarget({ kind: 'album', id: row.albumId });
+      scheduleSpringIfExpandable(row);
+    } else if (row.expandable && !row.expanded) {
+      scheduleSpringIfExpandable(row);
+    }
+    return;
+  }
+
+  const hasLegacyFolderDrag = Boolean(
+    props.folderDragId
+    || Array.from(event.dataTransfer?.types ?? []).includes('application/x-qcanva-folder'),
+  );
+  if (hasLegacyFolderDrag) {
+    if (row.kind === 'folder' && row.folderId) {
+      dnd.setGroupDropTarget({ kind: 'folder', id: row.folderId });
+      scheduleSpringIfExpandable(row);
+      emit('folder-drag-enter', event, row.folderId);
+    } else if (row.expandable && !row.expanded) {
+      scheduleSpringIfExpandable(row);
+    }
+    return;
+  }
+
+  if (hasDataTransferFiles(event)) {
+    if ((row.kind === 'folder' && row.folderId) || row.key === 'qspace:home') {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+      externalDropKey.value = row.key;
+      scheduleSpringIfExpandable(row);
+    } else if (row.expandable && !row.expanded) {
+      scheduleSpringIfExpandable(row);
+    }
+    return;
+  }
+
+  if (row.expandable && !row.expanded) {
     scheduleSpringIfExpandable(row);
   }
 }
 
 function onRowDragOver(event: DragEvent, row: TreeRow) {
-  if (row.kind === 'folder' && row.folderId) {
-    dnd.setGroupDropTarget({ kind: 'folder', id: row.folderId });
-    scheduleSpringIfExpandable(row);
-    emit('folder-drag-over', event, row.folderId);
-  } else if (row.kind === 'album' && row.albumId) {
-    dnd.setGroupDropTarget({ kind: 'album', id: row.albumId });
-    scheduleSpringIfExpandable(row);
+  const payload = resolveGroupDragPayload(event);
+  if (payload) {
+    if (row.kind === 'folder' && row.folderId) {
+      if (isSingleTreeFolderDrag(event, payload)) {
+        event.preventDefault();
+        if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+        dnd.setGroupDropTarget({ kind: 'folder', id: row.folderId });
+        scheduleSpringIfExpandable(row);
+        emit('folder-drag-over', event, row.folderId);
+      } else if (canDropGroupOnFolder(row.folderId, payload)) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+        dnd.setGroupDropTarget({ kind: 'folder', id: row.folderId });
+        scheduleSpringIfExpandable(row);
+      }
+    } else if (row.key === 'qspace:home') {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+      internalHomeDropOver.value = true;
+      scheduleSpringIfExpandable(row);
+    } else if (row.kind === 'album' && row.albumId) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+      dnd.setGroupDropTarget({ kind: 'album', id: row.albumId });
+      scheduleSpringIfExpandable(row);
+    }
+    return;
+  }
+
+  const hasLegacyFolderDrag = Boolean(
+    props.folderDragId
+    || Array.from(event.dataTransfer?.types ?? []).includes('application/x-qcanva-folder'),
+  );
+  if (hasLegacyFolderDrag) {
+    if (row.kind === 'folder' && row.folderId) {
+      event.preventDefault();
+      dnd.setGroupDropTarget({ kind: 'folder', id: row.folderId });
+      scheduleSpringIfExpandable(row);
+      emit('folder-drag-over', event, row.folderId);
+    }
+    return;
+  }
+
+  if (hasDataTransferFiles(event)) {
+    if ((row.kind === 'folder' && row.folderId) || row.key === 'qspace:home') {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+      externalDropKey.value = row.key;
+      scheduleSpringIfExpandable(row);
+    }
   }
 }
 
 function onRowDragLeave(event: DragEvent, row: TreeRow) {
+  const current = event.currentTarget as HTMLElement | null;
+  const related = event.relatedTarget as Node | null;
+  if (current && related && current.contains(related)) return;
   dnd.cancelSpringExpand();
+  if (externalDropKey.value === row.key) {
+    externalDropKey.value = null;
+  }
+  if (row.key === 'qspace:home') {
+    internalHomeDropOver.value = false;
+  }
   if (row.kind === 'folder' && row.folderId) {
     if (dnd.dropTarget.value?.kind === 'folder' && dnd.dropTarget.value.id === row.folderId) {
       dnd.setGroupDropTarget(null);
@@ -1307,19 +1480,58 @@ function onRowDragLeave(event: DragEvent, row: TreeRow) {
 
 function onRowDrop(event: DragEvent, row: TreeRow) {
   dnd.cancelSpringExpand();
-  const payload = dnd.readGroupDragFromEvent(event);
-  const isSingleFolderReorder = Boolean(
-    Array.from(event.dataTransfer?.types ?? []).includes('application/x-qcanva-folder')
-    || (payload && payload.source === 'tree' && payload.items.length === 1 && payload.items[0]?.kind === 'folder'),
+  externalDropKey.value = null;
+  internalHomeDropOver.value = false;
+
+  const payload = resolveGroupDragPayload(event);
+  if (payload) {
+    if (row.kind === 'folder' && row.folderId) {
+      if (isSingleTreeFolderDrag(event, payload)) {
+        event.preventDefault();
+        emit('folder-drop', event, row.folderId);
+      } else if (canDropGroupOnFolder(row.folderId, payload)) {
+        event.preventDefault();
+        event.stopPropagation();
+        emit('drop-group-to-folder', { folderId: row.folderId, drag: payload });
+      }
+    } else if (row.key === 'qspace:home') {
+      event.preventDefault();
+      event.stopPropagation();
+      emit('drop-group-to-folder', { folderId: null, drag: payload });
+    } else if (row.kind === 'album' && row.albumId) {
+      event.preventDefault();
+      event.stopPropagation();
+      emit('drop-group-to-album', { albumId: row.albumId, drag: payload });
+    }
+    dnd.endGroupDrag();
+    return;
+  }
+
+  const hasLegacyFolderDrag = Boolean(
+    props.folderDragId
+    || Array.from(event.dataTransfer?.types ?? []).includes('application/x-qcanva-folder'),
   );
-  if (row.kind === 'folder' && row.folderId) {
-    if (payload && !isSingleFolderReorder) {
-      emit('drop-group-to-folder', { folderId: row.folderId, drag: payload });
-    } else {
+  if (hasLegacyFolderDrag) {
+    if (row.kind === 'folder' && row.folderId) {
+      event.preventDefault();
       emit('folder-drop', event, row.folderId);
     }
-  } else if (row.kind === 'album' && row.albumId && payload) {
-    emit('drop-group-to-album', { albumId: row.albumId, drag: payload });
+    dnd.endGroupDrag();
+    return;
+  }
+
+  if (hasDataTransferFiles(event)) {
+    if ((row.kind === 'folder' && row.folderId) || row.key === 'qspace:home') {
+      event.preventDefault();
+      event.stopPropagation();
+      const files = Array.from(event.dataTransfer?.files || []);
+      if (files.length > 0) {
+        emit('drop-external-files', {
+          folderId: row.kind === 'folder' ? row.folderId! : null,
+          files,
+        });
+      }
+    }
   }
   dnd.endGroupDrag();
 }

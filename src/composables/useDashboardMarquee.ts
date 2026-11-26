@@ -29,9 +29,14 @@ export function useDashboardMarquee(options: {
     const right = Math.max(event.clientX, marqueeStart.x);
     const bottom = Math.max(event.clientY, marqueeStart.y);
     marquee.value = { left, top, width: right - left, height: bottom - top };
-    const touched = Array.from(options.dashboardShell.value?.querySelectorAll<HTMLElement>('[data-select-key]') || [])
+    const touched = Array.from(
+      options.dashboardShell.value?.querySelectorAll<HTMLElement>('[data-select-key], .subfolder-card[data-select-key]') || [],
+    )
       .filter((card) => {
         const box = card.getBoundingClientRect();
+        const width = box.width ?? (box.right - box.left);
+        const height = box.height ?? (box.bottom - box.top);
+        if (width <= 0 && height <= 0) return false;
         return box.right >= left && box.left <= right && box.bottom >= top && box.top <= bottom;
       })
       .map((card) => card.dataset.selectKey!)

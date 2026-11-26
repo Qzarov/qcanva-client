@@ -478,6 +478,9 @@ onBeforeUnmount(() => {
   inset: 0;
   z-index: 1200;
   display: flex;
+  overflow: hidden;
+  height: 100vh;
+  height: 100dvh;
   background: rgba(6, 10, 8, 0.72);
   backdrop-filter: blur(22px) saturate(1.18);
   -webkit-backdrop-filter: blur(22px) saturate(1.18);
@@ -490,7 +493,10 @@ onBeforeUnmount(() => {
 .pv-main {
   flex: 1;
   min-width: 0;
-  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
   position: relative;
@@ -599,11 +605,14 @@ onBeforeUnmount(() => {
   outline-offset: 2px;
 }
 .pv-stage {
-  flex: 1;
+  flex: 1 1 0%;
   min-height: 0;
-  display: grid;
-  place-items: center;
-  padding: 10px 68px 18px;
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 64px 12px;
   position: relative;
 }
 .pv-nav {
@@ -627,20 +636,29 @@ onBeforeUnmount(() => {
 .pv-media {
   max-width: 100%;
   max-height: 100%;
+  width: auto;
+  height: auto;
+  min-width: 0;
+  min-height: 0;
   object-fit: contain;
+  display: block;
   border-radius: 10px;
   box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6);
 }
 .pv-dim {
   opacity: 0.4;
-  max-height: 70vh;
+  max-height: min(70vh, 100%);
 }
 .pv-ph {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 12px;
   max-width: calc(100vw - 160px);
+  max-height: 100%;
+  min-width: 0;
+  min-height: 0;
   text-align: center;
   color: rgba(220, 245, 220, 0.78);
 }

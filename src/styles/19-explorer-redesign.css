@@ -429,7 +429,8 @@ body.resizing * {
   color: var(--ui-glass-accent-text);
 }
 
-.tree-row.drag-over {
+.tree-row.drag-over,
+.dashboard-sidebar.explorer-sidebar .tree-row.dashboard-sidebar-folder.drag-over {
   background: var(--ui-glass-accent-bg);
   border-color: var(--ui-glass-accent-border);
   color: var(--ui-text);
@@ -1347,6 +1348,21 @@ body.resizing * {
 .canvas-card .card-select,
 .subfolder-card .card-select {
   display: none !important;
+}
+
+.dashboard-view .subfolder-card[data-selected] {
+  border-color: var(--ui-glass-accent-border, var(--color-brands));
+  box-shadow: 0 0 0 1px var(--ui-glass-accent-border, var(--color-brands)), var(--ui-glass-accent-glow, none);
+}
+
+.dashboard-view .subfolder-card.is-drop-target {
+  border-color: var(--ui-glass-accent-border, var(--color-brands));
+  background: var(--ui-glass-accent-tint, transparent), var(--ui-glass-accent-bg, color-mix(in srgb, var(--color-brands) 16%, transparent));
+  box-shadow: var(--ui-glass-accent-shadow, none);
+}
+
+.dashboard-view .subfolder-card.is-dragging-group {
+  opacity: 0.45;
 }
 
 /* ===== Mobile <= 768px / 390px Responsive Layout & Bottom Tab Bar ===== */

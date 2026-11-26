@@ -422,6 +422,10 @@ onMounted(async () => {
   position: fixed;
   inset: 0;
   z-index: 1200;
+  box-sizing: border-box;
+  overflow: hidden;
+  height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
   background: #050506;
@@ -434,6 +438,7 @@ onMounted(async () => {
   align-items: center;
   gap: 12px;
   padding: 10px 12px;
+  flex: none;
 }
 .media-viewer-title {
   flex: 1;
@@ -468,8 +473,10 @@ onMounted(async () => {
 .media-viewer-icon:focus-visible { background: rgba(255, 255, 255, 0.12); }
 .media-viewer-stage {
   position: relative;
-  flex: 1;
+  flex: 1 1 0%;
   min-height: 0;
+  min-width: 0;
+  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -478,6 +485,11 @@ onMounted(async () => {
 .media-viewer-image {
   max-width: 100%;
   max-height: 100%;
+  width: auto;
+  height: auto;
+  min-width: 0;
+  min-height: 0;
+  display: block;
   object-fit: contain;
   user-select: none;
   /* The fingers are ours on the picture: a pinch zooms it, not the page. */
@@ -506,21 +518,32 @@ onMounted(async () => {
 .media-viewer-video {
   width: 100%;
   height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: block;
   object-fit: contain;
   background: #000;
   outline: none;
 }
 .media-viewer-video-note {
-  display: grid;
-  justify-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   gap: 14px;
   max-width: 100%;
   max-height: 100%;
+  min-width: 0;
+  min-height: 0;
   text-align: center;
 }
 .media-viewer-video-poster {
   max-width: min(100%, 560px);
-  max-height: 50vh;
+  max-height: min(50vh, 100%);
+  min-height: 0;
+  display: block;
   object-fit: contain;
   opacity: 0.55;
 }

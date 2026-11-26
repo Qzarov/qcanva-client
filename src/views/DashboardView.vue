@@ -44,6 +44,7 @@
         @tree-contextmenu="onTreeContextMenu"
         @drop-group-to-folder="(p) => onDropGroupToFolder(p.folderId, p.drag)"
         @drop-group-to-album="(p) => onDropGroupToAlbum(p.albumId, p.drag)"
+        @drop-external-files="(p) => onDropExternalFilesToFolder(p.folderId, p.files)"
         @folder-drag-start="onSidebarFolderDragStart"
         @folder-drag-end="onFolderDragEnd"
         @folder-drag-enter="onSidebarFolderDragEnter"
@@ -503,6 +504,7 @@
               @open="openExplorerTableRow"
               @contextmenu="onTableRowContextMenu"
               @drop-on-folder="(targetRow, payload) => onDropGroupToFolder(targetRow.id, payload)"
+              @drop-external-files="(p) => onDropExternalFilesToFolder(p.folderId, p.files)"
             />
             <DashboardActiveSubfolders
               v-if="explorerViewMode !== 'table'"
@@ -511,10 +513,14 @@
               :has-active-filter="hasActiveFilter"
               :is-owner="true"
               :format-date="formatDate"
+              :selected-keys="selectedKeys"
+              :build-group-drag-entries="buildGroupDragEntriesForKeys"
               @select="selectFolder"
               @reset="resetFilters"
               @add="openAddDialog()"
               @contextmenu="(ev, folder) => onGridFolderContextMenu(ev, folder)"
+              @drop-external-files="(p) => onDropExternalFilesToFolder(p.folderId, p.files)"
+              @drop-on-folder="(targetFolderId, payload) => onDropGroupToFolder(targetFolderId, payload)"
             />
             <div class="dash-grid" v-show="explorerViewMode !== 'table'">
               <DashboardFolderResourceGrid
@@ -590,6 +596,7 @@
                   @open="openExplorerTableRow"
                   @contextmenu="onTableRowContextMenu"
                   @drop-on-folder="(targetRow, payload) => onDropGroupToFolder(targetRow.id, payload)"
+                  @drop-external-files="(p) => onDropExternalFilesToFolder(p.folderId, p.files)"
                 />
                 <DashboardActiveSubfolders
                   v-if="explorerViewMode !== 'table'"
@@ -598,10 +605,14 @@
                   :has-active-filter="hasActiveFilter"
                   :is-owner="activeFolder.role === 'owner'"
                   :format-date="formatDate"
+                  :selected-keys="selectedKeys"
+                  :build-group-drag-entries="buildGroupDragEntriesForKeys"
                   @select="selectFolder"
                   @reset="resetFilters"
                   @add="openAddFromTile('folder')"
                   @contextmenu="(ev, folder) => onGridFolderContextMenu(ev, folder)"
+                  @drop-external-files="(p) => onDropExternalFilesToFolder(p.folderId, p.files)"
+                  @drop-on-folder="(targetFolderId, payload) => onDropGroupToFolder(targetFolderId, payload)"
                 />
                 <div class="dash-grid" v-show="explorerViewMode !== 'table'">
                   <DashboardFolderResourceGrid
@@ -728,6 +739,7 @@
       >
         <DrivePhotos
           ref="galleryViewRef"
+          :key="galleryRefreshKey"
           :active-section="(gallerySection as GallerySection)"
           :external-album-id="galleryAlbumId"
           :external-album-members-count="galleryAlbumMembersCount"
@@ -1125,7 +1137,7 @@ import DrivePhotos from '../components/photos/DrivePhotos.vue';
 import GallerySidebar, { type GallerySection, type GallerySidebarCounts, type GalleryStorageFolder } from '../components/photos/GallerySidebar.vue';
 import { photosApi, type FeedItem as PhotoFeedItem } from '../api/photos';
 import { createHeadroomScrollHandler, useExplorerLayoutPrefs } from '../composables/useExplorerLayoutPrefs';
-import type { GroupDragPayload } from '../composables/useExplorerGroupDnd';
+import { GROUP_DND_MIME, useExplorerGroupDnd, type GroupDragEntry, type GroupDragPayload } from '../composables/useExplorerGroupDnd';
 import { buildExplorerPath, buildFolderExplorerTableRows, resolveExplorerPath, resourceTypeLabel } from '../composables/useExplorerWorkspaceHelpers';
 import { forgetResourceTab } from '../tabs/forget';
 import DashboardViewToggle from '../components/dashboard/DashboardViewToggle.vue';
@@ -1432,6 +1444,7 @@ export default defineComponent({
       }
     };
     const layoutPrefs = useExplorerLayoutPrefs();
+    const groupDnd = useExplorerGroupDnd();
     const sidebarCollapsed = layoutPrefs.sidebarCollapsed;
     const sidebarWidthState = computed<SidebarWidthState>(() => (
       sidebarCollapsed.value ? 'collapsed' : 'expanded'
@@ -3415,10 +3428,24 @@ export default defineComponent({
       + selectedYandexFiles.value.reduce((sum, file) => sum + (file.size ?? 0), 0)
       + selectedSpaceItems.value.reduce((sum, item) => sum + (item.size ?? 0), 0)
     ));
-    /** Cards on screen that can be ticked, in screen order. */
-    const selectableOnScreen = () => Array.from(
-      dashboardShell.value?.querySelectorAll<HTMLElement>('[data-select-key]') || [],
-    ).map((card) => card.dataset.selectKey!).filter(Boolean);
+    /** Cards and subfolders on screen that can be ticked, in visual DOM order. */
+    const selectableOnScreen = () => {
+      const root = dashboardShell.value;
+      if (!root) return [];
+      const selector = explorerViewMode.value === 'table'
+        ? '[data-explorer-table] [data-select-key]'
+        : '[data-select-key], .subfolder-card[data-select-key]';
+      const seen = new Set<string>();
+      const keys: string[] = [];
+      for (const el of root.querySelectorAll<HTMLElement>(selector)) {
+        if (explorerViewMode.value !== 'table' && el.closest('[data-explorer-table]')) continue;
+        const key = el.dataset.selectKey;
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        keys.push(key);
+      }
+      return keys;
+    };
     const allOnScreenSelected = ref(false);
     watch([selectedKeys, spaceFeedItems], () => {
       void nextTick(() => {
@@ -3491,8 +3518,11 @@ export default defineComponent({
       event.preventDefault();
       event.stopPropagation();
       const key = card.dataset.selectKey!;
-      if (event.shiftKey && selectionAnchor) {
-        selectedKeys.value = selectRange(selectedKeys.value, selectableOnScreen(), selectionAnchor, key);
+      if (event.shiftKey) {
+        const onScreen = selectableOnScreen();
+        const anchor = selectionAnchor && onScreen.includes(selectionAnchor) ? selectionAnchor : onScreen[0] || key;
+        selectionAnchor = anchor;
+        selectedKeys.value = selectRange(selectedKeys.value, onScreen, anchor, key);
       } else {
         toggleSelected(key);
       }
@@ -4061,7 +4091,7 @@ export default defineComponent({
       if (!files.length) return;
       const folderId = await resolveCreateFolderId(explicitFolderId);
       if (!folderId) return;
-      if (!ownResourceFolders.value.some((folder) => folder.id === folderId)) {
+      if (folderId !== 'root' && !ownResourceFolders.value.some((folder) => folder.id === folderId)) {
         await refreshFoldersQuietly();
       }
       const batch = files.map((file) => ({
@@ -4090,6 +4120,9 @@ export default defineComponent({
       })));
       folderFilesRefreshKey.value += 1;
       refreshFolderFileCounts();
+      if (activeSection.value.kind === 'gallery') {
+        refreshGalleryView();
+      }
     };
 
     const transferStatusText = computed(() => {
@@ -4433,20 +4466,38 @@ export default defineComponent({
       && !templatePickerOpen.value
       && !mediaViewer.value
       && !yandexMove.value
-      && (isHomeFeed.value || activeSection.value.kind === 'home' || canDropToActiveFolder.value),
+      && (
+        isHomeFeed.value
+        || activeSection.value.kind === 'home'
+        || (activeSection.value.kind === 'gallery' && gallerySection.value !== 'trash')
+        || canDropToActiveFolder.value
+      ),
     ));
 
-    const externalDropLabel = computed(() => (
-      canDropToActiveFolder.value && activeFolder.value
-        ? t('dashboardDropFilesIntoFolder').replace('{folder}', activeFolder.value.name)
-        : t('driveDropFilesHere')
-    ));
+    const externalDropLabel = computed(() => {
+      if (canDropToActiveFolder.value && activeFolder.value) {
+        return t('dashboardDropFilesIntoFolder').replace('{folder}', activeFolder.value.name);
+      }
+      if (activeSection.value.kind === 'gallery' && galleryFolderId.value && galleryFolderId.value !== 'root') {
+        const galleryFolder = allResourceFolders.value.find((f) => f.id === galleryFolderId.value);
+        if (galleryFolder) {
+          return t('dashboardDropFilesIntoFolder').replace('{folder}', galleryFolder.name);
+        }
+      }
+      return t('driveDropFilesHere');
+    });
 
-    const isInternalDashboardDrag = (event: DragEvent) => Boolean(
-      draggingResourceId.value
-      || folderDragId.value
-      || Array.from(event.dataTransfer?.types || []).includes('application/x-qcanva-folder'),
-    );
+    const isInternalDashboardDrag = (event: DragEvent) => {
+      const types = Array.from(event.dataTransfer?.types || []);
+      return Boolean(
+        draggingResourceId.value
+        || folderDragId.value
+        || groupDnd.activeDrag.value
+        || types.includes('application/x-qcanva-folder')
+        || types.includes(GROUP_DND_MIME)
+        || types.includes('application/x-qspace-group-drag'),
+      );
+    };
 
     const uploadDroppedFiles = async (files: File[]) => {
       if (!files.length || !canDropExternalFiles.value) return;
@@ -4454,7 +4505,16 @@ export default defineComponent({
         await uploadFiles(files, activeFolder.value.id);
         return;
       }
-      if (isHomeFeed.value || activeSection.value.kind === 'home') {
+      if (activeSection.value.kind === 'home') {
+        await uploadFiles(files, 'root');
+        return;
+      }
+      if (activeSection.value.kind === 'gallery') {
+        const target = galleryFolderId.value && galleryFolderId.value !== 'root' ? galleryFolderId.value : 'root';
+        await uploadFiles(files, target);
+        return;
+      }
+      if (isHomeFeed.value) {
         const rootFolder = await ensureFolderByName('Unsorted');
         if (!rootFolder?.id) return;
         await uploadFiles(files, rootFolder.id);
@@ -4467,11 +4527,22 @@ export default defineComponent({
       onDragOver: onExternalDragOver,
       onDragLeave: onExternalDragLeave,
       onDrop: onExternalDrop,
+      reset: resetExternalDropzone,
     } = useDriveDropzone({
       enabled: canDropExternalFiles,
       ignoreEvent: isInternalDashboardDrag,
       handleFilesUpload: uploadDroppedFiles,
     });
+
+    const onDropExternalFilesToFolder = async (folderId: string | null, files: File[]) => {
+      resetExternalDropzone();
+      if (!isLoggedIn || !files.length) return;
+      if (folderId) {
+        const target = allResourceFolders.value.find((f) => f.id === folderId);
+        if (target && target.role !== 'owner') return;
+      }
+      await uploadFiles(files, folderId ?? 'root');
+    };
 
     /** "+ Add" in an empty section: a folder for Folders, the template picker for Templates, else the Add dialog. */
     const openAddFromTile = (section: 'recent' | 'folders' | 'shared' | 'interactive' | 'public' | 'folder') => {
@@ -5573,24 +5644,109 @@ export default defineComponent({
       }
     };
 
+    const buildGroupDragEntriesForKeys = (keys: readonly string[]): GroupDragEntry[] => {
+      const entries: GroupDragEntry[] = [];
+      const seen = new Set<string>();
+      for (const key of keys) {
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        if (key.startsWith('folder:')) {
+          const id = key.slice('folder:'.length);
+          const folder = allFolderSummaries.value.find((f) => f.id === id)
+            || allResourceFolders.value.find((f) => f.id === id);
+          if (folder) {
+            entries.push({ key, id: folder.id, kind: 'folder', name: folder.name, folderId: folder.id });
+            continue;
+          }
+        }
+        const driveId = key.startsWith('drive-file:')
+          ? key.slice('drive-file:'.length)
+          : key.startsWith('drive:')
+            ? key.slice('drive:'.length)
+            : '';
+        if (driveId) {
+          const file = driveFilesByKey.value.get(`drive-file:${driveId}`)
+            || folderDriveFiles.value.find((f) => f.id === driveId)
+            || homeRootDriveFiles.value.find((f) => f.id === driveId);
+          if (file) {
+            entries.push({
+              key: `drive-file:${file.id}`,
+              id: file.id,
+              kind: 'drive-file',
+              name: file.name,
+              folderId: file.folderId ?? null,
+            });
+            continue;
+          }
+        }
+        const normalizedItemKey = key.startsWith('doc:')
+          ? `text-document:${key.slice('doc:'.length)}`
+          : key;
+        const item = itemsBySelectionKey.value.get(normalizedItemKey);
+        if (item) {
+          entries.push({
+            key: selectionKey(item),
+            id: item.id,
+            kind: item.type,
+            name: item.title || t('untitled'),
+            folderId: item.folderId ?? null,
+          });
+          continue;
+        }
+        const tableRow = allTableRowsByKey.value.get(key);
+        if (tableRow) {
+          entries.push({
+            key: tableRow.key,
+            id: tableRow.id,
+            kind: tableRow.kind,
+            name: tableRow.name,
+            folderId: tableRow.folderId,
+            path: tableRow.path,
+          });
+          continue;
+        }
+        const spaceItem = spaceItemsByKey.value.get(key);
+        if (spaceItem && spaceItem.id) {
+          entries.push({
+            key,
+            id: spaceItem.id,
+            kind: spaceItem.kind,
+            name: spaceItem.name,
+            path: spaceItem.path,
+          });
+        }
+      }
+      return entries;
+    };
+
+    const isFolderAncestorOrSelf = (candidateAncestorId: string, targetFolderId: string | null): boolean => {
+      if (!targetFolderId) return false;
+      if (candidateAncestorId === targetFolderId) return true;
+      return descendantFolderIds(allResourceFolders.value, candidateAncestorId).has(targetFolderId);
+    };
+
     // Group Drag-and-Drop handlers (folders & albums)
-    const onDropGroupToFolder = async (folderId: string, payload: GroupDragPayload) => {
-      if (!folderId || !payload.items.length) return;
-      const target = allResourceFolders.value.find((f) => f.id === folderId);
-      if (!target) return;
+    const onDropGroupToFolder = async (folderId: string | null, payload: GroupDragPayload) => {
+      if (!payload?.items?.length) return;
+      const target = folderId !== null ? allResourceFolders.value.find((f) => f.id === folderId) : null;
+      if (folderId !== null && !target) return;
+      if (target && target.role !== 'owner') return;
+      const targetName = folderId === null ? `${t('qSpace')}/home` : target!.name;
       let moved = 0;
+      let failed = 0;
+      let lastError: unknown = null;
       for (const entry of payload.items) {
         try {
           if (entry.kind === 'drive-file' || entry.kind === 'file' || entry.key.startsWith('drive-file:')) {
             const fileId = entry.id || entry.key.replace(/^drive-file:/, '');
+            if (!fileId) continue;
             await driveApi.moveFile(fileId, folderId);
             moved += 1;
           } else if (entry.kind === 'folder' || entry.key.startsWith('folder:')) {
             const fId = entry.id || entry.key.replace(/^folder:/, '');
-            if (fId !== folderId) {
-              await resourceFolders.moveFolder(fId, folderId);
-              moved += 1;
-            }
+            if (!fId || isFolderAncestorOrSelf(fId, folderId)) continue;
+            await resourceFolders.moveFolder(fId, folderId);
+            moved += 1;
           } else if (entry.kind === 'canvas') {
             await canvas.update(entry.id, { folderId });
             moved += 1;
@@ -5600,19 +5756,30 @@ export default defineComponent({
           } else if (entry.kind === 'text-document') {
             await textDocuments.update(entry.id, { folderId });
             moved += 1;
-          } else if (entry.kind === 'interactive-template') {
+          } else if (entry.kind === 'interactive-template' && folderId !== null) {
             await resourceFolders.move(folderId, 'interactive-template', entry.id);
             moved += 1;
           }
-        } catch {
-          // Continue moving remaining items in group
+        } catch (err) {
+          failed += 1;
+          lastError = err;
         }
       }
       if (moved > 0) {
-        setFeedback('success', t('bulkMovedTo').replace('{folder}', target.name).replace('{n}', String(moved)));
+        if (folderId) expandTree(folderId);
+        if (failed > 0) {
+          const reason = lastError instanceof Error && lastError.message ? lastError.message : t('spaceActionFailed');
+          setFeedback('error', reason);
+        } else {
+          setFeedback('success', t('bulkMovedTo').replace('{folder}', targetName).replace('{n}', String(moved)));
+        }
         clearSelection();
         folderFilesRefreshKey.value += 1;
-        void load({ showLoading: false });
+        refreshFolderFileCounts();
+        await load({ showLoading: false });
+      } else if (failed > 0) {
+        const reason = lastError instanceof Error && lastError.message ? lastError.message : t('spaceActionFailed');
+        setFeedback('error', reason);
       }
     };
 
@@ -6082,6 +6249,15 @@ export default defineComponent({
 
     // Gallery mode state & handlers
     const galleryViewRef = ref<InstanceType<typeof DrivePhotos> | null>(null);
+    const galleryRefreshKey = ref(0);
+    const refreshGalleryView = () => {
+      const view = galleryViewRef.value as { refresh?: () => void } | null;
+      if (typeof view?.refresh === 'function') {
+        view.refresh();
+      } else if (activeSection.value.kind === 'gallery') {
+        galleryRefreshKey.value += 1;
+      }
+    };
     const gallerySection = ref<GallerySection | 'trash'>('library');
     const galleryAlbumId = ref<string | null>(null);
     const galleryFolderId = ref<string | null>(null);
@@ -6516,6 +6692,8 @@ export default defineComponent({
       revokeResourceShare,
       onDropGroupToFolder,
       onDropGroupToAlbum,
+      onDropExternalFilesToFolder,
+      buildGroupDragEntriesForKeys,
       explorerCtxMenu,
       contextMenuAlbums,
       onTableRowContextMenu,
@@ -6540,6 +6718,7 @@ export default defineComponent({
       shareSelectedGroup,
       openAddSelectionToAlbum,
       galleryViewRef,
+      galleryRefreshKey,
       gallerySection,
       galleryAlbumId,
       galleryAlbumMembersCount,

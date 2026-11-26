@@ -345,7 +345,7 @@ describe('dashboard sidebar navigation', () => {
     expect(wrapper.get('[data-dashboard-view="folder"]').text()).toContain('Doc 1');
   });
 
-  it('returns to Recent from a folder view via the Back button', async () => {
+  it('returns to Home from a folder view via the Back button', async () => {
     const wrapper = mountDashboard();
     await flushPromises();
 
@@ -354,7 +354,7 @@ describe('dashboard sidebar navigation', () => {
 
     await wrapper.get('[data-headroom-bar] [data-nav-back]').trigger('click');
 
-    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'recent' });
+    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'home' });
   });
 
   it('ignores a legacy folder back-link query param and shows Recent instead', async () => {
@@ -644,7 +644,7 @@ describe('dashboard sidebar navigation', () => {
     expect(runBackHandlers()).toBe(true);
     expect(vm.activeSection).toEqual({ kind: 'folder', folderId: 'folder-b' });
     expect(runBackHandlers()).toBe(true);
-    expect(vm.activeSection).toEqual({ kind: 'recent' });
+    expect(vm.activeSection).toEqual({ kind: 'home' });
     // Home: nothing left to step back to - main.ts may now offer to exit.
     expect(runBackHandlers()).toBe(false);
 
@@ -1975,7 +1975,7 @@ describe('DashboardView groups', () => {
       expect(wrapper.find('[data-headroom-folder-menu]').exists()).toBe(true);
     });
 
-    it('has exactly one back arrow in the Headroom bar: to the parent folder when nested, to Recent at the root', async () => {
+    it('has exactly one back arrow in the Headroom bar: to the parent folder when nested, to Home at the root', async () => {
       withNestedFolders();
       const wrapper = mountDashboard();
       await flushPromises();
@@ -1987,7 +1987,7 @@ describe('DashboardView groups', () => {
       expect(wrapper.findAll('[data-headroom-bar] [data-nav-back]')).toHaveLength(1);
       await wrapper.get('[data-headroom-bar] [data-nav-back]').trigger('click');
       await nextTick();
-      expect(vm.activeSection).toEqual({ kind: 'recent' });
+      expect(vm.activeSection).toEqual({ kind: 'home' });
 
       vm.selectFolder('folder-c');
       await nextTick();
