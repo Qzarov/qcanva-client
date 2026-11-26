@@ -2873,6 +2873,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/spaces/{id}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["SpacesController_addItems"];
+        post?: never;
+        delete: operations["SpacesController_removeItems"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/spaces/{id}/members": {
         parameters: {
             query?: never;
@@ -3639,24 +3655,6 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        AccessRequest: {
-            /** Format: date-time */
-            createdAt: string;
-            id: string;
-            owner: components["schemas"]["User"];
-            ownerId: string;
-            /** @enum {string} */
-            requestedRole: "read" | "edit";
-            requester: components["schemas"]["User"];
-            requesterId: string;
-            resourceId: string;
-            /** @enum {string} */
-            resourceType: "canvas" | "text-document" | "html-document";
-            /** @enum {string} */
-            status: "pending" | "approved" | "declined";
-            /** Format: date-time */
-            updatedAt: string;
-        };
         ApplyTextDocumentUpdateDto: Record<string, never>;
         ArchiveDto: Record<string, never>;
         Canvas: {
@@ -3923,6 +3921,7 @@ export interface components {
         ShareInteractiveTemplateDto: Record<string, never>;
         ShareTextDocumentDto: Record<string, never>;
         SourceDto: Record<string, never>;
+        SpaceItemsDto: Record<string, never>;
         TextDocument: {
             allowPublicEdit: boolean;
             /** Format: date-time */
@@ -4078,9 +4077,7 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["AccessRequest"];
-                };
+                content?: never;
             };
         };
     };
@@ -5392,9 +5389,7 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["CanvasPermission"][];
-                };
+                content?: never;
             };
         };
     };
@@ -6790,6 +6785,7 @@ export interface operations {
                     "application/json": {
                         items: {
                             folderId: string | null;
+                            hash: string;
                             id: string;
                             kind: string;
                             mime: string | null;
@@ -8379,9 +8375,7 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["HtmlDocumentPermission"][];
-                };
+                content?: never;
             };
         };
     };
@@ -8856,9 +8850,7 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["InteractiveTemplatePermission"][];
-                };
+                content?: never;
             };
         };
     };
@@ -9272,7 +9264,35 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    meta: {
+                        /** @enum {string|null} */
+                        dateSource?: "exif" | "file" | null;
+                        durationSec?: number | null;
+                        height?: number | null;
+                        /** @enum {string} */
+                        kind: "image" | "video";
+                        localTakenAt?: string | null;
+                        mime: string;
+                        orientation?: number | null;
+                        takenAt?: string | null;
+                        timeZone?: string | null;
+                        width?: number | null;
+                    };
+                    /** @enum {string} */
+                    source: "client";
+                    thumbhash?: string | null;
+                } | {
+                    clip?: number[] | null;
+                    meta: Record<string, never>;
+                    thumbhash: string;
+                    transcode?: Record<string, never> | null;
+                    workerVersion: string;
+                };
+            };
+        };
         responses: {
             204: {
                 headers: {
@@ -9315,7 +9335,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "image/jpeg": string;
+                "image/webp": string;
+                "video/mp4": string;
+            };
+        };
         responses: {
             204: {
                 headers: {
@@ -10061,9 +10087,7 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["ResourceFolderPermission"][];
-                };
+                content?: never;
             };
         };
     };
@@ -10279,6 +10303,52 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    SpacesController_addItems: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SpaceItemsDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    SpacesController_removeItems: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SpaceItemsDto"];
+            };
+        };
         responses: {
             200: {
                 headers: {
@@ -10940,9 +11010,7 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["TextDocumentPermission"][];
-                };
+                content?: never;
             };
         };
     };
