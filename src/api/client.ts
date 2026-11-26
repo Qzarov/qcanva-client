@@ -201,7 +201,9 @@ export async function request<T>(path: string, options: ApiRequestInit = {}): Pr
   }
 
   // 204/205 and empty bodies (e.g. DELETE /photos/albums/:id) carry no JSON.
+  // Drain the empty body stream so Chromium does not report net::ERR_ABORTED on GC.
   if (res.status === 204 || res.status === 205 || res.headers?.get('content-length') === '0') {
+    await Promise.resolve(res.text?.()).catch(() => {});
     return undefined as T;
   }
   return res.json();
