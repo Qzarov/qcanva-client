@@ -26,7 +26,7 @@ private object NativeBackend : QSpaceBackend {
         configDir: String,
     ): JSONObject = mapErrors {
         val info = uniffi.qspace_ffi.register(hubUrl, userToken, root, name, kind, configDir)
-        // The device token stays in device.json (written by Rust); it never
+        // The device token stays in config.json (written by Rust); it never
         // goes to the WebView.
         JSONObject()
             .put("nodeId", info.nodeId)

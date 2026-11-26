@@ -24,6 +24,8 @@ object AgentHolder {
     private const val TAG = "QSpaceAgent"
     private const val PREFS = "qspace_agent"
     private const val KEY_ENABLED = "enabled"
+    private const val CONFIG_FILE = "config.json"
+    private const val LEGACY_CONFIG_FILE = "device.json"
     private const val PROGRESS_INTERVAL_MS = 250L
 
     /** The node needs all-files access (MANAGE_EXTERNAL_STORAGE), which Android 11 introduced. */
@@ -77,7 +79,20 @@ object AgentHolder {
 
     fun configDir(context: Context) = File(context.filesDir, "qspace")
 
-    fun isRegistered(context: Context) = File(configDir(context), "device.json").isFile
+    /**
+     * The node writes its identity to config.json. Builds before qspace-agent
+     * 18fb059 named it device.json; such an install is renamed once so the
+     * phone stays registered after an update.
+     */
+    fun isRegistered(context: Context): Boolean {
+        val dir = configDir(context)
+        val config = File(dir, CONFIG_FILE)
+        val legacy = File(dir, LEGACY_CONFIG_FILE)
+        if (!config.isFile && legacy.isFile && !legacy.renameTo(config)) {
+            Log.w(TAG, "could not rename $LEGACY_CONFIG_FILE to $CONFIG_FILE")
+        }
+        return config.isFile
+    }
 
     fun isEnabled(context: Context) = prefs(context).getBoolean(KEY_ENABLED, false)
 
@@ -127,6 +142,10 @@ object AgentHolder {
                 lastError = null
             } catch (e: Exception) {
                 lastError = e.message
+                // A failed start can leave the node half set up (marked as
+                // running, iroh endpoint bound but never announced to the
+                // hub); the next attempt has to begin from a fresh node.
+                closeLocked()
                 throw e
             }
         }
