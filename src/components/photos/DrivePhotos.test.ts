@@ -20,9 +20,11 @@ const getTrashMock = vi.hoisted(() => vi.fn());
 const trashFileMock = vi.hoisted(() => vi.fn());
 const editMock = vi.hoisted(() => vi.fn());
 const feedRefresh = vi.hoisted(() => vi.fn());
+const feedRefreshAlbums = vi.hoisted(() => vi.fn());
 const feedPatch = vi.hoisted(() => vi.fn());
 const feedLoadMore = vi.hoisted(() => vi.fn(async () => false));
 const getDownloadLinkMock = vi.hoisted(() => vi.fn());
+const downloadDriveFileMock = vi.hoisted(() => vi.fn());
 
 vi.mock('../../api/client', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../api/client')>();
@@ -64,6 +66,7 @@ vi.mock('../../api/drive', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../api/drive')>();
   return {
     ...actual,
+    downloadDriveFile: downloadDriveFileMock,
     driveApi: {
       ...actual.driveApi,
       getDownloadLink: getDownloadLinkMock,
@@ -103,12 +106,12 @@ let extraFeedItems: FeedItem[] = [];
 const FeedStub = defineComponent({
   name: 'PhotosFeed',
   props: ['params', 'captionOnTile', 'tile', 'tileHeight', 'aspectMode', 'folderFilterId', 'peopleFilter', 'recentLimit', 'selected', 'current'],
-  emits: ['open', 'focus-photo', 'activate', 'toggle-select', 'set-selection', 'contextmenu', 'toggle-favorite'],
+  emits: ['open', 'focus-photo', 'activate', 'toggle-select', 'set-selection', 'contextmenu', 'toggle-favorite', 'units-loaded'],
   setup(props, { emit, expose }) {
     expose({
       orderedItems: () => [...feedItems, ...extraFeedItems],
       refresh: feedRefresh,
-      refreshAlbums: vi.fn(),
+      refreshAlbums: feedRefreshAlbums,
       patchItem: feedPatch,
       loadMore: feedLoadMore,
     });
@@ -124,7 +127,8 @@ const FeedStub = defineComponent({
         },
         [
           h('button', { 'data-stub-select': '', onClick: () => emit('set-selection', ['f0', 'f1']) }, 'select'),
-          ...feedItems.map((it) =>
+          h('button', { 'data-stub-units-loaded': '', onClick: () => emit('units-loaded') }, 'units'),
+          ...[...feedItems, ...extraFeedItems].map((it) =>
             h(
               'button',
               {
@@ -160,6 +164,7 @@ const PanelStub = defineComponent({
         h('button', { 'data-stub-folder': '', onClick: () => emit('open-folder', 'fold1') }, 'folder'),
         h('button', { 'data-stub-album': '', onClick: () => emit('open-album', 'alb1') }, 'album'),
         h('button', { 'data-stub-group-fav': '', onClick: () => emit('group-favorite') }, 'gfav'),
+        h('button', { 'data-stub-group-share': '', onClick: () => emit('group-share') }, 'gshare'),
         h('button', { 'data-stub-group-del': '', onClick: () => emit('group-delete') }, 'gdel'),
         h('button', { 'data-stub-group-alb': '', onClick: () => emit('group-album') }, 'galb'),
         h('button', { 'data-stub-chg-albums': '', onClick: () => emit('changed', { fileId: 'f0', albumIds: [] }) }, 'chg'),
@@ -218,10 +223,12 @@ describe('DrivePhotos', () => {
     usePhotosView().reset();
     extraFeedItems = [];
     feedRefresh.mockReset();
+    feedRefreshAlbums.mockReset();
     feedPatch.mockReset();
     feedLoadMore.mockReset().mockResolvedValue(false);
     editMock.mockReset().mockResolvedValue(undefined);
     getDownloadLinkMock.mockReset().mockResolvedValue({ url: 'https://example.com/file', expiresAt: '' });
+    downloadDriveFileMock.mockReset().mockResolvedValue(undefined);
     getTrashMock.mockReset().mockResolvedValue({ items: [{ id: 'tr-1', name: 'old.jpg', kind: 'file', sizeBytes: 100 }], nextCursor: null });
     trashFileMock.mockReset().mockResolvedValue({});
     searchMock.mockReset().mockResolvedValue({ items: [mkItem(7), mkItem(8)], nextCursor: null });
@@ -564,11 +571,106 @@ describe('DrivePhotos', () => {
     expect(editMock).toHaveBeenCalledWith('f0', { favorite: true });
     expect(editMock).toHaveBeenCalledWith('f1', { favorite: true });
 
+    await w.get('[data-stub-group-share]').trigger('click');
+    expect(w.emitted('share-photos')?.[0]).toEqual([['f0', 'f1']]);
+
     await w.get('[data-stub-group-alb]').trigger('click');
     await flushPromises();
     expect(w.find('[data-testid="gallery-group-album-menu"]').exists()).toBe(true);
     await w.get('[data-group-album-choice="alb1"]').trigger('click');
     await flushPromises();
     expect(spacesAddItemsMock).toHaveBeenCalledWith('alb1', ['f0', 'f1']);
+  });
+
+  it('handles 2+ share-photos, right-click on unselected tile during multi-select, multi-download, Escape ctxMenu, and PhotoPanel select-album emit', async () => {
+    extraFeedItems = [mkItem(2, { folderId: 'fold2' })];
+    const w = mountIt();
+    await flushPromises();
+
+    // Select 2 items (f0, f1)
+    await w.get('[data-stub-select]').trigger('click');
+
+    // Topbar share emits share-photos with both ids
+    await w.get('[data-testid="share-btn"]').trigger('click');
+    expect(w.emitted('share-photos')?.[0]).toEqual([['f0', 'f1']]);
+
+    // Right-click unselected tile f2 while f0, f1 are selected -> Move targets ONLY f2 (1 item)
+    await w.get('[data-file-id="f2"]').trigger('contextmenu');
+    expect(w.find('[data-testid="gallery-context-menu"]').exists()).toBe(true);
+    await w.get('[data-ctx-move]').trigger('click');
+    const picker = w.get('[data-testid="picker-stub"]');
+    expect(picker.attributes('data-excl')).toBe('["fold2"]');
+    expect(picker.text()).toContain('1');
+
+    // Right-click selected f0 -> Share emits share-photos with 2 ids
+    await w.get('[data-file-id="f0"]').trigger('contextmenu');
+    await w.get('[data-ctx-share]').trigger('click');
+    expect(w.emitted('share-photos')?.[1]).toEqual([['f0', 'f1']]);
+
+    // Right-click selected f0 -> Download downloads BOTH f0 and f1
+    await w.get('[data-file-id="f0"]').trigger('contextmenu');
+    await w.get('[data-ctx-download]').trigger('click');
+    await flushPromises();
+    expect(downloadDriveFileMock).toHaveBeenCalledWith('f0', 'p0.jpg');
+    expect(downloadDriveFileMock).toHaveBeenCalledWith('f1', 'p1.jpg');
+
+    // Window Escape closes open context menu
+    await w.get('[data-file-id="f0"]').trigger('contextmenu');
+    expect(w.find('[data-testid="gallery-context-menu"]').exists()).toBe(true);
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    await flushPromises();
+    expect(w.find('[data-testid="gallery-context-menu"]').exists()).toBe(false);
+
+    // Clicking album chip in PhotoPanel emits select-album
+    await w.get('[data-file-id="f0"]').trigger('click');
+    await w.get('[data-testid="info-toggle"]').trigger('click');
+    await w.get('[data-stub-album]').trigger('click');
+    expect(w.emitted('select-album')?.[0]).toEqual(['alb1']);
+
+    // Switching activeSection to trash clears focusedId and closes panelOpen
+    await w.setProps({ activeSection: 'trash' });
+    await flushPromises();
+    expect(w.find('[data-photo-panel]').exists()).toBe(false);
+    expect(w.get('[data-testid="favorite-btn"]').classes()).toContain('dim');
+  });
+
+  it('refreshes people count on units-loaded, clears text query on toggleSuggestedPerson, closes popover on chip Escape, and refreshes albums on ctxAddToAlbum', async () => {
+    extraFeedItems = [
+      mkItem(3, { share: { ownerId: 'owner-1', ownerName: 'Оля', rootFolderId: 'fold1', rootName: 'Shared' } }),
+    ];
+    const w = mountIt();
+    await flushPromises();
+
+    // Units loaded updates counts.people reactively
+    await w.get('[data-stub-units-loaded]').trigger('click');
+    await flushPromises();
+    const countsEmits = w.emitted('update:counts') ?? [];
+    const lastCounts = countsEmits[countsEmits.length - 1]?.[0] as { people?: number };
+    expect(lastCounts?.people).toBe(1);
+
+    // Search text + focus -> Esc on chip closes popover; toggling suggested person clears active query
+    const input = w.get('[data-photos-search-input]');
+    await input.setValue('закат');
+    await vi.advanceTimersByTimeAsync(400);
+    await flushPromises();
+    await input.trigger('focus');
+    const personChip = w.get('[data-suggest-person="owner-1"]');
+    await personChip.trigger('keydown', { key: 'Escape' });
+    expect(w.find('[data-gallery-suggest-pop]').exists()).toBe(false);
+
+    await input.trigger('focus');
+    await w.get('[data-suggest-person="owner-1"]').trigger('click');
+    expect((input.element as HTMLInputElement).value).toBe('');
+    expect(w.get('[data-testid="gallery-people-crumb"]').text()).toContain('Оля');
+
+    // ctxAddToAlbum refreshes albums and increments panelEpoch
+    spacesAddItemsMock.mockResolvedValueOnce({ added: 1 });
+    await w.get('[data-file-id="f0"]').trigger('contextmenu');
+    await w.get('[data-ctx-album]').trigger('click');
+    await flushPromises();
+    await w.get('.dp-ctx-sub-item').trigger('click');
+    await flushPromises();
+    expect(spacesAddItemsMock).toHaveBeenCalledWith('alb1', ['f0']);
+    expect(feedRefreshAlbums).toHaveBeenCalled();
   });
 });

@@ -59,6 +59,16 @@ describe('useExplorerLayoutPrefs', () => {
     expect(reloaded.sidebarWidth.value).toBe(320);
   });
 
+  it('persists { kind: "home" } in lastExplorerRoute across reloads', () => {
+    const prefs = useExplorerLayoutPrefs();
+    prefs.setLastExplorerRoute({ kind: 'home' });
+    expect(prefs.lastExplorerRoute.value).toEqual({ kind: 'home' });
+
+    resetExplorerLayoutPrefs(false);
+    const reloaded = useExplorerLayoutPrefs();
+    expect(reloaded.lastExplorerRoute.value).toEqual({ kind: 'home' });
+  });
+
   it('persists lastExplorerRoute, showFilesInTree, gallery zoom/aspect, and journal position', () => {
     const prefs = useExplorerLayoutPrefs();
     prefs.setLastExplorerRoute({ kind: 'folder', folderId: 'folder-42' });

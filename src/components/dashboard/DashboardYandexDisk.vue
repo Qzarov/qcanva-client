@@ -115,6 +115,7 @@
               class="subfolder-card"
               :data-yandex-subfolder="folder.path"
               @click="emit('navigate', folder.path)"
+              @contextmenu.prevent.stop="openItemContextMenu($event, folder)"
             >
               <span class="subfolder-card-icon" aria-hidden="true">▤</span>
               <span class="subfolder-card-name">{{ folder.name }}</span>
@@ -148,18 +149,9 @@
               :aria-label="`${isMarkdown(file) ? t('openDocument') : t('folderFileDownload')}: ${file.name}`"
               @click="open(file)"
               @keydown.enter.prevent="open(file)"
+              @contextmenu.prevent.stop="openItemContextMenu($event, file)"
             >
               <div class="card-title card-title-with-icon">
-                <span
-                  class="card-select"
-                  data-select-box
-                  role="checkbox"
-                  tabindex="0"
-                  :aria-checked="selectedKeys?.includes(keyOf(file)) ?? false"
-                  :aria-label="t('selectItem')"
-                  @keydown.enter.prevent.stop="emit('toggle-select', keyOf(file))"
-                  @keydown.space.prevent.stop="emit('toggle-select', keyOf(file))"
-                ><Check :size="12" aria-hidden="true" /></span>
                 <span class="folder-file-kind" aria-hidden="true">
                   <Video v-if="file.mediaType === 'video'" :size="16" />
                   <ImageIcon v-else-if="file.mediaType === 'image'" :size="16" />
@@ -205,12 +197,33 @@
         </template>
       </template>
     </div>
+
+    <ExplorerContextMenu
+      :open="ctxMenu.open"
+      :x="ctxMenu.x"
+      :y="ctxMenu.y"
+      :items="ctxMenu.items"
+      :can-share="ctxCanShare"
+      :can-album="false"
+      :can-favorite="false"
+      :can-move="true"
+      :can-rename="ctxMenu.items.length === 1"
+      :can-download="ctxCanDownload"
+      :can-delete="true"
+      @close="ctxMenu.open = false"
+      @open="onCtxOpen"
+      @share="onCtxShare"
+      @move="onCtxMove"
+      @rename="onCtxRename"
+      @download="onCtxDownload"
+      @delete="onCtxDelete"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { ArrowLeft, Check, Cloud, File as FileIcon, Image as ImageIcon, Play, Plus, Video } from '@lucide/vue';
+import { ArrowLeft, Cloud, File as FileIcon, Image as ImageIcon, Play, Plus, Video } from '@lucide/vue';
 import {
   downloadYandexLink,
   isYandexReconnectError,
@@ -232,6 +245,7 @@ import ResourceIcon from '../ResourceIcon.vue';
 import FilePlaceholder from './FilePlaceholder.vue';
 import { fileInfo, formatFileDateTime, nameParts } from '../../dashboard/file-info';
 import DashboardViewToggle from './DashboardViewToggle.vue';
+import ExplorerContextMenu, { type ExplorerContextMenuItem } from './ExplorerContextMenu.vue';
 
 type SortMode = 'updated-desc' | 'updated-asc' | 'title-asc' | 'title-desc';
 type ViewMode = 'grid' | 'list';
@@ -462,6 +476,85 @@ function toggleMenu(name: string) {
 const closeMenu = (event: MouseEvent) => {
   if (!(event.target as HTMLElement | null)?.closest('.folder-manager-menu, .card-menu, .card-manage')) menu.value = '';
 };
+
+const ctxMenu = reactive<{
+  open: boolean;
+  x: number;
+  y: number;
+  items: ExplorerContextMenuItem[];
+  raw: YandexItem[];
+}>({
+  open: false,
+  x: 0,
+  y: 0,
+  items: [],
+  raw: [],
+});
+
+const ctxCanShare = computed(() => ctxMenu.raw.length === 1 && ctxMenu.raw[0]?.type === 'file');
+const ctxCanDownload = computed(() => ctxMenu.raw.length > 0 && ctxMenu.raw.every((item) => item.type === 'file'));
+
+function openItemContextMenu(event: MouseEvent, item: YandexItem): void {
+  menu.value = '';
+  const key = keyOf(item);
+  let targetItems: YandexItem[];
+  if (item.type === 'file' && props.selectedKeys?.includes(key) && props.selectedKeys.length > 1) {
+    const selectedSet = new Set(props.selectedKeys);
+    targetItems = shownFiles.value.filter((candidate) => selectedSet.has(keyOf(candidate)));
+    if (!targetItems.length) targetItems = [item];
+  } else {
+    targetItems = [item];
+  }
+  ctxMenu.x = event.clientX;
+  ctxMenu.y = event.clientY;
+  ctxMenu.raw = targetItems;
+  ctxMenu.items = targetItems.map((entry) => ({
+    key: keyOf(entry),
+    id: entry.path,
+    name: entry.name,
+    kind: entry.type === 'dir' ? 'folder' : 'yandex-file',
+  }));
+  ctxMenu.open = true;
+}
+
+function findCtxRaw(entry?: ExplorerContextMenuItem): YandexItem | undefined {
+  if (!entry) return undefined;
+  return ctxMenu.raw.find((item) => keyOf(item) === entry.key);
+}
+
+function onCtxOpen(entry: ExplorerContextMenuItem): void {
+  const found = findCtxRaw(entry);
+  if (!found) return;
+  if (found.type === 'dir') emit('navigate', found.path);
+  else open(found);
+}
+
+function onCtxShare(entries: ReadonlyArray<ExplorerContextMenuItem>): void {
+  const found = findCtxRaw(entries[0]);
+  if (found) void copyLink(found);
+}
+
+function onCtxMove(entries: ReadonlyArray<ExplorerContextMenuItem>): void {
+  const paths = entries.map((entry) => findCtxRaw(entry)?.path).filter((p): p is string => Boolean(p));
+  if (paths.length) move(paths);
+}
+
+function onCtxRename(entry: ExplorerContextMenuItem): void {
+  const found = findCtxRaw(entry);
+  if (found) void rename(found);
+}
+
+async function onCtxDownload(entries: ReadonlyArray<ExplorerContextMenuItem>): Promise<void> {
+  for (const entry of entries) {
+    const found = findCtxRaw(entry);
+    if (found && found.type === 'file') await download(found);
+  }
+}
+
+function onCtxDelete(entries: ReadonlyArray<ExplorerContextMenuItem>): void {
+  const list = entries.map((entry) => findCtxRaw(entry)).filter((x): x is YandexItem => Boolean(x));
+  if (list.length) void remove(list);
+}
 
 /** A picture or a video opens in the viewer; a Markdown file opens as a document; any other file downloads. */
 function open(file: YandexItem) {

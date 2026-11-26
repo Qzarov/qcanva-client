@@ -229,15 +229,17 @@
       :x="ctxMenu.x"
       :y="ctxMenu.y"
       :items="ctxMenu.items"
-      :can-move="false"
-      :can-delete="false"
+      :can-move="ctxCanMove"
+      :can-delete="ctxCanDelete"
       :can-rename="false"
       :is-favorite="ctxAllFavorite"
       @close="ctxMenu.open = false"
       @open="onCtxOpen"
       @share="openMembers"
       @toggle-favorite="onCtxToggleFavorite"
+      @move="onCtxMove"
       @download="onCtxDownload"
+      @delete="onCtxDelete"
     />
 
     <SpaceAddDialog v-if="addDialogOpen" @pick="pickSource" @close="addDialogOpen = false" />
@@ -282,6 +284,7 @@ import { useSpaces } from '../../composables/useSpaces';
 import { useYandexDisk } from '../../composables/useYandexDisk';
 import { vFileInfo } from '../../directives/fileInfo';
 import { fileInfo, nameParts } from '../../dashboard/file-info';
+import { partitionDeletableSpaceItems, partitionMovableSpaceItems } from '../../dashboard/space-selection';
 import { selectRange, toggleSelection } from '../../dashboard/selection';
 import { hasCardPicture, isMarkdownFile, isPictureFile, isVideoFile } from '../../dashboard/thumb-kinds';
 import { fetchMarkdownTextFromUrl } from '../../documents/markdown-viewer';
@@ -335,6 +338,8 @@ const emit = defineEmits<{
   space: [space: SpaceDetails | null];
   /** The user is no longer in the space (left it, or deleted it). */
   gone: [];
+  move: [keys: string[]];
+  delete: [keys: string[]];
   feedback: [type: 'success' | 'error', message: string];
 }>();
 
@@ -660,6 +665,16 @@ const ctxAllFavorite = computed(() =>
   ctxMenu.items.length > 0 && ctxMenu.items.every((item) => isFavorite(item.key)),
 );
 
+const ctxCanMove = computed(() =>
+  props.folderOptions.length > 0
+  && partitionMovableSpaceItems(ctxMenu.items, space.value?.role, props.meId).movable.length > 0,
+);
+
+const ctxCanDelete = computed(() => {
+  const { docs, files } = partitionDeletableSpaceItems(ctxMenu.items, space.value?.role, props.meId);
+  return docs.length + files.length > 0;
+});
+
 function openItemContextMenu(event: MouseEvent, item: SpaceFeedItem): void {
   const key = selectKeyOf(item);
   let selectedItems: SpaceFeedItem[];
@@ -714,6 +729,14 @@ async function onCtxDownload(entries: ReadonlyArray<ExplorerContextMenuItem>): P
     const found = shown.value.find((item) => item.key === entry.key);
     if (found) await download(found);
   }
+}
+
+function onCtxMove(entries: ReadonlyArray<ExplorerContextMenuItem>): void {
+  emit('move', entries.map((entry) => entry.key));
+}
+
+function onCtxDelete(entries: ReadonlyArray<ExplorerContextMenuItem>): void {
+  emit('delete', entries.map((entry) => entry.key));
 }
 
 // ----- opening

@@ -124,7 +124,7 @@
       :album-view-mode="albumViewMode"
       :view-toggle-mode="headroomViewToggleMode"
       :can-go-back="activeSection.kind === 'folder' || activeSection.kind === 'yandex' || activeSection.kind === 'space'"
-      :can-go-up="activeSection.kind === 'folder' || (activeSection.kind === 'yandex' && yandexPath !== '/')"
+      :can-go-up="activeSection.kind === 'folder' || activeSection.kind === 'space' || activeSection.kind === 'yandex'"
       :show-nav-arrows="true"
       :show-mobile-menu-button="true"
       :path-error="pathBarError"
@@ -687,6 +687,8 @@
           @items="spaceFeedItems = $event"
           @space="activeSpace = $event"
           @gone="leaveSpaceSection"
+          @move="openBulkMoveModal"
+          @delete="bulkDelete"
           @feedback="setFeedback"
         />
       </section>
@@ -713,7 +715,9 @@
           :hide-internal-tabs="true"
           @focus-photo="onGalleryFocusPhoto"
           @clear-album="onGalleryClearAlbum"
+          @select-album="onGallerySelectAlbum"
           @share-album="openAlbumShareById"
+          @share-photos="onGallerySharePhotos"
           @open-trash="onGalleryOpenTrash"
           @update:counts="gallerySidebarCounts = $event"
           @open-folder="(folderId) => selectFolder(folderId)"
@@ -931,7 +935,7 @@
         data-explorer-fab
         :aria-label="t('add')"
         :title="t('add')"
-        @click.stop="openAddDialog({ folderId: activeFolder?.id })"
+        @click.stop="openAddDialog({ folderId: activeSection.kind === 'folder' ? activeFolder?.id : undefined })"
       ><Plus :size="24" aria-hidden="true" /></button>
       <ExplorerMobileTabBar
         v-if="isLoggedIn"
@@ -4857,7 +4861,10 @@ export default defineComponent({
       if (section.kind === 'folder') {
         selectFolder(section.folderId);
       } else {
-        if (section.kind !== 'recent' && section.kind !== 'home' && section.kind !== 'gallery') {
+        if (section.kind === 'home') {
+          selectedFolderId.value = '';
+        }
+        if (section.kind !== 'recent' && section.kind !== 'gallery') {
           layoutPrefs.setLastExplorerRoute(section);
         }
         closeCardMenu();
@@ -4889,13 +4896,27 @@ export default defineComponent({
       scrollToFeedSection(target);
     };
 
-    /** One level up: parent folder, or Home from a top-level folder. False when not in a folder. */
+    /** One level up: parent folder, Q Space/home from a top-level folder, parent Yandex path, or Albums from a Space. */
     const goToParentFolder = (): boolean => {
-      const folder = activeSection.value.kind === 'folder' ? activeFolder.value : null;
-      if (!folder) return false;
-      if (folder.parentId) selectFolder(folder.parentId);
-      else selectDashboardSection({ kind: 'recent' });
-      return true;
+      if (activeSection.value.kind === 'folder') {
+        const folder = activeFolder.value;
+        if (!folder) return false;
+        if (folder.parentId) selectFolder(folder.parentId);
+        else if (folder.role && folder.role !== 'owner') selectDashboardSection({ kind: 'shared' });
+        else selectDashboardSection({ kind: 'home' });
+        return true;
+      }
+      if (activeSection.value.kind === 'space') {
+        void onSidebarSelect({ kind: 'spaces' });
+        return true;
+      }
+      if (activeSection.value.kind === 'yandex') {
+        const cur = activeSection.value.path || '/';
+        if (cur !== '/') openYandexPath(yandexParentPath(cur));
+        else selectDashboardSection({ kind: 'home' });
+        return true;
+      }
+      return false;
     };
     // Android's system Back inside a folder does the same as the folder's
     // own back arrow, rather than main.ts offering to exit the app.
@@ -4908,8 +4929,8 @@ export default defineComponent({
 
     // ----- T-021 / T-018 Explorer Activity Bar, Editable Path, Table, Favorites, Group DnD, Context Menu & Gallery -----
     const sidebarPanelMode = computed<ExplorerSidebarPanel>(() => {
-      if (activeSection.value.kind === 'gallery') return 'gallery';
       if (searchPanelActive.value) return 'search';
+      if (activeSection.value.kind === 'gallery') return 'gallery';
       return 'explorer';
     });
 
@@ -4917,7 +4938,7 @@ export default defineComponent({
       if (searchPanelActive.value) return 'search';
       if (activeSection.value.kind === 'gallery') return 'gallery';
       if (activeSection.value.kind === 'trash') return 'trash';
-      if (activeSection.value.kind === 'recent' || activeSection.value.kind === 'home') return 'home';
+      if (activeSection.value.kind === 'recent') return 'home';
       return 'explorer';
     });
 
@@ -4948,6 +4969,8 @@ export default defineComponent({
     const onSelectActivity = (activity: ExplorerActivityId) => {
       if (activity === 'search') {
         searchPanelActive.value = true;
+        if (sidebarCollapsed.value) onSidebarCollapsedChange(false);
+        if (!matchesMedia(SIDEBAR_DESKTOP_QUERY)) openMobileSidebar();
         return;
       }
       searchPanelActive.value = false;
@@ -5021,6 +5044,10 @@ export default defineComponent({
         setFeedback('error', t('explorerPathNotFound'));
         return;
       }
+      if (target.kind === 'recent' || target.kind === 'spaces' || target.kind === 'interactive') {
+        void onSidebarSelect(target);
+        return;
+      }
       selectDashboardSection(target);
     };
 
@@ -5032,6 +5059,7 @@ export default defineComponent({
         event.preventDefault();
         searchPanelActive.value = true;
         if (sidebarCollapsed.value) onSidebarCollapsedChange(false);
+        if (!matchesMedia(SIDEBAR_DESKTOP_QUERY)) openMobileSidebar();
       } else if (key === 'l' && activeSection.value.kind !== 'gallery') {
         event.preventDefault();
         headroomBarRef.value?.startPathEdit();
@@ -5849,7 +5877,7 @@ export default defineComponent({
         if (f) void openFolderShareModal(f);
       } else if ((first.kind === 'drive-file' || first.kind === 'file') && first.id) {
         const file = activeDriveFiles.value.find((f) => f.id === first.id);
-        const folderId = file?.folderId || activeFolder.value?.id;
+        const folderId = file?.folderId || (activeSection.value.kind === 'folder' ? activeFolder.value?.id : undefined);
         const folder = folderId ? allFolderSummaries.value.find((x) => x.id === folderId) : null;
         if (folder) {
           void openFolderShareModal(folder);
@@ -5868,13 +5896,14 @@ export default defineComponent({
 
     const onCtxMenuAddToAlbum = (albumId: string | undefined, items: readonly ExplorerContextMenuItem[]) => {
       if (!albumId) return;
+      const fallbackFolderId = activeSection.value.kind === 'folder' ? (activeFolder.value?.id ?? null) : null;
       void onDropGroupToAlbum(albumId, {
         source: 'explorer',
         items: items.map((i) => ({
           key: i.key,
           id: i.id || '',
           kind: i.kind || 'file',
-          folderId: i.kind === 'folder' ? (i.id ?? null) : (activeFolder.value?.id ?? null),
+          folderId: i.kind === 'folder' ? (i.id ?? null) : fallbackFolderId,
         })),
         keys: items.map((i) => i.key),
         count: items.length,
@@ -6051,6 +6080,23 @@ export default defineComponent({
 
     const onGalleryClearAlbum = () => {
       galleryAlbumId.value = null;
+    };
+
+    const onGallerySharePhotos = async (fileIds: string[]) => {
+      if (!fileIds.length) return;
+      try {
+        const dateLabel = new Date().toLocaleDateString(locale.value === 'ru' ? 'ru-RU' : 'en-US', {
+          day: 'numeric',
+          month: 'short',
+        });
+        const prefix = locale.value === 'ru' ? 'Общие фото' : 'Shared photos';
+        const created = await spacesApi.create(`${prefix} (${dateLabel})`);
+        await spacesApi.addItems(created.id, fileIds);
+        void loadSpaces(true);
+        sharingAlbum.value = await spacesApi.get(created.id).catch(() => created);
+      } catch (err) {
+        setFeedback('error', err instanceof Error && err.message ? err.message : t('spaceActionFailed'));
+      }
     };
 
     const onGallerySelectFolder = (folderId: string) => {
@@ -6440,6 +6486,7 @@ export default defineComponent({
       onGalleryOpenTrash,
       onGallerySelectAlbum,
       onGalleryClearAlbum,
+      onGallerySharePhotos,
       onGallerySelectFolder,
       onGallerySelectFile,
       onGalleryFocusPhoto,

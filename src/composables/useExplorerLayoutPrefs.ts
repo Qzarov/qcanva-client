@@ -121,7 +121,8 @@ function parseLastExplorerRoute(raw: string | null): DashboardSection | null {
       return { kind: 'space', spaceId: parsed.spaceId };
     }
     if (
-      parsed.kind === 'shared'
+      parsed.kind === 'home'
+      || parsed.kind === 'shared'
       || parsed.kind === 'public'
       || parsed.kind === 'trash'
       || parsed.kind === 'spaces'
@@ -233,7 +234,7 @@ export function setSidebarWidth(width: number): void {
 
 export function setLastExplorerRoute(section: DashboardSection): void {
   hydrateFromStorage();
-  if (section.kind === 'recent' || section.kind === 'home' || section.kind === 'gallery') return;
+  if (section.kind === 'recent' || section.kind === 'gallery') return;
   lastExplorerRoute.value = section;
   try {
     writeString(PREF_KEYS.lastExplorerRoute, JSON.stringify(section));

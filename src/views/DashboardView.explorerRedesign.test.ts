@@ -148,6 +148,16 @@ vi.mock('../api/spaces', () => ({
       updatedAt: '2026-11-20T10:00:00Z',
     })),
     rename: vi.fn(async (id: string, name: string) => ({ id, name })),
+    create: vi.fn(async (name: string) => ({
+      id: 'alb-shared-new',
+      name,
+      role: 'owner',
+      owner: { id: 'user-1', name: 'Vlad', email: 'vlad@example.com' },
+      members: [],
+      sources: [],
+      createdAt: '2026-11-26T10:00:00Z',
+      updatedAt: '2026-11-26T10:00:00Z',
+    })),
     addItems: vi.fn(async () => ({ added: 1 })),
     addQspaceFolder: vi.fn(async () => ({})),
     feed: vi.fn(async () => ({ items: [], total: 0 })),
@@ -174,8 +184,8 @@ function mountDashboard() {
         RouterLink: { props: ['to'], template: '<a :href="typeof to === \'string\' ? to : \'\'"><slot /></a>' },
         DrivePhotos: {
           props: ['activeSection', 'externalAlbumId', 'externalAlbumMembersCount'],
-          emits: ['clear-album', 'share-album', 'open-trash', 'update:counts'],
-          template: '<div data-drive-photos-stub :data-album="externalAlbumId ?? \'\'" :data-section="activeSection"><button type="button" data-stub-clear-album @click="$emit(\'clear-album\')">Clear</button><button type="button" data-stub-open-trash @click="$emit(\'open-trash\')">Trash</button>Gallery</div>',
+          emits: ['clear-album', 'select-album', 'share-album', 'share-photos', 'open-trash', 'update:counts'],
+          template: '<div data-drive-photos-stub :data-album="externalAlbumId ?? \'\'" :data-section="activeSection"><button type="button" data-stub-clear-album @click="$emit(\'clear-album\')">Clear</button><button type="button" data-stub-select-album @click="$emit(\'select-album\', \'alb-1\')">SelectAlbum</button><button type="button" data-stub-share-photos @click="$emit(\'share-photos\', [\'f0\', \'f1\'])">SharePhotos</button><button type="button" data-stub-open-trash @click="$emit(\'open-trash\')">Trash</button>Gallery</div>',
         },
         DashboardTrash: { template: '<div data-dashboard-view="trash">Trash</div>' },
         DashboardYandexDisk: { template: '<div data-dashboard-view="yandex">Yandex</div>' },
@@ -695,5 +705,117 @@ describe('DashboardView T-021 + T-018 Explorer Redesign Integration', () => {
     expect(favBox.find('[data-favorite-tile="album:alb-1"]').exists()).toBe(true);
     expect(favBox.find('[data-favorite-tile="canvas:c1"]').exists()).toBe(true);
     expect(favBox.text()).toContain('Маршрут');
+  });
+
+  it('opens mobile drawer and expands collapsed sidebar on Поиск, and prioritizes search sidebar over Gallery mode', async () => {
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    // Collapse sidebar and enter Gallery mode
+    await wrapper.get('[data-activity="home"]').trigger('click');
+    await nextTick();
+    expect(useExplorerLayoutPrefs().sidebarCollapsed.value).toBe(true);
+
+    await wrapper.get('[data-activity="gallery"]').trigger('click');
+    await nextTick();
+    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'gallery' });
+    expect((wrapper.vm as any).sidebarPanelMode).toBe('gallery');
+
+    // Tapping mobile Поиск tab expands collapsed sidebar, opens mobile drawer, and renders ExplorerSearchSidebar over Gallery
+    await wrapper.get('[data-mobile-tab="search"]').trigger('click');
+    await nextTick();
+    expect(useExplorerLayoutPrefs().sidebarCollapsed.value).toBe(false);
+    expect((wrapper.vm as any).mobileSidebarOpen).toBe(true);
+    expect(wrapper.get('.dashboard-sidebar').classes()).toContain('mobile-open');
+    expect((wrapper.vm as any).sidebarPanelMode).toBe('search');
+    expect(wrapper.find('[data-explorer-search]').exists()).toBe(true);
+
+    // Switching back to Галерея / Главная clears searchPanelActive
+    await wrapper.get('[data-activity="gallery"]').trigger('click');
+    await nextTick();
+    expect((wrapper.vm as any).sidebarPanelMode).toBe('gallery');
+  });
+
+  it('highlights Проводник on Q Space/home, persists home in lastExplorerRoute, avoids stale FAB folderId, and navigates ↑ correctly', async () => {
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    // Select a subfolder first (so selectedFolderId was set), then navigate to Q Space/home
+    await wrapper.get('[data-dashboard-folder="folder-home"]').trigger('click');
+    await nextTick();
+    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'folder', folderId: 'folder-home' });
+
+    await wrapper.get('[data-home-link]').trigger('click');
+    await nextTick();
+    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'home' });
+
+    // Activity Bar & Mobile Tab Bar highlight 'explorer' (NOT 'home') and canGoUp is false
+    expect((wrapper.vm as any).activeActivity).toBe('explorer');
+    expect((wrapper.vm as any).mobileTabActivity).toBe('explorer');
+    expect(wrapper.get('[data-activity="explorer"]').classes()).toContain('active');
+    expect(wrapper.get('[data-activity="home"]').classes()).not.toContain('active');
+    expect(wrapper.get('[data-nav-up]').attributes('disabled')).toBeDefined();
+
+    // Clicking + FAB on Q Space/home opens AddDialog with empty folderId (not stale 'folder-home')
+    await wrapper.get('[data-explorer-fab]').trigger('click');
+    await nextTick();
+    expect((wrapper.vm as any).addDialog.open).toBe(true);
+    expect((wrapper.vm as any).addDialog.folderId).toBe('');
+    (wrapper.vm as any).closeAddDialog();
+
+    // lastExplorerRoute saves { kind: 'home' } across Главная -> Проводник switch
+    expect(useExplorerLayoutPrefs().lastExplorerRoute.value).toEqual({ kind: 'home' });
+    await wrapper.get('[data-activity="home"]').trigger('click');
+    await nextTick();
+    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'recent' });
+    await wrapper.get('[data-activity="explorer"]').trigger('click');
+    await nextTick();
+    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'home' });
+
+    // ↑ Up from top-level folder navigates to Q Space/home (not recent)
+    await wrapper.get('[data-dashboard-folder="folder-home"]').trigger('click');
+    await nextTick();
+    await wrapper.get('[data-nav-up]').trigger('click');
+    await nextTick();
+    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'home' });
+
+    // ↑ Up from Yandex nested path /a/b goes to /a, and from / goes to Q Space/home
+    (wrapper.vm as any).openYandexPath('/a/b');
+    await nextTick();
+    expect(wrapper.get('[data-nav-up]').attributes('disabled')).toBeUndefined();
+    await wrapper.get('[data-nav-up]').trigger('click');
+    await nextTick();
+    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'yandex', path: '/a' });
+    await wrapper.get('[data-nav-up]').trigger('click');
+    await nextTick();
+    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'yandex', path: '/' });
+    await wrapper.get('[data-nav-up]').trigger('click');
+    await nextTick();
+    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'home' });
+
+    // ↑ Up from Space is enabled and navigates back to Albums feed
+    (wrapper.vm as any).selectDashboardSection({ kind: 'space', spaceId: 'alb-1' });
+    await nextTick();
+    expect(wrapper.get('[data-nav-up]').attributes('disabled')).toBeUndefined();
+    await wrapper.get('[data-nav-up]').trigger('click');
+    await flushPromises();
+    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'recent' });
+  });
+
+  it('creates shared album + opens AlbumShareDialog on DrivePhotos share-photos and syncs album on select-album', async () => {
+    dashboardRoute.query = { activity: 'gallery' };
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    await wrapper.get('[data-stub-select-album]').trigger('click');
+    await nextTick();
+    expect((wrapper.vm as any).galleryAlbumId).toBe('alb-1');
+    expect(wrapper.get('[data-drive-photos-stub]').attributes('data-album')).toBe('alb-1');
+
+    await wrapper.get('[data-stub-share-photos]').trigger('click');
+    await flushPromises();
+    expect(spacesApi.create).toHaveBeenCalledTimes(1);
+    expect(spacesApi.addItems).toHaveBeenCalledWith('alb-shared-new', ['f0', 'f1']);
+    expect((wrapper.vm as any).sharingAlbum?.id).toBe('alb-shared-new');
   });
 });

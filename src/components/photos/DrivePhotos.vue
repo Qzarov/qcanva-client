@@ -173,7 +173,7 @@
           <Heart :size="16" :fill="allTargetsFavorite ? 'currentColor' : 'none'" aria-hidden="true" />
         </button>
 
-        <form ref="searchWrapEl" class="dp-search" role="search" data-photos-search @submit.prevent="runSearchNow">
+        <form ref="searchWrapEl" class="dp-search" role="search" data-photos-search @submit.prevent="runSearchNow" @keydown.esc="onSearchEscape">
           <Search :size="14" class="dp-search-icon" aria-hidden="true" />
           <input
             v-model="query"
@@ -185,7 +185,6 @@
             data-photos-search-input
             @focus="suggestOpen = true"
             @click="suggestOpen = true"
-            @keydown.esc="onSearchEscape"
           />
           <button
             v-if="query"
@@ -322,6 +321,7 @@
           @contextmenu="onFeedContextMenu"
           @toggle-favorite="toggleSingleFavorite"
           @summary="onFeedSummary"
+          @units-loaded="onFeedUnitsLoaded"
         />
       </div>
 
@@ -580,6 +580,8 @@ const emit = defineEmits<{
   (e: 'openFolder', folderId: string, fileId: string): void;
   (e: 'focus-photo', item: FeedItem): void;
   (e: 'share-album', id: string): void;
+  (e: 'share-photos', ids: string[]): void;
+  (e: 'select-album', albumId: string): void;
   (e: 'clear-album'): void;
   (e: 'open-trash'): void;
   (e: 'update:counts', counts: GallerySidebarCounts): void;
@@ -734,6 +736,9 @@ function selectSuggestedTag(tag: string): void {
 
 function toggleSuggestedPerson(personId: string): void {
   suggestOpen.value = false;
+  if (query.value !== '' || searchQuery.value !== '') {
+    clearSearch();
+  }
   const exists = selectedPeople.value.includes(personId);
   selectedPeople.value = exists
     ? selectedPeople.value.filter((id) => id !== personId)
@@ -773,8 +778,9 @@ const showPeopleGrid = computed(
     && !searchActive.value,
 );
 
-const derivedPeople = computed<GalleryPerson[]>(() => {
-  if (props.people !== undefined) return [...props.people];
+const cachedFeedPeople = ref<GalleryPerson[]>([]);
+
+function computePeopleFromFeed(): GalleryPerson[] {
   const byOwner = new Map<string, GalleryPerson>();
   for (const it of feedRef.value?.orderedItems() ?? []) {
     if (!it.share?.ownerId && !it.share?.ownerName) continue;
@@ -793,6 +799,13 @@ const derivedPeople = computed<GalleryPerson[]>(() => {
     }
   }
   return [...byOwner.values()];
+}
+
+const derivedPeople = computed<GalleryPerson[]>(() => {
+  if (props.people !== undefined) return [...props.people];
+  const live = computePeopleFromFeed();
+  if (live.length > 0) return live;
+  return cachedFeedPeople.value;
 });
 
 const resolvedPeople = computed(() => derivedPeople.value);
@@ -818,6 +831,11 @@ watch(
     if (sec === prev) return;
     clearSearch();
     clearSelection();
+    if (sec === 'trash') {
+      focusedId.value = null;
+      panelId.value = null;
+      panelOpen.value = false;
+    }
     applySectionFilter(sec);
   },
 );
@@ -948,9 +966,12 @@ const ctxMenu = ref<{ x: number; y: number; item: FeedItem; targets: string[] } 
 const ctxMenuEl = ref<HTMLElement | null>(null);
 const ctxAlbumsOpen = ref(false);
 const ctxAlbumsList = ref<Album[]>([]);
+const ctxActionTargets = ref<string[] | null>(null);
 
 const moveTargetIds = computed(() =>
-  selected.value.size >= 2 ? [...selected.value] : (ctxMenu.value?.targets ?? activeTargetIds.value),
+  ctxMenu.value?.targets
+  ?? ctxActionTargets.value
+  ?? (selected.value.size >= 2 ? [...selected.value] : activeTargetIds.value),
 );
 
 const actions = usePhotoSelectionActions({
@@ -989,6 +1010,7 @@ watch(
   moveOpen,
   (open) => {
     if (open) moveExcl.value = actions.moveExclusion();
+    else ctxActionTargets.value = null;
   },
   { flush: 'sync' },
 );
@@ -1074,7 +1096,7 @@ async function shareAction(): Promise<void> {
   if (ids.length === 1 && first) {
     await shareSingleItem(first);
   } else {
-    toast.show(`${t('galleryShare')} (${ids.length})`, 'info');
+    emit('share-photos', ids);
   }
 }
 
@@ -1090,7 +1112,7 @@ async function ctxShare(): Promise<void> {
   const item = ctxMenu.value?.item;
   closeCtxMenu();
   if (ids.length === 1 && item) await shareSingleItem(item);
-  else if (ids.length > 1) toast.show(`${t('galleryShare')} (${ids.length})`, 'info');
+  else if (ids.length > 1) emit('share-photos', ids);
 }
 
 async function ctxToggleAlbumSubmenu(): Promise<void> {
@@ -1106,49 +1128,78 @@ async function ctxToggleAlbumSubmenu(): Promise<void> {
 
 async function ctxAddToAlbum(albId: string): Promise<void> {
   const ids = ctxTargetIds.value;
+  const targetAlbumName = ctxAlbumsList.value.find((a) => a.id === albId)?.name ?? '';
   closeCtxMenu();
   if (ids.length === 0) return;
   try {
-    await addGalleryAlbumItems(albId, ids);
+    const added = await addGalleryAlbumItems(albId, ids);
+    if (added <= 0) {
+      toast.show(fmt('photosAlreadyInAlbumToast', { album: targetAlbumName }), 'info');
+      return;
+    }
+    const vars = { n: added, total: ids.length, album: targetAlbumName };
+    toast.show(
+      fmt(added < ids.length ? 'photosAddedPartialToast' : 'photosAddedToAlbumToast', vars),
+      'success',
+    );
+    if (!isPhotosMock()) void useSpaces().load(true);
+    feedRef.value?.refreshAlbums?.();
     void feedRef.value?.refresh();
+    panelEpoch.value++;
   } catch {
     toast.show(t('photosAlbumAddFailedToast'), 'error');
   }
 }
 
 async function ctxCreateAlbumAndAdd(): Promise<void> {
-  const ids = ctxTargetIds.value;
+  const ids = [...ctxTargetIds.value];
   closeCtxMenu();
   if (ids.length === 0) return;
-  if (selected.value.size < 2 && ids.length === 1) selected.value = new Set(ids);
-  await actions.createAlbumAndAdd();
+  ctxActionTargets.value = ids;
+  try {
+    await actions.createAlbumAndAdd();
+  } finally {
+    ctxActionTargets.value = null;
+  }
 }
 
 async function ctxRemoveFromAlbum(): Promise<void> {
-  const ids = ctxTargetIds.value;
+  const ids = [...ctxTargetIds.value];
   closeCtxMenu();
   if (ids.length === 0) return;
-  if (selected.value.size < 2 && ids.length === 1) selected.value = new Set(ids);
-  await actions.removeFromAlbum();
+  ctxActionTargets.value = ids;
+  try {
+    await actions.removeFromAlbum();
+  } finally {
+    ctxActionTargets.value = null;
+  }
 }
 
 function ctxOpenMove(): void {
-  const ids = ctxTargetIds.value;
+  const ids = [...ctxTargetIds.value];
   closeCtxMenu();
   if (ids.length === 0) return;
-  if (selected.value.size < 2 && ids.length === 1) selected.value = new Set(ids);
+  ctxActionTargets.value = ids;
   actions.openMove();
 }
 
-async function ctxDownload(): Promise<void> {
-  const item = ctxMenu.value?.item;
-  closeCtxMenu();
-  if (!item) return;
-  try {
-    await downloadDriveFile(item.fileId, item.name);
-  } catch {
+async function downloadFeedItems(items: readonly FeedItem[]): Promise<void> {
+  if (items.length === 0) return;
+  const results = await Promise.allSettled(items.map((it) => downloadDriveFile(it.fileId, it.name)));
+  if (results.some((r) => r.status === 'rejected')) {
     toast.show(t('photosDownloadError'), 'error');
   }
+}
+
+async function ctxDownload(): Promise<void> {
+  const ids = [...ctxTargetIds.value];
+  const fallbackItem = ctxMenu.value?.item;
+  closeCtxMenu();
+  const targets = ids
+    .map((id) => findLoadedItem(id) ?? (fallbackItem?.fileId === id ? fallbackItem : undefined))
+    .filter((x): x is FeedItem => Boolean(x));
+  if (targets.length === 0 && fallbackItem) targets.push(fallbackItem);
+  await downloadFeedItems(targets);
 }
 
 async function deleteFileIds(ids: string[]): Promise<void> {
@@ -1167,12 +1218,7 @@ async function ctxDelete(): Promise<void> {
 }
 
 async function downloadSelectedAction(): Promise<void> {
-  const items = selectedFeedItems.value;
-  if (items.length === 0) return;
-  const results = await Promise.allSettled(items.map((it) => downloadDriveFile(it.fileId, it.name)));
-  if (results.some((r) => r.status === 'rejected')) {
-    toast.show(t('photosDownloadError'), 'error');
-  }
+  await downloadFeedItems(selectedFeedItems.value);
 }
 
 async function deleteSelectedAction(): Promise<void> {
@@ -1189,8 +1235,16 @@ function onDocPointerDown(e: PointerEvent): void {
   }
 }
 
+function onWindowKeydown(e: KeyboardEvent): void {
+  if (e.key === 'Escape' && ctxMenu.value) {
+    e.preventDefault();
+    closeCtxMenu();
+  }
+}
+
 onMounted(() => {
   document.addEventListener('pointerdown', onDocPointerDown);
+  window.addEventListener('keydown', onWindowKeydown);
   void refreshSidebarCounts();
 });
 
@@ -1209,6 +1263,7 @@ const selectedFeedItems = computed<FeedItem[]>(() => {
 const isPanelVisible = computed(() => panelOpen.value && (Boolean(panelId.value) || selectedFeedItems.value.length > 1));
 
 let lastFeedTotal: number | undefined;
+let lastSidebarCounts: GallerySidebarCounts = {};
 
 async function refreshSidebarCounts(): Promise<void> {
   const counts: GallerySidebarCounts = {};
@@ -1272,12 +1327,23 @@ async function refreshSidebarCounts(): Promise<void> {
     }
   }
 
+  lastSidebarCounts = counts;
   emit('update:counts', counts);
 }
 
 function onFeedSummary(total: number): void {
   lastFeedTotal = total;
   void refreshSidebarCounts();
+}
+
+function onFeedUnitsLoaded(): void {
+  const live = computePeopleFromFeed();
+  if (live.length > 0) cachedFeedPeople.value = live;
+  const nextPeople = resolvedPeople.value.length;
+  if (lastSidebarCounts.people !== nextPeople) {
+    lastSidebarCounts = { ...lastSidebarCounts, people: nextPeople };
+    emit('update:counts', { ...lastSidebarCounts });
+  }
 }
 
 function onTrashRestored(): void {
@@ -1450,6 +1516,7 @@ function onOpenAlbum(id: string): void {
   albumName.value = '';
   clearSelection();
   void loadAlbumName(id);
+  emit('select-album', id);
 }
 
 function onPanelChanged(change: { fileId: string; favorite?: boolean; albumIds?: string[] }): void {
@@ -1470,6 +1537,7 @@ function onPanelChanged(change: { fileId: string; favorite?: boolean; albumIds?:
 onBeforeUnmount(() => {
   stopDrag?.();
   document.removeEventListener('pointerdown', onDocPointerDown);
+  window.removeEventListener('keydown', onWindowKeydown);
   cancelSearchTimer();
   searchGen++;
 });

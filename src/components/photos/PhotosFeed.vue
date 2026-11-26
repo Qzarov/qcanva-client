@@ -85,6 +85,7 @@ const emit = defineEmits<{
   (e: 'toggle-favorite', item: FeedItem): void;
   (e: 'zoom', tileHeight: number): void;
   (e: 'summary', totalCount: number): void;
+  (e: 'units-loaded'): void;
 }>();
 
 /** Thumbnail row height fallback per discrete tile preset, px. */
@@ -393,6 +394,7 @@ function loadUnit(group: string, sub?: string): Promise<void> {
       items.value = next;
       cursors.set(key, res.nextCursor ?? null);
       relayout();
+      emit('units-loaded');
     } catch {
       if (current()) failed.add(key);
     } finally {

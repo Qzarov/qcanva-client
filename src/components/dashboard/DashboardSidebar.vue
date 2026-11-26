@@ -478,7 +478,7 @@ const resolvedActivity = computed<ExplorerActivityId>(() => {
   if (resolvedPanelMode.value === 'search') return 'search';
   if (resolvedPanelMode.value === 'gallery') return 'gallery';
   if (props.activeSection.kind === 'trash') return 'trash';
-  if (props.activeSection.kind === 'home' || props.activeSection.kind === 'recent') return 'home';
+  if (props.activeSection.kind === 'recent') return 'home';
   return 'explorer';
 });
 

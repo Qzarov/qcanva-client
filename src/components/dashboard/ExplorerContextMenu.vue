@@ -64,6 +64,7 @@
       </button>
 
       <button
+        v-if="canShare"
         type="button"
         class="explorer-ctx-item"
         role="menuitem"
@@ -74,7 +75,7 @@
         <span>{{ shareLabel }}</span>
       </button>
 
-      <div class="explorer-ctx-album-wrap">
+      <div v-if="canAlbum" class="explorer-ctx-album-wrap">
         <button
           type="button"
           class="explorer-ctx-item"
@@ -106,6 +107,7 @@
       </div>
 
       <button
+        v-if="canFavorite"
         type="button"
         class="explorer-ctx-item"
         role="menuitem"
@@ -143,6 +145,7 @@
       </button>
 
       <button
+        v-if="canDownload"
         type="button"
         class="explorer-ctx-item"
         role="menuitem"
@@ -212,17 +215,25 @@ const props = withDefaults(defineProps<{
   y: number;
   items?: ReadonlyArray<ExplorerContextMenuItem>;
   emptyArea?: boolean;
+  canShare?: boolean;
+  canAlbum?: boolean;
+  canFavorite?: boolean;
   canMove?: boolean;
   canDelete?: boolean;
   canRename?: boolean;
+  canDownload?: boolean;
   isFavorite?: boolean;
   albums?: ReadonlyArray<ExplorerContextMenuAlbum>;
 }>(), {
   items: () => [],
   emptyArea: false,
+  canShare: true,
+  canAlbum: true,
+  canFavorite: true,
   canMove: true,
   canDelete: true,
   canRename: true,
+  canDownload: true,
   isFavorite: false,
 });
 

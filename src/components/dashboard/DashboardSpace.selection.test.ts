@@ -146,6 +146,15 @@ describe('DashboardSpace selection', () => {
     expect(wrapper.emitted('update:selectedKeys')).toHaveLength(3);
     expect(wrapper.find('[data-explorer-context-menu]').exists()).toBe(true);
     expect(wrapper.find('[data-ctx-header]').exists()).toBe(true);
+    expect(wrapper.find('[data-ctx-action="move"]').exists()).toBe(true);
+    expect(wrapper.find('[data-ctx-action="delete"]').exists()).toBe(true);
+
+    await wrapper.get('[data-ctx-action="move"]').trigger('click');
+    expect(wrapper.emitted('move')?.[0]).toEqual([['q:text-document:doc-1', 'q:file:f-pdf']]);
+
+    await docCard.trigger('contextmenu');
+    await wrapper.get('[data-ctx-action="delete"]').trigger('click');
+    expect(wrapper.emitted('delete')?.[0]).toEqual([['q:text-document:doc-1', 'q:file:f-pdf']]);
 
     // hideHeader omits .folder-manager-top and exposes header/action methods
     await wrapper.setProps({ hideHeader: true });
