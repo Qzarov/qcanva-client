@@ -128,6 +128,8 @@
       :show-nav-arrows="true"
       :show-mobile-menu-button="true"
       :path-error="pathBarError"
+      v-model:search-query="searchQuery"
+      :search-placeholder="folderSearchPlaceholder"
       @open-mobile-sidebar="openMobileSidebar"
       @go-back="goToParentFolder"
       @go-up="goToParentFolder"
@@ -144,10 +146,19 @@
           :tags="allTagNames"
           :selected-tags="selectedTags"
           :with-files="activeSection.kind === 'folder' || activeSection.kind === 'home'"
+          :sheet="isMobileHeadroom"
           @toggle="toggleToolbarMenu('filter:desktop')"
           @update:types="contentTypes = $event"
           @toggle-tag="toggleSelectedTag"
           @reset="clearTypeAndTagFilters"
+        />
+        <DashboardSortMenu
+          v-if="spaceId === null"
+          :open="openControlMenu === 'sort:desktop'"
+          :mode="sortMode"
+          :sheet="isMobileHeadroom"
+          @toggle="toggleToolbarMenu('sort:desktop')"
+          @select="selectSortMode"
         />
       </template>
       <template #actions>
@@ -330,7 +341,10 @@
         :rows="recentTableRows"
         :selected-keys="selectedKeys"
         :hide-albums="true"
+        :external-sort-mode="sortMode"
+        :external-sort-seq="sortSyncSeq"
         @update:selected-keys="selectedKeys = $event"
+        @update:sort="onExplorerTableSort"
         @open="openExplorerTableRow"
         @contextmenu="onTableRowContextMenu"
       />
@@ -482,7 +496,10 @@
               v-if="explorerViewMode === 'table'"
               :rows="homeRootTableRows"
               :selected-keys="selectedKeys"
+              :external-sort-mode="sortMode"
+              :external-sort-seq="sortSyncSeq"
               @update:selected-keys="selectedKeys = $event"
+              @update:sort="onExplorerTableSort"
               @open="openExplorerTableRow"
               @contextmenu="onTableRowContextMenu"
               @drop-on-folder="(targetRow, payload) => onDropGroupToFolder(targetRow.id, payload)"
@@ -566,7 +583,10 @@
                   v-if="explorerViewMode === 'table'"
                   :rows="activeFolderTableRows"
                   :selected-keys="selectedKeys"
+                  :external-sort-mode="sortMode"
+                  :external-sort-seq="sortSyncSeq"
                   @update:selected-keys="selectedKeys = $event"
+                  @update:sort="onExplorerTableSort"
                   @open="openExplorerTableRow"
                   @contextmenu="onTableRowContextMenu"
                   @drop-on-folder="(targetRow, payload) => onDropGroupToFolder(targetRow.id, payload)"
@@ -739,7 +759,10 @@
           :rows="sharedTableRows"
           :selected-keys="selectedKeys"
           :hide-albums="true"
+          :external-sort-mode="sortMode"
+          :external-sort-seq="sortSyncSeq"
           @update:selected-keys="selectedKeys = $event"
+          @update:sort="onExplorerTableSort"
           @open="openExplorerTableRow"
           @contextmenu="onTableRowContextMenu"
         />
@@ -801,7 +824,10 @@
           :rows="interactiveTableRows"
           :selected-keys="selectedKeys"
           :hide-albums="true"
+          :external-sort-mode="sortMode"
+          :external-sort-seq="sortSyncSeq"
           @update:selected-keys="selectedKeys = $event"
+          @update:sort="onExplorerTableSort"
           @open="openExplorerTableRow"
           @contextmenu="onTableRowContextMenu"
         />
@@ -878,7 +904,10 @@
           :rows="publicTableRows"
           :selected-keys="selectedKeys"
           :hide-albums="true"
+          :external-sort-mode="sortMode"
+          :external-sort-seq="sortSyncSeq"
           @update:selected-keys="selectedKeys = $event"
+          @update:sort="onExplorerTableSort"
           @open="openExplorerTableRow"
           @contextmenu="onTableRowContextMenu"
         />
@@ -1078,12 +1107,12 @@ import { markResourceOpened } from '../composables/useRecentResource';
 import { useRouter } from 'vue-router';
 import { accessRequests, canvas, getCurrentUser, htmlDocuments, interactiveTemplates, isAdmin, isAuthenticated, MAX_DESCRIPTION_LENGTH, recentResources as recentResourcesApi, refreshCurrentUserRole, resourceFolders, tags, textDocuments, type InteractiveTemplate, type ResourceFolderSummary, type ResourceTag } from '../api/client';
 import { useI18n } from '../composables/useI18n';
-import { LAYOUT, matchesMedia } from '../composables/layoutMedia';
+import { LAYOUT, matchesMedia, useMediaQuery } from '../composables/layoutMedia';
 import { useBackHandler } from '../composables/useBackHandler';
 import { useDocumentTitle } from '../composables/useDocumentTitle';
 import DashboardSidebar, { type TreeContextMenuPayload } from '../components/dashboard/DashboardSidebar.vue';
 import ExplorerHeadroomBar, { type ExplorerPathSegment, type HeadroomViewToggleMode } from '../components/dashboard/ExplorerHeadroomBar.vue';
-import ExplorerTableView, { type ExplorerTableRow } from '../components/dashboard/ExplorerTableView.vue';
+import ExplorerTableView, { type ExplorerSortCol, type ExplorerSortDir, type ExplorerTableRow } from '../components/dashboard/ExplorerTableView.vue';
 import ExplorerContextMenu, { type ExplorerContextMenuItem } from '../components/dashboard/ExplorerContextMenu.vue';
 import ExplorerDragBadge from '../components/dashboard/ExplorerDragBadge.vue';
 import ExplorerMobileTabBar, { type MobileTabId } from '../components/dashboard/ExplorerMobileTabBar.vue';
@@ -1091,6 +1120,7 @@ import type { ExplorerActivityId } from '../components/dashboard/ExplorerActivit
 import type { SearchAlbumEntry, SearchFolderEntry, SearchItemEntry } from '../components/dashboard/ExplorerSearchSidebar.vue';
 import AlbumShareDialog from '../components/dashboard/AlbumShareDialog.vue';
 import DashboardFilterMenu from '../components/dashboard/DashboardFilterMenu.vue';
+import DashboardSortMenu from '../components/dashboard/DashboardSortMenu.vue';
 import DrivePhotos from '../components/photos/DrivePhotos.vue';
 import GallerySidebar, { type GallerySection, type GallerySidebarCounts, type GalleryStorageFolder } from '../components/photos/GallerySidebar.vue';
 import { photosApi, type FeedItem as PhotoFeedItem } from '../api/photos';
@@ -1297,6 +1327,7 @@ export default defineComponent({
     ExplorerMobileTabBar,
     AlbumShareDialog,
     DashboardFilterMenu,
+    DashboardSortMenu,
     DrivePhotos,
     GallerySidebar,
     DashboardViewToggle,
@@ -1388,6 +1419,8 @@ export default defineComponent({
       set: (value) => { contentTypes.value = value === 'all' || value === 'mixed' ? [] : [value]; },
     });
     const sortMode = ref<'updated-desc' | 'updated-asc' | 'title-asc' | 'title-desc'>('updated-desc');
+    const sortSyncSeq = ref(0);
+    const isMobileHeadroom = useMediaQuery(LAYOUT.dashboardDrawer);
     const openMenuCanvasId = ref('');
     const openControlMenu = ref('');
     const activeSection = ref<DashboardSection>({ kind: isLoggedIn ? 'recent' : 'public' });
@@ -2012,7 +2045,7 @@ export default defineComponent({
       activeFolder.value
       && !activeFolder.value.items.length
       && !activeFolderFileCount.value
-      && (hasActiveFilter.value || !activeSubfolders.value.length),
+      && !activeSubfolders.value.length,
     ));
     const activeFolder = computed(() => {
       const folder = allFolderSummaries.value.find((item) => item.id === selectedFolderId.value);
@@ -4483,7 +4516,16 @@ export default defineComponent({
 
     const selectSortMode = (mode: typeof sortMode.value) => {
       sortMode.value = mode;
+      sortSyncSeq.value += 1;
       openControlMenu.value = '';
+    };
+
+    const onExplorerTableSort = (col: ExplorerSortCol, dir: ExplorerSortDir) => {
+      if (col === 'name') {
+        sortMode.value = dir === 'asc' ? 'title-asc' : 'title-desc';
+      } else if (col === 'updatedAt') {
+        sortMode.value = dir === 'asc' ? 'updated-asc' : 'updated-desc';
+      }
     };
 
     /**
@@ -4547,8 +4589,10 @@ export default defineComponent({
     const activeSubfolders = computed(() => {
       const parentId = activeFolder.value?.id;
       if (!parentId) return [];
+      const needle = searchQuery.value.trim().toLocaleLowerCase();
       return allResourceFolders.value
         .filter((folder) => (folder.parentId ?? null) === parentId)
+        .filter((folder) => !needle || folder.name.toLocaleLowerCase().includes(needle))
         .map((folder) => ({
           id: folder.id,
           name: folder.name,
@@ -6168,10 +6212,29 @@ export default defineComponent({
 
 
     const folderSearchPlaceholder = computed(() => {
-      if (activeSection.value.kind === 'folder' && activeFolder.value) {
+      const kind = activeSection.value.kind;
+      if (kind === 'folder' && activeFolder.value) {
         return `${t('searchInFolder')} ${activeFolder.value.name}…`;
       }
-      return t('search');
+      if (kind === 'home') {
+        return `${t('searchInFolder')} home…`;
+      }
+      if (kind === 'space' && activeSpace.value) {
+        return `${t('searchInFolder')} ${activeSpace.value.name}…`;
+      }
+      if (kind === 'yandex') {
+        return `${t('searchInFolder')} ${locale.value === 'ru' ? 'Яндекс Диске' : 'Yandex Disk'}…`;
+      }
+      if (kind === 'shared') {
+        return `${t('searchInFolder')} shared…`;
+      }
+      if (kind === 'public') {
+        return `${t('searchInFolder')} public…`;
+      }
+      if (kind === 'recent') {
+        return locale.value === 'ru' ? 'Поиск на Главной…' : 'Search Home…';
+      }
+      return locale.value === 'ru' ? 'Поиск…' : 'Search…';
     });
 
     const renamingId = ref('');
@@ -6372,6 +6435,7 @@ export default defineComponent({
       applyTagSheet,
       toggleMobileSortMenu,
       selectSortMode,
+      onExplorerTableSort,
       folderSearchPlaceholder,
       formatCardDateMobile,
       folderOptions,
@@ -6384,6 +6448,8 @@ export default defineComponent({
       toggleToolbarMenu,
       clearTypeAndTagFilters,
       sortMode,
+      sortSyncSeq,
+      isMobileHeadroom,
       feedback,
       isBusy,
       canSaveFolderModal,

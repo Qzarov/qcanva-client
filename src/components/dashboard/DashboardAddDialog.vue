@@ -89,10 +89,6 @@
         <input ref="input" type="file" multiple :accept="importAccept(importKind)" hidden data-add-input @change="onPicked" />
       </div>
 
-      <p class="dashboard-add-target-note" data-add-target-folder>
-        {{ t('explorerDropZoneTarget').replace('{folder}', resolvedTargetName) }}
-      </p>
-
       <ul v-if="entries.length" class="dashboard-add-files" data-add-files>
         <li v-for="entry in entries" :key="entry.id" :class="{ bad: isBad(entry) }" :data-add-file="entry.file.name">
           <span class="dashboard-add-file-state" aria-hidden="true">
@@ -171,14 +167,6 @@ const emit = defineEmits<{
 const { t } = useI18n();
 
 const folderId = computed(() => props.initialFolderId || '');
-const resolvedTargetName = computed(() => {
-  if (props.targetFolderName) return props.targetFolderName;
-  if (folderId.value) {
-    const found = props.folders.find((f) => f.id === folderId.value);
-    if (found?.name) return found.name;
-  }
-  return t('createInUnsorted');
-});
 
 const expanded = ref<'' | CreateTile>('');
 const namedStep = computed(() => expanded.value !== '' && expanded.value !== 'interactive-template');
@@ -323,12 +311,6 @@ onMounted(() => {
   font-size: 13px;
   font-weight: 600;
   color: var(--ui-text);
-}
-.dashboard-add-target-note {
-  margin: 0;
-  font-size: 11.5px;
-  color: var(--ui-text-secondary);
-  text-align: center;
 }
 @media (max-width: 560px) {
   .dashboard-add-grid-5 {

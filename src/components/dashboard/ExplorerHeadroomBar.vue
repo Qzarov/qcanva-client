@@ -4,7 +4,7 @@
     :class="{ 'is-hidden': headroomHidden, 'is-elevated': elevated }"
     data-headroom-bar
   >
-    <header class="ws-header">
+    <header class="ws-header" :class="{ 'is-mobile-search-open': mobileSearchOpen }">
       <button
         v-if="showMobileMenuButton"
         type="button"
@@ -85,6 +85,63 @@
 
       <div class="explorer-headroom-controls" data-headroom-controls>
         <slot name="filters" />
+
+        <button
+          type="button"
+          class="icon-btn headroom-search-toggle"
+          :class="{ active: mobileSearchOpen || Boolean(searchQuery) }"
+          :aria-label="resolvedSearchPlaceholder"
+          :title="resolvedSearchPlaceholder"
+          :aria-expanded="mobileSearchOpen"
+          data-headroom-search-toggle
+          @click="openMobileSearch"
+        >
+          <Search :size="15" aria-hidden="true" />
+        </button>
+
+        <div
+          class="headroom-search-wrap"
+          :class="{ 'is-filled': Boolean(searchQuery) }"
+          data-headroom-search-wrap
+        >
+          <Search :size="14" class="headroom-search-icon" aria-hidden="true" />
+          <input
+            ref="searchInputRef"
+            type="text"
+            class="headroom-search-input"
+            data-headroom-search-input
+            :value="searchQuery"
+            :placeholder="resolvedSearchPlaceholder"
+            :aria-label="resolvedSearchPlaceholder"
+            @input="onSearchInput"
+            @keydown="onSearchKeydown"
+            @blur="onSearchBlur"
+          />
+          <button
+            v-if="searchQuery"
+            type="button"
+            class="headroom-search-clear"
+            data-headroom-search-clear
+            :aria-label="t('clearTagFilter')"
+            :title="t('clearTagFilter')"
+            @mousedown.prevent
+            @click.stop="clearSearch"
+          >
+            <X :size="13" aria-hidden="true" />
+          </button>
+          <button
+            v-else-if="mobileSearchOpen"
+            type="button"
+            class="headroom-search-clear headroom-search-mobile-close"
+            data-headroom-search-close
+            :aria-label="t('close')"
+            @mousedown.prevent
+            @click.stop="closeMobileSearch"
+          >
+            <X :size="13" aria-hidden="true" />
+          </button>
+        </div>
+
         <slot name="actions" />
 
         <div
@@ -174,8 +231,10 @@ import {
   List,
   Menu,
   PanelsTopLeft,
+  Search,
   Trash2,
   Users,
+  X,
 } from '@lucide/vue';
 import {
   useExplorerLayoutPrefs,
@@ -208,6 +267,8 @@ const props = withDefaults(defineProps<{
   showNavArrows?: boolean;
   showMobileMenuButton?: boolean;
   pathError?: boolean;
+  searchQuery?: string;
+  searchPlaceholder?: string;
 }>(), {
   headroomHidden: false,
   elevated: false,
@@ -221,6 +282,8 @@ const props = withDefaults(defineProps<{
   showNavArrows: true,
   showMobileMenuButton: true,
   pathError: false,
+  searchQuery: '',
+  searchPlaceholder: '',
 });
 
 const emit = defineEmits<{
@@ -231,6 +294,7 @@ const emit = defineEmits<{
   'navigate-path': [path: string];
   'update:viewMode': [mode: ExplorerViewMode];
   'update:albumViewMode': [mode: AlbumViewMode];
+  'update:searchQuery': [value: string];
 }>();
 
 const { t } = useI18n();
@@ -238,8 +302,12 @@ const prefs = useExplorerLayoutPrefs();
 
 const pathFrameRef = ref<HTMLElement | null>(null);
 const pathInputRef = ref<HTMLInputElement | null>(null);
+const searchInputRef = ref<HTMLInputElement | null>(null);
 const editing = ref(false);
 const editValue = ref('');
+const mobileSearchOpen = ref(false);
+
+const resolvedSearchPlaceholder = computed(() => props.searchPlaceholder || t('search'));
 
 const resolvedViewMode = computed<ExplorerViewMode>(() => props.viewMode ?? prefs.viewMode.value);
 const resolvedAlbumViewMode = computed<AlbumViewMode>(() => props.albumViewMode ?? prefs.albumView.value);
@@ -323,6 +391,49 @@ function selectViewMode(mode: ExplorerViewMode) {
 function selectAlbumViewMode(mode: AlbumViewMode) {
   if (props.albumViewMode === undefined) prefs.setAlbumView(mode);
   emit('update:albumViewMode', mode);
+}
+
+function onSearchInput(event: Event) {
+  emit('update:searchQuery', (event.target as HTMLInputElement).value);
+}
+
+function clearSearch() {
+  emit('update:searchQuery', '');
+  void nextTick(() => {
+    searchInputRef.value?.focus();
+  });
+}
+
+async function openMobileSearch() {
+  mobileSearchOpen.value = true;
+  await nextTick();
+  searchInputRef.value?.focus();
+}
+
+function closeMobileSearch() {
+  mobileSearchOpen.value = false;
+}
+
+function onSearchBlur() {
+  if (mobileSearchOpen.value) {
+    mobileSearchOpen.value = false;
+  }
+}
+
+function onSearchKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') {
+    event.stopPropagation();
+    if (props.searchQuery) {
+      emit('update:searchQuery', '');
+    } else {
+      mobileSearchOpen.value = false;
+      searchInputRef.value?.blur();
+    }
+    return;
+  }
+  if (!event.ctrlKey && !event.metaKey) {
+    event.stopPropagation();
+  }
 }
 
 function onWindowKeydown(event: KeyboardEvent) {

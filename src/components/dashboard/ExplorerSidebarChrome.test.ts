@@ -306,6 +306,54 @@ describe('ExplorerHeadroomBar & ExplorerMobileTabBar', () => {
     expect(wrapper.emitted('update:viewMode')?.[0]).toEqual(['table']);
   });
 
+  it('renders headroom search pill with placeholder, clear button, Esc/keydown isolation, and mobile toggle', async () => {
+    const windowKeydown = vi.fn();
+    window.addEventListener('keydown', windowKeydown);
+    try {
+      const wrapper = mount(ExplorerHeadroomBar, {
+        attachTo: document.body,
+        props: {
+          segments: [
+            { id: 'qspace', label: 'Q Space', icon: 'qspace' },
+            { id: 'trips', label: 'Поездки', current: true },
+          ],
+          searchQuery: '',
+          searchPlaceholder: 'Поиск в Поездки…',
+        },
+      });
+
+      const input = wrapper.get('[data-headroom-search-input]');
+      expect(input.attributes('placeholder')).toBe('Поиск в Поездки…');
+      expect(wrapper.find('[data-headroom-search-clear]').exists()).toBe(false);
+
+      // Single-key typing does not bubble to window shortcuts
+      await input.trigger('keydown', { key: 'a' });
+      expect(windowKeydown).not.toHaveBeenCalled();
+
+      // Typing emits update:searchQuery
+      await input.setValue('Грузия');
+      expect(wrapper.emitted('update:searchQuery')?.[0]).toEqual(['Грузия']);
+
+      // When non-empty, clear button appears and resets query; Esc also clears
+      await wrapper.setProps({ searchQuery: 'Грузия' });
+      const clearBtn = wrapper.get('[data-headroom-search-clear]');
+      await clearBtn.trigger('click');
+      expect(wrapper.emitted('update:searchQuery')?.[1]).toEqual(['']);
+
+      await input.trigger('keydown', { key: 'Escape' });
+      expect(wrapper.emitted('update:searchQuery')?.[2]).toEqual(['']);
+      expect(windowKeydown).not.toHaveBeenCalled();
+
+      // Mobile search toggle opens inline search bar and focuses input
+      await wrapper.get('[data-headroom-search-toggle]').trigger('click');
+      await nextTick();
+      expect(wrapper.get('.ws-header').classes()).toContain('is-mobile-search-open');
+      expect(document.activeElement).toBe(input.element);
+    } finally {
+      window.removeEventListener('keydown', windowKeydown);
+    }
+  });
+
   it('renders mobile bottom tab bar with Home, Explorer, Search, Gallery and Menu trigger', async () => {
     const wrapper = mount(ExplorerMobileTabBar, {
       props: { activeActivity: 'explorer' },

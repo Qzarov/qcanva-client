@@ -765,6 +765,7 @@ body.resizing * {
 }
 
 .explorer-headroom .ws-header {
+  position: relative;
   height: 46px;
   display: flex;
   align-items: center;
@@ -790,9 +791,145 @@ body.resizing * {
   flex: none;
 }
 
-.path-frame {
+.explorer-headroom-controls .dashboard-filter-menu,
+.explorer-headroom-controls .dashboard-sort-menu {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+}
+
+.explorer-headroom-controls .dashboard-icon-button {
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  min-height: 30px;
+  border-radius: 9px;
+  background: var(--ui-glass-btn-bg);
+  border: 1px solid var(--ui-glass-border);
+  box-shadow: var(--ui-glass-inset-highlight);
+  color: var(--explorer-text-2);
+}
+
+.explorer-headroom-controls .dashboard-icon-button svg {
+  width: 15px;
+  height: 15px;
+}
+
+.explorer-headroom-controls .dashboard-icon-button:hover:not(:disabled) {
+  background: var(--ui-glass-btn-hover);
+  color: var(--ui-text);
+}
+
+.explorer-headroom-controls .dashboard-filter-trigger.active {
+  background: var(--ui-glass-accent-tint), var(--ui-glass-accent-bg);
+  border-color: var(--ui-glass-accent-border);
+  box-shadow: var(--ui-glass-accent-shadow);
+  color: var(--ui-glass-accent-text);
+}
+
+.explorer-headroom-controls .dashboard-filter-badge {
+  top: -4px;
+  right: -4px;
+  min-width: 16px;
+  height: 16px;
+  font-size: 10px;
+}
+
+.explorer-headroom-controls :is(.dashboard-filter-popover, .dashboard-sort-popover):not(.dashboard-menu-sheet) {
+  top: calc(100% + 6px);
+  right: 0;
+  left: auto;
+}
+
+.headroom-search-toggle {
+  display: none;
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: var(--ui-glass-btn-bg);
+  border: 1px solid var(--ui-glass-border);
+  box-shadow: var(--ui-glass-inset-highlight);
+  color: var(--explorer-text-2);
+  flex: none;
+}
+
+.headroom-search-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  width: clamp(140px, 18vw, 220px);
+  padding: 0 8px;
+  border-radius: 9px;
+  border: 1px solid var(--ui-glass-border);
+  background: var(--ui-glass-btn-bg);
+  box-shadow: var(--ui-glass-inset-highlight);
+  color: var(--explorer-text-2);
+  flex: none;
+  transition: width 0.16s ease, border-color 0.14s ease, box-shadow 0.14s ease, background 0.14s ease;
+}
+
+.headroom-search-wrap:focus-within {
+  width: clamp(160px, 22vw, 250px);
+  border-color: var(--ui-glass-accent-border);
+  box-shadow: var(--ui-glass-accent-shadow);
+  background: var(--explorer-glass-bg-deep);
+}
+
+.headroom-search-icon {
+  flex: none;
+  color: var(--explorer-muted);
+  pointer-events: none;
+}
+
+.headroom-search-wrap:focus-within .headroom-search-icon {
+  color: var(--ui-glass-accent-text);
+}
+
+.headroom-search-input {
   flex: 1;
   min-width: 0;
+  width: 100%;
+  background: none;
+  border: 0;
+  outline: none;
+  color: var(--ui-text);
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 1.2;
+}
+
+.headroom-search-input::placeholder {
+  color: var(--explorer-muted);
+}
+
+.headroom-search-clear {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--explorer-muted);
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  cursor: pointer;
+}
+
+.headroom-search-clear:hover {
+  background: var(--ui-glass-btn-hover);
+  color: var(--ui-text);
+}
+
+.headroom-search-mobile-close {
+  display: none;
+}
+
+.path-frame {
+  flex: 1;
+  min-width: 120px;
   height: 31px;
   display: flex;
   align-items: center;
@@ -835,8 +972,8 @@ body.resizing * {
 .crumb {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 3px 4px;
+  gap: 4px;
+  padding: 3px 1px;
   border-radius: 6px;
   border: 0;
   background: transparent;
@@ -860,7 +997,8 @@ body.resizing * {
 }
 
 .crumb-sep {
-  padding: 0 1px;
+  padding: 0;
+  margin: 0;
   color: var(--explorer-muted);
   font-size: 11px;
   flex: none;
@@ -1227,6 +1365,86 @@ body.resizing * {
     display: inline-grid;
   }
 
+  .explorer-headroom .ws-header {
+    padding: 0 8px;
+    gap: 5px;
+  }
+
+  .explorer-headroom-controls {
+    gap: 4px;
+  }
+
+  .path-frame {
+    min-width: 0;
+  }
+
+  .headroom-search-toggle {
+    display: inline-grid;
+  }
+
+  .headroom-search-wrap {
+    display: none;
+  }
+
+  .explorer-headroom .ws-header.is-mobile-search-open .headroom-search-wrap {
+    display: flex;
+    position: absolute;
+    inset: 8px;
+    width: auto;
+    max-width: none;
+    height: 30px;
+    z-index: 8;
+    background: var(--explorer-glass-bg-deep);
+    border-color: var(--ui-glass-accent-border);
+    box-shadow: var(--ui-glass-accent-shadow);
+  }
+
+  .explorer-headroom .ws-header.is-mobile-search-open .headroom-search-mobile-close {
+    display: inline-grid;
+  }
+
+  .explorer-headroom,
+  .explorer-headroom .ws-header {
+    max-width: 100vw;
+    min-width: 0;
+  }
+
+  .dashboard-central-shell,
+  .dashboard-shell,
+  .dashboard-folder-content,
+  .folder-manager-row,
+  .folder-manager-body {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .dashboard-folder-content .dash-grid,
+  .dashboard-view .dash-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .dashboard-view .dash-grid > *,
+  .dashboard-view .folder-file-card,
+  .dashboard-view .canvas-card,
+  .dashboard-view .subfolder-card {
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  .dashboard-view .canvas-card .card-title,
+  .dashboard-view .canvas-card .card-meta,
+  .dashboard-view .folder-file-card .folder-file-name {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .dashboard-menu-sheet.mobile-action-popover {
+    bottom: calc(74px + env(safe-area-inset-bottom, 0px));
+  }
+
   .dashboard-app-shell {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -1369,6 +1587,12 @@ body.resizing * {
     bottom: calc(74px + env(safe-area-inset-bottom, 0px));
     width: 46px;
     height: 46px;
+  }
+}
+
+@media (max-width: 420px) {
+  .dashboard-view .dash-grid.subfolder-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

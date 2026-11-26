@@ -161,6 +161,7 @@
 <script lang="ts">
 export type ExplorerSortCol = 'name' | 'updatedAt' | 'type' | 'size' | 'source' | 'albums';
 export type ExplorerSortDir = 'asc' | 'desc';
+export type ExplorerExternalSortMode = 'updated-desc' | 'updated-asc' | 'title-asc' | 'title-desc';
 
 export interface ExplorerAlbumRef {
   id?: string;
@@ -187,7 +188,7 @@ export interface ExplorerTableRow<T = unknown> {
 </script>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { File as FileIcon, Folder, Image as ImageIcon, Video } from '@lucide/vue';
 import { formatFileSize, getFileExtension } from '../../api/drive';
 import { useExplorerGroupDnd, type GroupDragEntry, type GroupDragPayload, type GroupDragSource } from '../../composables/useExplorerGroupDnd';
@@ -203,6 +204,8 @@ const props = withDefaults(defineProps<{
   hideAlbums?: boolean;
   sortCol?: ExplorerSortCol;
   sortDir?: ExplorerSortDir;
+  externalSortMode?: ExplorerExternalSortMode;
+  externalSortSeq?: number;
   dragSource?: GroupDragSource;
   emptyText?: string;
 }>(), {
@@ -240,6 +243,29 @@ const dragOverKey = ref<string | null>(null);
 const activeSortCol = computed(() => props.sortCol ?? internalSortCol.value);
 const activeSortDir = computed(() => props.sortDir ?? internalSortDir.value);
 const sortArrow = computed(() => (activeSortDir.value === 'asc' ? '▲' : '▼'));
+
+function applyExternalSortMode(mode?: ExplorerExternalSortMode): void {
+  if (!mode) return;
+  if (mode === 'updated-desc') {
+    internalSortCol.value = 'updatedAt';
+    internalSortDir.value = 'desc';
+  } else if (mode === 'updated-asc') {
+    internalSortCol.value = 'updatedAt';
+    internalSortDir.value = 'asc';
+  } else if (mode === 'title-asc') {
+    internalSortCol.value = 'name';
+    internalSortDir.value = 'asc';
+  } else if (mode === 'title-desc') {
+    internalSortCol.value = 'name';
+    internalSortDir.value = 'desc';
+  }
+}
+
+watch(
+  [() => props.externalSortMode, () => props.externalSortSeq],
+  ([mode]) => applyExternalSortMode(mode),
+  { immediate: true },
+);
 
 const effectiveSelected = computed(() => props.selectedKeys ?? internalSelected.value);
 const selectedSet = computed(() => new Set(effectiveSelected.value));

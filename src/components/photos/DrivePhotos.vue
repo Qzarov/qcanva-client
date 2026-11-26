@@ -1559,8 +1559,8 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  padding: 8px 14px;
+  gap: 8px;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--ui-glass-border, var(--ui-border));
   background: var(--ui-glass-tint, transparent), var(--ui-glass-bg, transparent);
   backdrop-filter: blur(var(--ui-glass-blur, 16px)) saturate(1.18);
@@ -1642,6 +1642,8 @@ onBeforeUnmount(() => {
   background: var(--ui-glass-btn-bg);
   border: 1px solid var(--ui-glass-border);
   color: var(--ui-text-muted);
+  flex: none;
+  min-width: 0;
 }
 .dp-zoom-step {
   border: 0;
@@ -1657,7 +1659,8 @@ onBeforeUnmount(() => {
   color: var(--ui-text);
 }
 .dp-zoom-slider {
-  width: 74px;
+  width: clamp(64px, 7vw, 96px);
+  min-width: 48px;
   accent-color: var(--ui-brand);
   cursor: pointer;
 }
@@ -1672,7 +1675,7 @@ onBeforeUnmount(() => {
 }
 .dp-seg-btn {
   height: 24px;
-  padding: 0 12px;
+  padding: 0 10px;
   border: 0;
   border-radius: 7px;
   background: transparent;
@@ -1750,8 +1753,9 @@ onBeforeUnmount(() => {
   position: relative;
   display: flex;
   align-items: center;
-  width: 196px;
-  min-width: 120px;
+  width: clamp(120px, 14vw, 196px);
+  flex: 1 1 130px;
+  min-width: 96px;
   height: 28px;
   gap: 6px;
   padding: 0 9px;
@@ -2067,7 +2071,7 @@ onBeforeUnmount(() => {
   overflow-y: auto;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 820px) {
   .dp-zoom-wrap {
     display: none;
   }

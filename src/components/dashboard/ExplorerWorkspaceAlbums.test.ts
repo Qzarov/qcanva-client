@@ -259,7 +259,7 @@ describe('DashboardAddDialog redesign', () => {
 
     expect(wrapper.find('[data-add-drop]').exists()).toBe(true);
     expect(wrapper.get('[data-add-drop]').text()).toContain('Перетащите файлы сюда или нажмите, чтобы выбрать');
-    expect(wrapper.get('[data-add-target-folder]').text()).toContain('Работа');
+    expect(wrapper.find('[data-add-target-folder]').exists()).toBe(false);
     expect(wrapper.find('[data-add-actions]').exists()).toBe(false);
     expect(wrapper.find('[data-add-submit]').exists()).toBe(false);
 

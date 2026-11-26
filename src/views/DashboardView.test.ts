@@ -547,7 +547,7 @@ describe('dashboard sidebar navigation', () => {
     await wrapper.get('[data-explorer-fab]').trigger('click');
     await nextTick();
     expect(wrapper.find('[data-add-folder]').exists()).toBe(false);
-    expect(wrapper.get('[data-add-target-folder]').text()).toContain('Target');
+    expect(wrapper.find('[data-add-target-folder]').exists()).toBe(false);
     await createNamed(wrapper, 'text-document', 'Notes');
     expect(wrapper.find('[data-add-dialog]').exists()).toBe(false);
     expect(textDocuments.create).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Notes', folderId: 'folder-b' }));
@@ -568,7 +568,7 @@ describe('dashboard sidebar navigation', () => {
     vm.openAddDialog();
     await nextTick();
     expect(wrapper.find('[data-add-folder]').exists()).toBe(false);
-    expect(wrapper.get('[data-add-target-folder]').text()).toContain('Archive');
+    expect(wrapper.find('[data-add-target-folder]').exists()).toBe(false);
 
     await createNamed(wrapper, 'text-document', 'Plan');
     expect(textDocuments.create).toHaveBeenLastCalledWith(expect.objectContaining({ folderId: 'folder-c' }));
@@ -582,7 +582,7 @@ describe('dashboard sidebar navigation', () => {
     vm.openAddDialog();
     await nextTick();
     expect(wrapper.find('[data-add-folder]').exists()).toBe(false);
-    expect(wrapper.get('[data-add-target-folder]').text()).toContain('Home');
+    expect(wrapper.find('[data-add-target-folder]').exists()).toBe(false);
     await createNamed(wrapper, 'text-document', 'Plan');
     // folder-a is the mocked "Unsorted".
     expect(textDocuments.create).toHaveBeenLastCalledWith(expect.objectContaining({ folderId: 'folder-a' }));

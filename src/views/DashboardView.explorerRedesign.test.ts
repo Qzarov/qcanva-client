@@ -2,7 +2,7 @@
 import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { accessRequests, canvas, htmlDocuments, interactiveTemplates, recentResources, textDocuments } from '../api/client';
+import { accessRequests, canvas, htmlDocuments, interactiveTemplates, recentResources, resourceFolders, textDocuments } from '../api/client';
 import { driveApi } from '../api/drive';
 import { spacesApi } from '../api/spaces';
 import { currentAppDialog } from '../composables/appDialog';
@@ -817,5 +817,148 @@ describe('DashboardView T-021 + T-018 Explorer Redesign Integration', () => {
     expect(spacesApi.create).toHaveBeenCalledTimes(1);
     expect(spacesApi.addItems).toHaveBeenCalledWith('alb-shared-new', ['f0', 'f1']);
     expect((wrapper.vm as any).sharingAlbum?.id).toBe('alb-shared-new');
+  });
+
+  it('restores DashboardSortMenu in ExplorerHeadroomBar and syncs sort order across both Grid tiles and ExplorerTableView rows', async () => {
+    vi.mocked(driveApi.getFolderItems).mockResolvedValue({ items: [], nextCursor: null });
+    vi.mocked(resourceFolders.list).mockResolvedValueOnce({
+      own: [
+        {
+          id: 'folder-home',
+          name: 'Поездки',
+          role: 'owner',
+          parentId: null,
+          canvases: [
+            { id: 'c-old', title: 'Alpha план', folderId: 'folder-home', updatedAt: '2026-11-01T10:00:00Z' },
+            { id: 'c-new', title: 'Zeta билеты', folderId: 'folder-home', updatedAt: '2026-11-25T10:00:00Z' },
+          ],
+          htmlDocuments: [],
+        },
+      ],
+      shared: [],
+    } as never);
+
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    // Sort trigger sits inside ExplorerHeadroomBar next to Filter trigger
+    const headroom = wrapper.get('[data-headroom-bar]');
+    expect(headroom.find('[data-filter-menu-trigger]').exists()).toBe(true);
+    expect(headroom.find('[data-sort-menu-trigger]').exists()).toBe(true);
+
+    // Open folder in Grid mode: default updated-desc puts Zeta before Alpha
+    await wrapper.get('[data-dashboard-folder="folder-home"]').trigger('click');
+    await nextTick();
+    let gridKeys = wrapper.findAll('[data-dashboard-view="folder"] .canvas-card[data-select-key]').map((el) => el.attributes('data-select-key'));
+    expect(gridKeys).toEqual(['canvas:c-new', 'canvas:c-old']);
+
+    // Switch to title-asc via Headroom DashboardSortMenu
+    await headroom.get('[data-sort-menu-trigger]').trigger('click');
+    await nextTick();
+    await wrapper.get('[data-sort-option="title-asc"]').trigger('click');
+    await nextTick();
+    expect((wrapper.vm as any).sortMode).toBe('title-asc');
+    gridKeys = wrapper.findAll('[data-dashboard-view="folder"] .canvas-card[data-select-key]').map((el) => el.attributes('data-select-key'));
+    expect(gridKeys).toEqual(['canvas:c-old', 'canvas:c-new']);
+
+    // Switch to Table mode -> inherits title-asc (Alpha before Zeta)
+    await wrapper.get('[data-view-toggle="table"]').trigger('click');
+    await nextTick();
+    let tableKeys = wrapper.findAll('[data-dashboard-view="folder"] [data-row-key]').map((el) => el.attributes('data-row-key'));
+    expect(tableKeys).toEqual(['canvas:c-old', 'canvas:c-new']);
+
+    // Switch to title-desc via Headroom DashboardSortMenu -> Table updates immediately (Zeta before Alpha)
+    await headroom.get('[data-sort-menu-trigger]').trigger('click');
+    await nextTick();
+    await wrapper.get('[data-sort-option="title-desc"]').trigger('click');
+    await nextTick();
+    tableKeys = wrapper.findAll('[data-dashboard-view="folder"] [data-row-key]').map((el) => el.attributes('data-row-key'));
+    expect(tableKeys).toEqual(['canvas:c-new', 'canvas:c-old']);
+
+    // Switch to updated-asc -> Table sorts oldest first (Alpha before Zeta)
+    await headroom.get('[data-sort-menu-trigger]').trigger('click');
+    await nextTick();
+    await wrapper.get('[data-sort-option="updated-asc"]').trigger('click');
+    await nextTick();
+    tableKeys = wrapper.findAll('[data-dashboard-view="folder"] [data-row-key]').map((el) => el.attributes('data-row-key'));
+    expect(tableKeys).toEqual(['canvas:c-old', 'canvas:c-new']);
+
+    // Album view hides DashboardSortMenu & DashboardFilterMenu
+    (wrapper.vm as any).selectDashboardSection({ kind: 'space', spaceId: 'alb-1' });
+    await nextTick();
+    expect(headroom.find('[data-sort-menu-trigger]').exists()).toBe(false);
+    expect(headroom.find('[data-filter-menu-trigger]').exists()).toBe(false);
+  });
+
+  it('renders contextual Search in <Folder> in ExplorerHeadroomBar, filters Grid & Table in home and folders, and clears on ✕', async () => {
+    vi.mocked(canvas.list).mockResolvedValueOnce({
+      own: [
+        { id: 'c-unfiled-1', title: 'Корневой бюджет', folderId: null, updatedAt: '2026-11-22T10:00:00Z' },
+        { id: 'c-unfiled-2', title: 'План ремонта', folderId: null, updatedAt: '2026-11-23T10:00:00Z' },
+      ],
+      shared: [],
+      public: [],
+      welcome: null,
+    } as never);
+
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    const searchInput = wrapper.get('[data-headroom-search-input]');
+    expect(searchInput.attributes('placeholder')).toBe('Поиск на Главной…');
+
+    // Q Space/home placeholder and filtering in both Grid and Table
+    await wrapper.get('[data-home-link]').trigger('click');
+    await nextTick();
+    expect(searchInput.attributes('placeholder')).toBe('Поиск в home…');
+
+    await searchInput.setValue('бюджет');
+    await nextTick();
+    let homeText = wrapper.get('[data-dashboard-view="home"]').text();
+    expect(homeText).toContain('Корневой бюджет');
+    expect(homeText).not.toContain('План ремонта');
+    expect(homeText).not.toContain('Поездки');
+
+    await wrapper.get('[data-view-toggle="table"]').trigger('click');
+    await nextTick();
+    expect(wrapper.find('[data-dashboard-view="home"] [data-row-key="canvas:c-unfiled-1"]').exists()).toBe(true);
+    expect(wrapper.find('[data-dashboard-view="home"] [data-row-key="canvas:c-unfiled-2"]').exists()).toBe(false);
+    expect(wrapper.find('[data-dashboard-view="home"] [data-row-key="folder:folder-home"]').exists()).toBe(false);
+
+    // Clear on ✕ restores home items & subfolder
+    await wrapper.get('[data-headroom-search-clear]').trigger('click');
+    await nextTick();
+    expect((searchInput.element as HTMLInputElement).value).toBe('');
+    expect(wrapper.find('[data-dashboard-view="home"] [data-row-key="canvas:c-unfiled-2"]').exists()).toBe(true);
+    expect(wrapper.find('[data-dashboard-view="home"] [data-row-key="folder:folder-home"]').exists()).toBe(true);
+
+    // Folder placeholder and filtering (subfolders + items in both Table and Grid)
+    await wrapper.get('[data-dashboard-folder="folder-home"]').trigger('click');
+    await nextTick();
+    expect(searchInput.attributes('placeholder')).toBe('Поиск в Поездки…');
+
+    await searchInput.setValue('Грузия');
+    await nextTick();
+    expect(wrapper.find('[data-dashboard-view="folder"] [data-row-key="folder:folder-child"]').exists()).toBe(true);
+    expect(wrapper.find('[data-dashboard-view="folder"] [data-row-key="canvas:c1"]').exists()).toBe(false);
+
+    await wrapper.get('[data-view-toggle="grid"]').trigger('click');
+    await nextTick();
+    const folderGrid = wrapper.get('[data-dashboard-view="folder"]');
+    expect(folderGrid.text()).toContain('Грузия');
+    expect(folderGrid.text()).not.toContain('Маршрут');
+    expect(folderGrid.find('[data-folder-empty]').exists()).toBe(false);
+
+    await wrapper.get('[data-headroom-search-clear]').trigger('click');
+    await nextTick();
+
+    // Album & Yandex Disk placeholders
+    (wrapper.vm as any).selectDashboardSection({ kind: 'space', spaceId: 'alb-1' });
+    await flushPromises();
+    expect(searchInput.attributes('placeholder')).toBe('Поиск в Семья…');
+
+    (wrapper.vm as any).openYandexPath('/');
+    await nextTick();
+    expect(searchInput.attributes('placeholder')).toBe('Поиск в Яндекс Диске…');
   });
 });
