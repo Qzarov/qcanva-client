@@ -60,4 +60,49 @@ describe('useDriveUpload client preview hook', () => {
     expect(uploads.value[0]?.status).toBe('done');
     expect(loadCurrentFolder).toHaveBeenCalledTimes(1);
   });
+
+  it('caps concurrent uploads at 4 workers', async () => {
+    let active = 0;
+    let peak = 0;
+    const resolvers: Array<() => void> = [];
+
+    vi.mocked(driveApi.uploadFile).mockImplementation(() => {
+      active += 1;
+      peak = Math.max(peak, active);
+      return {
+        promise: new Promise((resolve) => {
+          resolvers.push(() => {
+            active -= 1;
+            resolve({ items: [] } as any);
+          });
+        }),
+        abort: vi.fn(),
+      };
+    });
+
+    const loadCurrentFolder = vi.fn().mockResolvedValue(undefined);
+    const { uploads, handleFilesUpload } = useDriveUpload({
+      folderId: computed(() => 'folder-1'),
+      loadCurrentFolder,
+    });
+
+    const files = Array.from({ length: 7 }, (_, i) => new File(['x'], `f${i}.txt`, { type: 'text/plain' }));
+    const run = handleFilesUpload(files);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(driveApi.uploadFile).toHaveBeenCalledTimes(4);
+    expect(peak).toBe(4);
+
+    while (resolvers.length > 0) {
+      resolvers.shift()!();
+      await Promise.resolve();
+      await Promise.resolve();
+    }
+    await run;
+
+    expect(driveApi.uploadFile).toHaveBeenCalledTimes(7);
+    expect(peak).toBe(4);
+    expect(uploads.value.every((u) => u.status === 'done')).toBe(true);
+  });
 });

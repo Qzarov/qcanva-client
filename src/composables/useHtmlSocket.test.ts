@@ -6,9 +6,10 @@ import { useHtmlSocket } from './useHtmlSocket';
 const sockets: any[] = [];
 
 vi.mock('socket.io-client', () => ({
-  io: vi.fn((_url: string, _options: unknown) => {
+  io: vi.fn((_url: string, options: unknown) => {
     const handlers = new Map<string, Function>();
     const socket = {
+      options,
       emit: vi.fn(),
       on: vi.fn((event: string, cb: Function) => {
         handlers.set(event, cb);
@@ -89,5 +90,22 @@ describe('useHtmlSocket', () => {
         baseRevision: 0,
       }),
     });
+  });
+
+  it('guards duplicate connect() calls and resolves token dynamically via auth callback', () => {
+    const htmlSocket = useHtmlSocket('doc-1');
+    htmlSocket.connect();
+    htmlSocket.connect();
+    expect(sockets).toHaveLength(1);
+
+    const authFn = sockets[0].options.auth as (cb: (data: Record<string, string>) => void) => void;
+    const cb = vi.fn();
+    localStorage.setItem('token', 'tok-a');
+    authFn(cb);
+    expect(cb).toHaveBeenLastCalledWith({ token: 'tok-a' });
+
+    localStorage.setItem('token', 'tok-b');
+    authFn(cb);
+    expect(cb).toHaveBeenLastCalledWith({ token: 'tok-b' });
   });
 });

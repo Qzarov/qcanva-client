@@ -337,6 +337,6 @@
 | `driveApi.getDevicePolicy` | `GET /api/drive/devices/:id/policy` | `src/api/drive.ts` |
 | `driveApi.setDevicePolicy` | `PUT /api/drive/devices/:id/policy` | `src/api/drive.ts` |
 | `driveApi.getUnderReplicated` | `GET /api/drive/replication/under` | `src/api/drive.ts` |
-| `htmlDocuments.generate` | `POST /api/html-documents/generate` | `src/api/client.ts` (вызывает только `src/views/HtmlDocsView.vue`, которого нет в роутере) |
-| `driveApi.createPairingCode` | `POST /api/drive/devices/pairing-codes` | `src/api/drive.ts` (вызывает только неподключённый `src/components/DrivePairDeviceDialog.vue`) |
-| `driveApi.cancelPairingCode` | `DELETE /api/drive/devices/pairing-codes/:id` | `src/api/drive.ts` (то же) |
+| `htmlDocuments.generate` | `POST /api/html-documents/generate` | `src/api/client.ts` |
+| `driveApi.createPairingCode` | `POST /api/drive/devices/pairing-codes` | `src/api/drive.ts` |
+| `driveApi.cancelPairingCode` | `DELETE /api/drive/devices/pairing-codes/:id` | `src/api/drive.ts` |

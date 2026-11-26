@@ -156,7 +156,7 @@ beforeEach(() => {
 
 async function mountAndOpenPicker() {
   const wrapper = mount(CanvasView, {
-    global: { stubs: { MarkdownRenderer: true, ToastContainer: true, LanguageToggle: true } },
+    global: { stubs: { ToastContainer: true, LanguageToggle: true } },
   });
   await flushPromises();
   await (wrapper.vm as any).openDocPicker();

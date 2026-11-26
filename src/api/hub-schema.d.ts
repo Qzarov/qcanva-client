@@ -1136,6 +1136,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/drive/files/{id}/reconcile-hash": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reconcile a provisional external file hash to its real BLAKE3 digest. */
+        post: operations["DriveController_reconcileFileHash"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/drive/files/{id}/restore": {
         parameters: {
             query?: never;
@@ -1147,6 +1164,40 @@ export interface paths {
         put?: never;
         /** Restore a soft-deleted file. */
         post: operations["DriveController_restore"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/drive/files/{id}/upload-complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Notify hub that a direct upload to an external storage provider completed. */
+        post: operations["DriveController_fileUploadComplete"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/drive/files/{id}/upload-grant": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Request a direct upload grant for a file inside a writable external mount. */
+        post: operations["DriveController_fileUploadGrant"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1578,6 +1629,92 @@ export interface paths {
         };
         /** List user's files in trash. */
         get: operations["DriveController_trash"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/external-storage/mounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the caller's configured external folder mounts. */
+        get: operations["ExternalStorageController_listMounts"];
+        put?: never;
+        /** Mount an external folder into the user's Q Space folder tree. */
+        post: operations["ExternalStorageController_mountFolder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/external-storage/mounts/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Unmount a previously configured external folder. */
+        delete: operations["ExternalStorageController_unmountFolder"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/external-storage/mounts/{id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Inspect detailed sync status and entry statistics for a mounted external folder. */
+        get: operations["ExternalStorageController_getMountStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/external-storage/mounts/{id}/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Trigger immediate synchronization for a mounted external folder. */
+        post: operations["ExternalStorageController_syncMount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/external-storage/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List registered external storage providers, their capabilities, and connection status. */
+        get: operations["ExternalStorageController_listProviders"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2293,6 +2430,94 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/photos/ai/annotations/{fileId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get AI annotation for a photo */
+        get: operations["PhotoAiController_getAnnotation"];
+        /** Create or update AI annotation for a photo */
+        put: operations["PhotoAiController_upsertAnnotation"];
+        post?: never;
+        /** Delete AI annotation for a photo */
+        delete: operations["PhotoAiController_deleteAnnotation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/photos/ai/index": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Trigger AI/VLM batch indexing on lightweight photo previews */
+        post: operations["PhotoAiController_indexBatch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/photos/ai/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List configured AI/VLM providers for the current user */
+        get: operations["PhotoAiController_listProviders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/photos/ai/providers/{providerType}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Create or update an AI/VLM provider configuration */
+        put: operations["PhotoAiController_upsertProvider"];
+        post?: never;
+        /** Delete an AI/VLM provider configuration */
+        delete: operations["PhotoAiController_deleteProvider"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/photos/ai/unannotated": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List user photos without AI annotations */
+        get: operations["PhotoAiController_listUnannotated"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/photos/albums": {
         parameters: {
             query?: never;
@@ -2643,6 +2868,22 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/spaces/{id}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["SpacesController_addItems"];
+        post?: never;
+        delete: operations["SpacesController_removeItems"];
         options?: never;
         head?: never;
         patch?: never;
@@ -3414,24 +3655,6 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        AccessRequest: {
-            /** Format: date-time */
-            createdAt: string;
-            id: string;
-            owner: components["schemas"]["User"];
-            ownerId: string;
-            /** @enum {string} */
-            requestedRole: "read" | "edit";
-            requester: components["schemas"]["User"];
-            requesterId: string;
-            resourceId: string;
-            /** @enum {string} */
-            resourceType: "canvas" | "text-document" | "html-document";
-            /** @enum {string} */
-            status: "pending" | "approved" | "declined";
-            /** Format: date-time */
-            updatedAt: string;
-        };
         ApplyTextDocumentUpdateDto: Record<string, never>;
         ArchiveDto: Record<string, never>;
         Canvas: {
@@ -3607,6 +3830,13 @@ export interface components {
             user: components["schemas"]["User"];
             userId: string;
         };
+        IndexPhotosDto: {
+            fileIds: string[];
+            limit: number;
+            overwrite: boolean;
+            /** @enum {string} */
+            providerType: "ollama" | "openai_compatible" | "gemini";
+        };
         InteractiveTemplate: {
             /** Format: date-time */
             createdAt: string;
@@ -3691,6 +3921,7 @@ export interface components {
         ShareInteractiveTemplateDto: Record<string, never>;
         ShareTextDocumentDto: Record<string, never>;
         SourceDto: Record<string, never>;
+        SpaceItemsDto: Record<string, never>;
         TextDocument: {
             allowPublicEdit: boolean;
             /** Format: date-time */
@@ -3771,6 +4002,25 @@ export interface components {
         UpdateRulerSettingsDto: Record<string, never>;
         UpdateTagDto: Record<string, never>;
         UpdateTextDocumentDto: Record<string, never>;
+        UpsertAiProviderDto: {
+            /** @description API key (encrypted at rest; omitted to keep existing key, empty/null to clear) */
+            apiKey?: Record<string, never> | null;
+            baseUrl?: Record<string, never> | null;
+            enabled?: boolean;
+            maxBatchSize?: number;
+            model: string;
+            name?: Record<string, never> | null;
+            privacyConfirmed?: boolean;
+        };
+        UpsertAnnotationDto: {
+            caption: Record<string, never> | null;
+            model: string;
+            ocrText: Record<string, never> | null;
+            provider: string;
+            /** @enum {string} */
+            source: "provider" | "mcp";
+            tags: string[];
+        };
         User: {
             canvases: components["schemas"]["Canvas"][];
             /** Format: date-time */
@@ -3827,9 +4077,7 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["AccessRequest"];
-                };
+                content?: never;
             };
         };
     };
@@ -5141,9 +5389,7 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["CanvasPermission"][];
-                };
+                content?: never;
             };
         };
     };
@@ -6241,6 +6487,41 @@ export interface operations {
             };
         };
     };
+    DriveController_reconcileFileHash: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    blake3Hash: string;
+                    provisionalHash: string;
+                    sha1?: string | null;
+                    sizeBytes: number;
+                };
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        fileId: string;
+                        hash: string;
+                        previousHash: string;
+                        reconciled: boolean;
+                    };
+                };
+            };
+        };
+    };
     DriveController_restore: {
         parameters: {
             query?: never;
@@ -6268,6 +6549,78 @@ export interface operations {
                         sizeBytes: number | null;
                         sortDate: string;
                         updatedAt: string;
+                    };
+                };
+            };
+        };
+    };
+    DriveController_fileUploadComplete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    hash: string;
+                    sizeBytes: number;
+                };
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        externalPath: string;
+                        fileId: string;
+                        hash: string;
+                        ok: boolean;
+                        provider: string;
+                    };
+                };
+            };
+        };
+    };
+    DriveController_fileUploadGrant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    hash: string;
+                    sizeBytes: number;
+                };
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        directUrl: string | null;
+                        expiresAt: string | null;
+                        externalPath: string;
+                        headers: {
+                            [key: string]: string;
+                        };
+                        /** @enum {string} */
+                        method: "PUT" | "POST";
+                        provider: string;
                     };
                 };
             };
@@ -7207,8 +7560,16 @@ export interface operations {
                     "application/json": {
                         denied: string[];
                         grants: {
+                            directHeaders: {
+                                [key: string]: string;
+                            };
+                            /** @enum {string} */
+                            directMethod: "GET" | "PUT" | "POST";
+                            directUrl: string;
+                            fileId: string;
                             grant: string;
                             hash: string;
+                            hashVerified: boolean;
                         }[];
                     };
                 };
@@ -7268,6 +7629,240 @@ export interface operations {
                             updatedAt: string;
                         }[];
                         nextCursor: string | null;
+                    };
+                };
+            };
+        };
+    };
+    ExternalStorageController_listMounts: {
+        parameters: {
+            query?: {
+                provider?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        mounts: {
+                            createdAt: string;
+                            externalPath: string;
+                            folderId: string;
+                            folderName: string | null;
+                            id: string;
+                            lastCursor: string | null;
+                            lastError: string | null;
+                            lastSyncAt: string | null;
+                            nodeId: string;
+                            ownerId: string;
+                            provider: string;
+                            /** @enum {string} */
+                            syncMode: "bidirectional" | "read_only" | "append_only";
+                            /** @enum {string} */
+                            syncStatus: "idle" | "syncing" | "error";
+                            updatedAt: string;
+                        }[];
+                    };
+                };
+            };
+        };
+    };
+    ExternalStorageController_mountFolder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    externalPath: string;
+                    folderName?: string;
+                    parentFolderId?: string | null;
+                    provider: string;
+                    /** @enum {string} */
+                    syncMode?: "bidirectional" | "read_only" | "append_only";
+                };
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        mount: {
+                            createdAt: string;
+                            externalPath: string;
+                            folderId: string;
+                            folderName: string | null;
+                            id: string;
+                            lastCursor: string | null;
+                            lastError: string | null;
+                            lastSyncAt: string | null;
+                            nodeId: string;
+                            ownerId: string;
+                            provider: string;
+                            /** @enum {string} */
+                            syncMode: "bidirectional" | "read_only" | "append_only";
+                            /** @enum {string} */
+                            syncStatus: "idle" | "syncing" | "error";
+                            updatedAt: string;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    ExternalStorageController_unmountFolder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        deleted: boolean;
+                        id: string;
+                    };
+                };
+            };
+        };
+    };
+    ExternalStorageController_getMountStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        mount: {
+                            createdAt: string;
+                            externalPath: string;
+                            folderId: string;
+                            folderName: string | null;
+                            id: string;
+                            lastCursor: string | null;
+                            lastError: string | null;
+                            lastSyncAt: string | null;
+                            nodeId: string;
+                            ownerId: string;
+                            provider: string;
+                            /** @enum {string} */
+                            syncMode: "bidirectional" | "read_only" | "append_only";
+                            /** @enum {string} */
+                            syncStatus: "idle" | "syncing" | "error";
+                            updatedAt: string;
+                        };
+                        stats: {
+                            conflicts: number;
+                            files: number;
+                            folders: number;
+                            totalEntries: number;
+                            unverifiedHashes: number;
+                            verifiedHashes: number;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    ExternalStorageController_syncMount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    full: boolean;
+                };
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        added: number;
+                        conflicts: number;
+                        cursor: string | null;
+                        deleted: number;
+                        foldersCreated: number;
+                        mountId: string;
+                        provider: string;
+                        /** @enum {string} */
+                        strategy: "incremental" | "full";
+                        unchanged: number;
+                        updated: number;
+                    };
+                };
+            };
+        };
+    };
+    ExternalStorageController_listProviders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        providers: {
+                            capabilities: {
+                                appendOnly: boolean;
+                                chatBacked: boolean;
+                                hierarchical: boolean;
+                                readable: boolean;
+                                supportsDirectUrl: boolean;
+                                writable: boolean;
+                            };
+                            connected: boolean;
+                            displayName: string;
+                            id: string;
+                            nodeKind: string;
+                        }[];
                     };
                 };
             };
@@ -7780,9 +8375,7 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["HtmlDocumentPermission"][];
-                };
+                content?: never;
             };
         };
     };
@@ -8257,9 +8850,7 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["InteractiveTemplatePermission"][];
-                };
+                content?: never;
             };
         };
     };
@@ -8673,7 +9264,35 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    meta: {
+                        /** @enum {string|null} */
+                        dateSource?: "exif" | "file" | null;
+                        durationSec?: number | null;
+                        height?: number | null;
+                        /** @enum {string} */
+                        kind: "image" | "video";
+                        localTakenAt?: string | null;
+                        mime: string;
+                        orientation?: number | null;
+                        takenAt?: string | null;
+                        timeZone?: string | null;
+                        width?: number | null;
+                    };
+                    /** @enum {string} */
+                    source: "client";
+                    thumbhash?: string | null;
+                } | {
+                    clip?: number[] | null;
+                    meta: Record<string, never>;
+                    thumbhash: string;
+                    transcode?: Record<string, never> | null;
+                    workerVersion: string;
+                };
+            };
+        };
         responses: {
             204: {
                 headers: {
@@ -8716,7 +9335,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "image/jpeg": string;
+                "image/webp": string;
+                "video/mp4": string;
+            };
+        };
         responses: {
             204: {
                 headers: {
@@ -8807,6 +9432,171 @@ export interface operations {
                 content: {
                     "text/html": string;
                 };
+            };
+        };
+    };
+    PhotoAiController_getAnnotation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                fileId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PhotoAiController_upsertAnnotation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                fileId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertAnnotationDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PhotoAiController_deleteAnnotation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                fileId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PhotoAiController_indexBatch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IndexPhotosDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+        };
+    };
+    PhotoAiController_listProviders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PhotoAiController_upsertProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                providerType: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertAiProviderDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PhotoAiController_deleteProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                providerType: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PhotoAiController_listUnannotated: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: string;
+                hasPreviewOnly?: string;
+                kind?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -9297,9 +10087,7 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["ResourceFolderPermission"][];
-                };
+                content?: never;
             };
         };
     };
@@ -9515,6 +10303,52 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    SpacesController_addItems: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SpaceItemsDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    SpacesController_removeItems: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SpaceItemsDto"];
+            };
+        };
         responses: {
             200: {
                 headers: {
@@ -10176,9 +11010,7 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["TextDocumentPermission"][];
-                };
+                content?: never;
             };
         };
     };

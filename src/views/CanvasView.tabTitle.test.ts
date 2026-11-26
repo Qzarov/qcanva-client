@@ -121,7 +121,7 @@ import CanvasView from './CanvasView.vue';
 describe('CanvasView browser tab title', () => {
   it("shows the canvas's own title in the tab", async () => {
     mount(CanvasView, {
-      global: { stubs: { MarkdownRenderer: true, ToastContainer: true, LanguageToggle: true } },
+      global: { stubs: { ToastContainer: true, LanguageToggle: true } },
     });
     await flushPromises();
 

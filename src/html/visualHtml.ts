@@ -1,3 +1,6 @@
+import DOMPurify from 'dompurify';
+import { safeHref, safeImageSrc } from '../utils/safeUrl';
+
 export type VisualBlockType =
   | 'heading'
   | 'paragraph'
@@ -219,8 +222,8 @@ export function blockToHtml(block: VisualBlock): string {
     const inline = sanitizeInlineHtml(block.text || '') || 'Paragraph text';
     return `<p${style}>${inline}</p>`;
   }
-  if (block.type === 'button') return `<a class="button" href="${escapeHtml(block.href || '#')}"${style}>${text || 'Button'}</a>`;
-  if (block.type === 'link') return `<a href="${escapeHtml(block.href || '#')}"${style}>${text || 'Link'}</a>`;
+  if (block.type === 'button') return `<a class="button" href="${escapeHtml(safeHref(block.href) || '#')}"${style}>${text || 'Button'}</a>`;
+  if (block.type === 'link') return `<a href="${escapeHtml(safeHref(block.href) || '#')}"${style}>${text || 'Link'}</a>`;
 
   if (block.type === 'list') {
     const tag = block.ordered ? 'ol' : 'ul';
@@ -229,7 +232,8 @@ export function blockToHtml(block: VisualBlock): string {
   }
 
   if (block.type === 'image') {
-    const image = `<img src="${escapeHtml(block.src || '')}" alt="${escapeHtml(block.alt || '')}"${style}>`;
+    const src = safeImageSrc(block.src) || '';
+    const image = `<img src="${escapeHtml(src)}" alt="${escapeHtml(block.alt || '')}"${style}>`;
     if (!block.caption) return image;
     return `<figure>${image}<figcaption>${escapeHtml(block.caption)}</figcaption></figure>`;
   }
@@ -268,35 +272,29 @@ export function setBlockStyleProperty(block: VisualBlock, property: string, valu
   block.style = Array.from(styles.entries()).map(([key, val]) => `${key}: ${val}`).join('; ');
 }
 
-const INLINE_ALLOWED = new Set(['strong', 'em', 'a', 'br']);
+const INLINE_ALLOWED_TAGS = ['strong', 'em', 'b', 'i', 'a', 'br'];
 
 export function sanitizeInlineHtml(input: string): string {
-  if (typeof DOMParser === 'undefined') return input.replace(/<[^>]+>/g, '');
-  const doc = new DOMParser().parseFromString(`<div>${input}</div>`, 'text/html');
-  const root = doc.body.firstElementChild as HTMLElement | null;
-  if (!root) return '';
-  const walk = (node: Element): string => {
-    let out = '';
-    node.childNodes.forEach((child) => {
-      if (child.nodeType === 3) {
-        out += escapeHtml(child.textContent || '');
-      } else if (child.nodeType === 1) {
-        const el = child as Element;
-        const tag = el.tagName.toLowerCase();
-        if (!INLINE_ALLOWED.has(tag)) {
-          out += walk(el);
-        } else if (tag === 'br') {
-          out += '<br>';
-        } else if (tag === 'a') {
-          const href = el.getAttribute('href') || '#';
-          const safehref = /^javascript:/i.test(href) ? '#' : href;
-          out += `<a href="${escapeHtml(safehref)}">${walk(el)}</a>`;
-        } else {
-          out += `<${tag}>${walk(el)}</${tag}>`;
-        }
-      }
-    });
-    return out;
-  };
-  return walk(root);
+  if (!input) return '';
+  if (typeof document === 'undefined' || !DOMPurify.isSupported) {
+    return escapeHtml(input.replace(/<[^>]*>/g, ''));
+  }
+  const fragment = DOMPurify.sanitize(input, {
+    ALLOWED_TAGS: INLINE_ALLOWED_TAGS,
+    ALLOWED_ATTR: ['href'],
+    ALLOW_DATA_ATTR: false,
+    RETURN_DOM_FRAGMENT: true,
+  });
+  const container = document.createElement('div');
+  container.appendChild(fragment);
+  for (const anchor of container.querySelectorAll('a')) {
+    const rawHref = anchor.getAttribute('href');
+    anchor.setAttribute('href', safeHref(rawHref) ?? '#');
+  }
+  for (const el of container.querySelectorAll('[src]')) {
+    const validSrc = safeImageSrc(el.getAttribute('src'));
+    if (validSrc) el.setAttribute('src', validSrc);
+    else el.removeAttribute('src');
+  }
+  return container.innerHTML;
 }

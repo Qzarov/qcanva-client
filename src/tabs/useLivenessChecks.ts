@@ -21,6 +21,7 @@ export function useLivenessChecks(probe: () => Promise<LivenessResult>, onStale?
   let timer: ReturnType<typeof setInterval> | null = null;
   let appListener: PluginListenerHandle | null = null;
   let running = false;
+  let showGeneration = 0;
 
   const check = async () => {
     if (running) return;
@@ -37,15 +38,31 @@ export function useLivenessChecks(probe: () => Promise<LivenessResult>, onStale?
 
   useViewActivity({
     onShow: () => {
+      const gen = ++showGeneration;
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+      window.removeEventListener('online', onOnline);
+      void appListener?.remove();
+      appListener = null;
+
       void check();
       timer = setInterval(() => { void check(); }, LIVENESS_INTERVAL_MS);
       window.addEventListener('online', onOnline);
       if (Capacitor.isNativePlatform()) {
         void CapacitorApp.addListener('appStateChange', ({ isActive }) => { if (isActive) void check(); })
-          .then((handle) => { appListener = handle; });
+          .then((handle) => {
+            if (gen !== showGeneration) {
+              void handle.remove();
+              return;
+            }
+            appListener = handle;
+          });
       }
     },
     onHide: () => {
+      showGeneration += 1;
       if (timer) clearInterval(timer);
       timer = null;
       window.removeEventListener('online', onOnline);

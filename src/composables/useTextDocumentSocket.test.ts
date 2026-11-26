@@ -6,10 +6,11 @@ import { useTextDocumentSocket } from './useTextDocumentSocket';
 const sockets: any[] = [];
 
 vi.mock('socket.io-client', () => ({
-  io: vi.fn((url: string, _options: unknown) => {
+  io: vi.fn((url: string, options: unknown) => {
     const handlers = new Map<string, Function>();
     const socket = {
       url,
+      options,
       emit: vi.fn(),
       on: vi.fn((event: string, cb: Function) => {
         handlers.set(event, cb);
@@ -233,5 +234,22 @@ describe('useTextDocumentSocket', () => {
 
     expect(reject).toHaveBeenCalledWith({ clientUpdateId, reason: 'timeout', pending: { update: 'held' } });
     expect(textSocket.pendingUpdatesCount.value).toBe(0);
+  });
+
+  it('guards duplicate connect() calls and resolves token dynamically via auth callback', () => {
+    const textSocket = useTextDocumentSocket('doc-1');
+    textSocket.connect();
+    textSocket.connect();
+    expect(sockets).toHaveLength(1);
+
+    const authFn = sockets[0].options.auth as (cb: (data: Record<string, string>) => void) => void;
+    const cb = vi.fn();
+    localStorage.setItem('token', 'tok-1');
+    authFn(cb);
+    expect(cb).toHaveBeenLastCalledWith({ token: 'tok-1' });
+
+    localStorage.removeItem('token');
+    authFn(cb);
+    expect(cb).toHaveBeenLastCalledWith({});
   });
 });

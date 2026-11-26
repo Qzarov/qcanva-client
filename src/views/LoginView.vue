@@ -24,6 +24,10 @@ import ThemeMenu from '../components/ThemeMenu.vue';
 import HubOverrideField from '../components/HubOverrideField.vue';
 import { isHubOverrideAllowed } from '../api/hubOverride';
 
+export function isSafeLocalRedirect(v: unknown): v is string {
+  return typeof v === 'string' && /^\/(?![/\\])/.test(v) && !v.startsWith('/login');
+}
+
 export default defineComponent({
   components: { ThemeMenu, HubOverrideField },
   setup() {
@@ -40,7 +44,8 @@ export default defineComponent({
       try {
         const res = await auth.login(login.value, password.value);
         setToken(res.token, res.user?.role, res.user?.accessMode || 'user', res.user);
-        router.push(typeof route.query.redirect === 'string' ? route.query.redirect : '/dashboard');
+        const redirectTarget = isSafeLocalRedirect(route.query.redirect) ? route.query.redirect : '/dashboard';
+        router.push(redirectTarget);
       } catch (e: any) {
         error.value = e.message;
       } finally {

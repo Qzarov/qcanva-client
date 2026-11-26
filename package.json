@@ -21,9 +21,9 @@
     "postinstall": "patch-package"
   },
   "dependencies": {
-    "@capacitor/android": "^8.4.2",
+    "@capacitor/android": "^8.6.3",
     "@capacitor/app": "^8.1.1",
-    "@capacitor/core": "^8.4.2",
+    "@capacitor/core": "^8.6.3",
     "@lucide/vue": "^1.40.0",
     "@tiptap/extension-code-block-lowlight": "2.27.2",
     "@tiptap/extension-collaboration": "^2.27.2",
@@ -42,6 +42,7 @@
     "@tiptap/starter-kit": "^2.27.2",
     "@tiptap/suggestion": "^2.27.2",
     "@tiptap/vue-3": "^2.27.2",
+    "dompurify": "^3.5.0",
     "fflate": "^0.8.2",
     "highlight.js": "11.12.0",
     "lowlight": "3.3.0",
@@ -54,8 +55,9 @@
     "yjs": "^13.6.31"
   },
   "devDependencies": {
-    "@capacitor/cli": "^8.4.2",
+    "@capacitor/cli": "^8.6.3",
     "@playwright/test": "^1.59.1",
+    "@types/dompurify": "^3.2.0",
     "@types/node": "^24.6.0",
     "@vitejs/plugin-vue": "^6.0.1",
     "@vue/test-utils": "^2.4.10",

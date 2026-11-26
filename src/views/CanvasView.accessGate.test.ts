@@ -122,7 +122,7 @@ import { accessRequests, ApiError, canvas, isAuthenticated } from '../api/client
 
 function mountView() {
   return mount(CanvasView, {
-    global: { stubs: { MarkdownRenderer: true, ToastContainer: true, LanguageToggle: true } },
+    global: { stubs: { ToastContainer: true, LanguageToggle: true } },
   });
 }
 

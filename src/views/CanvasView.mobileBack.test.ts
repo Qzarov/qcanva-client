@@ -125,7 +125,7 @@ import CanvasView from './CanvasView.vue';
 
 const mountView = async () => {
   const wrapper = mount(CanvasView, {
-    global: { stubs: { MarkdownRenderer: true, ToastContainer: true, LanguageToggle: true } },
+    global: { stubs: { ToastContainer: true, LanguageToggle: true } },
   });
   await flushPromises();
   return wrapper;

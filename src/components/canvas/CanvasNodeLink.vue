@@ -6,12 +6,13 @@
     :style="nodePosition(node)"
     @mousedown.stop="onNodeDragStart($event, node)"
   >
-    <div class="node-link-header"><a :href="node.url" target="_blank" rel="noopener">{{ node.url }}</a></div>
+    <div class="node-link-header"><a v-if="safeUrl" :href="safeUrl" target="_blank" rel="noopener noreferrer">{{ node.url }}</a><span v-else>{{ node.url }}</span></div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { toRefs } from 'vue';
+import { computed, toRefs } from 'vue';
+import { safeExternalHref } from '../../utils/safeUrl';
 type CanvasNodeLike = any;
 const props = defineProps<{
   node: CanvasNodeLike;
@@ -21,4 +22,5 @@ const props = defineProps<{
   onNodeDragStart: (event: MouseEvent, node: CanvasNodeLike) => void;
 }>();
 const { node, stateClass, nodePresentationClass, nodePosition, onNodeDragStart } = toRefs(props);
+const safeUrl = computed(() => safeExternalHref(props.node?.url));
 </script>

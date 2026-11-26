@@ -6,10 +6,11 @@ import { useCanvasSocket } from './useCanvasSocket';
 const sockets: any[] = [];
 
 vi.mock('socket.io-client', () => ({
-  io: vi.fn((_url: string, _options: unknown) => {
+  io: vi.fn((_url: string, options: unknown) => {
     const handlers = new Map<string, Function>();
     const socket = {
       id: 'sock-1',
+      options,
       emit: vi.fn(),
       get volatile(){return this;},
       on: vi.fn((event: string, cb: Function) => {
@@ -107,5 +108,18 @@ describe('useCanvasSocket realtime fallback recovery', () => {
     // The slow op eventually acks → channel healthy → resume real-time.
     sockets[0].trigger('canvas-op-ack', { clientOpId, revision: 1 });
     expect(cs.realtimeOpsUnavailable.value).toBe(false);
+  });
+
+  it('guards duplicate connect() calls and resolves token dynamically via auth callback', () => {
+    const cs = useCanvasSocket('canvas-1');
+    cs.connect();
+    cs.connect();
+    expect(sockets).toHaveLength(1);
+
+    const authFn = sockets[0].options.auth as (cb: (data: Record<string, string>) => void) => void;
+    const cb = vi.fn();
+    localStorage.setItem('token', 'canvas-tok');
+    authFn(cb);
+    expect(cb).toHaveBeenLastCalledWith({ token: 'canvas-tok' });
   });
 });

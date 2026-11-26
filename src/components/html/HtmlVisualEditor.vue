@@ -126,10 +126,10 @@
     </section>
 
     <iframe
+      ref="previewFrame"
       class="html-browser-preview"
       :srcdoc="previewHtml"
-      sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox"
-      @load="onPreviewFrameLoad"
+      sandbox="allow-scripts allow-forms allow-popups"
     ></iframe>
   </div>
 </template>
@@ -137,7 +137,12 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import InlineRichText from './InlineRichText.vue';
-import { bindInPageLinks } from '../../html/inPageLinks';
+import {
+  createPreviewBridgeToken,
+  extractImageIdFromSrc,
+  injectPreviewBridge,
+  isBridgeMessageFromFrame,
+} from '../../html/previewBridge';
 import {
   createBlock,
   duplicateBlock,
@@ -261,12 +266,15 @@ const history = (() => {
   };
 })();
 
+const previewFrame = ref<HTMLIFrameElement | null>(null);
+const previewBridgeToken = createPreviewBridgeToken();
 const selectedIndex = computed(() => parsed.value.blocks.findIndex((block) => block.id === selectedId.value));
 const selectedBlock = computed(() => parsed.value.blocks[selectedIndex.value] || parsed.value.blocks[0]);
 const rawPreviewHtml = computed(() => serializeVisualHtml(parsed.value));
 const previewHtml = computed(() => {
   const raw = rawPreviewHtml.value;
-  return mapHtmlImageUrls(raw, 'html-document', props.documentId, props.imageToken);
+  const mapped = mapHtmlImageUrls(raw, 'html-document', props.documentId, props.imageToken);
+  return injectPreviewBridge(mapped, previewBridgeToken);
 });
 
 watch(() => props.modelValue, (value) => {
@@ -373,8 +381,24 @@ function onHistoryShortcut(event: KeyboardEvent) {
   else if ((key === 'z' && event.shiftKey) || key === 'y') { event.preventDefault(); redo(); }
 }
 
-onMounted(() => window.addEventListener('keydown', onHistoryShortcut));
-onBeforeUnmount(() => window.removeEventListener('keydown', onHistoryShortcut));
+function onPreviewBridgeMessage(event: MessageEvent) {
+  if (!isBridgeMessageFromFrame(event, [previewFrame.value], previewBridgeToken)) return;
+  if (event.data.type === 'image-error' && props.onImageError) {
+    const src = typeof event.data.src === 'string' ? event.data.src.trim() : '';
+    if (!src) return;
+    const imageId = extractImageIdFromSrc(src) || src;
+    void props.onImageError(imageId, src);
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', onHistoryShortcut);
+  window.addEventListener('message', onPreviewBridgeMessage);
+});
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onHistoryShortcut);
+  window.removeEventListener('message', onPreviewBridgeMessage);
+});
 
 function styleValue(block: VisualBlock, property: string) {
   for (const part of (block.style || '').split(';')) {
@@ -392,26 +416,5 @@ function blockLabel(block: VisualBlock) {
   if (block.type === 'heading') return `H${block.level || 2}: ${block.text || 'Heading'}`;
   if (block.type === 'raw') return 'Raw HTML';
   return `${block.type}: ${block.text || block.body || block.href || block.src || 'Untitled'}`;
-}
-
-/** `#anchor` links in the preview scroll it instead of loading the app into it. */
-function onPreviewFrameLoad(event: Event) {
-  const iframe = event.target as HTMLIFrameElement;
-  const doc = iframe?.contentDocument;
-  if (!doc) return;
-  bindInPageLinks(doc);
-  if (props.onImageError) {
-    doc.addEventListener('error', async (errorEvent: Event) => {
-      const target = errorEvent.target;
-      if (target instanceof HTMLImageElement) {
-        const src = target.getAttribute?.('src') || target.src || '';
-        const match = src.match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
-        const imageId = match ? match[1] : (src || 'image');
-        if (imageId && props.onImageError) {
-          await props.onImageError(imageId, src);
-        }
-      }
-    }, true);
-  }
 }
 </script>

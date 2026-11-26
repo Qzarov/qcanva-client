@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createBlock,
   parseVisualHtml,
+  sanitizeInlineHtml,
   serializeVisualHtml,
   setBlockStyleProperty,
 } from './visualHtml';
@@ -108,5 +109,41 @@ describe('visualHtml', () => {
     });
     expect(html).toContain('ok');
     expect(html).not.toContain('<script');
+  });
+
+  it('strips obfuscated javascript/vbscript/data links, noscript mXSS, svg animate, and inline styles', () => {
+    const clean = sanitizeInlineHtml(
+      '<a href="  java\tscript:alert(1)" onclick="alert(1)" style="color:red">bad</a>' +
+      '<a href="vbscript:msgbox(1)">vb</a>' +
+      '<a href="//evil.tld/phish">rel</a>' +
+      '<noscript><img src=x onerror=alert(1)></noscript>' +
+      '<svg><animate attributeName="href" to="javascript:alert(1)"/></svg>' +
+      '<strong style="position:fixed">ok</strong>',
+    );
+    expect(clean).not.toContain('javascript:');
+    expect(clean).not.toContain('vbscript:');
+    expect(clean).not.toContain('//evil.tld');
+    expect(clean).not.toContain('onclick');
+    expect(clean).not.toContain('style=');
+    expect(clean).not.toContain('<noscript');
+    expect(clean).not.toContain('<svg');
+    expect(clean).toContain('<strong>ok</strong>');
+  });
+
+  it('validates href and src in blockToHtml', () => {
+    const html = serializeVisualHtml({
+      doctype: '<!DOCTYPE html>',
+      htmlAttrs: '',
+      headHtml: '',
+      bodyAttrs: '',
+      blocks: [
+        createBlock('link', { text: 'Click', href: 'java\tscript:alert(1)' }),
+        createBlock('button', { text: 'Go', href: '//evil.tld/x' }),
+        createBlock('image', { src: 'javascript:alert(1)', alt: 'Bad' }),
+      ],
+    });
+    expect(html).toContain('<a href="#">Click</a>');
+    expect(html).toContain('<a class="button" href="#">Go</a>');
+    expect(html).toContain('<img src="" alt="Bad">');
   });
 });

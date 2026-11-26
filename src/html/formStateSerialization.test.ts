@@ -102,4 +102,80 @@ describe('serializeDocumentWithFormState', () => {
     expect(html).toContain('\\"status\\":\\"fail\\"');
     expect((html.match(/data-id="task-1"/g) || []).length).toBe(1);
   });
+
+  it('escapes </script> and HTML-significant chars in embedded form state JSON', () => {
+    const doc = parse(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <script>
+            const STORAGE_KEY = 'qcanva-checklist:qa-1'
+            function attachItem() {}
+            const css = 'comment-status-tag comment-wrap'
+          </script>
+        </head>
+        <body>
+          <ul>
+            <li>
+              <input type="checkbox" class="cb" data-id="t1" checked>
+              <div class="comment-wrap"><textarea class="comment-area"></textarea></div>
+            </li>
+          </ul>
+        </body>
+      </html>
+    `);
+    (doc.querySelector('.comment-area') as HTMLTextAreaElement).value =
+      '</script><img src=x onerror=alert(1)>&\u2028\u2029';
+
+    const html = serializeDocumentWithFormState(doc);
+    const seedMatch = html.match(/<script data-qcanva-form-state="[^"]*">([\s\S]*?)<\/script>/);
+    expect(seedMatch).not.toBeNull();
+    expect(seedMatch![1]).not.toContain('</script>');
+    expect(seedMatch![1]).not.toContain('<img');
+    expect(seedMatch![1]).toContain('\\u003c/script\\u003e');
+    expect(seedMatch![1]).toContain('\\u0026');
+  });
+
+  it('rejects reserved parent storage keys and never reads globalThis.localStorage', () => {
+    globalThis.localStorage.setItem('currentUser', JSON.stringify({ email: 'victim@example.com', items: { a: { comment: 'secret' } } }));
+    globalThis.localStorage.setItem('safe-checklist-key', JSON.stringify({ secret: 'parent-leak', items: { leaked: { comment: 'do-not-read' } } }));
+    try {
+      const maliciousDoc = parse(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <script>
+              const STORAGE_KEY = 'currentUser'
+              function attachItem() {}
+              const css = 'comment-wrap'
+            </script>
+          </head>
+          <body><ul><li><input type="checkbox" class="cb" data-id="x" checked></li></ul></body>
+        </html>
+      `);
+      const maliciousHtml = serializeDocumentWithFormState(maliciousDoc);
+      expect(maliciousHtml).not.toContain('data-qcanva-form-state');
+      expect(maliciousHtml).not.toContain('victim@example.com');
+
+      const checklistDoc = parse(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <script>
+              const STORAGE_KEY = 'safe-checklist-key'
+              function attachItem() {}
+              const css = 'comment-wrap'
+            </script>
+          </head>
+          <body><ul><li><input type="checkbox" class="cb" data-id="t1" checked></li></ul></body>
+        </html>
+      `);
+      const checklistHtml = serializeDocumentWithFormState(checklistDoc);
+      expect(checklistHtml).not.toContain('parent-leak');
+      expect(checklistHtml).not.toContain('do-not-read');
+    } finally {
+      globalThis.localStorage.removeItem('currentUser');
+      globalThis.localStorage.removeItem('safe-checklist-key');
+    }
+  });
 });

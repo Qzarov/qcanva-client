@@ -22,36 +22,57 @@ export function useDriveFolderData(options: {
   const nextCursor = ref<string | null>(null);
   const activeNextCursor = computed(() => options.isSearching.value ? options.searchNextCursor.value : nextCursor.value);
   const { t } = useI18n();
+  let requestSeq = 0;
 
   async function loadCurrentFolder() {
+    const seq = ++requestSeq;
     options.loading.value = true;
+    options.loadingMore.value = false;
     options.error.value = null;
     try {
       const [infoRes, itemsRes] = await Promise.all([
         driveApi.getFolder(options.folderId.value),
         driveApi.getFolderItems(options.folderId.value, { slice: options.slice.value, sort: options.sort.value, order: options.order.value }),
       ]);
+      if (seq !== requestSeq) return;
       folderInfo.value = infoRes;
       items.value = itemsRes.items;
       nextCursor.value = itemsRes.nextCursor;
     } catch (error: any) {
+      if (seq !== requestSeq) return;
       options.error.value = error.message || t('driveFolderLoadFailed');
     } finally {
-      options.loading.value = false;
+      if (seq === requestSeq) {
+        options.loading.value = false;
+      }
     }
   }
 
   async function refetchItemsOnly() {
+    const seq = ++requestSeq;
+    options.loadingMore.value = false;
     if (options.isSearching.value) {
-      await options.performSearch();
+      try {
+        await options.performSearch();
+      } finally {
+        if (seq === requestSeq) {
+          options.loading.value = false;
+        }
+      }
       return;
     }
     try {
       const res = await driveApi.getFolderItems(options.folderId.value, { slice: options.slice.value, sort: options.sort.value, order: options.order.value });
+      if (seq !== requestSeq) return;
       items.value = res.items;
       nextCursor.value = res.nextCursor;
     } catch (error: any) {
+      if (seq !== requestSeq) return;
       options.error.value = error.message || t('driveRefreshFailed');
+    } finally {
+      if (seq === requestSeq) {
+        options.loading.value = false;
+      }
     }
   }
 
@@ -74,22 +95,28 @@ export function useDriveFolderData(options: {
 
   async function onLoadMore() {
     if (options.loadingMore.value || !activeNextCursor.value) return;
+    const seq = ++requestSeq;
     options.loadingMore.value = true;
     try {
       if (options.isSearching.value) {
         const scopeFolder = options.searchAllDrive.value || options.folderId.value === 'root' ? undefined : options.folderId.value;
         const res = await driveApi.search({ q: options.debouncedQuery.value, slice: options.slice.value, folderId: scopeFolder, cursor: options.searchNextCursor.value });
+        if (seq !== requestSeq) return;
         options.searchResults.value = [...options.searchResults.value, ...res.items];
         options.searchNextCursor.value = res.nextCursor;
       } else {
         const res = await driveApi.getFolderItems(options.folderId.value, { slice: options.slice.value, sort: options.sort.value, order: options.order.value, cursor: nextCursor.value });
+        if (seq !== requestSeq) return;
         items.value = [...items.value, ...res.items];
         nextCursor.value = res.nextCursor;
       }
     } catch (error: any) {
+      if (seq !== requestSeq) return;
       options.error.value = error.message || t('driveLoadMoreItemsFailed');
     } finally {
-      options.loadingMore.value = false;
+      if (seq === requestSeq) {
+        options.loadingMore.value = false;
+      }
     }
   }
 

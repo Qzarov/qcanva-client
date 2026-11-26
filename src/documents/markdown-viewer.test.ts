@@ -109,6 +109,42 @@ describe('renderMarkdownDocument', () => {
     expect(result.html).toContain('href="https://qzarov.pro/docs" target="_blank" rel="noopener noreferrer"');
   });
 
+  it('blocks noscript mXSS, svg/math animations, template, inline styles, and protocol-relative links', () => {
+    const md = [
+      '# Clean Title',
+      '<noscript><p title="</noscript><img src=x onerror=alert(1)>"></noscript>',
+      '<svg><a xlink:href="javascript:alert(1)"><animate attributeName="href" to="javascript:alert(2)"></animate></a></svg>',
+      '<math><mtext><img src=x onerror=alert(3)></mtext></math>',
+      '<template><script>alert(4)</script></template>',
+      '<style>body{display:none}</style>',
+      '<p style="position:fixed;inset:0">Styled</p>',
+      '<a href="//evil.example/steal">ProtoRel</a>',
+      '<a href="/\\evil.example/steal">BackslashRel</a>',
+      '<a href="\\\\evil.example/steal">DoubleBackslashRel</a>',
+      '<a href="\\/evil.example/steal">LeadingBackslashRel</a>',
+      '<a href="vbscript:msgbox(1)">VBScript</a>',
+      '<input type="text" value="injected">',
+    ].join('\n\n');
+
+    const result = renderMarkdownDocument(md);
+    expect(result.headings).toEqual([{ id: 'md-heading-0', level: 1, text: 'Clean Title' }]);
+    expect(result.html).not.toContain('<noscript');
+    expect(result.html).not.toContain('<svg');
+    expect(result.html).not.toContain('<animate');
+    expect(result.html).not.toContain('<math');
+    expect(result.html).not.toContain('<template');
+    expect(result.html).not.toContain('<style');
+    expect(result.html).not.toContain('style=');
+    expect(result.html).not.toContain('onerror');
+    expect(result.html).not.toContain('javascript:');
+    expect(result.html).not.toContain('vbscript:');
+    expect(result.html).not.toContain('//evil.example');
+    expect(result.html).not.toContain('/\\evil.example');
+    expect(result.html).not.toContain('\\\\evil.example');
+    expect(result.html).not.toContain('\\/evil.example');
+    expect(result.html).not.toContain('type="text"');
+  });
+
   it('returns empty output for blank or whitespace-only markdown', () => {
     expect(renderMarkdownDocument('')).toEqual({ html: '', headings: [] });
     expect(renderMarkdownDocument('   \n  ')).toEqual({ html: '', headings: [] });
