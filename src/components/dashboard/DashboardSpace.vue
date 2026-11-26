@@ -232,6 +232,7 @@
       :can-move="ctxCanMove"
       :can-delete="ctxCanDelete"
       :can-rename="false"
+      :can-properties="ctxCanProperties"
       :is-favorite="ctxAllFavorite"
       @close="ctxMenu.open = false"
       @open="onCtxOpen"
@@ -239,7 +240,15 @@
       @toggle-favorite="onCtxToggleFavorite"
       @move="onCtxMove"
       @download="onCtxDownload"
+      @properties="onCtxProperties"
       @delete="onCtxDelete"
+    />
+
+    <DriveFileProperties
+      v-if="propertiesFile"
+      :file-id="propertiesFile.id"
+      :file-name="propertiesFile.name"
+      @close="propertiesFile = null"
     />
 
     <SpaceAddDialog v-if="addDialogOpen" @pick="pickSource" @close="addDialogOpen = false" />
@@ -268,7 +277,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { File as FileIcon, Image as ImageIcon, Play, Plus, Share2, Video } from '@lucide/vue';
 import { spacesApi, type SpaceDetails, type SpaceFeedItem, type SpaceFeedType, type SpaceSource } from '../../api/spaces';
 import SpaceFilterDialog from './SpaceFilterDialog.vue';
@@ -290,6 +299,8 @@ import { hasCardPicture, isMarkdownFile, isPictureFile, isVideoFile } from '../.
 import { fetchMarkdownTextFromUrl } from '../../documents/markdown-viewer';
 import type { MarkdownViewerItem } from '../MarkdownDocumentViewer.vue';
 import ResourceIcon from '../ResourceIcon.vue';
+
+const DriveFileProperties = defineAsyncComponent(() => import('../DriveFileProperties.vue'));
 import AlbumShareDialog from './AlbumShareDialog.vue';
 import DashboardViewToggle from './DashboardViewToggle.vue';
 import ExplorerContextMenu, { type ExplorerContextMenuItem } from './ExplorerContextMenu.vue';
@@ -675,6 +686,13 @@ const ctxCanDelete = computed(() => {
   return docs.length + files.length > 0;
 });
 
+const propertiesFile = ref<{ id: string; name?: string } | null>(null);
+
+const ctxCanProperties = computed(() => {
+  const first = ctxMenu.items[0];
+  return ctxMenu.items.length === 1 && Boolean(first && first.origin === 'qspace' && first.kind === 'file' && first.id);
+});
+
 function openItemContextMenu(event: MouseEvent, item: SpaceFeedItem): void {
   const key = selectKeyOf(item);
   let selectedItems: SpaceFeedItem[];
@@ -728,6 +746,13 @@ async function onCtxDownload(entries: ReadonlyArray<ExplorerContextMenuItem>): P
   for (const entry of entries) {
     const found = shown.value.find((item) => item.key === entry.key);
     if (found) await download(found);
+  }
+}
+
+function onCtxProperties(entry: ExplorerContextMenuItem): void {
+  const found = shown.value.find((item) => item.key === entry.key);
+  if (found && found.origin === 'qspace' && found.kind === 'file' && found.id) {
+    propertiesFile.value = { id: found.id, name: found.name };
   }
 }
 
@@ -943,15 +968,43 @@ async function onMembersChanged(next: SpaceDetails | null) {
   void loadSpaces(true);
 }
 
+function onWindowKeydown(event: KeyboardEvent): void {
+  if (event.key !== 'Escape' || event.defaultPrevented) return;
+  if (
+    ctxMenu.open
+    || addDialogOpen.value
+    || membersOpen.value
+    || qspaceOpen.value
+    || yandexOpen.value
+    || propertiesFile.value
+    || filterMenuOpen.value
+    || (typeof document !== 'undefined' && Boolean(document.querySelector('[role="dialog"], .modal-backdrop, .drive-properties-backdrop, [data-s2-popover]')))
+  ) {
+    return;
+  }
+  if (menu.value) {
+    menu.value = '';
+    event.preventDefault();
+    return;
+  }
+  if (props.query?.trim()) return;
+  if (effectiveSelectedKeys.value.length > 0) {
+    onTableSelection([]);
+    event.preventDefault();
+  }
+}
+
 onMounted(() => {
   teleportReady.value = Boolean(document.querySelector('.app-layout.dashboard-view'));
   document.addEventListener('click', closeMenu);
+  window.addEventListener('keydown', onWindowKeydown);
   void loadYandexStatus();
   void load();
 });
 onBeforeUnmount(() => {
   loadId += 1;
   document.removeEventListener('click', closeMenu);
+  window.removeEventListener('keydown', onWindowKeydown);
   if (previewTimer) clearTimeout(previewTimer);
   if (readPoll) clearTimeout(readPoll);
   emit('items', []);

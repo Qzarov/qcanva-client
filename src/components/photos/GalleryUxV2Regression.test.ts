@@ -16,6 +16,7 @@ import DrivePhotos from './DrivePhotos.vue';
 import drivePhotosSource from './DrivePhotos.vue?raw';
 import GallerySidebar from './GallerySidebar.vue';
 import photosFeedSource from './PhotosFeed.vue?raw';
+import photosGroupHeadSource from './PhotosGroupHead.vue?raw';
 import inlineSearchSource from '../dashboard/ExplorerInlineSearch.vue?raw';
 import { resetPhotosView } from './usePhotosView';
 
@@ -47,7 +48,11 @@ const yandexStatusMock = vi.hoisted(() => vi.fn());
 const yandexListMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@capacitor/core', () => ({
-  Capacitor: { isNativePlatform: () => false },
+  Capacitor: {
+    isNativePlatform: () => false,
+    getPlatform: () => 'web',
+  },
+  registerPlugin: vi.fn(() => ({})),
 }));
 
 vi.mock('@capacitor/app', () => ({
@@ -333,10 +338,10 @@ describe('Gallery UX v2 & B-009/B-011/B-014 regressions', () => {
     expect(svg.attributes('height')).toBe('18');
   });
 
-  it('B-009: scrolling .pf-scroller hides .dp-top and PhotosViewBar synchronously while .pf.headroom-hidden .pf-stick docks at top: 8px; scrolling up reveals both', async () => {
+  it('B-009: scrolling .pf-scroller hides .dp-top and PhotosViewBar synchronously while .pf.headroom-hidden .pf-stick docks flush at top: 0; scrolling up reveals both', async () => {
     const stickCssMatch = photosFeedSource.match(/\.pf\.headroom-hidden\s+\.pf-stick\s*\{([^}]*)\}/);
     expect(stickCssMatch).not.toBeNull();
-    expect(stickCssMatch![1]).toContain('top: 8px;');
+    expect(stickCssMatch![1]).toContain('top: 0;');
 
     const manyItems = Array.from({ length: 24 }, (_, idx) => mkItem(idx + 1));
     summaryMock.mockResolvedValue({
@@ -554,7 +559,6 @@ describe('Gallery UX v2 & B-009/B-011/B-014 regressions', () => {
   it('390x844 mobile Media topbar: prevents dp-top-left/dp-top-center overlap and S2 search right-edge overflow', async () => {
     expect(drivePhotosSource).toMatch(/@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.dp-top-left\s*\{[^}]*flex:\s*0\s+0\s+auto;/);
     expect(drivePhotosSource).toMatch(/@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.dp-top-center\s*\{[^}]*position:\s*static;[^}]*transform:\s*none;[^}]*margin:\s*0\s+auto;/);
-    expect(drivePhotosSource).toMatch(/@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.dp-info-btn\s*\{\s*display:\s*none;\s*\}/);
     expect(drivePhotosSource).toMatch(/@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.dp-seg-btn\s*\{[^}]*height:\s*26px;[^}]*padding:\s*0\s+7px;[^}]*font-size:\s*11\.5px;/);
 
     expect(inlineSearchSource).toMatch(/@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.s2-wrap\.in-gallery\s*\{[^}]*flex:\s*0\s+1\s+84px;[^}]*min-width:\s*68px;/);
@@ -563,7 +567,9 @@ describe('Gallery UX v2 & B-009/B-011/B-014 regressions', () => {
     const w = mountDrivePhotos({ showSidebarExpand: true });
     await settle();
 
-    expect(w.get('[data-testid="info-toggle"]').classes()).toContain('dp-info-btn');
+    expect(w.find('[data-testid="info-toggle"]').exists()).toBe(false);
+    expect(w.find('[data-testid="share-btn"]').exists()).toBe(false);
+    expect(w.find('[data-testid="favorite-btn"]').exists()).toBe(false);
     const s2Wrap = w.get('[data-s2-search]');
     expect(s2Wrap.classes()).toContain('in-gallery');
     expect(s2Wrap.classes()).not.toContain('is-open');
@@ -854,5 +860,145 @@ describe('Gallery UX v2 & B-009/B-011/B-014 regressions', () => {
     await settle();
     expect(gsEmpty.find('[data-gallery-yandex="/"] .gs-caret-btn').exists()).toBe(false);
     expect(gsEmpty.find('[data-gallery-yandex="/"] .gs-caret-spacer').exists()).toBe(true);
+  });
+
+  it('UX polish: removes info/share/favorite buttons from topbar and opens PhotoPanel via ПКМ -> Свойства', async () => {
+    const w = mountDrivePhotos();
+    await settle();
+
+    expect(w.find('.dp-top-right [data-testid="info-toggle"]').exists()).toBe(false);
+    expect(w.find('.dp-top-right [data-testid="share-btn"]').exists()).toBe(false);
+    expect(w.find('.dp-top-right [data-testid="favorite-btn"]').exists()).toBe(false);
+    expect(w.find('[data-photo-panel]').exists()).toBe(false);
+
+    await w.get('[data-file-id="f1"]').trigger('contextmenu');
+    await nextTick();
+
+    const propsBtn = w.get('[data-testid="gallery-context-menu"] [data-ctx-properties]');
+    expect(propsBtn.text()).toContain('Свойства');
+    await propsBtn.trigger('click');
+    await settle();
+
+    expect(w.find('[data-testid="gallery-context-menu"]').exists()).toBe(false);
+    expect(w.find('[data-photo-panel]').exists()).toBe(true);
+    expect(w.get('[data-panel-title]').text()).toBe('p1.jpg');
+  });
+
+  it('B-019: layered Escape clears search (popover then query) and clears photo selection & focus', async () => {
+    const w = mountDrivePhotos();
+    await settle();
+
+    // Multi-select f1 and f2
+    await w.get('[data-file-id="f1"]').trigger('click');
+    await w.get('[data-file-id="f2"]').trigger('click', { ctrlKey: true });
+    await nextTick();
+    expect(w.find('[data-testid="selection-badge"]').exists()).toBe(true);
+    expect(w.get('[data-file-id="f2"]').classes()).toContain('is-current');
+
+    // Escape clears both selected and focusedId
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }));
+    await nextTick();
+    expect(w.find('[data-testid="selection-badge"]').exists()).toBe(false);
+    expect(w.get('[data-file-id="f2"]').classes()).not.toContain('is-current');
+
+    // Search with open popover: 1st Escape collapses popover, 2nd Escape clears query & search grid
+    const input = w.get('[data-s2-input]');
+    await input.trigger('focus');
+    await input.setValue('закат');
+    await input.trigger('keydown', { key: 'Enter' });
+    await settle();
+    expect(document.body.querySelector('[data-s2-popover]')).not.toBeNull();
+    expect(w.find('[data-testid="photos-search-grid"]').exists()).toBe(true);
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }));
+    await nextTick();
+    expect(document.body.querySelector('[data-s2-popover]')).toBeNull();
+    expect((input.element as HTMLInputElement).value).toBe('закат');
+    expect(w.find('[data-testid="photos-search-grid"]').exists()).toBe(true);
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }));
+    await settle();
+    expect((input.element as HTMLInputElement).value).toBe('');
+    expect(w.find('[data-testid="photos-search-grid"]').exists()).toBe(false);
+    expect(w.find('[data-testid="photos-feed"]').exists()).toBe(true);
+  });
+
+  it('B-019: gallery context menu closes on outside capture pointerdown (even with stopPropagation), focusout leaving menu, and window blur', async () => {
+    const w = mountDrivePhotos();
+    await settle();
+
+    // 1. Outside pointerdown on element that calls stopPropagation() (like .pf-scroller marquee)
+    const stopper = document.createElement('div');
+    stopper.addEventListener('pointerdown', (ev) => ev.stopPropagation());
+    document.body.appendChild(stopper);
+
+    await w.get('[data-file-id="f1"]').trigger('contextmenu');
+    await nextTick();
+    const menuEl = w.get('[data-testid="gallery-context-menu"]').element as HTMLElement;
+    expect(menuEl.getAttribute('tabindex')).toBe('-1');
+    expect(document.activeElement).toBe(menuEl);
+
+    stopper.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, cancelable: true }));
+    await nextTick();
+    expect(w.find('[data-testid="gallery-context-menu"]').exists()).toBe(false);
+    stopper.remove();
+
+    // 2. focusout leaving menu closes it
+    await w.get('[data-file-id="f1"]').trigger('contextmenu');
+    await nextTick();
+    expect(w.find('[data-testid="gallery-context-menu"]').exists()).toBe(true);
+    const outsideBtn = document.createElement('button');
+    document.body.appendChild(outsideBtn);
+    await w.get('[data-testid="gallery-context-menu"]').trigger('focusout', { relatedTarget: outsideBtn });
+    await nextTick();
+    expect(w.find('[data-testid="gallery-context-menu"]').exists()).toBe(false);
+    outsideBtn.remove();
+
+    // 3. Inside mousedown + microtask + null-relatedTarget focusout (Safari/WebKit button click) keeps menu open
+    await w.get('[data-file-id="f1"]').trigger('contextmenu');
+    await nextTick();
+    const albumBtn = w.get('[data-testid="gallery-context-menu"] [data-ctx-album]');
+    await albumBtn.trigger('pointerdown');
+    await albumBtn.trigger('mousedown');
+    await Promise.resolve();
+    await w.get('[data-testid="gallery-context-menu"]').trigger('focusout', { relatedTarget: null });
+    await nextTick();
+    expect(w.find('[data-testid="gallery-context-menu"]').exists()).toBe(true);
+
+    // 4. window blur closes menu
+    window.dispatchEvent(new Event('blur'));
+    await nextTick();
+    expect(w.find('[data-testid="gallery-context-menu"]').exists()).toBe(false);
+  });
+
+  it('UX polish: PhotosFeed renders gradient curtains (.pgh-curtain, no .pgh-pill) on sticky-head and overlay headers with flush docking when headroom-hidden', async () => {
+    expect(photosFeedSource).toMatch(/\.pf-stick\s*\{[^}]*top:\s*var\(--dp-top-h,\s*50px\);/);
+    expect(photosFeedSource).toMatch(/\.pf\.headroom-hidden\s+\.pf-stick\s*\{[^}]*top:\s*0;/);
+    expect(photosFeedSource).toMatch(/\.pf-stick-inner\s*\{[^}]*background:\s*linear-gradient\(/);
+    expect(photosFeedSource).toMatch(/\.pf-h1\.is-overlay\s*\{[^}]*background:\s*linear-gradient\(/);
+    expect(photosGroupHeadSource).toMatch(/\.pgh-pick\s*\{[^}]*pointer-events:\s*auto;/);
+
+    const manyItems = Array.from({ length: 24 }, (_, idx) => mkItem(idx + 1));
+    summaryMock.mockResolvedValue({
+      groups: [{ key: '2026-10', title: 'Октябрь 2026', count: manyItems.length, subs: null }],
+    });
+    itemsMock.mockResolvedValue({ items: manyItems, nextCursor: null });
+
+    const w = mountDrivePhotos();
+    await settle();
+
+    // Initial overlay date header uses gradient curtain
+    expect(w.findAll('.pf-row.pf-h1.is-overlay .pgh-curtain').length).toBeGreaterThan(0);
+    expect(w.findAll('.pgh-pill').length).toBe(0);
+
+    // Scroll down to trigger sticky-head and headroom-hidden
+    const scroller = w.get('.pf-scroller').element as HTMLElement;
+    scroller.scrollTop = 180;
+    scroller.dispatchEvent(new Event('scroll'));
+    await nextTick();
+
+    expect(w.get('[data-testid="photos-feed"]').classes()).toContain('headroom-hidden');
+    expect(w.find('[data-testid="sticky-head"] .pgh-curtain').exists()).toBe(true);
+    expect(w.find('[data-testid="sticky-head"] .pgh-pill').exists()).toBe(false);
   });
 });

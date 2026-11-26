@@ -1335,7 +1335,7 @@ onBeforeUnmount(() => {
             :folder="headFor(stuck.row)?.isFolder"
             :pressed="groupPressed(stuck.row.groupKey)"
             :selecting="hasMultiSelect"
-            :pill="true"
+            :curtain="true"
             @pick="pickGroup(stuck.row.groupKey)"
           />
         </div>
@@ -1360,7 +1360,7 @@ onBeforeUnmount(() => {
               :folder="headFor(row)?.isFolder"
               :pressed="groupPressed(row.groupKey, row.subKey)"
               :selecting="hasMultiSelect"
-              :pill="row.kind === 'h1' && isOverlayDateWall"
+              :curtain="row.kind === 'h1' && isOverlayDateWall"
               @pick="pickGroup(row.groupKey, row.subKey)"
             />
 
@@ -1498,7 +1498,7 @@ onBeforeUnmount(() => {
   flex: 1;
   min-width: 0;
   overflow-y: auto;
-  padding: calc(var(--dp-top-h, 46px) + 2px) 4px 48px 2px;
+  padding: calc(var(--dp-top-h, 50px) + 2px) 4px 48px 2px;
   scrollbar-width: none;
 }
 .pf-scroller::-webkit-scrollbar {
@@ -1514,50 +1514,93 @@ onBeforeUnmount(() => {
 }
 .pf-h1 {
   display: flex;
-  align-items: flex-end;
-  padding-bottom: 6px;
-  padding-left: 8px;
+  align-items: center;
+  box-sizing: border-box;
+  border-radius: 0;
   pointer-events: none;
+}
+.pf-h1:not(.is-overlay),
+.pf-h2 {
+  padding: 8px 12px 6px;
+  border-radius: 0;
+  background: linear-gradient(180deg, rgba(14, 24, 18, 0.52) 0%, rgba(14, 24, 18, 0) 100%);
+}
+:root[data-theme='light'] .pf-h1:not(.is-overlay),
+:root[data-theme='light'] .pf-h2 {
+  background: linear-gradient(180deg, rgba(232, 241, 235, 0.75) 0%, rgba(232, 241, 235, 0) 100%);
 }
 .pf-h1.is-overlay {
   align-items: flex-start;
-  padding: 8px 10px 0;
+  left: 0;
+  right: 0;
+  box-sizing: border-box;
+  padding: 10px 14px 20px;
+  border-radius: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(8, 14, 10, 0.78) 0%,
+    rgba(8, 14, 10, 0.38) 56%,
+    rgba(8, 14, 10, 0) 100%
+  );
   z-index: 6;
   pointer-events: none;
 }
-.pf-h1 > :deep(.pgh),
-.pf-h2 > :deep(.pgh) {
-  width: 100%;
+:root[data-theme='light'] .pf-h1.is-overlay {
+  background: linear-gradient(
+    180deg,
+    rgba(244, 248, 245, 0.90) 0%,
+    rgba(244, 248, 245, 0.50) 56%,
+    rgba(244, 248, 245, 0) 100%
+  );
 }
-.pf-h1.is-overlay > :deep(.pgh) {
-  width: auto;
+.pf-h1 > :deep(.pgh),
+.pf-h2 > :deep(.pgh),
+.pf-h1.is-overlay > :deep(.pgh),
+.pf-stick-inner > :deep(.pgh) {
+  width: 100%;
 }
 .pf-h2 {
   display: flex;
   align-items: center;
-  padding-left: 8px;
+  box-sizing: border-box;
   pointer-events: none;
 }
 .pf-stick {
   position: sticky;
-  top: calc(var(--dp-top-h, 46px) + 8px);
+  top: var(--dp-top-h, 50px);
   height: 0;
   z-index: 8;
   pointer-events: none;
   transition: top 0.22s ease;
 }
 .pf.headroom-hidden .pf-stick {
-  top: 8px;
+  top: 0;
 }
 .pf-stick-inner {
   position: absolute;
+  top: 0;
   left: 0;
   right: 0;
   box-sizing: border-box;
   display: flex;
   align-items: flex-start;
-  padding: 0 10px;
+  padding: 10px 14px 22px;
+  border-radius: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(8, 14, 10, 0.86) 0%,
+    rgba(8, 14, 10, 0.52) 55%,
+    rgba(8, 14, 10, 0) 100%
+  );
   pointer-events: none;
+}
+:root[data-theme='light'] .pf-stick-inner {
+  background: linear-gradient(
+    180deg,
+    rgba(244, 248, 245, 0.94) 0%,
+    rgba(244, 248, 245, 0.60) 55%,
+    rgba(244, 248, 245, 0) 100%
+  );
 }
 .pf-skeleton {
   width: 100%;

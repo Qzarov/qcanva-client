@@ -45,6 +45,17 @@ vi.mock('../../api/drive', async () => {
       ...actual.driveApi,
       getThumbLinks: vi.fn().mockResolvedValue({ links: {} }),
       getDownloadLink: vi.fn().mockResolvedValue({ url: '/api/drive/files/f-1?token=t', expiresAt: '2026-12-01T00:00:00Z' }),
+      getFileMeta: vi.fn().mockResolvedValue({
+        id: 'f-1',
+        name: 'Sunset.jpg',
+        mime: 'image/jpeg',
+        sizeBytes: 120000,
+        createdAt: '2026-11-01T10:00:00Z',
+        updatedAt: '2026-11-10T10:00:00Z',
+        replicas: [],
+        hubCopy: true,
+      }),
+      listDevices: vi.fn().mockResolvedValue([]),
     },
     downloadDriveFile: vi.fn(),
   };
@@ -395,6 +406,45 @@ describe('DashboardSpace (T-018 Albums redesign)', () => {
     expect(spacesApi.rename).toHaveBeenCalledWith('space-1', 'Алтай Зима');
     expect(wrapper.get('[data-space-title]').text()).toBe('Алтай Зима');
   });
+
+  it('opens DriveFileProperties via right-click Properties and clears selection on Esc', async () => {
+    const wrapper = mount(DashboardSpace, {
+      attachTo: document.body,
+      props: {
+        spaceId: 'space-1',
+        meId: 'u-1',
+        folderOptions: [{ id: 'folder-1', name: 'Горы', depth: 0, path: '' }],
+      },
+    });
+    await flushPromises();
+
+    // Right-click selects item and opens context menu with Properties
+    await wrapper.get('[data-space-item="q:file:f-1"]').trigger('contextmenu', { clientX: 80, clientY: 90 });
+    await nextTick();
+    expect(lastOf(wrapper.emitted('update:selectedKeys'))).toEqual([['q:file:f-1']]);
+
+    const propsBtn = wrapper.get('[data-explorer-context-menu] [data-ctx-action="properties"]');
+    await propsBtn.trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-properties-backdrop]').exists()).toBe(true);
+    });
+
+    // Close properties dialog, then already-handled Esc (defaultPrevented) must NOT clear selection
+    await wrapper.get('.drive-properties-close-btn').trigger('click');
+    await nextTick();
+    expect(wrapper.find('[data-properties-backdrop]').exists()).toBe(false);
+
+    const preventedEsc = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true });
+    preventedEsc.preventDefault();
+    window.dispatchEvent(preventedEsc);
+    await nextTick();
+    expect(lastOf(wrapper.emitted('update:selectedKeys'))).toEqual([['q:file:f-1']]);
+
+    // Unhandled Esc clears selection
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }));
+    await nextTick();
+    expect(lastOf(wrapper.emitted('update:selectedKeys'))).toEqual([[]]);
+  });
 });
 
 describe('AlbumShareDialog', () => {
@@ -544,6 +594,71 @@ describe('ExplorerContextMenu & ExplorerDragBadge', () => {
     expect(wrapper.emitted('add')).toHaveLength(1);
     expect(wrapper.emitted('refresh')).toHaveLength(1);
     expect(wrapper.emitted('close')).toHaveLength(3);
+  });
+
+  it('B-019: ExplorerContextMenu renders Properties on single file and closes on outside pointerdown capture, focusout outside, and window blur', async () => {
+    const outsideBtn = document.createElement('button');
+    outsideBtn.textContent = 'Outside';
+    outsideBtn.addEventListener('pointerdown', (ev) => ev.stopPropagation());
+    document.body.appendChild(outsideBtn);
+
+    const wrapper = mount(ExplorerContextMenu, {
+      attachTo: document.body,
+      props: {
+        open: true,
+        x: 120,
+        y: 160,
+        items: [{ key: 'drive-file:f-1', id: 'f-1', name: 'Report.pdf', kind: 'drive-file' }],
+        canProperties: true,
+      },
+    });
+    await nextTick();
+
+    const menu = wrapper.get('[data-explorer-context-menu]');
+    expect(menu.attributes('tabindex')).toBe('-1');
+    expect(document.activeElement).toBe(menu.element);
+
+    // Properties action appears for single item when canProperties=true
+    const propsBtn = menu.get('[data-ctx-action="properties"]');
+    expect(propsBtn.text()).toContain('Свойства');
+    await propsBtn.trigger('click');
+    expect(wrapper.emitted('properties')?.[0]?.[0]).toMatchObject({ id: 'f-1', name: 'Report.pdf' });
+    const closesAfterProps = wrapper.emitted('close')?.length ?? 0;
+    expect(closesAfterProps).toBe(1);
+
+    // Outside pointerdown in capture phase closes menu even when target stops propagation
+    outsideBtn.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    expect(wrapper.emitted('close')?.length).toBe(closesAfterProps + 1);
+
+    // Focus leaving menu to an outside element closes menu
+    menu.element.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: outsideBtn }));
+    expect(wrapper.emitted('close')?.length).toBe(closesAfterProps + 2);
+
+    // Mousedown inside menu keeps pointerInsideMenu across microtasks (Safari/Firefox focusout with relatedTarget=null)
+    menu.element.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    await Promise.resolve();
+    menu.element.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: null }));
+    expect(wrapper.emitted('close')?.length).toBe(closesAfterProps + 2);
+
+    // After macrotask completes, focusout outside closes menu again
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    menu.element.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: null }));
+    expect(wrapper.emitted('close')?.length).toBe(closesAfterProps + 3);
+
+    // Window blur closes menu
+    window.dispatchEvent(new Event('blur'));
+    expect(wrapper.emitted('close')?.length).toBe(closesAfterProps + 4);
+
+    // Multi-select hides Properties
+    await wrapper.setProps({
+      items: [
+        { key: 'drive-file:f-1', id: 'f-1', name: 'One.pdf', kind: 'drive-file' },
+        { key: 'drive-file:f-2', id: 'f-2', name: 'Two.pdf', kind: 'drive-file' },
+      ],
+    });
+    expect(wrapper.find('[data-ctx-action="properties"]').exists()).toBe(false);
+
+    outsideBtn.remove();
   });
 
   it('renders ExplorerDragBadge with pluralized Russian / English label and pointer-events: none', async () => {

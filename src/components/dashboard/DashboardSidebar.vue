@@ -1864,8 +1864,23 @@ onMounted(() => {
   }
 });
 
+function clearTreeSelection() {
+  treeSelectedKeys.value = new Set();
+  treeFocusKey.value = null;
+  lastSelectedIdx.value = -1;
+}
+
+function hasTreeSelection(): boolean {
+  return treeSelectedKeys.value.size > 0;
+}
+
 onBeforeUnmount(() => {
   stopSashListeners();
   document.body.classList.remove('resizing');
+});
+
+defineExpose({
+  clearTreeSelection,
+  hasTreeSelection,
 });
 </script>

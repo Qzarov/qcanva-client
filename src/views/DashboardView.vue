@@ -15,6 +15,7 @@
       }"
     >
       <DashboardSidebar
+        ref="sidebarRef"
         :admin="admin"
         v-if="isLoggedIn"
         :active-section="activeSection"
@@ -702,6 +703,7 @@
                     @contextmenu="(ev, item) => onGridItemContextMenu(ev, item)"
                   />
                   <DashboardFolderFiles
+                    v-if="activeFolder.id !== 'legacy-resource-inbox'"
                     :folder-id="activeFolder.id"
                     :query="searchQuery"
                     :filtered-out="(!typePasses(contentTypes, 'file') && !typePasses(contentTypes, 'text-document')) || selectedTags.length > 0"
@@ -739,6 +741,7 @@
           :selected-keys="selectedKeys"
           @navigate="openYandexPath"
           @update:view-mode="setRecentViewMode"
+          @update:selected-keys="selectedKeys = $event"
           @toggle-select="toggleSelected"
           @items="yandexFiles = $event"
           @upload="uploadToYandex"
@@ -1112,6 +1115,7 @@
       :can-move="explorerCtxMenu.canMove"
       :can-delete="explorerCtxMenu.canDelete"
       :can-rename="explorerCtxMenu.canRename"
+      :can-properties="explorerCtxMenu.canProperties"
       :is-favorite="explorerCtxMenu.isFavorite"
       :albums="contextMenuAlbums"
       @close="explorerCtxMenu.open = false"
@@ -1122,10 +1126,18 @@
       @move="onCtxMenuMove"
       @rename="onCtxMenuRename"
       @download="onCtxMenuDownload"
+      @properties="onCtxMenuProperties"
       @delete="onCtxMenuDelete"
       @create-folder="onCtxMenuEmptyCreateFolder"
       @add="onCtxMenuEmptyAdd"
       @refresh="onCtxMenuEmptyRefresh"
+    />
+
+    <DriveFileProperties
+      v-if="propertiesFile"
+      :file-id="propertiesFile.id"
+      :file-name="propertiesFile.name"
+      @close="propertiesFile = null"
     />
 
     <ExplorerDragBadge />
@@ -1166,7 +1178,7 @@
 
 <script lang="ts">
 import { ChevronDown, ChevronUp, File as FileIcon, Folder, Plus, Share2, UsersRound } from '@lucide/vue';
-import { defineComponent, ref, reactive, onBeforeUnmount, onMounted, computed, nextTick, watch, type Ref } from 'vue';
+import { defineAsyncComponent, defineComponent, ref, reactive, onBeforeUnmount, onMounted, computed, nextTick, watch, type Ref } from 'vue';
 import { alertDialog, confirmDelete, confirmDialog, promptDialog } from '../composables/appDialog';
 import { selectAll, selectRange, selectionKey, toggleSelection } from '../dashboard/selection';
 import { buildZip, canvasFileContent, safeFileName, saveBlob, splitFileName, textDocumentFileContent, uniqueFileName, type ArchiveFile } from '../dashboard/archive';
@@ -1196,6 +1208,7 @@ import type {
   InlineSearchTypeFilter,
 } from '../components/dashboard/ExplorerInlineSearch.vue';
 import AlbumShareDialog from '../components/dashboard/AlbumShareDialog.vue';
+const DriveFileProperties = defineAsyncComponent(() => import('../components/DriveFileProperties.vue'));
 import DashboardFilterMenu from '../components/dashboard/DashboardFilterMenu.vue';
 import DashboardSortMenu from '../components/dashboard/DashboardSortMenu.vue';
 import DrivePhotos from '../components/photos/DrivePhotos.vue';
@@ -1402,6 +1415,7 @@ export default defineComponent({
     ExplorerDragBadge,
     ExplorerMobileTabBar,
     AlbumShareDialog,
+    DriveFileProperties,
     DashboardFilterMenu,
     DashboardSortMenu,
     DrivePhotos,
@@ -1527,6 +1541,7 @@ export default defineComponent({
       layoutPrefs.setViewMode(mode === 'list' ? 'table' : 'grid');
       writeRecentViewMode(storage(), mode);
     };
+    const sidebarRef = ref<InstanceType<typeof DashboardSidebar> | null>(null);
     const headroomBarRef = ref<InstanceType<typeof ExplorerHeadroomBar> | null>(null);
     const headroomHidden = layoutPrefs.headroomHidden;
     const headroomElevated = ref(false);
@@ -1561,7 +1576,12 @@ export default defineComponent({
     const activeFolderFileCount = ref(0);
     /** Files each folder holds (from the Drive), added to the folder tiles' counts. */
     const folderFiles = useFolderFileCounts();
-    watch(selectedFolderId, () => { activeFolderFileCount.value = 0; });
+    watch(selectedFolderId, (id) => {
+      activeFolderFileCount.value = 0;
+      if (id === 'legacy-resource-inbox') {
+        folderDriveFiles.value = [];
+      }
+    });
     const draggingResourceId = ref('');
     const draggingResourceType = ref<FolderItem['type']>('canvas');
     const draggingResourceFolderId = ref<string | null>(null);
@@ -2184,7 +2204,9 @@ export default defineComponent({
     const sidebarDriveFiles = useSidebarDriveFiles(SIDEBAR_FOLDER_CHILD_LIMIT);
     const sidebarServerFolderIds = computed(() => {
       const known = new Set(allResourceFolders.value.map((folder) => folder.id));
-      return folderSummaries.value.map((folder) => folder.id).filter((id) => known.has(id));
+      return folderSummaries.value
+        .map((folder) => folder.id)
+        .filter((id) => id !== 'legacy-resource-inbox' && known.has(id));
     });
     watch(sidebarServerFolderIds, (ids) => {
       // Counts for every folder in view (so one holding only files can open);
@@ -3616,15 +3638,6 @@ export default defineComponent({
         toggleSelected(key);
       }
     };
-    const onSelectionKeydown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || !selectedKeys.value.length) return;
-      if (folderModal.value.open || openControlMenu.value || openMenuCanvasId.value) return;
-      clearSelection();
-    };
-    onMounted(() => window.addEventListener('keydown', onSelectionKeydown));
-    onBeforeUnmount(() => {
-      window.removeEventListener('keydown', onSelectionKeydown);
-    });
     // Android's Back clears the selection before it leaves the folder.
     useBackHandler(() => {
       if (!selectedKeys.value.length) return false;
@@ -6064,6 +6077,7 @@ export default defineComponent({
     };
 
     // Multi-select Right-Click Context Menu
+    const propertiesFile = ref<{ id: string; name?: string } | null>(null);
     const explorerCtxMenu = ref<{
       open: boolean;
       x: number;
@@ -6073,6 +6087,7 @@ export default defineComponent({
       canMove: boolean;
       canDelete: boolean;
       canRename: boolean;
+      canProperties: boolean;
       isFavorite: boolean;
     }>({
       open: false,
@@ -6083,6 +6098,7 @@ export default defineComponent({
       canMove: false,
       canDelete: false,
       canRename: false,
+      canProperties: false,
       isFavorite: false,
     });
 
@@ -6113,6 +6129,7 @@ export default defineComponent({
         canMove: items.some((i) => i.kind !== 'space' && i.kind !== 'album'),
         canDelete: true,
         canRename: items.length === 1 && renamableKinds.has(first.kind || ''),
+        canProperties: items.length === 1 && (first.kind === 'drive-file' || first.kind === 'file') && Boolean(first.id),
         isFavorite: items.every((i) => layoutPrefs.isFavorite(i.key)),
       };
     };
@@ -6244,6 +6261,7 @@ export default defineComponent({
         canMove: false,
         canDelete: false,
         canRename: false,
+        canProperties: false,
         isFavorite: false,
       };
     };
@@ -6448,6 +6466,12 @@ export default defineComponent({
       void bulkDownload();
     };
 
+    const onCtxMenuProperties = (item: ExplorerContextMenuItem) => {
+      if ((item.kind === 'drive-file' || item.kind === 'file') && item.id) {
+        propertiesFile.value = { id: item.id, name: item.name };
+      }
+    };
+
     const onCtxMenuDelete = async (items: readonly ExplorerContextMenuItem[]) => {
       if (items.length === 1 && items[0]!.kind === 'folder' && items[0]!.id) {
         const f = allFolderSummaries.value.find((x) => x.id === items[0]!.id);
@@ -6497,6 +6521,78 @@ export default defineComponent({
         });
       }
     };
+
+    // Global Escape hierarchy in Files mode (DrivePhotos owns Gallery Escape)
+    const onExplorerEscapeKeydown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented) return;
+      if (activeSection.value.kind === 'gallery') return;
+      if (folderModal.value.open) {
+        closeFolderModal();
+        event.preventDefault();
+        return;
+      }
+      if (subfolderModal.value.open) {
+        closeSubfolderModal();
+        event.preventDefault();
+        return;
+      }
+      if (explorerCtxMenu.value.open) return;
+      if (
+        mediaViewer.value
+        || markdownViewer.value
+        || yandexMove.value
+        || propertiesFile.value
+        || templatePickerOpen.value
+        || addDialog.value.open
+        || sharingAlbum.value
+        || renameFolderModal.value.open
+        || folderParentModal.value.open
+        || descriptionModal.value.open
+        || folderShareModal.value.open
+        || tagsModal.value.open
+        || transferModal.value.open
+        || tagSheetOpen.value
+        || resourceShare.open
+        || (typeof document !== 'undefined' && Boolean(document.querySelector('[role="dialog"], .modal-backdrop, .drive-properties-backdrop, [data-explorer-context-menu]')))
+      ) {
+        return;
+      }
+      if (openControlMenu.value) {
+        openControlMenu.value = '';
+        event.preventDefault();
+        return;
+      }
+      if (openMenuCanvasId.value) {
+        openMenuCanvasId.value = '';
+        event.preventDefault();
+        return;
+      }
+      if (
+        typeof document !== 'undefined'
+        && Boolean(document.querySelector('.card-menu, [data-space-add-menu], [data-space-actions], [data-yandex-add-menu], [data-yandex-space-menu]'))
+      ) {
+        return;
+      }
+      if (headroomBarRef.value?.handleSearchEscape?.()) {
+        event.preventDefault();
+        return;
+      }
+      if (searchQuery.value.trim() !== '' || s2TypeFilter.value !== 'all') {
+        searchQuery.value = '';
+        s2TypeFilter.value = 'all';
+        event.preventDefault();
+        return;
+      }
+      if (selectedKeys.value.length > 0 || sidebarRef.value?.hasTreeSelection?.()) {
+        clearSelection();
+        sidebarRef.value?.clearTreeSelection?.();
+        event.preventDefault();
+      }
+    };
+    onMounted(() => window.addEventListener('keydown', onExplorerEscapeKeydown));
+    onBeforeUnmount(() => {
+      window.removeEventListener('keydown', onExplorerEscapeKeydown);
+    });
 
     // Gallery mode state & handlers
     const galleryViewRef = ref<InstanceType<typeof DrivePhotos> | null>(null);
@@ -6914,6 +7010,7 @@ export default defineComponent({
       setExplorerViewMode,
       albumViewMode,
       setAlbumViewMode,
+      sidebarRef,
       headroomBarRef,
       headroomHidden,
       headroomElevated,
@@ -6958,6 +7055,7 @@ export default defineComponent({
       onDropGroupToAlbum,
       onDropExternalFilesToFolder,
       buildGroupDragEntriesForKeys,
+      propertiesFile,
       explorerCtxMenu,
       contextMenuAlbums,
       onTableRowContextMenu,
@@ -6979,6 +7077,7 @@ export default defineComponent({
       onCtxMenuMove,
       onCtxMenuRename,
       onCtxMenuDownload,
+      onCtxMenuProperties,
       onCtxMenuDelete,
       shareSelectedGroup,
       openAddSelectionToAlbum,

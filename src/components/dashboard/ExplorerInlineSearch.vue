@@ -11,27 +11,29 @@
       :class="{ focused: isOpen }"
       @click="onBoxClick"
     >
-      <Search :size="14" class="s2-icon" aria-hidden="true" />
+      <Search :size="16" class="s2-icon" aria-hidden="true" />
 
-      <span
-        v-if="isScoped"
-        class="s2-scope-pill"
-        data-s2-scope-pill
-        :title="scopePillTooltip"
-      >
-        <span>{{ scopePrefix }} {{ trimmedScopeLabel }}</span>
-        <button
-          type="button"
-          class="s2-scope-x"
-          data-s2-scope-clear
-          :aria-label="searchEverywhereLabel"
-          :title="searchEverywhereLabel"
-          @mousedown.prevent
-          @click.stop="clearScope"
+      <Transition name="s2-pill-pop">
+        <span
+          v-if="isScoped"
+          class="s2-scope-pill"
+          data-s2-scope-pill
+          :title="scopePillTooltip"
         >
-          <X :size="11" aria-hidden="true" />
-        </button>
-      </span>
+          <span>{{ scopePrefix }} {{ trimmedScopeLabel }}</span>
+          <button
+            type="button"
+            class="s2-scope-x"
+            data-s2-scope-clear
+            :aria-label="searchEverywhereLabel"
+            :title="searchEverywhereLabel"
+            @mousedown.prevent
+            @click.stop="clearScope"
+          >
+            <X :size="11" aria-hidden="true" />
+          </button>
+        </span>
+      </Transition>
 
       <input
         ref="inputRef"
@@ -72,14 +74,15 @@
     </div>
 
     <Teleport to="body">
-      <div
-        v-if="isOpen"
-        ref="popoverRef"
-        class="s2-pop open"
-        data-s2-popover
-        :style="popoverStyle"
-        @mousedown.stop
-      >
+      <Transition name="s2-pop-fade">
+        <div
+          v-if="isOpen"
+          ref="popoverRef"
+          class="s2-pop open"
+          data-s2-popover
+          :style="popoverStyle"
+          @mousedown.stop
+        >
         <div class="s2-pop-head">
           <span class="s2-pop-scope" data-s2-scope-status>{{ scopeHeaderText }}</span>
           <button
@@ -196,7 +199,8 @@
         <div v-else class="s2-empty" data-s2-empty>
           {{ emptyResultsText }}
         </div>
-      </div>
+        </div>
+      </Transition>
     </Teleport>
   </div>
 </template>
@@ -313,7 +317,7 @@ const inputRef = ref<HTMLInputElement | null>(null);
 const popoverRef = ref<HTMLElement | null>(null);
 
 const isOpen = ref(false);
-const popoverPos = ref<{ top: string; left: string }>({ top: '52px', left: '12px' });
+const popoverPos = ref<{ top: string; left: string; width?: string }>({ top: '56px', left: '12px' });
 
 const localScopeMode = ref<InlineSearchScopeMode>(props.scopeMode ?? 'current');
 watch(() => props.scopeMode, (val) => {
@@ -489,6 +493,7 @@ const emptyResultsText = computed(() => {
 const popoverStyle = computed(() => ({
   top: popoverPos.value.top,
   left: popoverPos.value.left,
+  ...(popoverPos.value.width ? { width: popoverPos.value.width } : {}),
 }));
 
 function updatePopoverPosition() {
@@ -497,13 +502,15 @@ function updatePopoverPosition() {
   const r = box.getBoundingClientRect();
   const vw = window.innerWidth || 1024;
   const vh = window.innerHeight || 768;
-  const width = Math.min(460, Math.max(240, vw - 24));
+  const boxW = Math.round(r.width);
+  const width = Math.min(Math.max(520, boxW), Math.max(240, vw - 24));
   let left = props.inGallery ? r.right - width : r.left;
   left = Math.max(12, Math.min(left, vw - width - 12));
   const top = Math.min(r.bottom + 6, Math.max(12, vh - 120));
   popoverPos.value = {
     top: `${Math.round(top)}px`,
     left: `${Math.round(left)}px`,
+    width: `${width}px`,
   };
 }
 
@@ -581,6 +588,30 @@ function onInput(event: Event) {
   if (!isOpen.value) openPopover();
 }
 
+function handleEscape(): boolean {
+  if (isOpen.value) {
+    close();
+    if (!props.modelValue && effectiveTypeFilter.value === 'all') {
+      inputRef.value?.blur();
+    }
+    return true;
+  }
+  if (Boolean(props.modelValue) || effectiveTypeFilter.value !== 'all') {
+    emit('update:modelValue', '');
+    if (effectiveTypeFilter.value !== 'all') {
+      localTypeFilter.value = 'all';
+      emit('update:typeFilter', 'all');
+    }
+    inputRef.value?.blur();
+    return true;
+  }
+  if (typeof document !== 'undefined' && document.activeElement === inputRef.value) {
+    inputRef.value?.blur();
+    return true;
+  }
+  return false;
+}
+
 function onKeydown(event: KeyboardEvent) {
   if (event.key === 'Backspace' && !props.modelValue && isScoped.value) {
     event.preventDefault();
@@ -588,9 +619,10 @@ function onKeydown(event: KeyboardEvent) {
     return;
   }
   if (event.key === 'Escape') {
-    event.stopPropagation();
-    close();
-    inputRef.value?.blur();
+    if (handleEscape()) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
     return;
   }
   if (event.key === 'Enter') {
@@ -661,39 +693,45 @@ onBeforeUnmount(() => {
 defineExpose({
   focus,
   close,
+  isPopoverOpen: () => isOpen.value,
+  handleEscape,
 });
 </script>
 
 <style>
 .s2-wrap {
   position: relative;
-  flex: 1;
+  flex: 1 1 380px;
   min-width: 0;
-  max-width: 520px;
+  max-width: 720px;
 }
 
 .s2-wrap.in-gallery {
-  flex: 0 1 250px;
-  min-width: 150px;
-  max-width: 300px;
+  flex: 1 1 360px;
+  min-width: 220px;
+  max-width: 520px;
 }
 
 .s2-box {
-  height: 30px;
+  height: 36px;
   width: 100%;
   min-width: 0;
   overflow: hidden;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 0 8px;
-  border-radius: 9px;
+  gap: 8px;
+  padding: 0 12px;
+  border-radius: 11px;
   border: 1px solid var(--ui-glass-border);
   background: var(--ui-glass-btn-bg);
   box-shadow: var(--ui-glass-inset-highlight);
   color: var(--ui-text);
   cursor: text;
-  transition: border-color 0.14s ease, background 0.14s ease, box-shadow 0.14s ease;
+  transition:
+    border-color 0.18s ease,
+    background 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.18s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .s2-box:hover {
@@ -708,6 +746,8 @@ defineExpose({
 
 .s2-icon {
   flex: none;
+  width: 16px;
+  height: 16px;
   color: var(--ui-text-muted, var(--explorer-muted));
   pointer-events: none;
 }
@@ -720,17 +760,28 @@ defineExpose({
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  height: 20px;
-  padding: 0 6px;
+  height: 24px;
+  padding: 0 8px;
   border-radius: 6px;
   background: var(--ui-glass-accent-bg);
   border: 1px solid var(--ui-glass-accent-border);
   color: var(--ui-glass-accent-text);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
-  max-width: 145px;
+  max-width: 180px;
   flex: none;
+}
+
+.s2-pill-pop-enter-active,
+.s2-pill-pop-leave-active {
+  transition: opacity 0.15s cubic-bezier(0.16, 1, 0.3, 1), transform 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.s2-pill-pop-enter-from,
+.s2-pill-pop-leave-to {
+  opacity: 0;
+  transform: scale(0.92);
 }
 
 .s2-scope-pill > span {
@@ -772,7 +823,7 @@ defineExpose({
   border: 0;
   outline: none;
   font: inherit;
-  font-size: 12.5px;
+  font-size: 13.5px;
   color: var(--ui-text);
   line-height: 1.2;
 }
@@ -793,8 +844,8 @@ defineExpose({
 }
 
 .s2-kbd {
-  font-size: 10px;
-  padding: 1px 5px;
+  font-size: 11px;
+  padding: 2px 6px;
   border-radius: 5px;
   background: var(--ui-glass-btn-bg);
   border: 1px solid var(--ui-glass-border);
@@ -807,7 +858,7 @@ defineExpose({
 .s2-pop {
   position: fixed;
   z-index: 260;
-  width: min(460px, calc(100vw - 24px));
+  width: min(520px, calc(100vw - 24px));
   max-height: 440px;
   overflow-y: auto;
   border-radius: 14px;
@@ -818,11 +869,23 @@ defineExpose({
   backdrop-filter: blur(20px) saturate(1.25);
   -webkit-backdrop-filter: blur(20px) saturate(1.25);
   color: var(--ui-text);
-  display: none;
+  transform-origin: top center;
 }
 
-.s2-pop.open {
-  display: block;
+.s2-pop-fade-enter-active {
+  transition:
+    opacity 0.17s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.19s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.s2-pop-fade-leave-active {
+  transition: opacity 0.12s ease-in, transform 0.12s ease-in;
+}
+
+.s2-pop-fade-enter-from,
+.s2-pop-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-6px) scale(0.985);
 }
 
 .s2-pop-head {
@@ -972,17 +1035,36 @@ defineExpose({
 }
 
 @media (max-width: 768px) {
+  .s2-wrap {
+    flex: 1 1 0;
+  }
+
+  .s2-box {
+    height: 32px;
+    padding: 0 9px;
+    gap: 6px;
+    border-radius: 9px;
+  }
+
+  .s2-input {
+    font-size: 12.5px;
+  }
+
   .s2-kbd {
     display: none;
   }
 
   .s2-scope-pill {
+    height: 20px;
+    padding: 0 6px;
+    font-size: 11px;
     max-width: 78px;
   }
 
   .s2-wrap.in-gallery {
     flex: 0 1 116px;
     min-width: 88px;
+    max-width: 160px;
   }
 
   .s2-wrap.in-gallery .s2-scope-pill {
@@ -1017,6 +1099,16 @@ defineExpose({
     height: 30px;
     padding: 0 8px;
     gap: 6px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .s2-box,
+  .s2-pop-fade-enter-active,
+  .s2-pop-fade-leave-active,
+  .s2-pill-pop-enter-active,
+  .s2-pill-pop-leave-active {
+    transition: none;
   }
 }
 </style>

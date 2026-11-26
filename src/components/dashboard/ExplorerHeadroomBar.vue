@@ -297,6 +297,8 @@ onBeforeUnmount(() => {
 
 defineExpose({
   focusSearch: () => inlineSearchRef.value?.focus(),
+  isSearchPopoverOpen: () => inlineSearchRef.value?.isPopoverOpen?.() ?? false,
+  handleSearchEscape: () => inlineSearchRef.value?.handleEscape?.() ?? false,
 });
 </script>
 

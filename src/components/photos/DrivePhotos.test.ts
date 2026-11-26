@@ -253,7 +253,7 @@ describe('DrivePhotos', () => {
     await flushPromises();
   }
 
-  it('renders macOS Photos topbar controls (aspect toggle, zoom slider, Годы|Месяцы|Дни, info/share/fav/search) with no old tabs', async () => {
+  it('renders macOS Photos topbar controls (aspect toggle, zoom slider, Годы|Месяцы|Дни, search) with no old tabs and no info/share/favorite icon buttons', async () => {
     const w = mountIt();
     await flushPromises();
     expect(w.find('[role="tablist"]').exists()).toBe(false);
@@ -266,6 +266,14 @@ describe('DrivePhotos', () => {
     expect(w.find('[data-testid="period-month"]').text()).toBe('Месяцы');
     expect(w.find('[data-testid="period-day"]').text()).toBe('Дни');
     expect(w.find('[data-testid="viewbar-stub"]').exists()).toBe(true);
+
+    // The 3 icon buttons to the left of search are removed from .dp-top-right
+    expect(w.find('.dp-top-right [data-testid="info-toggle"]').exists()).toBe(false);
+    expect(w.find('.dp-top-right [data-testid="share-btn"]').exists()).toBe(false);
+    expect(w.find('.dp-top-right [data-testid="favorite-btn"]').exists()).toBe(false);
+    expect(w.find('[data-testid="info-toggle"]').exists()).toBe(false);
+    expect(w.find('[data-testid="share-btn"]').exists()).toBe(false);
+    expect(w.find('[data-testid="favorite-btn"]').exists()).toBe(false);
 
     await w.get('[data-testid="aspect-toggle"]').trigger('click');
     expect(useExplorerLayoutPrefs().galleryAspectMode.value).toBe('ratio');
@@ -293,7 +301,7 @@ describe('DrivePhotos', () => {
   it('exposes focusFile(fileId) to update panelId and focus matching tile', async () => {
     const w = mountIt();
     await flushPromises();
-    await w.get('[data-testid="info-toggle"]').trigger('click');
+    await w.get('[data-drive-photos]').trigger('keydown', { key: 'i' });
     expect(w.get('[data-photo-panel]').attributes('data-panel-file')).toBe('f0');
 
     (w.vm as unknown as { focusFile: (id: string) => void }).focusFile('f1');
@@ -332,7 +340,7 @@ describe('DrivePhotos', () => {
   it('search results focus and update info panel when open, dblclick opens viewer', async () => {
     const w = mountIt();
     await flushPromises();
-    await w.get('[data-testid="info-toggle"]').trigger('click');
+    await w.get('[data-drive-photos]').trigger('keydown', { key: 'i' });
     await typeQuery(w, 'cat');
     await w.get('[data-testid="photos-search-grid"] [data-file-id="f8"]').trigger('click');
     expect(w.get('[data-photo-panel]').attributes('data-panel-file')).toBe('f8');
@@ -391,14 +399,17 @@ describe('DrivePhotos', () => {
     expect(w.find('[data-testid="gallery-people-empty"]').exists()).toBe(true);
   });
 
-  it('single click emits focus-photo and updates open panel; info toggle opens/closes panel; double click opens viewer', async () => {
+  it('single click emits focus-photo and updates open panel; ПКМ -> Свойства and I shortcut open/close panel; double click opens viewer', async () => {
     const w = mountIt();
     await flushPromises();
     await w.get('[data-file-id="f1"]').trigger('click');
     expect(w.emitted('focus-photo')![0]).toEqual([feedItems[1]]);
     expect(w.find('[data-photo-panel]').exists()).toBe(false);
 
-    await w.get('[data-testid="info-toggle"]').trigger('click');
+    await w.get('[data-file-id="f1"]').trigger('contextmenu');
+    expect(w.find('[data-ctx-properties]').exists()).toBe(true);
+    await w.get('[data-ctx-properties]').trigger('click');
+    expect(w.find('[data-testid="gallery-context-menu"]').exists()).toBe(false);
     expect(w.get('[data-photo-panel]').attributes('data-panel-file')).toBe('f1');
 
     await w.get('[data-file-id="f1"]').trigger('dblclick');
@@ -412,8 +423,8 @@ describe('DrivePhotos', () => {
   it('open folder and open album from panel work', async () => {
     const w = mountIt();
     await flushPromises();
-    await w.get('[data-file-id="f0"]').trigger('click');
-    await w.get('[data-testid="info-toggle"]').trigger('click');
+    await w.get('[data-file-id="f0"]').trigger('contextmenu');
+    await w.get('[data-ctx-properties]').trigger('click');
     await w.get('[data-stub-folder]').trigger('click');
     expect(w.emitted('openFolder')).toEqual([['fold1', 'f0']]);
 
@@ -445,11 +456,12 @@ describe('DrivePhotos', () => {
     expect(w.find('[data-testid="selection-badge"]').exists()).toBe(false);
   });
 
-  it('topbar favorite button toggles favorite for all selected items', async () => {
+  it('context menu favorite action toggles favorite for all selected items', async () => {
     const w = mountIt();
     await flushPromises();
     await w.get('[data-stub-select]').trigger('click');
-    await w.get('[data-testid="favorite-btn"]').trigger('click');
+    await w.get('[data-file-id="f0"]').trigger('contextmenu');
+    await w.get('[data-ctx-favorite]').trigger('click');
     await flushPromises();
     expect(editMock).toHaveBeenCalledWith('f0', { favorite: true });
     expect(editMock).toHaveBeenCalledWith('f1', { favorite: true });
@@ -457,8 +469,8 @@ describe('DrivePhotos', () => {
 
   describe('panel changes refresh dependent views', () => {
     async function openPanel(w: VueWrapper): Promise<void> {
-      await w.get('[data-file-id="f0"]').trigger('click');
-      await w.get('[data-testid="info-toggle"]').trigger('click');
+      await w.get('[data-file-id="f0"]').trigger('contextmenu');
+      await w.get('[data-ctx-properties]').trigger('click');
     }
 
     it('plain feed: patches the tile only', async () => {
@@ -578,7 +590,8 @@ describe('DrivePhotos', () => {
     const w = mountIt();
     await flushPromises();
     await w.get('[data-stub-select]').trigger('click');
-    await w.get('[data-testid="info-toggle"]').trigger('click');
+    await w.get('[data-file-id="f0"]').trigger('contextmenu');
+    await w.get('[data-ctx-properties]').trigger('click');
 
     const panel = w.get('[data-photo-panel]');
     expect(panel.attributes('data-panel-selected-count')).toBe('2');
@@ -606,10 +619,7 @@ describe('DrivePhotos', () => {
 
     // Select 2 items (f0, f1)
     await w.get('[data-stub-select]').trigger('click');
-
-    // Topbar share emits share-photos with both ids
-    await w.get('[data-testid="share-btn"]').trigger('click');
-    expect(w.emitted('share-photos')?.[0]).toEqual([['f0', 'f1']]);
+    expect(w.find('[data-testid="share-btn"]').exists()).toBe(false);
 
     // Right-click unselected tile f2 while f0, f1 are selected -> Move targets ONLY f2 (1 item)
     await w.get('[data-file-id="f2"]').trigger('contextmenu');
@@ -618,11 +628,14 @@ describe('DrivePhotos', () => {
     const picker = w.get('[data-testid="picker-stub"]');
     expect(picker.attributes('data-excl')).toBe('["fold2"]');
     expect(picker.text()).toContain('1');
+    w.getComponent(PickerStub).vm.$emit('close');
+    await flushPromises();
+    expect(w.find('[data-testid="picker-stub"]').exists()).toBe(false);
 
     // Right-click selected f0 -> Share emits share-photos with 2 ids
     await w.get('[data-file-id="f0"]').trigger('contextmenu');
     await w.get('[data-ctx-share]').trigger('click');
-    expect(w.emitted('share-photos')?.[1]).toEqual([['f0', 'f1']]);
+    expect(w.emitted('share-photos')?.[0]).toEqual([['f0', 'f1']]);
 
     // Right-click selected f0 -> Download downloads BOTH f0 and f1
     await w.get('[data-file-id="f0"]').trigger('contextmenu');
@@ -631,16 +644,17 @@ describe('DrivePhotos', () => {
     expect(downloadDriveFileMock).toHaveBeenCalledWith('f0', 'p0.jpg');
     expect(downloadDriveFileMock).toHaveBeenCalledWith('f1', 'p1.jpg');
 
-    // Window Escape closes open context menu
+    // Window Escape closes open context menu without clearing selection
     await w.get('[data-file-id="f0"]').trigger('contextmenu');
     expect(w.find('[data-testid="gallery-context-menu"]').exists()).toBe(true);
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     await flushPromises();
     expect(w.find('[data-testid="gallery-context-menu"]').exists()).toBe(false);
+    expect(w.find('[data-testid="selection-badge"]').exists()).toBe(true);
 
     // Clicking album chip in PhotoPanel emits select-album
-    await w.get('[data-file-id="f0"]').trigger('click');
-    await w.get('[data-testid="info-toggle"]').trigger('click');
+    await w.get('[data-file-id="f0"]').trigger('contextmenu');
+    await w.get('[data-ctx-properties]').trigger('click');
     await w.get('[data-stub-album]').trigger('click');
     expect(w.emitted('select-album')?.[0]).toEqual(['alb1']);
 
@@ -648,7 +662,7 @@ describe('DrivePhotos', () => {
     await w.setProps({ activeSection: 'trash' });
     await flushPromises();
     expect(w.find('[data-photo-panel]').exists()).toBe(false);
-    expect(w.get('[data-testid="favorite-btn"]').classes()).toContain('dim');
+    expect(w.find('[data-testid="gallery-trash-view"]').exists()).toBe(true);
   });
 
   it('refreshes people count on units-loaded, clears text query on selecting album from search, closes popover on Escape, and refreshes albums on ctxAddToAlbum', async () => {

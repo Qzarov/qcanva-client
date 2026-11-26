@@ -17,7 +17,8 @@ import DashboardView from './DashboardView.vue';
 
 const isNativePlatform = vi.hoisted(() => vi.fn(() => false));
 vi.mock('@capacitor/core', () => ({
-  Capacitor: { isNativePlatform },
+  Capacitor: { isNativePlatform, getPlatform: () => 'web' },
+  registerPlugin: vi.fn(() => ({})),
 }));
 vi.mock('@capacitor/app', () => ({
   App: {
@@ -35,6 +36,7 @@ vi.mock('vue-router', () => ({
 }));
 
 vi.mock('../api/client', () => ({
+  API_BASE: '',
   onAuthCleared: vi.fn(),
   accessRequests: { incoming: vi.fn().mockResolvedValue([]) },
   canvas: {
@@ -137,6 +139,17 @@ vi.mock('../api/drive', async () => {
       getFolderItems: vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
       getThumbLinks: vi.fn().mockResolvedValue({ links: {} }),
       renameFile: vi.fn().mockResolvedValue({ id: 'df-1', name: 'renamed.pdf' }),
+      getFileMeta: vi.fn().mockResolvedValue({
+        id: 'df-prop-1',
+        name: 'Passport.pdf',
+        mime: 'application/pdf',
+        sizeBytes: 2048,
+        createdAt: '2026-11-22T10:00:00Z',
+        updatedAt: '2026-11-22T10:00:00Z',
+        replicas: [],
+        hubCopy: true,
+      }),
+      listDevices: vi.fn().mockResolvedValue([]),
     },
   };
 });
@@ -1099,5 +1112,151 @@ describe('DashboardView T-021 + T-018 Explorer Redesign Integration', () => {
     await androidWrapper.get('[data-sort-menu-trigger]').trigger('click');
     await nextTick();
     expect(document.body.querySelector('[data-sort-menu]')?.classList.contains('dashboard-menu-sheet')).toBe(true);
+  });
+
+  it('Esc hierarchy in Files: closes Create Folder modal, two-stage Esc on S2 search, then clears selectedKeys and sidebar treeSelectedKeys; guards virtual Inbox', async () => {
+    vi.mocked(canvas.list).mockResolvedValue({
+      own: [
+        { id: 'c-unfiled', title: 'Входящий канвас', folderId: null, updatedAt: '2026-11-21T10:00:00Z' },
+        { id: 'c1', title: 'Маршрут', folderId: 'folder-home', updatedAt: '2026-11-20T10:00:00Z' },
+      ],
+      shared: [],
+      public: [],
+      welcome: null,
+    } as never);
+
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    // Virtual Inbox does NOT fire driveApi.getFolderItems('legacy-resource-inbox', ...)
+    vi.mocked(driveApi.getFolderItems).mockClear();
+    (wrapper.vm as any).selectFolder('legacy-resource-inbox');
+    await flushPromises();
+    const calledWithInbox = vi.mocked(driveApi.getFolderItems).mock.calls.some(([id]) => id === 'legacy-resource-inbox');
+    expect(calledWithInbox).toBe(false);
+
+    // Open folder-home & select folder in sidebar (sets treeSelectedKeys) + select an item in selectedKeys
+    await wrapper.get('[data-dashboard-folder="folder-home"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('[data-dashboard-folder="folder-home"]').classes()).toContain('tree-selected');
+    (wrapper.vm as any).selectedKeys = ['canvas:c1'];
+    await nextTick();
+
+    // 1. Create Folder modal closes on Escape even when focus is outside modal
+    (wrapper.vm as any).openCreateGroupModal();
+    await nextTick();
+    expect((wrapper.vm as any).folderModal.open).toBe(true);
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    await nextTick();
+    expect((wrapper.vm as any).folderModal.open).toBe(false);
+    // Selection remains intact while closing modal
+    expect((wrapper.vm as any).selectedKeys).toEqual(['canvas:c1']);
+
+    // 2. Two-stage Esc on S2 search
+    const searchInput = wrapper.get('[data-s2-input]');
+    await searchInput.trigger('focus');
+    await searchInput.setValue('Марш');
+    await nextTick();
+    expect(document.body.querySelector('[data-s2-popover]')).not.toBeNull();
+
+    // 1st Esc collapses popover, keeps query and selection
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    await nextTick();
+    expect(document.body.querySelector('[data-s2-popover]')).toBeNull();
+    expect((wrapper.vm as any).searchQuery).toBe('Марш');
+    expect((wrapper.vm as any).selectedKeys).toEqual(['canvas:c1']);
+
+    // 2nd Esc clears query without re-opening popover, keeps selection
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }));
+    await nextTick();
+    expect((wrapper.vm as any).searchQuery).toBe('');
+    expect(document.body.querySelector('[data-s2-popover]')).toBeNull();
+    expect((wrapper.vm as any).selectedKeys).toEqual(['canvas:c1']);
+
+    // DashboardView's own card menu (openMenuCanvasId with .card-menu[data-card-menu] in DOM) closes on Esc without clearing selection
+    (wrapper.vm as any).openMenuCanvasId = 'canvas:c1';
+    const ownCardMenu = document.createElement('div');
+    ownCardMenu.className = 'card-menu';
+    ownCardMenu.setAttribute('data-card-menu', 'canvas:c1');
+    document.body.appendChild(ownCardMenu);
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }));
+    await nextTick();
+    expect((wrapper.vm as any).openMenuCanvasId).toBe('');
+    expect((wrapper.vm as any).selectedKeys).toEqual(['canvas:c1']);
+    ownCardMenu.remove();
+
+    // Child menu in DOM (.card-menu from Space/Yandex) prevents DashboardView from clearing selection on Esc
+    const childMenu = document.createElement('div');
+    childMenu.className = 'card-menu';
+    document.body.appendChild(childMenu);
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }));
+    await nextTick();
+    expect((wrapper.vm as any).selectedKeys).toEqual(['canvas:c1']);
+    childMenu.remove();
+
+    // Already defaultPrevented Esc is ignored by DashboardView
+    const preventedEsc = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true });
+    preventedEsc.preventDefault();
+    window.dispatchEvent(preventedEsc);
+    await nextTick();
+    expect((wrapper.vm as any).selectedKeys).toEqual(['canvas:c1']);
+
+    // 3rd Esc clears both workspace selectedKeys and sidebar treeSelectedKeys
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }));
+    await nextTick();
+    expect((wrapper.vm as any).selectedKeys).toEqual([]);
+    expect(wrapper.get('[data-dashboard-folder="folder-home"]').classes()).not.toContain('tree-selected');
+  });
+
+  it('right-click Properties on a Drive file opens DriveFileProperties dialog', async () => {
+    vi.mocked(driveApi.getFolderItems).mockResolvedValue({
+      items: [
+        {
+          kind: 'file',
+          id: 'df-prop-1',
+          name: 'Passport.pdf',
+          mime: 'application/pdf',
+          sizeBytes: 2048,
+          sortDate: '2026-11-22T10:00:00Z',
+          updatedAt: '2026-11-22T10:00:00Z',
+          ownerId: 'user-1',
+          folderId: 'folder-home',
+        },
+      ],
+      nextCursor: null,
+    });
+
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    await wrapper.get('[data-dashboard-folder="folder-home"]').trigger('click');
+    await flushPromises();
+
+    // Right-click the drive file in table or grid via handler
+    (wrapper.vm as any).onGridDriveFileContextMenu(
+      new MouseEvent('contextmenu', { clientX: 120, clientY: 160 }),
+      {
+        kind: 'file',
+        id: 'df-prop-1',
+        name: 'Passport.pdf',
+        mime: 'application/pdf',
+        sizeBytes: 2048,
+        sortDate: '2026-11-22T10:00:00Z',
+        updatedAt: '2026-11-22T10:00:00Z',
+        ownerId: 'user-1',
+        folderId: 'folder-home',
+      },
+    );
+    await nextTick();
+
+    const propsBtn = wrapper.get('[data-explorer-context-menu] [data-ctx-action="properties"]');
+    expect(propsBtn.text()).toContain('Свойства');
+    await propsBtn.trigger('click');
+    await nextTick();
+
+    expect((wrapper.vm as any).propertiesFile).toEqual({ id: 'df-prop-1', name: 'Passport.pdf' });
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-properties-backdrop]').exists()).toBe(true);
+    });
   });
 });

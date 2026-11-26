@@ -151,44 +151,6 @@
           <span aria-hidden="true">✕</span>
         </button>
 
-        <button
-          type="button"
-          class="dp-icon-btn dp-info-btn"
-          :class="{ active: isPanelVisible }"
-          :aria-pressed="isPanelVisible"
-          :aria-label="t('galleryInfoToggle')"
-          :title="t('galleryInfoToggle')"
-          data-testid="info-toggle"
-          @click="toggleInfoPanel"
-        >
-          <Info :size="16" aria-hidden="true" />
-        </button>
-
-        <button
-          type="button"
-          class="dp-icon-btn"
-          :class="{ dim: !hasActiveTarget && !effectiveAlbumId }"
-          :aria-label="t('galleryShare')"
-          :title="t('galleryShare')"
-          data-testid="share-btn"
-          @click="shareAction"
-        >
-          <Share2 :size="16" aria-hidden="true" />
-        </button>
-
-        <button
-          type="button"
-          class="dp-icon-btn"
-          :class="{ active: allTargetsFavorite, dim: !hasActiveTarget }"
-          :aria-pressed="allTargetsFavorite"
-          :aria-label="t('galleryFavoriteToggle')"
-          :title="t('galleryFavoriteToggle')"
-          data-testid="favorite-btn"
-          @click="toggleFavoriteAction"
-        >
-          <Heart :size="16" :fill="allTargetsFavorite ? 'currentColor' : 'none'" aria-hidden="true" />
-        </button>
-
         <ExplorerInlineSearch
           ref="inlineSearchRef"
           v-model="query"
@@ -217,7 +179,6 @@
         id="dp-tabpanel"
         class="dp-main"
         data-photos-main
-        @keydown.esc="onMainEscape"
       >
         <!-- Floating translucent Sort pill (Headroom-synced) -->
         <div
@@ -298,133 +259,146 @@
       </div>
 
       <!-- Resizable right ⓘ panel wrapper -->
-      <template v-if="isPanelVisible">
-        <div
-          class="dp-panel-sash"
-          :class="{ active: panelDragging }"
-          :title="t('galleryResizePanel')"
-          data-testid="panel-sash"
-          @pointerdown="onPanelSashDown"
-        ></div>
-        <div
-          class="dp-panel"
-          :style="{ width: `${panelWidth}px` }"
-          data-photos-panel-wrap
-        >
-          <PhotoPanel
-            :key="panelEpoch"
-            :file-id="panelId ?? ''"
-            :selected-items="selectedFeedItems"
-            :hide-open-folder="hideInternalTabs"
-            @close="closePanel"
-            @open-folder="onOpenFolder"
-            @open-album="onOpenAlbum"
-            @group-favorite="toggleFavoriteAction"
-            @group-share="shareAction"
-            @group-album="actions.toggleAlbumMenu()"
-            @group-download="downloadSelectedAction"
-            @group-delete="deleteSelectedAction"
-            @changed="onPanelChanged"
-          />
+      <Transition name="dp-panel-slide">
+        <div v-if="isPanelVisible" class="dp-panel-shell">
+          <div
+            class="dp-panel-sash"
+            :class="{ active: panelDragging }"
+            :title="t('galleryResizePanel')"
+            data-testid="panel-sash"
+            @pointerdown="onPanelSashDown"
+          ></div>
+          <div
+            class="dp-panel"
+            :style="{ width: `${panelWidth}px` }"
+            data-photos-panel-wrap
+          >
+            <PhotoPanel
+              :key="panelEpoch"
+              :file-id="panelId ?? ''"
+              :selected-items="selectedFeedItems"
+              :hide-open-folder="hideInternalTabs"
+              @close="closePanel"
+              @open-folder="onOpenFolder"
+              @open-album="onOpenAlbum"
+              @group-favorite="toggleFavoriteAction"
+              @group-share="shareAction"
+              @group-album="actions.toggleAlbumMenu()"
+              @group-download="downloadSelectedAction"
+              @group-delete="deleteSelectedAction"
+              @changed="onPanelChanged"
+            />
+          </div>
         </div>
-      </template>
+      </Transition>
     </div>
 
     <!-- Gallery Right-Click Context Menu (Group actions open ONLY on right-click) -->
-    <div
-      v-if="ctxMenu"
-      ref="ctxMenuEl"
-      class="dp-ctx-menu"
-      role="menu"
-      data-testid="gallery-context-menu"
-      :style="{ left: `${ctxMenu.x}px`, top: `${ctxMenu.y}px` }"
-      @click.stop
-    >
-      <button type="button" role="menuitem" class="dp-ctx-item" data-ctx-favorite @click="ctxToggleFavorite">
-        <Heart :size="14" aria-hidden="true" />
-        <span>
-          {{ ctxAllFavorite ? t('explorerRemoveFromFavorites') : t('explorerAddToFavorites') }}
-          <template v-if="ctxTargetIds.length > 1">({{ ctxTargetIds.length }})</template>
-        </span>
-      </button>
-
-      <button type="button" role="menuitem" class="dp-ctx-item" data-ctx-share @click="ctxShare">
-        <Share2 :size="14" aria-hidden="true" />
-        <span>
-          {{ t('galleryShare') }}
-          <template v-if="ctxTargetIds.length > 1">({{ ctxTargetIds.length }})</template>
-        </span>
-      </button>
-
-      <div class="dp-ctx-sep" role="separator"></div>
-
-      <button
-        type="button"
-        role="menuitem"
-        class="dp-ctx-item"
-        data-ctx-album
-        @click="ctxToggleAlbumSubmenu"
+    <Transition name="card-menu-pop">
+      <div
+        v-if="ctxMenu"
+        ref="ctxMenuEl"
+        class="dp-ctx-menu"
+        role="menu"
+        tabindex="-1"
+        data-testid="gallery-context-menu"
+        :style="{ left: `${ctxMenu.x}px`, top: `${ctxMenu.y}px` }"
+        @click.stop
+        @pointerdown="markPointerInsideCtx"
+        @mousedown="markPointerInsideCtx"
+        @focusout="onCtxFocusOut"
       >
-        <FolderPlus :size="14" aria-hidden="true" />
-        <span>{{ t('explorerAddToAlbum') }}</span>
-      </button>
-
-      <div v-if="ctxAlbumsOpen" class="dp-ctx-sub">
-        <button
-          v-for="alb in ctxAlbumsList"
-          :key="alb.id"
-          type="button"
-          role="menuitem"
-          class="dp-ctx-item dp-ctx-sub-item"
-          @click="ctxAddToAlbum(alb.id)"
-        >
-          <span>{{ alb.name }}</span>
+        <button type="button" role="menuitem" class="dp-ctx-item" data-ctx-favorite @click="ctxToggleFavorite">
+          <Heart :size="14" aria-hidden="true" />
+          <span>
+            {{ ctxAllFavorite ? t('explorerRemoveFromFavorites') : t('explorerAddToFavorites') }}
+            <template v-if="ctxTargetIds.length > 1">({{ ctxTargetIds.length }})</template>
+          </span>
         </button>
+
+        <button type="button" role="menuitem" class="dp-ctx-item" data-ctx-share @click="ctxShare">
+          <Share2 :size="14" aria-hidden="true" />
+          <span>
+            {{ t('galleryShare') }}
+            <template v-if="ctxTargetIds.length > 1">({{ ctxTargetIds.length }})</template>
+          </span>
+        </button>
+
+        <div class="dp-ctx-sep" role="separator"></div>
+
         <button
           type="button"
           role="menuitem"
-          class="dp-ctx-item dp-ctx-sub-item"
-          @click="ctxCreateAlbumAndAdd"
+          class="dp-ctx-item"
+          data-ctx-album
+          @click="ctxToggleAlbumSubmenu"
         >
-          <span>{{ t('photosPanelNewAlbum') }}</span>
+          <FolderPlus :size="14" aria-hidden="true" />
+          <span>{{ t('explorerAddToAlbum') }}</span>
+        </button>
+
+        <div v-if="ctxAlbumsOpen" class="dp-ctx-sub">
+          <button
+            v-for="alb in ctxAlbumsList"
+            :key="alb.id"
+            type="button"
+            role="menuitem"
+            class="dp-ctx-item dp-ctx-sub-item"
+            @click="ctxAddToAlbum(alb.id)"
+          >
+            <span>{{ alb.name }}</span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            class="dp-ctx-item dp-ctx-sub-item"
+            @click="ctxCreateAlbumAndAdd"
+          >
+            <span>{{ t('photosPanelNewAlbum') }}</span>
+          </button>
+        </div>
+
+        <button
+          v-if="effectiveAlbumId"
+          type="button"
+          role="menuitem"
+          class="dp-ctx-item"
+          data-ctx-remove-album
+          @click="ctxRemoveFromAlbum"
+        >
+          <X :size="14" aria-hidden="true" />
+          <span>{{ t('photosSelRemoveFromAlbum') }}</span>
+        </button>
+
+        <button type="button" role="menuitem" class="dp-ctx-item" data-ctx-move @click="ctxOpenMove">
+          <FolderInput :size="14" aria-hidden="true" />
+          <span>
+            {{ t('photosMoveAction') }}
+            <template v-if="ctxTargetIds.length > 1">({{ ctxTargetIds.length }})</template>…
+          </span>
+        </button>
+
+        <button type="button" role="menuitem" class="dp-ctx-item" data-ctx-download @click="ctxDownload">
+          <Download :size="14" aria-hidden="true" />
+          <span>{{ t('photosDownload') }}</span>
+        </button>
+
+        <button type="button" role="menuitem" class="dp-ctx-item" data-ctx-properties @click="ctxOpenProperties">
+          <Info :size="14" aria-hidden="true" />
+          <span>{{ t('fileProperties') }}</span>
+        </button>
+
+        <div class="dp-ctx-sep" role="separator"></div>
+
+        <button type="button" role="menuitem" class="dp-ctx-item dp-ctx-danger" data-ctx-delete @click="ctxDelete">
+          <Trash2 :size="14" aria-hidden="true" />
+          <span>
+            {{ t('delete') }}
+            <template v-if="ctxTargetIds.length > 1">({{ ctxTargetIds.length }})</template>
+          </span>
         </button>
       </div>
-
-      <button
-        v-if="effectiveAlbumId"
-        type="button"
-        role="menuitem"
-        class="dp-ctx-item"
-        data-ctx-remove-album
-        @click="ctxRemoveFromAlbum"
-      >
-        <X :size="14" aria-hidden="true" />
-        <span>{{ t('photosSelRemoveFromAlbum') }}</span>
-      </button>
-
-      <button type="button" role="menuitem" class="dp-ctx-item" data-ctx-move @click="ctxOpenMove">
-        <FolderInput :size="14" aria-hidden="true" />
-        <span>
-          {{ t('photosMoveAction') }}
-          <template v-if="ctxTargetIds.length > 1">({{ ctxTargetIds.length }})</template>…
-        </span>
-      </button>
-
-      <button type="button" role="menuitem" class="dp-ctx-item" data-ctx-download @click="ctxDownload">
-        <Download :size="14" aria-hidden="true" />
-        <span>{{ t('photosDownload') }}</span>
-      </button>
-
-      <div class="dp-ctx-sep" role="separator"></div>
-
-      <button type="button" role="menuitem" class="dp-ctx-item dp-ctx-danger" data-ctx-delete @click="ctxDelete">
-        <Trash2 :size="14" aria-hidden="true" />
-        <span>
-          {{ t('delete') }}
-          <template v-if="ctxTargetIds.length > 1">({{ ctxTargetIds.length }})</template>
-        </span>
-      </button>
-    </div>
+    </Transition>
 
     <PhotoViewer
       v-if="viewerItem"
@@ -598,7 +572,7 @@ const PERIOD_CONTROLS: { period: FeedPeriod; label: MessageKey }[] = [
 
 const rootEl = ref<HTMLElement | null>(null);
 const feedRef = ref<InstanceType<typeof PhotosFeed> | null>(null);
-const inlineSearchRef = ref<InstanceType<typeof ExplorerInlineSearch> | null>(null);
+const inlineSearchRef = ref<{ focus: () => void; close?: () => void; handleEscape?: () => boolean } | null>(null);
 
 const internalAlbumId = ref<string | null>(null);
 const albumName = ref('');
@@ -1072,8 +1046,6 @@ const activeTargetIds = computed<string[]>(() => {
   return single ? [single] : [];
 });
 
-const hasActiveTarget = computed(() => activeTargetIds.value.length > 0);
-
 function findLoadedItem(fileId: string): FeedItem | undefined {
   return shownItems().find((i) => i.fileId === fileId);
 }
@@ -1160,9 +1132,87 @@ watch(
   },
 );
 
+let ctxListenersAttached = false;
+let pointerInsideCtx = false;
+let pointerInsideCtxTimer: ReturnType<typeof setTimeout> | null = null;
+
+function clearPointerInsideCtx(): void {
+  if (pointerInsideCtxTimer !== null) {
+    clearTimeout(pointerInsideCtxTimer);
+    pointerInsideCtxTimer = null;
+  }
+  pointerInsideCtx = false;
+}
+
+function markPointerInsideCtx(): void {
+  if (pointerInsideCtxTimer !== null) {
+    clearTimeout(pointerInsideCtxTimer);
+  }
+  pointerInsideCtx = true;
+  pointerInsideCtxTimer = setTimeout(() => {
+    pointerInsideCtxTimer = null;
+    pointerInsideCtx = false;
+  }, 0);
+}
+
+function onOutsidePointer(e: Event): void {
+  if (!ctxMenu.value || !ctxMenuEl.value) return;
+  const target = e.target as Node | null;
+  if (!target || !ctxMenuEl.value.contains(target)) {
+    closeCtxMenu();
+  }
+}
+
+function onCtxFocusOut(e: FocusEvent): void {
+  if (!ctxMenu.value || pointerInsideCtx) return;
+  const next = e.relatedTarget as Node | null;
+  if (!next || !ctxMenuEl.value?.contains(next)) {
+    closeCtxMenu();
+  }
+}
+
+function onDocFocusIn(e: FocusEvent): void {
+  if (!ctxMenu.value || !ctxMenuEl.value) return;
+  const target = e.target as Node | null;
+  if (target && !ctxMenuEl.value.contains(target)) {
+    closeCtxMenu();
+  }
+}
+
+function onWindowScroll(e: Event): void {
+  if (!ctxMenu.value || !ctxMenuEl.value) return;
+  const target = e.target as Node | null;
+  if (target && ctxMenuEl.value.contains(target)) return;
+  closeCtxMenu();
+}
+
+function attachCtxListeners(): void {
+  if (ctxListenersAttached) return;
+  ctxListenersAttached = true;
+  window.addEventListener('pointerdown', onOutsidePointer, true);
+  window.addEventListener('mousedown', onOutsidePointer, true);
+  window.addEventListener('click', onOutsidePointer, true);
+  document.addEventListener('focusin', onDocFocusIn, true);
+  window.addEventListener('blur', closeCtxMenu);
+  window.addEventListener('scroll', onWindowScroll, true);
+}
+
+function detachCtxListeners(): void {
+  if (!ctxListenersAttached) return;
+  ctxListenersAttached = false;
+  window.removeEventListener('pointerdown', onOutsidePointer, true);
+  window.removeEventListener('mousedown', onOutsidePointer, true);
+  window.removeEventListener('click', onOutsidePointer, true);
+  document.removeEventListener('focusin', onDocFocusIn, true);
+  window.removeEventListener('blur', closeCtxMenu);
+  window.removeEventListener('scroll', onWindowScroll, true);
+}
+
 function closeCtxMenu(): void {
   ctxMenu.value = null;
   ctxAlbumsOpen.value = false;
+  clearPointerInsideCtx();
+  detachCtxListeners();
 }
 
 function onFeedContextMenu(e: MouseEvent, item: FeedItem): void {
@@ -1173,9 +1223,13 @@ function onFeedContextMenu(e: MouseEvent, item: FeedItem): void {
   const vw = typeof window !== 'undefined' ? window.innerWidth : 1280;
   const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
   const x = Math.min(e.clientX, vw - 240);
-  const y = Math.min(e.clientY, vh - 280);
+  const y = Math.min(e.clientY, vh - 320);
   ctxAlbumsOpen.value = false;
   ctxMenu.value = { x: Math.max(8, x), y: Math.max(8, y), item, targets };
+  attachCtxListeners();
+  void nextTick(() => {
+    ctxMenuEl.value?.focus({ preventScroll: true });
+  });
 }
 
 const ctxTargetIds = computed(() => ctxMenu.value?.targets ?? []);
@@ -1338,6 +1392,16 @@ async function ctxDownload(): Promise<void> {
   await downloadFeedItems(targets);
 }
 
+function ctxOpenProperties(): void {
+  const id = ctxMenu.value?.item.fileId ?? ctxTargetIds.value[0] ?? null;
+  closeCtxMenu();
+  if (id) {
+    focusedId.value = id;
+    panelId.value = id;
+  }
+  panelOpen.value = true;
+}
+
 async function deleteFileIds(ids: string[]): Promise<void> {
   if (ids.length === 0) return;
   await Promise.allSettled(ids.map((id) => driveApi.trashFile(id)));
@@ -1424,22 +1488,48 @@ watch(searchActive, (active) => {
   if (active) prefs.setHeadroomHidden(false);
 });
 
-function onDocPointerDown(e: PointerEvent): void {
-  const target = e.target as Node | null;
-  if (ctxMenu.value && (!target || !ctxMenuEl.value?.contains(target))) {
-    closeCtxMenu();
-  }
-}
-
 function onWindowKeydown(e: KeyboardEvent): void {
-  if (e.key === 'Escape' && ctxMenu.value) {
+  if (e.key !== 'Escape' || e.defaultPrevented) return;
+  if (
+    viewer.value
+    || moveOpen.value
+    || document.querySelector('[role="dialog"]:not(.dp-album-picker), .modal-backdrop')
+  ) {
+    return;
+  }
+  if (ctxMenu.value) {
     e.preventDefault();
     closeCtxMenu();
+    return;
+  }
+  if (actions.albumMenuOpen.value) {
+    e.preventDefault();
+    actions.closeAlbumMenu();
+    return;
+  }
+  if (inlineSearchRef.value?.handleEscape?.()) {
+    e.preventDefault();
+    return;
+  }
+  if (searchActive.value || query.value.trim() !== '' || searchTypeFilter.value !== 'all') {
+    e.preventDefault();
+    searchTypeFilter.value = 'all';
+    clearSearch();
+    return;
+  }
+  if (selected.value.size > 0 || focusedId.value !== null) {
+    e.preventDefault();
+    clearSelection();
+    focusedId.value = null;
+    return;
+  }
+  if (panelOpen.value) {
+    e.preventDefault();
+    closePanel();
   }
 }
 
 onMounted(() => {
-  document.addEventListener('pointerdown', onDocPointerDown);
   window.addEventListener('keydown', onWindowKeydown);
   if (!isPhotosMock()) void loadSpaces();
   void refreshSidebarCounts();
@@ -1690,12 +1780,6 @@ function closePanel(restoreFocus = true): void {
   if (restoreFocus && id) void nextTick(() => focusTile(id));
 }
 
-function onMainEscape(): void {
-  if (ctxMenu.value) closeCtxMenu();
-  else if (selected.value.size > 0) clearSelection();
-  else if (panelOpen.value) closePanel();
-}
-
 function onRootKeydown(e: KeyboardEvent): void {
   const tag = (e.target as HTMLElement | null)?.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
@@ -1735,7 +1819,8 @@ function onPanelChanged(change: { fileId: string; favorite?: boolean; albumIds?:
 
 onBeforeUnmount(() => {
   stopDrag?.();
-  document.removeEventListener('pointerdown', onDocPointerDown);
+  clearPointerInsideCtx();
+  detachCtxListeners();
   window.removeEventListener('keydown', onWindowKeydown);
   cancelSearchTimer();
   searchGen++;
@@ -1745,7 +1830,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .drive-photos {
-  --dp-top-h: 46px;
+  --dp-top-h: 50px;
   position: relative;
   display: flex;
   flex-direction: column;
@@ -1761,13 +1846,13 @@ onBeforeUnmount(() => {
   top: 0;
   left: 0;
   right: 0;
-  height: var(--dp-top-h, 46px);
+  height: var(--dp-top-h, 50px);
   box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 8px 12px;
+  padding: 6px 12px;
   border-bottom: 1px solid var(--ui-glass-border, var(--ui-border));
   background: var(--ui-glass-tint, transparent), var(--ui-glass-bg, transparent);
   backdrop-filter: blur(var(--ui-glass-blur, 16px)) saturate(1.18);
@@ -1790,6 +1875,11 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 6px;
   min-width: 0;
+}
+
+.dp-top-right {
+  flex: 1 1 auto;
+  justify-content: flex-end;
 }
 
 .dp-top-center {
@@ -1955,14 +2045,6 @@ onBeforeUnmount(() => {
   border-color: var(--ui-glass-accent-border);
   color: var(--ui-glass-accent-text);
 }
-.dp-icon-btn[data-testid='favorite-btn'].active {
-  color: #ff5d73;
-  border-color: rgba(255, 93, 115, 0.45);
-  background: rgba(255, 93, 115, 0.14);
-}
-.dp-icon-btn.dim {
-  opacity: 0.45;
-}
 
 .dp-search-clear {
   display: inline-flex;
@@ -2005,13 +2087,13 @@ onBeforeUnmount(() => {
 
 .dp-float-sort {
   position: absolute;
-  top: calc(var(--dp-top-h, 46px) + 8px);
+  top: calc(var(--dp-top-h, 50px) + 8px);
   right: 64px;
   z-index: 12;
 }
 
 .dp-search-grid {
-  padding-top: calc(var(--dp-top-h, 46px) + 6px);
+  padding-top: calc(var(--dp-top-h, 50px) + 6px);
 }
 
 .dp-feed {
@@ -2023,12 +2105,12 @@ onBeforeUnmount(() => {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding-top: var(--dp-top-h, 46px);
+  padding-top: var(--dp-top-h, 50px);
 }
 
 .dp-note {
   margin: 0;
-  padding: calc(var(--dp-top-h, 46px) + 24px) 20px 24px;
+  padding: calc(var(--dp-top-h, 50px) + 24px) 20px 24px;
   color: var(--ui-text-secondary);
 }
 
@@ -2044,11 +2126,34 @@ onBeforeUnmount(() => {
 }
 
 .dp-mock {
-  margin: var(--dp-top-h, 46px) 0 0;
+  margin: var(--dp-top-h, 50px) 0 0;
   padding: 5px 12px;
   font-size: 12px;
   color: var(--ui-text-secondary);
   background: var(--ui-surface-subtle);
+}
+
+.dp-panel-shell {
+  display: flex;
+  flex: none;
+  min-height: 0;
+  max-width: 100%;
+}
+
+.dp-panel-slide-enter-active {
+  transition:
+    opacity 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.dp-panel-slide-leave-active {
+  transition:
+    opacity 0.13s ease-in,
+    transform 0.13s ease-in;
+}
+.dp-panel-slide-enter-from,
+.dp-panel-slide-leave-to {
+  opacity: 0;
+  transform: translateX(14px);
 }
 
 .dp-panel-sash {
@@ -2079,8 +2184,9 @@ onBeforeUnmount(() => {
   flex: none;
   max-width: 100%;
   min-height: 0;
+  height: 100%;
   box-sizing: border-box;
-  padding-top: var(--dp-top-h, 46px);
+  padding-top: var(--dp-top-h, 50px);
 }
 
 .dp-ctx-menu {
@@ -2098,6 +2204,8 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  outline: none;
+  transform-origin: top left;
 }
 .dp-ctx-item {
   display: flex;
@@ -2142,7 +2250,7 @@ onBeforeUnmount(() => {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: calc(var(--dp-top-h, 46px) + 14px) 18px 14px;
+  padding: calc(var(--dp-top-h, 50px) + 14px) 18px 14px;
 }
 
 .dp-album-picker-backdrop {
@@ -2213,9 +2321,6 @@ onBeforeUnmount(() => {
     margin: 0 auto;
     flex: 0 0 auto;
   }
-  .dp-info-btn {
-    display: none;
-  }
   .dp-crumb-pill {
     max-width: 82px;
     height: 26px;
@@ -2242,14 +2347,25 @@ onBeforeUnmount(() => {
     padding: 0 7px;
     font-size: 11.5px;
   }
+  .dp-panel-shell {
+    position: absolute;
+    inset: 0;
+    z-index: 20;
+  }
   .dp-panel-sash {
     display: none;
   }
   .dp-panel {
-    position: absolute;
-    inset: 0;
+    position: static;
+    flex: 1 1 auto;
     width: auto !important;
-    z-index: 20;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dp-panel-slide-enter-active,
+  .dp-panel-slide-leave-active {
+    transition: none;
   }
 }
 </style>

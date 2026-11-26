@@ -17,7 +17,8 @@ import ExplorerInlineSearch from './ExplorerInlineSearch.vue';
 import ExplorerTableView from './ExplorerTableView.vue';
 
 vi.mock('@capacitor/core', () => ({
-  Capacitor: { isNativePlatform: () => false },
+  Capacitor: { isNativePlatform: () => false, getPlatform: () => 'web' },
+  registerPlugin: vi.fn(() => ({})),
 }));
 
 vi.mock('@capacitor/app', () => ({
@@ -601,5 +602,73 @@ describe('UX v2 Explorer & B-011/B-012/B-013/B-014 regressions', () => {
     expect(sidebar.find('[data-yandex-toggle="/FilesOnlyDir"]').exists()).toBe(true);
     expect(sidebar.find('[data-album-toggle="alb-empty"]').exists()).toBe(false);
     expect(t('folders')).toBe('Папки');
+  });
+
+  it('S2 wider search popover & two-stage Esc: 1st Esc collapses popover, 2nd Esc clears query; Esc when closed clears query & typeFilter', async () => {
+    const wrapper = mount(ExplorerInlineSearch, {
+      attachTo: document.body,
+      props: {
+        modelValue: 'билеты',
+        scopeMode: 'current',
+        scopeLabel: 'Поездки',
+        typeFilter: 'pdf',
+        items: [{ id: 'i1', title: 'Билеты.pdf', type: 'pdf', mimeType: 'application/pdf' }],
+      },
+    });
+
+    const box = wrapper.get('.s2-box').element as HTMLElement;
+    vi.spyOn(box, 'getBoundingClientRect').mockReturnValue({
+      x: 40,
+      y: 8,
+      left: 40,
+      top: 8,
+      right: 640,
+      bottom: 44,
+      width: 600,
+      height: 36,
+      toJSON: () => ({}),
+    } as DOMRect);
+
+    const input = wrapper.get('[data-s2-input]');
+    await input.trigger('focus');
+    await nextTick();
+    await nextTick();
+
+    const pop = document.body.querySelector('[data-s2-popover]') as HTMLElement | null;
+    expect(pop).not.toBeNull();
+    // Popover width matches wider search box (>= 520px, here 600px)
+    expect(pop!.style.width).toBe('600px');
+
+    // Stage 1: 1st Esc collapses popover without clearing query
+    await input.trigger('keydown', { key: 'Escape' });
+    await nextTick();
+    expect(document.body.querySelector('[data-s2-popover]')).toBeNull();
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined();
+
+    // Stage 2: 2nd Esc clears query and resets typeFilter without re-opening popover
+    await input.trigger('keydown', { key: 'Escape' });
+    await nextTick();
+    expect(wrapper.emitted('update:modelValue')?.[0]).toEqual(['']);
+    expect(wrapper.emitted('update:typeFilter')?.[0]).toEqual(['all']);
+    expect(document.body.querySelector('[data-s2-popover]')).toBeNull();
+
+    // Esc when popover is ALREADY closed with an active query clears query directly via exposed handleEscape()
+    await wrapper.setProps({ modelValue: 'горы', typeFilter: 'media' });
+    expect(document.body.querySelector('[data-s2-popover]')).toBeNull();
+    const handled = (wrapper.vm as unknown as { handleEscape: () => boolean }).handleEscape();
+    await nextTick();
+    expect(handled).toBe(true);
+    expect(wrapper.emitted('update:modelValue')?.[1]).toEqual(['']);
+    expect(wrapper.emitted('update:typeFilter')?.[1]).toEqual(['all']);
+    expect(document.body.querySelector('[data-s2-popover]')).toBeNull();
+
+    // Verify wider desktop CSS tokens exist in ExplorerInlineSearch.vue & 19-explorer-redesign.css
+    const searchSrc = fs.readFileSync(path.resolve(__dirname, './ExplorerInlineSearch.vue'), 'utf8');
+    expect(searchSrc).toContain('height: 36px;');
+    expect(searchSrc).toContain('max-width: 720px;');
+    expect(searchSrc).toContain('name="s2-pop-fade"');
+    expect(searchSrc).toContain('name="s2-pill-pop"');
+    const cssSrc = fs.readFileSync(path.resolve(__dirname, '../../styles/19-explorer-redesign.css'), 'utf8');
+    expect(cssSrc).toContain('height: 50px;');
   });
 });

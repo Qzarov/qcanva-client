@@ -259,8 +259,8 @@ body.resizing * {
 
 /* Sidebar Header */
 .explorer-sidebar .sb-header {
-  height: 46px;
-  min-height: 46px;
+  height: 50px;
+  min-height: 50px;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -807,7 +807,7 @@ body.resizing * {
   text-decoration: underline;
 }
 
-/* ===== Headroom 46px Top Chrome & Editable Glass Path Bar ===== */
+/* ===== Headroom 50px Top Chrome & Editable Glass Path Bar ===== */
 .dashboard-central-shell > .top-chrome.explorer-headroom {
   grid-row: 1;
 }
@@ -838,7 +838,7 @@ body.resizing * {
 
 .explorer-headroom .ws-header {
   position: relative;
-  height: 46px;
+  height: 50px;
   display: flex;
   align-items: center;
   gap: 8px;

@@ -5,9 +5,13 @@
       ref="menuEl"
       class="explorer-ctx-menu"
       role="menu"
+      tabindex="-1"
       :aria-label="t('groupActions')"
       :style="positionStyle"
       data-explorer-context-menu
+      @pointerdown="markPointerInside"
+      @mousedown="markPointerInside"
+      @focusout="onMenuFocusOut"
       @click.stop
       @contextmenu.prevent
     >
@@ -156,6 +160,18 @@
         <span>{{ downloadLabel }}</span>
       </button>
 
+      <button
+        v-if="count === 1 && canProperties"
+        type="button"
+        class="explorer-ctx-item"
+        role="menuitem"
+        data-ctx-action="properties"
+        @click="onProperties"
+      >
+        <Info :size="15" aria-hidden="true" />
+        <span>{{ t('fileProperties') }}</span>
+      </button>
+
       <template v-if="canDelete">
         <div class="explorer-ctx-sep" role="separator"></div>
         <button
@@ -201,6 +217,7 @@ import {
   FolderInput,
   FolderPlus,
   Heart,
+  Info,
   Pencil,
   Plus,
   RefreshCw,
@@ -222,6 +239,7 @@ const props = withDefaults(defineProps<{
   canDelete?: boolean;
   canRename?: boolean;
   canDownload?: boolean;
+  canProperties?: boolean;
   isFavorite?: boolean;
   albums?: ReadonlyArray<ExplorerContextMenuAlbum>;
 }>(), {
@@ -234,6 +252,7 @@ const props = withDefaults(defineProps<{
   canDelete: true,
   canRename: true,
   canDownload: true,
+  canProperties: false,
   isFavorite: false,
 });
 
@@ -246,6 +265,7 @@ const emit = defineEmits<{
   move: [items: ReadonlyArray<ExplorerContextMenuItem>];
   rename: [item: ExplorerContextMenuItem];
   download: [items: ReadonlyArray<ExplorerContextMenuItem>];
+  properties: [item: ExplorerContextMenuItem];
   delete: [items: ReadonlyArray<ExplorerContextMenuItem>];
   'create-folder': [];
   add: [];
@@ -296,9 +316,64 @@ function measureMenu(): void {
   }
 }
 
+let pointerInsideMenu = false;
+let pointerInsideTimer: ReturnType<typeof setTimeout> | null = null;
+let listenersAttached = false;
+
+function clearPointerInsideTimer(): void {
+  if (pointerInsideTimer !== null) {
+    clearTimeout(pointerInsideTimer);
+    pointerInsideTimer = null;
+  }
+}
+
+function markPointerInside(): void {
+  pointerInsideMenu = true;
+  clearPointerInsideTimer();
+  pointerInsideTimer = setTimeout(() => {
+    pointerInsideMenu = false;
+    pointerInsideTimer = null;
+  }, 0);
+}
+
+function focusAndMeasureMenu(): void {
+  void nextTick(() => {
+    measureMenu();
+    menuEl.value?.focus({ preventScroll: true });
+  });
+}
+
 function onOutsidePointerDown(event: Event): void {
+  if (!menuEl.value) return;
   const target = event.target as Node | null;
-  if (menuEl.value && target && menuEl.value.contains(target)) return;
+  if (target && menuEl.value.contains(target)) return;
+  emit('close');
+}
+
+function onMenuFocusOut(event: FocusEvent): void {
+  if (!props.open || pointerInsideMenu) return;
+  const next = event.relatedTarget as Node | null;
+  if (!next || !menuEl.value?.contains(next)) {
+    emit('close');
+  }
+}
+
+function onDocFocusIn(event: FocusEvent): void {
+  if (!menuEl.value) return;
+  const target = event.target as Node | null;
+  if (target && !menuEl.value.contains(target)) {
+    emit('close');
+  }
+}
+
+function onWindowBlur(): void {
+  emit('close');
+}
+
+function onWindowScroll(event: Event): void {
+  if (!menuEl.value) return;
+  const target = event.target as Node | null;
+  if (target && menuEl.value.contains(target)) return;
   emit('close');
 }
 
@@ -310,24 +385,50 @@ function onWindowKeydown(event: KeyboardEvent): void {
   }
 }
 
+function attachListeners(): void {
+  if (listenersAttached) return;
+  listenersAttached = true;
+  window.addEventListener('pointerdown', onOutsidePointerDown, true);
+  window.addEventListener('mousedown', onOutsidePointerDown, true);
+  window.addEventListener('click', onOutsidePointerDown, true);
+  window.addEventListener('keydown', onWindowKeydown, true);
+  window.addEventListener('blur', onWindowBlur);
+  window.addEventListener('scroll', onWindowScroll, true);
+  document.addEventListener('focusin', onDocFocusIn, true);
+}
+
+function detachListeners(): void {
+  clearPointerInsideTimer();
+  pointerInsideMenu = false;
+  if (!listenersAttached) return;
+  listenersAttached = false;
+  window.removeEventListener('pointerdown', onOutsidePointerDown, true);
+  window.removeEventListener('mousedown', onOutsidePointerDown, true);
+  window.removeEventListener('click', onOutsidePointerDown, true);
+  window.removeEventListener('keydown', onWindowKeydown, true);
+  window.removeEventListener('blur', onWindowBlur);
+  window.removeEventListener('scroll', onWindowScroll, true);
+  document.removeEventListener('focusin', onDocFocusIn, true);
+}
+
 watch(() => props.open, (isOpen) => {
   albumsOpen.value = false;
   if (isOpen) {
-    void nextTick(measureMenu);
-    document.addEventListener('pointerdown', onOutsidePointerDown, true);
-    document.addEventListener('click', onOutsidePointerDown, true);
-    window.addEventListener('keydown', onWindowKeydown, true);
+    attachListeners();
+    focusAndMeasureMenu();
   } else {
-    document.removeEventListener('pointerdown', onOutsidePointerDown, true);
-    document.removeEventListener('click', onOutsidePointerDown, true);
-    window.removeEventListener('keydown', onWindowKeydown, true);
+    detachListeners();
   }
 }, { immediate: true });
 
+watch(() => [props.x, props.y] as const, () => {
+  if (props.open) {
+    focusAndMeasureMenu();
+  }
+});
+
 onBeforeUnmount(() => {
-  document.removeEventListener('pointerdown', onOutsidePointerDown, true);
-  document.removeEventListener('click', onOutsidePointerDown, true);
-  window.removeEventListener('keydown', onWindowKeydown, true);
+  detachListeners();
 });
 
 function onOpen(): void {
@@ -377,6 +478,12 @@ function onDownload(): void {
   emit('close');
 }
 
+function onProperties(): void {
+  const first = props.items[0];
+  if (first) emit('properties', first);
+  emit('close');
+}
+
 function onDelete(): void {
   emit('delete', props.items);
   emit('close');
@@ -415,6 +522,8 @@ function onRefresh(): void {
   flex-direction: column;
   gap: 2px;
   color: var(--ui-text);
+  outline: none;
+  transform-origin: top left;
 }
 
 .explorer-ctx-header {

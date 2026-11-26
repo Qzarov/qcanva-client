@@ -262,6 +262,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   navigate: [path: string];
   'update:viewMode': [mode: ViewMode];
+  'update:selectedKeys': [keys: string[]];
   'toggle-select': [key: string];
   /** The files on screen, for the dashboard's actions on what is ticked. */
   items: [items: YandexItem[]];
@@ -691,14 +692,34 @@ function onDrop(event: DragEvent) {
   if (connected.value && files.length) emit('upload', files, props.path);
 }
 
+function onWindowKeydown(event: KeyboardEvent) {
+  if (event.key !== 'Escape' || event.defaultPrevented) return;
+  if (ctxMenu.open) return;
+  if (typeof document !== 'undefined' && document.querySelector('[role="dialog"], .modal-backdrop, .drive-properties-backdrop, [data-s2-popover]')) {
+    return;
+  }
+  if (menu.value) {
+    menu.value = '';
+    event.preventDefault();
+    return;
+  }
+  if (props.query?.trim()) return;
+  if (props.selectedKeys?.length) {
+    emit('update:selectedKeys', []);
+    event.preventDefault();
+  }
+}
+
 onMounted(async () => {
   document.addEventListener('click', closeMenu);
+  window.addEventListener('keydown', onWindowKeydown);
   await loadStatus();
   void load();
 });
 onBeforeUnmount(() => {
   loadId += 1;
   document.removeEventListener('click', closeMenu);
+  window.removeEventListener('keydown', onWindowKeydown);
 });
 
 defineExpose({ reload, pickFiles });
