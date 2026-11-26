@@ -117,6 +117,8 @@ function mountDashboard(options: MountingOptions<any> = {}) {
 function stubSidebarDesktopMedia(initialMatches = false) {
   let matches = initialMatches;
   const listeners = new Set<(event: MediaQueryListEvent) => void>();
+  const drawerListeners = new Set<(event: MediaQueryListEvent) => void>();
+  const drawerQuery = '(max-width: 768px)';
   const media = {
     get matches() {
       return matches;
@@ -133,12 +135,29 @@ function stubSidebarDesktopMedia(initialMatches = false) {
     dispatch(nextMatches: boolean) {
       matches = nextMatches;
       listeners.forEach((listener) => listener({ matches: nextMatches, media: SIDEBAR_DESKTOP_QUERY } as MediaQueryListEvent));
+      drawerListeners.forEach((listener) => listener({ matches: !nextMatches, media: drawerQuery } as MediaQueryListEvent));
       window.dispatchEvent(new Event('resize'));
     },
   } as unknown as MediaQueryList & { dispatch(nextMatches: boolean): void };
 
+  const drawerMedia = {
+    get matches() {
+      return !matches;
+    },
+    media: drawerQuery,
+    addEventListener: vi.fn((type: string, listener: EventListener) => {
+      if (type === 'change') drawerListeners.add(listener as (event: MediaQueryListEvent) => void);
+    }),
+    removeEventListener: vi.fn((type: string, listener: EventListener) => {
+      if (type === 'change') drawerListeners.delete(listener as (event: MediaQueryListEvent) => void);
+    }),
+    addListener: vi.fn((listener: (event: MediaQueryListEvent) => void) => drawerListeners.add(listener)),
+    removeListener: vi.fn((listener: (event: MediaQueryListEvent) => void) => drawerListeners.delete(listener)),
+  } as unknown as MediaQueryList;
+
   vi.stubGlobal('matchMedia', vi.fn((query: string) => {
     if (query === SIDEBAR_DESKTOP_QUERY) return media;
+    if (query === drawerQuery) return drawerMedia;
     return {
       matches: false,
       media: query,
@@ -192,12 +211,12 @@ describe('dashboard sidebar navigation', () => {
     document.body.innerHTML = '';
   });
 
-  it('keeps the authenticated QCanva brand in the Activity Bar instead of duplicating it in the dashboard header', async () => {
+  it('keeps the authenticated QCanva brand in the unified sidebar instead of duplicating it in the dashboard header', async () => {
     const wrapper = mountDashboard();
     await flushPromises();
 
     expect(wrapper.find('.app-header .dashboard-brand').exists()).toBe(false);
-    expect(wrapper.get('[data-activity-bar] [data-activity-brand]').text()).toBe('Q');
+    expect(wrapper.get('[data-sidebar-brand-home]').text()).toBe('Q');
   });
 
   it('starts on the feed with Q Space home expanded, and clicking shared opens the dedicated Q Space/shared view', async () => {
@@ -1129,18 +1148,19 @@ describe('dashboard sidebar navigation', () => {
     await flushPromises();
 
     expect(wrapper.get('.dashboard-sidebar').classes()).toContain('collapsed');
-    await wrapper.get('[data-activity="home"]').trigger('click');
+    await wrapper.get('[data-sidebar-expand-btn]').trigger('click');
     expect(localStorage.getItem('qspace:sidebarCollapsed')).toBe('0');
   });
 
   it('opens the drawer with focus inside and closes it from the explicit close button', async () => {
+    stubSidebarDesktopMedia(false);
     document.body.style.overflow = 'clip';
     const wrapper = mountDashboard({ attachTo: document.body });
     await flushPromises();
-    const opener = wrapper.get('[data-mobile-menu-trigger]').element as HTMLButtonElement;
+    const opener = wrapper.get('[data-sidebar-expand-btn]').element as HTMLButtonElement;
 
     opener.focus();
-    await wrapper.get('[data-mobile-menu-trigger]').trigger('click');
+    await wrapper.get('[data-sidebar-expand-btn]').trigger('click');
     await nextTick();
 
     expect(document.body.style.overflow).toBe('hidden');
@@ -1150,42 +1170,47 @@ describe('dashboard sidebar navigation', () => {
     await nextTick();
 
     expect(document.body.style.overflow).toBe('clip');
-    expect(document.activeElement).toBe(opener);
+    expect(document.activeElement).toBe(wrapper.get('[data-sidebar-home-btn]').element);
     wrapper.unmount();
   });
 
   it.each([
     ['backdrop', async (wrapper: ReturnType<typeof mountDashboard>) => {
       await wrapper.get('[data-sidebar-backdrop]').trigger('click');
+      return wrapper.get('[data-sidebar-home-btn]').element;
     }],
     ['Escape', async (wrapper: ReturnType<typeof mountDashboard>) => {
       await wrapper.get('.dashboard-sidebar').trigger('keydown', { key: 'Escape' });
+      return wrapper.get('[data-sidebar-home-btn]').element;
     }],
     ['destination selection', async (wrapper: ReturnType<typeof mountDashboard>) => {
       await wrapper.get('[data-dashboard-section="shared"]').trigger('click');
+      return wrapper.get('[data-dashboard-section="shared"]').element;
     }],
-  ])('restores scroll and opener focus after closing from %s', async (_label, closeDrawer) => {
+  ])('restores scroll and focus after closing from %s', async (_label, closeDrawer) => {
+    stubSidebarDesktopMedia(false);
     const wrapper = mountDashboard({ attachTo: document.body });
     await flushPromises();
-    const opener = wrapper.get('[data-mobile-menu-trigger]').element as HTMLButtonElement;
+    const opener = wrapper.get('[data-sidebar-expand-btn]').element as HTMLButtonElement;
 
     opener.focus();
-    await wrapper.get('[data-mobile-menu-trigger]').trigger('click');
+    await wrapper.get('[data-sidebar-expand-btn]').trigger('click');
     await nextTick();
-    await closeDrawer(wrapper);
+    const expectedFocus = await closeDrawer(wrapper);
     await nextTick();
 
     expect(document.body.style.overflow).toBe('');
-    expect(document.activeElement).toBe(opener);
+    expect(document.activeElement).toBe(expectedFocus);
     wrapper.unmount();
   });
 
   it('restores body scroll if the dashboard unmounts with the drawer open', async () => {
+    stubSidebarDesktopMedia(false);
     document.body.style.overflow = 'clip';
     const wrapper = mountDashboard({ attachTo: document.body });
     await flushPromises();
 
-    await wrapper.get('[data-mobile-menu-trigger]').trigger('click');
+    await wrapper.get('[data-sidebar-expand-btn]').trigger('click');
     await nextTick();
     expect(document.body.style.overflow).toBe('hidden');
 
@@ -1195,12 +1220,13 @@ describe('dashboard sidebar navigation', () => {
   });
 
   it('keeps the remembered desktop collapsed state while opening and selecting in the mobile drawer', async () => {
+    stubSidebarDesktopMedia(false);
     localStorage.setItem('qspace:sidebarCollapsed', '1');
     resetExplorerLayoutPrefs(false);
     const wrapper = mountDashboard({ attachTo: document.body });
     await flushPromises();
 
-    await wrapper.get('[data-mobile-menu-trigger]').trigger('click');
+    await wrapper.get('[data-sidebar-expand-btn]').trigger('click');
     await nextTick();
     await wrapper.get('[data-dashboard-section="public"]').trigger('click');
     await nextTick();
@@ -1212,13 +1238,15 @@ describe('dashboard sidebar navigation', () => {
 
   it('closes the mobile drawer through the cleanup path when the viewport becomes desktop', async () => {
     const media = stubSidebarDesktopMedia(false);
+    localStorage.setItem('qspace:sidebarCollapsed', '1');
+    resetExplorerLayoutPrefs(false);
     document.body.style.overflow = 'clip';
     const wrapper = mountDashboard({ attachTo: document.body });
     await flushPromises();
-    const opener = wrapper.get('[data-mobile-menu-trigger]').element as HTMLButtonElement;
+    const opener = wrapper.get('[data-sidebar-expand-btn]').element as HTMLButtonElement;
 
     opener.focus();
-    await wrapper.get('[data-mobile-menu-trigger]').trigger('click');
+    await wrapper.get('[data-sidebar-expand-btn]').trigger('click');
     await nextTick();
     expect(document.body.style.overflow).toBe('hidden');
 
@@ -1230,7 +1258,7 @@ describe('dashboard sidebar navigation', () => {
     expect(document.body.style.overflow).toBe('clip');
     expect(wrapper.find('[data-sidebar-backdrop]').exists()).toBe(false);
     expect(wrapper.get('.dashboard-sidebar').attributes('aria-modal')).toBeUndefined();
-    expect(document.activeElement).toBe(opener);
+    expect(document.activeElement).toBe(wrapper.get('[data-sidebar-home-btn]').element);
     wrapper.unmount();
   });
 
@@ -1238,11 +1266,11 @@ describe('dashboard sidebar navigation', () => {
     const media = stubSidebarDesktopMedia(false);
     const wrapper = mountDashboard({ attachTo: document.body });
     await flushPromises();
-    const opener = wrapper.get('[data-mobile-menu-trigger]').element as HTMLButtonElement;
-    const desktopFallback = wrapper.get('[data-home-link]').element as HTMLElement;
+    const opener = wrapper.get('[data-sidebar-expand-btn]').element as HTMLButtonElement;
+    const desktopFallback = wrapper.get('[data-sidebar-home-btn]').element as HTMLElement;
 
     opener.focus();
-    await wrapper.get('[data-mobile-menu-trigger]').trigger('click');
+    await wrapper.get('[data-sidebar-expand-btn]').trigger('click');
     await nextTick();
 
     opener.style.display = 'none';
@@ -1286,7 +1314,7 @@ describe('DashboardView groups', () => {
     withDefaultFolders();
   });
 
-  it('opens the Add dialog from folder FAB/button, closes account menu, and renders 5 create tiles plus dropzone', async () => {
+  it('opens the Add dialog from folder FAB/button, closes account menu, and renders 6 create tiles plus dropzone', async () => {
     const wrapper = mountDashboard();
     await flushPromises();
     const vm = wrapper.vm as any;
@@ -1299,7 +1327,7 @@ describe('DashboardView groups', () => {
     await wrapper.get('[data-explorer-fab]').trigger('click');
     expect(wrapper.find('[data-add-dialog]').exists()).toBe(true);
     expect(wrapper.find('[data-account-menu]').exists()).toBe(false);
-    expect(wrapper.findAll('[data-add-create]').map((tile) => tile.text())).toEqual(['Canvas', 'Document', 'HTML', 'Template', 'Folder']);
+    expect(wrapper.findAll('[data-add-create]').map((tile) => tile.text())).toEqual(['Canvas', 'Document', 'HTML', 'Template', 'Folder', 'Album']);
     await wrapper.get('[data-add-create="html-document"]').trigger('click');
     await nextTick();
     expect(wrapper.get('[data-add-name-create]').attributes('disabled')).toBeDefined();

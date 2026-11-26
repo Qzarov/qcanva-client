@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Heart } from '@lucide/vue';
 import {
   computed,
   nextTick,
@@ -160,7 +161,7 @@ const collapsedShares = computed(() => new Set(view.state.value.collapsedShares)
 const level1 = computed<SortKey>(() => appliedParams.value.levels[0] ?? 'date');
 const level2 = computed<SortKey | undefined>(() => appliedParams.value.levels[1]);
 const isOverlayDateWall = computed(() => level1.value === 'date' && !level2.value);
-const headroomHidden = computed(() => prefs.headroomHidden.value);
+const headroomHidden = computed(() => prefs.headroomHidden.value && !hasMultiSelect.value);
 
 const selectionAnchorId = ref<string | null>(null);
 const marqueeRect = ref<{ left: number; top: number; width: number; height: number } | null>(null);
@@ -1176,6 +1177,66 @@ function patchItem(fileId: string, patch: Partial<Pick<FeedItem, 'favorite' | 'a
   relayout();
 }
 
+function removeItems(fileIds: string[]): void {
+  if (fileIds.length === 0) return;
+  const removeSet = new Set(fileIds);
+  if (selectionAnchorId.value && removeSet.has(selectionAnchorId.value)) {
+    selectionAnchorId.value = null;
+  }
+  const remainingSelected = [...props.selected].filter((id) => !removeSet.has(id));
+  if (remainingSelected.length !== props.selected.size) {
+    emit('set-selection', remainingSelected);
+  }
+
+  let anyRemoved = false;
+  const removedByUnit = new Map<string, number>();
+  const nextItems = new Map<string, FeedItem[]>();
+  for (const [key, list] of items.value) {
+    const filtered = list.filter((it) => !removeSet.has(it.fileId));
+    if (filtered.length !== list.length) {
+      anyRemoved = true;
+      removedByUnit.set(key, list.length - filtered.length);
+    }
+    nextItems.set(key, filtered);
+  }
+  if (!anyRemoved) return;
+
+  const nextGroups: FeedGroup[] = [];
+  for (const g of groups.value) {
+    if (g.subs && g.subs.length > 0) {
+      let groupRemoved = 0;
+      const nextSubs: FeedGroup[] = [];
+      for (const s of g.subs) {
+        const uk = unitKey(g.key, s.key);
+        const removed = removedByUnit.get(uk) ?? 0;
+        groupRemoved += removed;
+        const nextCount = Math.max(0, s.count - removed);
+        if (nextCount > 0) {
+          nextSubs.push({ ...s, count: nextCount });
+        } else {
+          nextItems.delete(uk);
+        }
+      }
+      const nextCount = Math.max(0, g.count - groupRemoved);
+      if (nextCount > 0 && nextSubs.length > 0) {
+        nextGroups.push({ ...g, count: nextCount, subs: nextSubs });
+      }
+    } else {
+      const removed = removedByUnit.get(g.key) ?? 0;
+      const nextCount = Math.max(0, g.count - removed);
+      if (nextCount > 0) {
+        nextGroups.push({ ...g, count: nextCount });
+      } else {
+        nextItems.delete(g.key);
+      }
+    }
+  }
+
+  items.value = nextItems;
+  groups.value = nextGroups;
+  relayout();
+}
+
 function refreshAlbums(): void {
   albumsRequested = false;
   requestAlbums();
@@ -1202,7 +1263,7 @@ function totalCount(): number {
   return groups.value.reduce((s, g) => s + g.count, 0);
 }
 
-defineExpose({ orderedItems, refresh, refreshAlbums, patchItem, loadMore, totalCount });
+defineExpose({ orderedItems, refresh, refreshAlbums, patchItem, removeItems, loadMore, totalCount });
 
 onBeforeUnmount(() => {
   epoch++;
@@ -1360,7 +1421,7 @@ onBeforeUnmount(() => {
                   :aria-label="t('photosFavorite')"
                   @click.stop="emit('toggle-favorite', tl.item)"
                 >
-                  {{ tl.item.favorite ? '♥' : '♡' }}
+                  <Heart :size="18" :fill="tl.item.favorite ? 'currentColor' : 'none'" aria-hidden="true" />
                 </button>
                 <span v-if="tl.item.kind === 'video'" class="pf-badge">▶ {{ formatDuration(tl.item.durationSec) }}</span>
               </div>
@@ -1415,7 +1476,7 @@ onBeforeUnmount(() => {
   flex: 1;
   min-width: 0;
   overflow-y: auto;
-  padding: 2px 4px 48px 2px;
+  padding: calc(var(--dp-top-h, 46px) + 2px) 4px 48px 2px;
   scrollbar-width: none;
 }
 .pf-scroller::-webkit-scrollbar {
@@ -1457,11 +1518,11 @@ onBeforeUnmount(() => {
 }
 .pf-stick {
   position: sticky;
-  top: 0;
+  top: calc(var(--dp-top-h, 46px) + 8px);
   height: 0;
   z-index: 8;
   pointer-events: none;
-  transition: top 0.2s ease;
+  transition: top 0.22s ease;
 }
 .pf.headroom-hidden .pf-stick {
   top: 8px;
@@ -1473,7 +1534,7 @@ onBeforeUnmount(() => {
   box-sizing: border-box;
   display: flex;
   align-items: flex-start;
-  padding: 8px 10px 0;
+  padding: 0 10px;
   pointer-events: none;
 }
 .pf-skeleton {
@@ -1601,11 +1662,12 @@ onBeforeUnmount(() => {
 }
 .pf-fav-btn {
   position: absolute;
-  left: 6px;
-  bottom: 6px;
+  left: 7px;
+  bottom: 7px;
   z-index: 4;
-  width: 24px;
-  height: 24px;
+  width: 32px;
+  height: 32px;
+  padding: 0;
   border: 0;
   border-radius: 999px;
   display: grid;
@@ -1613,7 +1675,6 @@ onBeforeUnmount(() => {
   background: rgba(10, 14, 11, 0.46);
   backdrop-filter: blur(6px);
   color: #fff;
-  font-size: 13px;
   opacity: 0;
   cursor: pointer;
   transition: opacity 0.12s ease, transform 0.12s ease, color 0.12s ease;
@@ -1645,7 +1706,7 @@ onBeforeUnmount(() => {
   left: 0;
   right: 0;
   bottom: 0;
-  padding: 18px 9px 5px 34px;
+  padding: 18px 9px 5px 44px;
   background: linear-gradient(transparent, rgba(0, 0, 0, 0.7));
   color: #fff;
   font-size: 11.5px;

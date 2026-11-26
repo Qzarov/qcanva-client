@@ -34,27 +34,25 @@
 
 <script setup lang="ts">
 import { computed, type Component } from 'vue';
-import { FolderTree, House, Images, Menu, Search } from '@lucide/vue';
+import { FolderTree, House, Images, Menu } from '@lucide/vue';
 import { useI18n } from '../../composables/useI18n';
-import type { ExplorerActivityId } from './ExplorerActivityBar.vue';
 
-export type MobileTabId = 'home' | 'explorer' | 'search' | 'gallery';
+export type ExplorerMobileTabId = 'home' | 'explorer' | 'gallery';
 
 defineProps<{
-  activeActivity: ExplorerActivityId;
+  activeActivity: ExplorerMobileTabId;
 }>();
 
 const emit = defineEmits<{
-  'select-activity': [activity: MobileTabId];
+  'select-activity': [activity: ExplorerMobileTabId];
   'open-menu': [];
 }>();
 
 const { t, locale } = useI18n();
 
-const tabs = computed<Array<{ id: MobileTabId; label: string; icon: Component }>>(() => [
+const tabs = computed<Array<{ id: ExplorerMobileTabId; label: string; icon: Component }>>(() => [
   { id: 'home', label: t('home'), icon: House },
-  { id: 'explorer', label: t('explorerTitle'), icon: FolderTree },
-  { id: 'search', label: t('explorerSearchTitle'), icon: Search },
-  { id: 'gallery', label: t('explorerGalleryTitle'), icon: Images },
+  { id: 'explorer', label: locale.value === 'ru' ? 'Файлы' : 'Files', icon: FolderTree },
+  { id: 'gallery', label: locale.value === 'ru' ? 'Медиа' : 'Media', icon: Images },
 ]);
 </script>

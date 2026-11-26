@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { flushPromises, mount } from '@vue/test-utils';
+import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { nextTick } from 'vue';
 import { spacesApi } from '../../api/spaces';
@@ -13,10 +13,9 @@ import { resetYandexDiskStatus, useYandexDisk } from '../../composables/useYande
 import type { DashboardSidebarNavItem } from '../../dashboard/navigation';
 import ActivityJournal from '../ActivityJournal.vue';
 import DashboardSidebar from './DashboardSidebar.vue';
-import ExplorerActivityBar from './ExplorerActivityBar.vue';
 import ExplorerHeadroomBar from './ExplorerHeadroomBar.vue';
+import ExplorerInlineSearch from './ExplorerInlineSearch.vue';
 import ExplorerMobileTabBar from './ExplorerMobileTabBar.vue';
-import ExplorerSearchSidebar from './ExplorerSearchSidebar.vue';
 
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push: vi.fn() }),
@@ -144,95 +143,141 @@ const routerLinkStub = {
   template: '<a :href="typeof to === \'string\' ? to : (to?.path || \'\')"><slot /></a>',
 };
 
-describe('ExplorerActivityBar', () => {
+enableAutoUnmount(afterEach);
+
+describe('DashboardSidebar UX v2 chrome (no ActivityBar)', () => {
   beforeEach(() => {
+    resetExplorerLayoutPrefs(true);
+    resetYandexDiskStatus();
+    resetSpaces();
     useI18n().setLocale('ru');
   });
 
-  it('renders top & bottom items without Spaces icon, respects admin prop, and toggles collapse only on active item', async () => {
-    const wrapper = mount(ExplorerActivityBar, {
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  it('renders [Файлы | Медиа] switcher, .sb-home-btn with badge, .tree-alb-add-btn, Корзина, and .sb-devices-btn without ActivityBar', async () => {
+    const wrapper = mount(DashboardSidebar, {
       props: {
-        activeActivity: 'explorer',
-        sidebarCollapsed: true,
+        activeSection: { kind: 'recent' },
+        mobileOpen: false,
+        folders: sampleFolders,
+        spaces: true,
         admin: false,
+        mode: 'files',
+        incomingAccessRequestsCount: 3,
         devicesOnlineCount: 2,
       },
-      global: { stubs: { RouterLink: routerLinkStub } },
+      global: { stubs: { AccountMenu: true, RouterLink: routerLinkStub } },
     });
 
-    expect(wrapper.find('[data-activity="spaces"]').exists()).toBe(false);
-    expect(wrapper.find('[data-activity="admin"]').exists()).toBe(false);
-    expect(wrapper.get('[data-activity="devices"]').attributes('href')).toBe('/drive/devices');
-    expect(wrapper.get('[data-activity="downloads"]').attributes('href')).toBe('/downloads');
-    expect(wrapper.find('[data-activity="devices"] .act-badge').exists()).toBe(true);
-    expect(wrapper.get('[data-activity="search"]').attributes('title')).toContain('Ctrl+K');
+    expect(wrapper.find('[data-activity-bar]').exists()).toBe(false);
 
-    // Clicking active icon toggles collapse
-    await wrapper.get('[data-activity="explorer"]').trigger('click');
+    // .sb-home-btn with badge
+    const homeBtn = wrapper.get('[data-sidebar-home-btn].sb-home-btn');
+    expect(homeBtn.classes()).toContain('active');
+    expect(homeBtn.get('.sb-home-badge').text()).toBe('3');
+
+    // .tree-alb-add-btn in Альбомы header emits create-space
+    await wrapper.get('[data-tree-add-album-btn].tree-alb-add-btn').trigger('click');
+    expect(wrapper.emitted('create-space')).toHaveLength(1);
+
+    // Корзина row at bottom of tree emits select({ kind: 'trash' })
+    const trashRow = wrapper.get('[data-sidebar-trash-btn]');
+    expect(trashRow.text()).toContain('Корзина');
+    await trashRow.trigger('click');
+    expect(wrapper.emitted('select')?.[0]).toEqual([{ kind: 'trash' }]);
+
+    // .sb-devices-btn links to /drive/devices with online dot
+    const devicesBtn = wrapper.get('[data-sidebar-devices-btn].sb-devices-btn');
+    expect(devicesBtn.attributes('href')).toBe('/drive/devices');
+    expect(devicesBtn.find('.sb-devices-dot').exists()).toBe(true);
+
+    // Bottom [ Файлы | Медиа ] mode switcher
+    const filesBtn = wrapper.get('[data-mode-btn="files"]');
+    const mediaBtn = wrapper.get('[data-mode-btn="media"]');
+    expect(filesBtn.text()).toContain('Файлы');
+    expect(mediaBtn.text()).toContain('Медиа');
+    expect(filesBtn.classes()).toContain('active');
+
+    await mediaBtn.trigger('click');
+    expect(wrapper.emitted('switch-mode')?.[0]).toEqual(['media']);
+
+    await wrapper.get('[data-sidebar-collapse-btn]').trigger('click');
+    expect(wrapper.emitted('update:collapsed')?.[0]).toEqual([true]);
     expect(wrapper.emitted('toggle-collapse')).toHaveLength(1);
-    expect(wrapper.emitted('select-activity')).toBeUndefined();
-
-    // Clicking another icon switches activity without emitting toggle-collapse
-    await wrapper.get('[data-activity="gallery"]').trigger('click');
-    expect(wrapper.emitted('select-activity')?.[0]).toEqual(['gallery']);
-    expect(wrapper.emitted('toggle-collapse')).toHaveLength(1);
-
-    await wrapper.setProps({ admin: true });
-    expect(wrapper.get('[data-activity="admin"]').attributes('href')).toBe('/admin');
   });
 });
 
-describe('ExplorerSearchSidebar', () => {
+describe('ExplorerInlineSearch', () => {
   beforeEach(() => {
     useI18n().setLocale('ru');
   });
 
-  it('autofocuses input, uses single clear button, and live-filters Albums, Folders, and Items by chip & query', async () => {
-    const wrapper = mount(ExplorerSearchSidebar, {
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  it('teleports popover on focus, uses single clear button, and live-filters Albums, Folders, and Items by chip & query', async () => {
+    const wrapper = mount(ExplorerInlineSearch, {
       attachTo: document.body,
       props: {
+        modelValue: '',
+        scopeMode: 'current',
+        scopeLabel: 'Поездки',
         folders: [
           { id: 'f1', name: 'Поездки', path: 'Q Space/home/Поездки' },
           { id: 'f2', name: 'Работа', path: 'Q Space/home/Работа' },
         ],
         albums: [
-          { id: 'a1', name: 'Семья', sourceCount: 3 },
+          { id: 'a1', name: 'Семья', count: 3 },
         ],
         items: [
-          { key: 'i1', id: 'i1', title: 'План поездки.md', type: 'text-document', fileKind: 'markdown' },
-          { key: 'i2', id: 'i2', title: 'Билеты.pdf', type: 'drive-file', mime: 'application/pdf' },
-          { key: 'i3', id: 'i3', title: 'Закат.jpg', type: 'drive-file', fileKind: 'image', mime: 'image/jpeg' },
+          { id: 'i1', title: 'План поездки.md', type: 'document' },
+          { id: 'i2', title: 'Билеты.pdf', type: 'pdf', mimeType: 'application/pdf' },
+          { id: 'i3', title: 'Закат.jpg', type: 'media', mimeType: 'image/jpeg' },
         ],
       },
     });
 
+    const input = wrapper.get('[data-s2-input]');
+    await input.trigger('focus');
     await flushPromises();
-    const input = wrapper.get('[data-search-input]');
-    expect(document.activeElement).toBe(input.element);
-    expect(wrapper.find('[data-search-clear]').exists()).toBe(false);
+
+    expect(wrapper.get('[data-s2-scope-pill]').text()).toContain('в: Поездки');
+    expect(wrapper.find('[data-s2-clear]').exists()).toBe(false);
+
+    const pop = document.body.querySelector('[data-s2-popover]') as HTMLElement | null;
+    expect(pop).not.toBeNull();
 
     // Filter by PDF chip
-    await wrapper.get('[data-search-chip="pdf"]').trigger('click');
-    expect(wrapper.findAll('[data-search-item]')).toHaveLength(1);
-    expect(wrapper.get('[data-search-item="i2"]').text()).toContain('Билеты.pdf');
-    expect(wrapper.find('[data-search-section="albums"]').exists()).toBe(false);
-    expect(wrapper.find('[data-search-section="folders"]').exists()).toBe(false);
+    (pop!.querySelector('[data-s2-type-chip="pdf"]') as HTMLButtonElement).click();
+    await nextTick();
+    expect(pop!.querySelectorAll('[data-s2-item]')).toHaveLength(1);
+    expect(pop!.querySelector('[data-s2-item="i2"]')?.textContent).toContain('Билеты.pdf');
+    expect(pop!.querySelector('[data-s2-album]')).toBeNull();
+    expect(pop!.querySelector('[data-s2-folder]')).toBeNull();
 
     // Filter by Media chip
-    await wrapper.get('[data-search-chip="media"]').trigger('click');
-    expect(wrapper.findAll('[data-search-item]')).toHaveLength(1);
-    expect(wrapper.get('[data-search-item="i3"]').text()).toContain('Закат.jpg');
+    (pop!.querySelector('[data-s2-type-chip="media"]') as HTMLButtonElement).click();
+    await nextTick();
+    expect(pop!.querySelectorAll('[data-s2-item]')).toHaveLength(1);
+    expect(pop!.querySelector('[data-s2-item="i3"]')?.textContent).toContain('Закат.jpg');
 
     // Back to All and type query -> single clear button appears and clears
-    await wrapper.get('[data-search-chip="all"]').trigger('click');
-    await input.setValue('Семья');
-    expect(wrapper.findAll('[data-search-clear]')).toHaveLength(1);
-    expect(wrapper.find('[data-search-album="a1"]').exists()).toBe(true);
-    expect(wrapper.findAll('[data-search-item]')).toHaveLength(0);
+    (pop!.querySelector('[data-s2-type-chip="all"]') as HTMLButtonElement).click();
+    await wrapper.setProps({ modelValue: 'Семья' });
+    expect(wrapper.findAll('[data-s2-clear]')).toHaveLength(1);
+    expect(pop!.querySelector('[data-s2-album="a1"]')).not.toBeNull();
+    expect(pop!.querySelectorAll('[data-s2-item]')).toHaveLength(0);
 
-    await wrapper.get('[data-search-clear]').trigger('click');
-    expect((input.element as HTMLInputElement).value).toBe('');
-    expect(wrapper.findAll('[data-search-item]')).toHaveLength(3);
+    await wrapper.get('[data-s2-clear]').trigger('click');
+    expect(wrapper.emitted('update:modelValue')?.slice(-1)[0]).toEqual(['']);
+
+    await input.trigger('keydown', { key: 'Escape' });
+    await nextTick();
+    expect(document.body.querySelector('[data-s2-popover]')).toBeNull();
   });
 });
 
@@ -246,17 +291,14 @@ describe('ExplorerHeadroomBar & ExplorerMobileTabBar', () => {
     document.body.innerHTML = '';
   });
 
-  it('toggles headroom visibility, supports Ctrl+L & click path editing without spaces around /, and emits icon-only view toggles', async () => {
+  it('toggles headroom visibility, renders .sb-expand-btn, focuses inline search on Ctrl+K, and emits icon-only view toggles', async () => {
     const wrapper = mount(ExplorerHeadroomBar, {
       attachTo: document.body,
       props: {
         headroomHidden: false,
-        segments: [
-          { id: 'qspace', label: 'Q Space', icon: 'qspace' },
-          { id: 'home', label: 'home' },
-          { id: 'trips', label: 'Поездки', current: true },
-        ],
-        editablePath: 'Q Space / home / Поездки',
+        showExpandButton: true,
+        canGoBack: true,
+        canGoUp: true,
         viewMode: 'grid',
         viewToggleMode: 'explorer',
       },
@@ -266,39 +308,15 @@ describe('ExplorerHeadroomBar & ExplorerMobileTabBar', () => {
     await wrapper.setProps({ headroomHidden: true });
     expect(wrapper.get('[data-headroom-bar]').classes()).toContain('is-hidden');
 
-    // Clicking empty area in path frame enters edit mode with NO spaces around /
-    await wrapper.get('[data-path-fill]').trigger('click');
-    const pathInput = wrapper.get('[data-path-input]');
-    expect((pathInput.element as HTMLInputElement).value).toBe('Q Space/home/Поездки');
+    // .sb-expand-btn emits expand-sidebar
+    await wrapper.get('[data-sidebar-expand-btn].sb-expand-btn').trigger('click');
+    expect(wrapper.emitted('expand-sidebar')).toHaveLength(1);
 
-    // Esc cancels edit without emitting navigate-path
-    await pathInput.trigger('keydown', { key: 'Escape' });
-    expect(wrapper.find('[data-path-input]').exists()).toBe(false);
-    expect(wrapper.emitted('navigate-path')).toBeUndefined();
-
-    // Clicking non-current ancestor crumb emits select-segment; clicking active crumb or separator enters edit mode
-    await wrapper.get('[data-path-segment="home"]').trigger('click');
-    expect(wrapper.emitted('select-segment')?.[0]?.[0]).toMatchObject({ id: 'home', label: 'home' });
-    expect(wrapper.find('[data-path-input]').exists()).toBe(false);
-
-    await wrapper.get('[data-path-segment="trips"]').trigger('click');
-    const activeCrumbInput = wrapper.get('[data-path-input]');
-    expect((activeCrumbInput.element as HTMLInputElement).value).toBe('Q Space/home/Поездки');
-    expect(document.activeElement).toBe(activeCrumbInput.element);
-    await activeCrumbInput.trigger('keydown', { key: 'Escape' });
-    expect(wrapper.find('[data-path-input]').exists()).toBe(false);
-
-    await wrapper.get('.crumb-sep').trigger('click');
-    expect(wrapper.find('[data-path-input]').exists()).toBe(true);
-    await wrapper.get('[data-path-input]').trigger('keydown', { key: 'Escape' });
-
-    // Ctrl+L re-opens edit mode, Enter normalizes spaces around / and emits navigate-path
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'l', ctrlKey: true }));
+    // Ctrl+K focuses inline search and opens teleported popover
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }));
     await nextTick();
-    const input2 = wrapper.get('[data-path-input]');
-    await input2.setValue('Clouds / Yandex Disk');
-    await input2.trigger('keydown', { key: 'Enter' });
-    expect(wrapper.emitted('navigate-path')?.[0]).toEqual(['Clouds/Yandex Disk']);
+    expect(document.activeElement).toBe(wrapper.get('[data-s2-input]').element);
+    expect(document.body.querySelector('[data-s2-popover]')).not.toBeNull();
 
     // Icon-only view toggle emits update:viewMode
     const tableBtn = wrapper.get('[data-view-toggle="table"]');
@@ -307,25 +325,24 @@ describe('ExplorerHeadroomBar & ExplorerMobileTabBar', () => {
     expect(wrapper.emitted('update:viewMode')?.[0]).toEqual(['table']);
   });
 
-  it('renders headroom search pill with placeholder, clear button, Esc/keydown isolation, and mobile toggle', async () => {
+  it('renders unified inline search in headroom bar with scope pill, clear button, and Esc/keydown isolation', async () => {
     const windowKeydown = vi.fn();
     window.addEventListener('keydown', windowKeydown);
     try {
       const wrapper = mount(ExplorerHeadroomBar, {
         attachTo: document.body,
         props: {
-          segments: [
-            { id: 'qspace', label: 'Q Space', icon: 'qspace' },
-            { id: 'trips', label: 'Поездки', current: true },
-          ],
           searchQuery: '',
+          searchScopeMode: 'current',
+          searchScopeLabel: 'Поездки',
           searchPlaceholder: 'Поиск в Поездки…',
         },
       });
 
-      const input = wrapper.get('[data-headroom-search-input]');
+      const input = wrapper.get('[data-s2-input]');
       expect(input.attributes('placeholder')).toBe('Поиск в Поездки…');
-      expect(wrapper.find('[data-headroom-search-clear]').exists()).toBe(false);
+      expect(wrapper.get('[data-s2-scope-pill]').text()).toContain('в: Поездки');
+      expect(wrapper.find('[data-s2-clear]').exists()).toBe(false);
 
       // Single-key typing does not bubble to window shortcuts
       await input.trigger('keydown', { key: 'a' });
@@ -335,34 +352,36 @@ describe('ExplorerHeadroomBar & ExplorerMobileTabBar', () => {
       await input.setValue('Грузия');
       expect(wrapper.emitted('update:searchQuery')?.[0]).toEqual(['Грузия']);
 
-      // When non-empty, clear button appears and resets query; Esc also clears
+      // When non-empty, clear button appears and resets query; Esc closes popover without bubbling
       await wrapper.setProps({ searchQuery: 'Грузия' });
-      const clearBtn = wrapper.get('[data-headroom-search-clear]');
-      await clearBtn.trigger('click');
+      await wrapper.get('[data-s2-clear]').trigger('click');
       expect(wrapper.emitted('update:searchQuery')?.[1]).toEqual(['']);
 
-      await input.trigger('keydown', { key: 'Escape' });
-      expect(wrapper.emitted('update:searchQuery')?.[2]).toEqual(['']);
-      expect(windowKeydown).not.toHaveBeenCalled();
-
-      // Mobile search toggle opens inline search bar and focuses input
-      await wrapper.get('[data-headroom-search-toggle]').trigger('click');
+      await input.trigger('focus');
       await nextTick();
-      expect(wrapper.get('.ws-header').classes()).toContain('is-mobile-search-open');
-      expect(document.activeElement).toBe(input.element);
+      expect(document.body.querySelector('[data-s2-popover]')).not.toBeNull();
+      await input.trigger('keydown', { key: 'Escape' });
+      await nextTick();
+      expect(document.body.querySelector('[data-s2-popover]')).toBeNull();
+      expect(windowKeydown).not.toHaveBeenCalled();
     } finally {
       window.removeEventListener('keydown', windowKeydown);
     }
   });
 
-  it('renders mobile bottom tab bar with Home, Explorer, Search, Gallery and Menu trigger', async () => {
+  it('renders mobile bottom tab bar with 4 tabs (Home, Files, Media, Menu) and NO Search tab', async () => {
     const wrapper = mount(ExplorerMobileTabBar, {
       props: { activeActivity: 'explorer' },
     });
 
+    expect(wrapper.findAll('.m-tab')).toHaveLength(4);
+    expect(wrapper.find('[data-mobile-tab="search"]').exists()).toBe(false);
     expect(wrapper.get('[data-mobile-tab="explorer"]').classes()).toContain('active');
-    await wrapper.get('[data-mobile-tab="search"]').trigger('click');
-    expect(wrapper.emitted('select-activity')?.[0]).toEqual(['search']);
+    expect(wrapper.get('[data-mobile-tab="explorer"]').text()).toContain('Файлы');
+    expect(wrapper.get('[data-mobile-tab="gallery"]').text()).toContain('Медиа');
+
+    await wrapper.get('[data-mobile-tab="gallery"]').trigger('click');
+    expect(wrapper.emitted('select-activity')?.[0]).toEqual(['gallery']);
     await wrapper.get('[data-mobile-tab="menu"]').trigger('click');
     expect(wrapper.emitted('open-menu')).toHaveLength(1);
   });
@@ -521,7 +540,7 @@ describe('DashboardSidebar unified tree, accordion, spring-loaded DnD, resize sa
     expect(ctx.selectedKeys.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('collapses sidebar when sash dragged < 110px and never force-opens collapsed sidebar when switching panelMode', async () => {
+  it('collapses sidebar when sash dragged < 110px and never force-opens collapsed sidebar when switching mode', async () => {
     const wrapper = mountUnified();
     const sash = wrapper.get('[data-sidebar-sash]');
 
@@ -533,9 +552,10 @@ describe('DashboardSidebar unified tree, accordion, spring-loaded DnD, resize sa
     expect(useExplorerLayoutPrefs().sidebarCollapsed.value).toBe(true);
     expect(wrapper.get('.dashboard-sidebar').classes()).toContain('collapsed');
 
-    // Switching activity to gallery must NOT force-open collapsed sidebar
-    await wrapper.get('[data-activity="gallery"]').trigger('click');
-    await wrapper.setProps({ panelMode: 'gallery', activeSection: { kind: 'gallery' } });
+    // Switching mode to media must NOT force-open collapsed sidebar
+    await wrapper.get('[data-mode-btn="media"]').trigger('click');
+    expect(wrapper.emitted('switch-mode')?.[0]).toEqual(['media']);
+    await wrapper.setProps({ mode: 'media', activeSection: { kind: 'gallery' } });
     expect(wrapper.get('.dashboard-sidebar').classes()).toContain('collapsed');
     expect(wrapper.find('[data-gallery-slot]').exists()).toBe(true);
 
@@ -565,7 +585,7 @@ describe('DashboardSidebar unified tree, accordion, spring-loaded DnD, resize sa
     expect(wrapper.get('[data-activity-journal]').classes()).not.toContain('is-android-app');
   });
 
-  it('emits toggle-mobile-drawer instead of desktop update:collapsed when clicking active Activity Bar icon at narrow width (<= 768px)', async () => {
+  it('emits toggle-mobile-drawer instead of desktop update:collapsed when double-clicking sash at narrow width (<= 768px)', async () => {
     vi.stubGlobal('matchMedia', vi.fn((query: string) => ({
       matches: query === LAYOUT.dashboardDrawer,
       media: query,
@@ -576,8 +596,8 @@ describe('DashboardSidebar unified tree, accordion, spring-loaded DnD, resize sa
       dispatchEvent: vi.fn(),
     })));
 
-    const wrapper = mountUnified({ activeSection: { kind: 'folder', folderId: 'f-alpha' }, activeActivity: 'explorer' });
-    await wrapper.get('[data-activity="explorer"]').trigger('click');
+    const wrapper = mountUnified({ activeSection: { kind: 'folder', folderId: 'f-alpha' } });
+    await wrapper.get('[data-sidebar-sash]').trigger('dblclick');
     expect(wrapper.emitted('toggle-mobile-drawer')).toHaveLength(1);
     expect(wrapper.emitted('update:collapsed')).toBeUndefined();
   });

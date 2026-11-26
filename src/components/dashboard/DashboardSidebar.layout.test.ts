@@ -66,13 +66,14 @@ describe('dashboard sidebar layout contract', () => {
     document.body.innerHTML = '';
   });
 
-  it('gives the shell an auto ActivityBar+Sidebar column and keeps the central pane as its own scroll owner', () => {
+  it('gives the shell an auto Sidebar column without Activity Bar and keeps the central pane as its own scroll owner', () => {
     const wrapper = mountLayout();
 
     const shellStyle = getComputedStyle(wrapper.get('.dashboard-app-shell').element);
     expect(shellStyle.display).toBe('grid');
     expect(shellStyle.gridTemplateColumns).toBe('auto minmax(0, 1fr)');
-    expect(getComputedStyle(wrapper.get('[data-activity-bar]').element).width).toBe('50px');
+    expect(wrapper.find('[data-activity-bar]').exists()).toBe(false);
+    expect(wrapper.find('[data-sidebar-mode-switch]').exists()).toBe(true);
     expect(getComputedStyle(wrapper.get('.dashboard-sidebar-scroll').element).overflowY).toBe('auto');
     expect(getComputedStyle(wrapper.get('.dashboard-central-shell .app-main').element).overflowY).toBe('auto');
     expect(getComputedStyle(wrapper.get('[data-home-disclosure]').element).display).toBe('inline-flex');
@@ -80,14 +81,15 @@ describe('dashboard sidebar layout contract', () => {
     expect(getComputedStyle(wrapper.get('.dashboard-sidebar-close').element).display).toBe('none');
   });
 
-  it('collapses the sidebar pane to 0px while keeping the 50px Activity Bar and edge sash handle', () => {
+  it('collapses the sidebar pane to 0px while keeping the edge sash handle', () => {
     const wrapper = mountLayout(true);
 
     const sidebarEl = wrapper.get('.dashboard-sidebar').element as HTMLElement;
+    expect(wrapper.get('[data-sidebar-frame]').classes()).toContain('is-collapsed');
     expect(wrapper.get('.dashboard-sidebar').classes()).toContain('collapsed');
     expect(sidebarEl.style.width).toBe('0px');
     expect(wrapper.get('[data-sidebar-sash]').classes()).toContain('collapsed-edge');
-    expect(getComputedStyle(wrapper.get('[data-activity-bar]').element).width).toBe('50px');
+    expect(wrapper.find('[data-activity-bar]').exists()).toBe(false);
   });
 
   it('shows expanded Home children when a collapsed desktop sidebar opens as a mobile drawer', () => {

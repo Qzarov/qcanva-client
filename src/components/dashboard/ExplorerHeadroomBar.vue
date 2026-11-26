@@ -4,7 +4,19 @@
     :class="{ 'is-hidden': headroomHidden, 'is-elevated': elevated, 'is-android-app': androidApp }"
     data-headroom-bar
   >
-    <header class="ws-header" :class="{ 'is-mobile-search-open': mobileSearchOpen }">
+    <header class="ws-header">
+      <button
+        v-if="showExpandButton"
+        type="button"
+        class="icon-btn sb-expand-btn"
+        :aria-label="t('expandSidebar')"
+        :title="t('expandSidebar')"
+        data-sidebar-expand-btn
+        @click="emit('expand-sidebar')"
+      >
+        <PanelLeft :size="16" aria-hidden="true" />
+      </button>
+
       <button
         v-if="showMobileMenuButton"
         type="button"
@@ -44,103 +56,30 @@
 
       <slot name="left-extra" />
 
-      <div
-        ref="pathFrameRef"
-        class="path-frame"
-        :class="{ editing, 'has-error': pathError }"
-        :title="editing ? undefined : t('explorerPathHint')"
-        data-path-frame
-        @click="onPathFrameClick"
-      >
-        <input
-          v-if="editing"
-          ref="pathInputRef"
-          v-model="editValue"
-          type="text"
-          class="path-input"
-          :placeholder="t('explorerPathPlaceholder')"
-          :aria-label="t('explorerPathHint')"
-          data-path-input
-          @keydown.enter.prevent="commitEdit"
-          @keydown.esc.prevent.stop="cancelEdit"
-          @blur="onInputBlur"
-        />
-        <template v-else>
-          <template v-for="(seg, idx) in segments" :key="seg.id || `${idx}:${seg.label}`">
-            <span v-if="idx > 0" class="crumb-sep" aria-hidden="true">/</span>
-            <button
-              type="button"
-              class="crumb"
-              :class="{ current: isCurrentSegment(seg, idx) }"
-              :data-path-segment="seg.id"
-              @click.stop="onSegmentClick(seg, idx)"
-            >
-              <component :is="segmentIcon(seg.icon)" v-if="seg.icon && idx === 0" :size="14" aria-hidden="true" />
-              <span>{{ seg.label }}</span>
-            </button>
-          </template>
-          <span class="path-fill" data-path-fill aria-hidden="true"></span>
-        </template>
-      </div>
+      <ExplorerInlineSearch
+        ref="inlineSearchRef"
+        :model-value="searchQuery"
+        :scope-mode="searchScopeMode"
+        :scope-label="searchScopeLabel"
+        :type-filter="searchTypeFilter"
+        :folders="searchFolders"
+        :albums="searchAlbums"
+        :items="searchItems"
+        :ml-tags="searchMlTags"
+        :placeholder="searchPlaceholder"
+        :loading="searchLoading"
+        @update:model-value="emit('update:searchQuery', $event)"
+        @update:scope-mode="emit('update:searchScopeMode', $event)"
+        @update:type-filter="emit('update:searchTypeFilter', $event)"
+        @select-folder="emit('select-search-folder', $event)"
+        @select-album="emit('select-search-album', $event)"
+        @open-item="emit('open-search-item', $event)"
+        @select-tag="emit('select-search-tag', $event)"
+        @submit="emit('search-submit', $event)"
+      />
 
       <div class="explorer-headroom-controls" data-headroom-controls>
         <slot name="filters" />
-
-        <button
-          type="button"
-          class="icon-btn headroom-search-toggle"
-          :class="{ active: mobileSearchOpen || Boolean(searchQuery) }"
-          :aria-label="resolvedSearchPlaceholder"
-          :title="resolvedSearchPlaceholder"
-          :aria-expanded="mobileSearchOpen"
-          data-headroom-search-toggle
-          @click="openMobileSearch"
-        >
-          <Search :size="15" aria-hidden="true" />
-        </button>
-
-        <div
-          class="headroom-search-wrap"
-          :class="{ 'is-filled': Boolean(searchQuery) }"
-          data-headroom-search-wrap
-        >
-          <Search :size="14" class="headroom-search-icon" aria-hidden="true" />
-          <input
-            ref="searchInputRef"
-            type="text"
-            class="headroom-search-input"
-            data-headroom-search-input
-            :value="searchQuery"
-            :placeholder="resolvedSearchPlaceholder"
-            :aria-label="resolvedSearchPlaceholder"
-            @input="onSearchInput"
-            @keydown="onSearchKeydown"
-            @blur="onSearchBlur"
-          />
-          <button
-            v-if="searchQuery"
-            type="button"
-            class="headroom-search-clear"
-            data-headroom-search-clear
-            :aria-label="t('clearTagFilter')"
-            :title="t('clearTagFilter')"
-            @mousedown.prevent
-            @click.stop="clearSearch"
-          >
-            <X :size="13" aria-hidden="true" />
-          </button>
-          <button
-            v-else-if="mobileSearchOpen"
-            type="button"
-            class="headroom-search-clear headroom-search-mobile-close"
-            data-headroom-search-close
-            :aria-label="t('close')"
-            @mousedown.prevent
-            @click.stop="closeMobileSearch"
-          >
-            <X :size="13" aria-hidden="true" />
-          </button>
-        </div>
 
         <slot name="actions" />
 
@@ -216,32 +155,7 @@
   </div>
 </template>
 
-<script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, type Component } from 'vue';
-import {
-  ArrowLeft,
-  ArrowUp,
-  Cloud,
-  Folder,
-  Globe2,
-  HardDrive,
-  House,
-  Images,
-  LayoutGrid,
-  List,
-  Menu,
-  PanelsTopLeft,
-  Search,
-  Trash2,
-  Users,
-  X,
-} from '@lucide/vue';
-import {
-  useExplorerLayoutPrefs,
-  type AlbumViewMode,
-  type ExplorerViewMode,
-} from '../../composables/useExplorerLayoutPrefs';
-import { useI18n } from '../../composables/useI18n';
+<script lang="ts">
 import type { DashboardSection } from '../../dashboard/navigation';
 
 export interface ExplorerPathSegment {
@@ -253,6 +167,31 @@ export interface ExplorerPathSegment {
 }
 
 export type HeadroomViewToggleMode = 'explorer' | 'album' | 'none';
+</script>
+
+<script setup lang="ts">
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import {
+  ArrowLeft,
+  ArrowUp,
+  LayoutGrid,
+  List,
+  Menu,
+  PanelLeft,
+} from '@lucide/vue';
+import {
+  useExplorerLayoutPrefs,
+  type AlbumViewMode,
+  type ExplorerViewMode,
+} from '../../composables/useExplorerLayoutPrefs';
+import { useI18n } from '../../composables/useI18n';
+import ExplorerInlineSearch, {
+  type InlineSearchAlbum,
+  type InlineSearchFolder,
+  type InlineSearchItem,
+  type InlineSearchScopeMode,
+  type InlineSearchTypeFilter,
+} from './ExplorerInlineSearch.vue';
 
 const props = withDefaults(defineProps<{
   headroomHidden?: boolean;
@@ -265,11 +204,20 @@ const props = withDefaults(defineProps<{
   canGoBack?: boolean;
   canGoUp?: boolean;
   showNavArrows?: boolean;
+  showExpandButton?: boolean;
   showMobileMenuButton?: boolean;
   androidApp?: boolean;
   pathError?: boolean;
   searchQuery?: string;
+  searchScopeMode?: InlineSearchScopeMode;
+  searchScopeLabel?: string | null;
+  searchTypeFilter?: InlineSearchTypeFilter;
+  searchFolders?: InlineSearchFolder[];
+  searchAlbums?: InlineSearchAlbum[];
+  searchItems?: InlineSearchItem[];
+  searchMlTags?: string[];
   searchPlaceholder?: string;
+  searchLoading?: boolean;
 }>(), {
   headroomHidden: false,
   elevated: false,
@@ -281,109 +229,46 @@ const props = withDefaults(defineProps<{
   canGoBack: false,
   canGoUp: false,
   showNavArrows: true,
+  showExpandButton: false,
   showMobileMenuButton: true,
   androidApp: false,
   pathError: false,
   searchQuery: '',
+  searchScopeMode: undefined,
+  searchScopeLabel: null,
+  searchTypeFilter: undefined,
+  searchFolders: () => [],
+  searchAlbums: () => [],
+  searchItems: () => [],
+  searchMlTags: () => [],
   searchPlaceholder: '',
+  searchLoading: false,
 });
 
 const emit = defineEmits<{
+  'expand-sidebar': [];
   'open-mobile-sidebar': [];
   'go-back': [];
   'go-up': [];
-  'select-segment': [segment: ExplorerPathSegment];
-  'navigate-path': [path: string];
   'update:viewMode': [mode: ExplorerViewMode];
   'update:albumViewMode': [mode: AlbumViewMode];
   'update:searchQuery': [value: string];
+  'update:searchScopeMode': [mode: InlineSearchScopeMode];
+  'update:searchTypeFilter': [filter: InlineSearchTypeFilter];
+  'select-search-folder': [folderId: string];
+  'select-search-album': [albumId: string];
+  'open-search-item': [item: InlineSearchItem];
+  'select-search-tag': [tag: string];
+  'search-submit': [query: string];
 }>();
 
 const { t } = useI18n();
 const prefs = useExplorerLayoutPrefs();
 
-const pathFrameRef = ref<HTMLElement | null>(null);
-const pathInputRef = ref<HTMLInputElement | null>(null);
-const searchInputRef = ref<HTMLInputElement | null>(null);
-const editing = ref(false);
-const editValue = ref('');
-const mobileSearchOpen = ref(false);
-
-const resolvedSearchPlaceholder = computed(() => props.searchPlaceholder || t('search'));
+const inlineSearchRef = ref<InstanceType<typeof ExplorerInlineSearch> | null>(null);
 
 const resolvedViewMode = computed<ExplorerViewMode>(() => props.viewMode ?? prefs.viewMode.value);
 const resolvedAlbumViewMode = computed<AlbumViewMode>(() => props.albumViewMode ?? prefs.albumView.value);
-
-function normalizeSlashes(raw: string): string {
-  return raw.trim().replace(/\s*\/\s*/g, '/');
-}
-
-const canonicalEditablePath = computed(() => {
-  if (props.editablePath !== undefined) return normalizeSlashes(props.editablePath);
-  return props.segments.map((s) => s.label.trim()).filter(Boolean).join('/');
-});
-
-function segmentIcon(icon?: ExplorerPathSegment['icon']): Component {
-  switch (icon) {
-    case 'home': return House;
-    case 'qspace': return HardDrive;
-    case 'cloud': return Cloud;
-    case 'album': return Images;
-    case 'trash': return Trash2;
-    case 'shared': return Users;
-    case 'public': return Globe2;
-    case 'interactive': return PanelsTopLeft;
-    default: return Folder;
-  }
-}
-
-async function startPathEdit() {
-  editValue.value = canonicalEditablePath.value;
-  editing.value = true;
-  await nextTick();
-  pathInputRef.value?.focus();
-  pathInputRef.value?.select();
-}
-
-function cancelEdit() {
-  editing.value = false;
-}
-
-function commitEdit() {
-  if (!editing.value) return;
-  const value = normalizeSlashes(editValue.value);
-  editing.value = false;
-  emit('navigate-path', value);
-}
-
-function onInputBlur() {
-  if (!editing.value) return;
-  editing.value = false;
-}
-
-function isCurrentSegment(seg: ExplorerPathSegment, idx: number): boolean {
-  return Boolean(seg.current || idx === props.segments.length - 1);
-}
-
-function onSegmentClick(seg: ExplorerPathSegment, idx: number) {
-  if (isCurrentSegment(seg, idx)) {
-    void startPathEdit();
-    return;
-  }
-  emit('select-segment', seg);
-}
-
-function onPathFrameClick(event: MouseEvent) {
-  if (editing.value) return;
-  const target = event.target as HTMLElement | null;
-  if (
-    target === pathFrameRef.value
-    || target?.classList.contains('path-fill')
-    || target?.classList.contains('crumb-sep')
-  ) {
-    void startPathEdit();
-  }
-}
 
 function selectViewMode(mode: ExplorerViewMode) {
   if (props.viewMode === undefined) prefs.setViewMode(mode);
@@ -395,53 +280,10 @@ function selectAlbumViewMode(mode: AlbumViewMode) {
   emit('update:albumViewMode', mode);
 }
 
-function onSearchInput(event: Event) {
-  emit('update:searchQuery', (event.target as HTMLInputElement).value);
-}
-
-function clearSearch() {
-  emit('update:searchQuery', '');
-  void nextTick(() => {
-    searchInputRef.value?.focus();
-  });
-}
-
-async function openMobileSearch() {
-  mobileSearchOpen.value = true;
-  await nextTick();
-  searchInputRef.value?.focus();
-}
-
-function closeMobileSearch() {
-  mobileSearchOpen.value = false;
-}
-
-function onSearchBlur() {
-  if (mobileSearchOpen.value) {
-    mobileSearchOpen.value = false;
-  }
-}
-
-function onSearchKeydown(event: KeyboardEvent) {
-  if (event.key === 'Escape') {
-    event.stopPropagation();
-    if (props.searchQuery) {
-      emit('update:searchQuery', '');
-    } else {
-      mobileSearchOpen.value = false;
-      searchInputRef.value?.blur();
-    }
-    return;
-  }
-  if (!event.ctrlKey && !event.metaKey) {
-    event.stopPropagation();
-  }
-}
-
 function onWindowKeydown(event: KeyboardEvent) {
-  if ((event.ctrlKey || event.metaKey) && (event.key.toLowerCase() === 'l' || event.code === 'KeyL')) {
+  if ((event.ctrlKey || event.metaKey) && (event.key.toLowerCase() === 'k' || event.code === 'KeyK')) {
     event.preventDefault();
-    void startPathEdit();
+    void inlineSearchRef.value?.focus();
   }
 }
 
@@ -454,7 +296,17 @@ onBeforeUnmount(() => {
 });
 
 defineExpose({
-  startPathEdit,
-  cancelEdit,
+  focusSearch: () => inlineSearchRef.value?.focus(),
 });
 </script>
+
+<style scoped>
+.sb-expand-btn {
+  display: inline-grid;
+  flex: none;
+}
+
+.explorer-headroom-controls {
+  margin-left: auto;
+}
+</style>

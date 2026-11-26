@@ -328,13 +328,20 @@ function flushHubSave(): void {
     return;
   }
   saveQueued = false;
-  const run = Promise.resolve(photosApi.putPreference(PHOTOS_VIEW_PREFERENCE_KEY, payload))
+  let prefPromise: Promise<void>;
+  try {
+    prefPromise = Promise.resolve(photosApi.putPreference(PHOTOS_VIEW_PREFERENCE_KEY, payload));
+  } catch (err) {
+    prefPromise = Promise.reject(err);
+  }
+  const run = prefPromise
     .catch(() => {
       // Swallowed: hub failure leaves local state untouched
     })
     .finally(() => {
-      if (saveInFlight === run) saveInFlight = null;
-      if (saveQueued) {
+      const isCurrent = saveInFlight === run;
+      if (isCurrent) saveInFlight = null;
+      if (isCurrent && saveQueued) {
         saveQueued = false;
         flushHubSave();
       }

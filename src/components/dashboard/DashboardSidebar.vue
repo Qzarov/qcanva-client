@@ -4,15 +4,6 @@
     :class="{ 'is-collapsed': isCollapsed, 'is-resizing': isResizing }"
     data-sidebar-frame
   >
-    <ExplorerActivityBar
-      :active-activity="resolvedActivity"
-      :sidebar-collapsed="isCollapsed"
-      :admin="admin"
-      :devices-online-count="devicesOnlineCount"
-      @select-activity="onActivitySelect"
-      @toggle-collapse="onToggleCollapse"
-    />
-
     <SharedSidebarShell
       class="dashboard-sidebar explorer-sidebar"
       :class="{
@@ -29,9 +20,20 @@
     >
       <template #header>
         <header class="dashboard-sidebar-header sb-header" data-sidebar-header>
+          <button
+            type="button"
+            class="sb-brand-mini"
+            :aria-label="t('home')"
+            :title="`Q Space — ${t('home')}`"
+            data-sidebar-brand-home
+            @click="onHomeBtnClick"
+          >
+            Q
+          </button>
           <span class="sb-title dashboard-sidebar-label" data-sidebar-title>{{ sidebarTitle }}</span>
-          <div v-if="resolvedPanelMode !== 'search'" class="sb-header-actions" data-sidebar-header-actions>
+          <div class="sb-header-actions" data-sidebar-header-actions>
             <button
+              v-if="mode !== 'media'"
               type="button"
               class="icon-btn"
               :aria-label="t('explorerNewFolder')"
@@ -57,12 +59,32 @@
             <button
               type="button"
               class="icon-btn"
+              :aria-label="revealLabel"
+              :title="revealLabel"
+              data-sidebar-reveal-current
+              @click="revealCurrentInTree()"
+            >
+              <Crosshair :size="15" aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              class="icon-btn"
               :aria-label="t('explorerCollapseToFocus')"
               :title="t('explorerCollapseToFocus')"
               data-sidebar-collapse-focus
               @click="collapseToFocus()"
             >
               <ChevronsDownUp :size="15" aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              class="icon-btn"
+              :aria-label="collapseSidebarLabel"
+              :title="collapseSidebarLabel"
+              data-sidebar-collapse-btn
+              @click="collapseSidebar()"
+            >
+              <PanelLeft :size="15" aria-hidden="true" />
             </button>
           </div>
           <button
@@ -86,155 +108,230 @@
         data-sidebar-scroll
         @keydown="onTreeKeydown"
       >
-        <ExplorerSearchSidebar
-          v-if="resolvedPanelMode === 'search'"
-          :folders="resolvedSearchFolders"
-          :albums="resolvedSearchAlbums"
-          :items="resolvedSearchItems"
-          @select-folder="onSearchSelectFolder"
-          @select-album="onSearchSelectAlbum"
-          @open-item="onSearchOpenItem"
-        />
-
-        <template v-else-if="resolvedPanelMode === 'gallery'">
+        <template v-if="mode === 'media'">
           <slot name="gallery-sidebar" />
         </template>
 
-        <nav
-          v-else
-          class="dashboard-sidebar-navigation explorer-unified-tree"
-          role="tree"
-          :aria-label="t('dashboard')"
-          data-unified-tree
-        >
-          <div
-            v-for="row in visibleRows"
-            :key="row.key"
-            role="treeitem"
-            class="tree-row"
-            :class="{
-              active: row.active,
-              'kbd-focus': treeFocusKey === row.key,
-              'tree-selected': treeSelectedKeys.has(row.key),
-              'drag-over': isDropHighlight(row),
-              'is-group-node': row.isGroup,
-              'is-disabled': row.disabled,
-              'dashboard-sidebar-folder': row.kind === 'folder',
-              'dashboard-sidebar-file': row.kind === 'file' || row.kind === 'yandex-file',
-            }"
-            :style="{ '--depth': row.depth }"
-            :tabindex="row.active ? 0 : undefined"
-            :aria-expanded="row.expandable ? row.expanded : undefined"
-            :data-tree-key="row.key"
-            :data-tree-kind="row.kind"
-            :data-dashboard-folder="row.kind === 'folder' ? row.folderId : undefined"
-            :data-dashboard-section="row.sectionKind"
-            :data-home-link="row.key === 'qspace:home' ? '' : undefined"
-            :data-space="row.key === 'clouds:yandex' ? 'yandex' : undefined"
-            :data-cloud="row.key === 'clouds:telegram' ? 'telegram' : undefined"
-            :data-yandex-folder="row.kind === 'yandex-dir' ? row.yandexPath : undefined"
-            :data-yandex-file="row.kind === 'yandex-file' ? row.yandexPath : undefined"
-            :data-shared-space="row.kind === 'album' ? row.albumId : undefined"
-            :data-album-id="row.kind === 'album' ? row.albumId : undefined"
-            :data-sidebar-file="row.kind === 'file' ? row.fileKey : undefined"
-            :data-sidebar-more="row.kind === 'more' ? row.folderId : undefined"
-            :draggable="row.draggable"
-            :aria-current="row.active ? 'page' : undefined"
-            :aria-disabled="row.disabled ? 'true' : undefined"
-            :aria-label="row.ariaLabel ?? row.label"
-            :title="row.title"
-            @click="onRowClick($event, row)"
-            @contextmenu.prevent.stop="onRowContextMenu($event, row)"
-            @dragstart="onRowDragStart($event, row)"
-            @dragend="onRowDragEnd($event, row)"
-            @dragenter="onRowDragEnter($event, row)"
-            @dragover="onRowDragOver($event, row)"
-            @dragleave="onRowDragLeave($event, row)"
-            @drop="onRowDrop($event, row)"
+        <template v-else>
+          <button
+            type="button"
+            class="sb-home-btn"
+            :class="{ active: activeSection.kind === 'recent' }"
+            :aria-current="activeSection.kind === 'recent' ? 'page' : undefined"
+            data-sidebar-home-btn
+            data-dashboard-section="recent"
+            @click="onHomeBtnClick"
           >
-            <button
-              v-if="row.expandable"
-              type="button"
-              class="tree-twisty"
-              :aria-label="row.expanded ? t('collapseSubfolders') : t('expandSubfolders')"
-              :aria-expanded="row.expanded"
-              :data-tree-toggle="row.key"
-              :data-home-disclosure="row.key === 'qspace:home' ? '' : undefined"
-              :data-folder-toggle="row.kind === 'folder' ? row.folderId : undefined"
-              :data-yandex-toggle="row.kind === 'yandex-root' || row.kind === 'yandex-dir' ? row.yandexPath : undefined"
-              :data-album-toggle="row.kind === 'album' ? row.albumId : undefined"
-              @click.stop="toggleNodeExpanded(row)"
+            <House :size="15" aria-hidden="true" />
+            <span>{{ t('home') }}</span>
+            <span
+              v-if="incomingAccessRequestsCount > 0"
+              class="sb-home-badge"
+              :title="locale === 'ru' ? 'Входящие запросы доступа' : 'Incoming access requests'"
+            >{{ incomingAccessRequestsCount }}</span>
+          </button>
+
+          <nav
+            class="dashboard-sidebar-navigation explorer-unified-tree"
+            role="tree"
+            :aria-label="t('dashboard')"
+            data-unified-tree
+          >
+            <div
+              v-for="row in visibleRows"
+              :key="row.key"
+              role="treeitem"
+              class="tree-row"
+              :class="{
+                active: row.active,
+                'kbd-focus': treeFocusKey === row.key,
+                'tree-selected': treeSelectedKeys.has(row.key),
+                'drag-over': isDropHighlight(row),
+                'is-group-node': row.isGroup,
+                'is-disabled': row.disabled,
+                'dashboard-sidebar-folder': row.kind === 'folder',
+                'dashboard-sidebar-file': row.kind === 'file' || row.kind === 'yandex-file',
+              }"
+              :style="{ '--depth': row.depth }"
+              :tabindex="row.active ? 0 : undefined"
+              :aria-expanded="row.expandable ? row.expanded : undefined"
+              :data-tree-key="row.key"
+              :data-tree-kind="row.kind"
+              :data-dashboard-folder="row.kind === 'folder' ? row.folderId : undefined"
+              :data-dashboard-section="row.sectionKind"
+              :data-home-link="row.key === 'qspace:home' ? '' : undefined"
+              :data-space="row.key === 'clouds:yandex' ? 'yandex' : undefined"
+              :data-cloud="row.key === 'clouds:telegram' ? 'telegram' : undefined"
+              :data-yandex-folder="row.kind === 'yandex-dir' ? row.yandexPath : undefined"
+              :data-yandex-file="row.kind === 'yandex-file' ? row.yandexPath : undefined"
+              :data-shared-space="row.kind === 'album' ? row.albumId : undefined"
+              :data-album-id="row.kind === 'album' ? row.albumId : undefined"
+              :data-sidebar-file="row.kind === 'file' ? row.fileKey : undefined"
+              :data-sidebar-more="row.kind === 'more' ? row.folderId : undefined"
+              :draggable="row.draggable"
+              :aria-current="row.active ? 'page' : undefined"
+              :aria-disabled="row.disabled ? 'true' : undefined"
+              :aria-label="row.ariaLabel ?? row.label"
+              :title="row.title"
+              @click="onRowClick($event, row)"
+              @contextmenu.prevent.stop="onRowContextMenu($event, row)"
+              @dragstart="onRowDragStart($event, row)"
+              @dragend="onRowDragEnd($event, row)"
+              @dragenter="onRowDragEnter($event, row)"
+              @dragover="onRowDragOver($event, row)"
+              @dragleave="onRowDragLeave($event, row)"
+              @drop="onRowDrop($event, row)"
             >
-              <ChevronDown v-if="row.expanded" :size="14" aria-hidden="true" />
-              <ChevronRight v-else :size="14" aria-hidden="true" />
-            </button>
-            <span v-else class="tree-spacer" aria-hidden="true"></span>
+              <button
+                v-if="row.expandable"
+                type="button"
+                class="tree-twisty"
+                :aria-label="row.expanded ? t('collapseSubfolders') : t('expandSubfolders')"
+                :aria-expanded="row.expanded"
+                :data-tree-toggle="row.key"
+                :data-home-disclosure="row.key === 'qspace:home' ? '' : undefined"
+                :data-folder-toggle="row.kind === 'folder' ? row.folderId : undefined"
+                :data-yandex-toggle="row.kind === 'yandex-root' || row.kind === 'yandex-dir' ? row.yandexPath : undefined"
+                :data-album-toggle="row.kind === 'album' ? row.albumId : undefined"
+                @click.stop="toggleNodeExpanded(row)"
+              >
+                <ChevronDown v-if="row.expanded" :size="14" aria-hidden="true" />
+                <ChevronRight v-else :size="14" aria-hidden="true" />
+              </button>
+              <span v-else class="tree-spacer" aria-hidden="true"></span>
 
-            <span class="dashboard-sidebar-icon" aria-hidden="true">
-              <HardDrive v-if="row.key === 'root:qspace'" :size="15" />
-              <Cloud v-else-if="row.key === 'root:clouds' || row.kind === 'yandex-root'" :size="15" />
-              <Images v-else-if="row.key === 'root:albums'" :size="15" />
-              <Users v-else-if="row.key === 'qspace:shared'" :size="15" />
-              <Globe2 v-else-if="row.key === 'qspace:public'" :size="15" />
-              <House v-else-if="row.key === 'qspace:home'" :size="15" />
-              <Send v-else-if="row.key === 'clouds:telegram'" :size="15" />
-              <FolderCog v-else-if="row.kind === 'folder' && row.folderItem?.technical" :size="15" />
-              <Folder v-else-if="row.kind === 'folder' || row.kind === 'yandex-dir' || row.kind === 'album-source'" :size="15" />
-              <span
-                v-else-if="row.kind === 'album'"
-                class="tag-dot"
-                :style="{ background: 'var(--ui-brand)', width: '8px', height: '8px' }"
-              ></span>
-              <template v-else-if="row.kind === 'file' && row.fileItem">
-                <Video v-if="row.fileItem.fileKind === 'video'" :size="15" />
-                <ImageIcon v-else-if="row.fileItem.fileKind === 'image'" :size="15" />
-                <ResourceIcon v-else-if="row.fileItem.fileKind === 'markdown'" kind="text-document" :size="15" />
-                <ResourceIcon v-else-if="row.fileItem.type !== 'drive-file'" :kind="row.fileItem.type" :template-type="row.fileItem.templateType" :size="15" />
-                <FileIcon v-else :size="15" />
-              </template>
-              <template v-else-if="row.kind === 'yandex-file' && row.yandexItem">
-                <Video v-if="row.yandexItem.mediaType === 'video'" :size="15" />
-                <ImageIcon v-else-if="row.yandexItem.mediaType === 'image'" :size="15" />
-                <ResourceIcon v-else-if="isMarkdownFile(row.yandexItem)" kind="text-document" :size="15" />
-                <FileIcon v-else :size="15" />
-              </template>
-            </span>
+              <span class="dashboard-sidebar-icon" aria-hidden="true">
+                <HardDrive v-if="row.key === 'root:qspace'" :size="15" />
+                <Cloud v-else-if="row.key === 'root:clouds' || row.kind === 'yandex-root'" :size="15" />
+                <Images v-else-if="row.key === 'root:albums'" :size="15" />
+                <Users v-else-if="row.key === 'qspace:shared'" :size="15" />
+                <Globe2 v-else-if="row.key === 'qspace:public'" :size="15" />
+                <House v-else-if="row.key === 'qspace:home'" :size="15" />
+                <Send v-else-if="row.key === 'clouds:telegram'" :size="15" />
+                <FolderCog v-else-if="row.kind === 'folder' && row.folderItem?.technical" :size="15" />
+                <Folder v-else-if="row.kind === 'folder' || row.kind === 'yandex-dir' || row.kind === 'album-source'" :size="15" />
+                <span
+                  v-else-if="row.kind === 'album'"
+                  class="tag-dot"
+                  :style="{ background: 'var(--ui-brand)', width: '8px', height: '8px' }"
+                ></span>
+                <template v-else-if="row.kind === 'file' && row.fileItem">
+                  <Video v-if="row.fileItem.fileKind === 'video'" :size="15" />
+                  <ImageIcon v-else-if="row.fileItem.fileKind === 'image'" :size="15" />
+                  <ResourceIcon v-else-if="row.fileItem.fileKind === 'markdown'" kind="text-document" :size="15" />
+                  <ResourceIcon v-else-if="row.fileItem.type !== 'drive-file'" :kind="row.fileItem.type" :template-type="row.fileItem.templateType" :size="15" />
+                  <FileIcon v-else :size="15" />
+                </template>
+                <template v-else-if="row.kind === 'yandex-file' && row.yandexItem">
+                  <Video v-if="row.yandexItem.mediaType === 'video'" :size="15" />
+                  <ImageIcon v-else-if="row.yandexItem.mediaType === 'image'" :size="15" />
+                  <ResourceIcon v-else-if="isMarkdownFile(row.yandexItem)" kind="text-document" :size="15" />
+                  <FileIcon v-else :size="15" />
+                </template>
+              </span>
 
-            <span class="tree-name dashboard-sidebar-label">{{ row.label }}</span>
+              <span class="tree-name dashboard-sidebar-label">{{ row.label }}</span>
 
-            <span v-if="row.soon" class="tree-pill">{{ t('explorerSoon') }}</span>
-            <button
-              v-if="row.kind === 'album' && row.albumId"
-              type="button"
-              class="tree-alb-share-btn"
-              :aria-label="t('share')"
-              :title="t('share')"
-              :data-share-space="row.albumId"
-              @click.stop="emit('share-space', row.albumId)"
+              <span v-if="row.soon" class="tree-pill">{{ t('explorerSoon') }}</span>
+              <button
+                v-if="row.kind === 'album' && row.albumId"
+                type="button"
+                class="tree-alb-share-btn"
+                :aria-label="t('share')"
+                :title="t('share')"
+                :data-share-space="row.albumId"
+                @click.stop="emit('share-space', row.albumId)"
+              >
+                <Share2 :size="13" aria-hidden="true" />
+              </button>
+              <span v-if="row.meta !== undefined" class="tree-meta">{{ row.meta }}</span>
+              <button
+                v-if="row.key === 'root:albums'"
+                type="button"
+                class="tree-alb-add-btn"
+                :aria-label="t('spaceNew')"
+                :title="t('spaceNew')"
+                data-tree-add-album-btn
+                @click.stop="emit('create-space')"
+              >
+                <Plus :size="13" aria-hidden="true" />
+              </button>
+            </div>
+
+            <div class="tree-sep-line" role="separator"></div>
+            <div
+              role="treeitem"
+              class="tree-row"
+              :class="{ active: activeSection.kind === 'trash' }"
+              style="--depth: 0"
+              :tabindex="activeSection.kind === 'trash' ? 0 : undefined"
+              data-tree-key="trash"
+              data-dashboard-section="trash"
+              data-sidebar-trash-btn
+              :aria-current="activeSection.kind === 'trash' ? 'page' : undefined"
+              :aria-label="t('driveTrash')"
+              :title="t('driveTrash')"
+              @click="onTrashClick"
             >
-              <Share2 :size="13" aria-hidden="true" />
-            </button>
-            <span v-if="row.meta !== undefined" class="tree-meta">{{ row.meta }}</span>
-          </div>
-
-          <div v-if="openRoots.has('root:albums')" class="tree-row tree-row-action" :style="{ '--depth': 1 }">
-            <span class="tree-spacer" aria-hidden="true"></span>
-            <button
-              type="button"
-              class="btn-ghost dashboard-sidebar-folder dashboard-sidebar-new-space tree-inline-action"
-              :aria-label="t('spaceNew')"
-              data-new-space
-              @click="emit('create-space')"
-            >
-              <Plus :size="15" aria-hidden="true" />
-              <span class="tree-name">{{ t('spaceNew') }}</span>
-            </button>
-          </div>
-        </nav>
+              <span class="tree-spacer" aria-hidden="true"></span>
+              <span class="dashboard-sidebar-icon" aria-hidden="true">
+                <Trash2 :size="15" />
+              </span>
+              <span class="tree-name dashboard-sidebar-label">{{ t('driveTrash') }}</span>
+            </div>
+          </nav>
+        </template>
       </div>
 
       <template #footer>
+        <div class="sb-mode-switch-wrap">
+          <div
+            class="sb-mode-switch"
+            role="tablist"
+            :aria-label="locale === 'ru' ? 'Режим работы' : 'Workspace mode'"
+            data-sidebar-mode-switch
+          >
+            <button
+              type="button"
+              role="tab"
+              class="sb-mode-btn"
+              :class="{ active: mode !== 'media' }"
+              :aria-selected="mode !== 'media'"
+              data-mode-btn="files"
+              @click="emit('switch-mode', 'files')"
+            >
+              <FolderTree :size="14" aria-hidden="true" />
+              <span>{{ locale === 'ru' ? 'Файлы' : 'Files' }}</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              class="sb-mode-btn"
+              :class="{ active: mode === 'media' }"
+              :aria-selected="mode === 'media'"
+              data-mode-btn="media"
+              @click="emit('switch-mode', 'media')"
+            >
+              <Images :size="14" aria-hidden="true" />
+              <span>{{ locale === 'ru' ? 'Медиа' : 'Media' }}</span>
+            </button>
+          </div>
+        </div>
+
         <footer class="dashboard-sidebar-footer sb-footer">
+          <div class="sb-foot-row">
+            <AccountMenu placement="sidebar" :compact="false" :show-plugins="true" :show-admin="admin" glass />
+            <router-link
+              to="/drive/devices"
+              class="sb-devices-btn"
+              :aria-label="t('explorerDevicesSync')"
+              :title="devicesTitle"
+              data-sidebar-devices-btn
+            >
+              <MonitorSmartphone :size="16" aria-hidden="true" />
+              <span v-if="devicesOnlineCount > 0 || devicesPaired" class="sb-devices-dot" aria-hidden="true"></span>
+            </router-link>
+          </div>
           <div class="dashboard-sidebar-version sb-version">
             QCanva v{{ appVersion }} ·
             <a
@@ -245,7 +342,6 @@
               data-source-link
             >{{ t('sourceCode') }}</a>
           </div>
-          <AccountMenu placement="sidebar" :compact="false" :show-plugins="false" glass />
         </footer>
       </template>
     </SharedSidebarShell>
@@ -270,25 +366,30 @@ import {
   ChevronRight,
   ChevronsDownUp,
   Cloud,
+  Crosshair,
   Eye,
   EyeOff,
   File as FileIcon,
   Folder,
   FolderCog,
   FolderPlus,
+  FolderTree,
   Globe2,
   HardDrive,
   House,
   Image as ImageIcon,
   Images,
+  MonitorSmartphone,
+  PanelLeft,
   Plus,
   Send,
   Share2,
+  Trash2,
   Users,
   Video,
   X,
 } from '@lucide/vue';
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch, type CSSProperties } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch, type CSSProperties } from 'vue';
 import { spacesApi, type SpaceDetails } from '../../api/spaces';
 import { yandexDisk, type YandexItem } from '../../api/yandexDisk';
 import { SOURCE_CODE_URL } from '../../app-info';
@@ -311,19 +412,14 @@ import {
   type DashboardMoreNavItem,
   type DashboardSection,
   type DashboardSidebarNavItem,
-  type ExplorerSidebarPanel,
   type SidebarWidthState,
 } from '../../dashboard/navigation';
 import { isMarkdownFile } from '../../dashboard/thumb-kinds';
 import AccountMenu from '../AccountMenu.vue';
 import ResourceIcon from '../ResourceIcon.vue';
 import SharedSidebarShell from '../SharedSidebarShell.vue';
-import ExplorerActivityBar, { type ExplorerActivityId } from './ExplorerActivityBar.vue';
-import ExplorerSearchSidebar, {
-  type SearchAlbumEntry,
-  type SearchFolderEntry,
-  type SearchItemEntry,
-} from './ExplorerSearchSidebar.vue';
+
+export type ExplorerSidebarMode = 'files' | 'media';
 
 export interface TreeContextMenuPayload {
   event: MouseEvent;
@@ -378,43 +474,40 @@ const appVersion = '2.2';
 const props = withDefaults(defineProps<{
   activeSection: DashboardSection;
   feedSection?: string | null;
+  mode?: ExplorerSidebarMode;
   widthState?: SidebarWidthState;
   collapsed?: boolean;
-  panelMode?: ExplorerSidebarPanel;
-  activeActivity?: ExplorerActivityId;
   mobileOpen: boolean;
   androidApp?: boolean;
   folders: readonly DashboardSidebarNavItem[];
   admin?: boolean;
   spaces?: boolean;
   yandexRefreshKey?: number;
+  incomingAccessRequestsCount?: number;
   devicesOnlineCount?: number;
+  devicesPaired?: boolean;
   folderDragId?: string;
-  searchFolders?: readonly SearchFolderEntry[];
-  searchAlbums?: readonly SearchAlbumEntry[];
-  searchItems?: readonly SearchItemEntry[];
 }>(), {
   feedSection: null,
+  mode: 'files',
   widthState: 'expanded',
   collapsed: undefined,
-  panelMode: undefined,
-  activeActivity: undefined,
   androidApp: false,
   admin: false,
   spaces: true,
   yandexRefreshKey: 0,
+  incomingAccessRequestsCount: 0,
   devicesOnlineCount: 0,
-  searchFolders: undefined,
-  searchAlbums: undefined,
-  searchItems: undefined,
+  devicesPaired: false,
 });
 
 const emit = defineEmits<{
   select: [section: DashboardSection];
-  'select-activity': [activity: ExplorerActivityId];
+  'switch-mode': [mode: ExplorerSidebarMode];
   'toggle-mobile-drawer': [];
   'toggle-width': [];
-  'update:collapsed': [collapsed: boolean];
+  'update:collapsed': [value: boolean];
+  'toggle-collapse': [];
   'update:sidebarWidth': [width: number];
   'close-mobile': [];
   'open-file': [file: DashboardFileNavItem];
@@ -437,7 +530,7 @@ const emit = defineEmits<{
   'folder-drop': [event: DragEvent, folderId: string];
 }>();
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const prefs = useExplorerLayoutPrefs();
 const dnd = useExplorerGroupDnd();
 const { status: yandexStatus, load: loadYandexStatus, noteError: noteYandexError } = useYandexDisk();
@@ -474,25 +567,25 @@ const sidebarInlineStyle = computed<CSSProperties | undefined>(() => {
   return { '--sb-w': `${prefWidth.value}px`, width: `${prefWidth.value}px` };
 });
 
-const resolvedPanelMode = computed<ExplorerSidebarPanel>(() => {
-  if (props.panelMode) return props.panelMode;
-  if (props.activeSection.kind === 'gallery') return 'gallery';
-  return 'explorer';
-});
+const sidebarTitle = computed(() => (
+  props.mode === 'media' ? (locale.value === 'ru' ? 'Медиа' : 'Media') : 'Q Space'
+));
 
-const resolvedActivity = computed<ExplorerActivityId>(() => {
-  if (props.activeActivity) return props.activeActivity;
-  if (resolvedPanelMode.value === 'search') return 'search';
-  if (resolvedPanelMode.value === 'gallery') return 'gallery';
-  if (props.activeSection.kind === 'trash') return 'trash';
-  if (props.activeSection.kind === 'recent') return 'home';
-  return 'explorer';
-});
+const revealLabel = computed(() => (
+  locale.value === 'ru' ? 'Показать текущую папку в дереве' : 'Reveal current folder in tree'
+));
 
-const sidebarTitle = computed(() => {
-  if (resolvedPanelMode.value === 'search') return t('explorerSearchTitle');
-  if (resolvedPanelMode.value === 'gallery') return t('explorerGalleryTitle');
-  return t('explorerTitle');
+const collapseSidebarLabel = computed(() => (
+  locale.value === 'ru' ? 'Свернуть сайдбар' : 'Collapse sidebar'
+));
+
+const devicesTitle = computed(() => {
+  if (props.devicesOnlineCount > 0) {
+    return locale.value === 'ru'
+      ? `${t('explorerDevicesSync')} (${props.devicesOnlineCount} онлайн)`
+      : `${t('explorerDevicesSync')} (${props.devicesOnlineCount} online)`;
+  }
+  return t('explorerDevicesSync');
 });
 
 // Root sections state (Q Space, home, Clouds, Альбомы)
@@ -614,6 +707,36 @@ watch(() => props.activeSection, (next, prev) => {
     && (next.kind !== 'space' || (prev.kind === 'space' && next.spaceId === prev.spaceId))
   ) {
     return;
+  }
+
+  // B-012: Clear stale selection/focus highlight whenever navigating away (especially trash/recent/gallery)
+  if (next.kind === 'trash' || next.kind === 'recent' || next.kind === 'gallery') {
+    treeSelectedKeys.value = new Set();
+    treeFocusKey.value = null;
+    lastSelectedIdx.value = -1;
+  } else {
+    const nextActiveKey = next.kind === 'folder'
+      ? `folder:${next.folderId}`
+      : next.kind === 'space'
+        ? `album:${next.spaceId}`
+        : next.kind === 'yandex'
+          ? (next.path === '/' ? 'clouds:yandex' : `yandex:${next.path}`)
+          : next.kind === 'home'
+            ? 'qspace:home'
+            : next.kind === 'shared'
+              ? 'qspace:shared'
+              : next.kind === 'public'
+                ? 'qspace:public'
+                : next.kind === 'spaces'
+                  ? 'root:albums'
+                  : null;
+    if (!nextActiveKey || !treeSelectedKeys.value.has(nextActiveKey) || treeSelectedKeys.value.size > 1) {
+      treeSelectedKeys.value = new Set();
+    }
+    if (treeFocusKey.value && treeFocusKey.value !== nextActiveKey) {
+      treeFocusKey.value = null;
+    }
+    lastSelectedIdx.value = -1;
   }
 
   // Q Space folder accordion
@@ -1543,12 +1666,70 @@ function onRowDrop(event: DragEvent, row: TreeRow) {
   dnd.endGroupDrag();
 }
 
-// Activity Bar handlers (never force-open collapsed sidebar on select-activity!)
-function onActivitySelect(activity: ExplorerActivityId) {
-  if (activity === 'home') emit('select', { kind: 'recent' });
-  else if (activity === 'trash') emit('select', { kind: 'trash' });
-  else if (activity === 'gallery') emit('select', { kind: 'gallery' });
-  emit('select-activity', activity);
+function onHomeBtnClick() {
+  treeSelectedKeys.value = new Set();
+  treeFocusKey.value = null;
+  lastSelectedIdx.value = -1;
+  emit('select', { kind: 'recent' });
+}
+
+function onTrashClick() {
+  treeSelectedKeys.value = new Set();
+  treeFocusKey.value = null;
+  lastSelectedIdx.value = -1;
+  emit('select', { kind: 'trash' });
+}
+
+async function revealCurrentInTree() {
+  if (isCollapsed.value) {
+    setSidebarCollapsed(false);
+    emit('update:collapsed', false);
+  }
+  let targetKey: string | null = null;
+  if (props.activeSection.kind === 'folder') {
+    const roots = new Set(openRoots.value);
+    roots.add('root:qspace');
+    roots.add('qspace:home');
+    openRoots.value = roots;
+    const chain = folderAncestors(props.activeSection.folderId);
+    for (const id of chain) {
+      if (id === props.activeSection.folderId) continue;
+      const folder = folderLookup.value.get(id);
+      if (folder && !isFolderExpanded(folder)) {
+        localFolderOverrides[id] = true;
+        if (!folder.expanded) emit('toggle-folder', id);
+      }
+    }
+    targetKey = `folder:${props.activeSection.folderId}`;
+  } else if (props.activeSection.kind === 'space') {
+    const roots = new Set(openRoots.value);
+    roots.add('root:albums');
+    openRoots.value = roots;
+    targetKey = `album:${props.activeSection.spaceId}`;
+  } else if (props.activeSection.kind === 'yandex') {
+    const roots = new Set(openRoots.value);
+    roots.add('root:clouds');
+    openRoots.value = roots;
+    targetKey = props.activeSection.path === '/' ? 'clouds:yandex' : `yandex:${props.activeSection.path}`;
+  } else {
+    targetKey = findActiveRowKey();
+  }
+  if (!targetKey) return;
+  treeFocusKey.value = targetKey;
+  await nextTick();
+  const escaped = targetKey.replace(/["\\]/g, '\\$&');
+  const el = scrollContainerRef.value?.querySelector<HTMLElement>(`[data-tree-key="${escaped}"]`);
+  el?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+}
+
+function collapseSidebar() {
+  if (matchesMedia(LAYOUT.dashboardDrawer)) {
+    emit('toggle-collapse');
+    return;
+  }
+  setSidebarCollapsed(true);
+  emit('update:collapsed', true);
+  emit('toggle-collapse');
 }
 
 function onToggleCollapse() {
@@ -1559,63 +1740,7 @@ function onToggleCollapse() {
   const next = !isCollapsed.value;
   setSidebarCollapsed(next);
   emit('update:collapsed', next);
-}
-
-// Search panel fallback data from folders + spaces when caller doesn't pass explicit search props
-const resolvedSearchFolders = computed<SearchFolderEntry[]>(() => {
-  if (props.searchFolders) return [...props.searchFolders];
-  return props.folders
-    .filter((f): f is DashboardFolderNavItem => f.kind !== 'file' && f.kind !== 'more')
-    .map((f) => ({ id: f.id, name: f.name, technical: f.technical, source: 'Q Space' }));
-});
-
-const resolvedSearchAlbums = computed<SearchAlbumEntry[]>(() => {
-  if (props.searchAlbums) return [...props.searchAlbums];
-  return spaces.value.map((s) => ({ id: s.id, name: s.name, sourceCount: s.sourceCount }));
-});
-
-const resolvedSearchItems = computed<SearchItemEntry[]>(() => {
-  if (props.searchItems) return [...props.searchItems];
-  return props.folders
-    .filter((f): f is DashboardFileNavItem => f.kind === 'file')
-    .map((f) => ({
-      key: f.key,
-      id: f.id,
-      title: f.title,
-      type: f.type,
-      fileKind: f.fileKind,
-      templateType: f.templateType,
-      folderId: f.folderId,
-      folderName: folderLookup.value.get(f.folderId)?.name,
-      raw: f,
-    }));
-});
-
-function onSearchSelectFolder(folderId: string) {
-  emit('select', { kind: 'folder', folderId });
-}
-
-function onSearchSelectAlbum(albumId: string) {
-  emit('select', { kind: 'space', spaceId: albumId });
-}
-
-function onSearchOpenItem(item: SearchItemEntry) {
-  const raw = item.raw as DashboardFileNavItem | undefined;
-  if (raw && raw.kind === 'file') {
-    emit('open-file', raw);
-    return;
-  }
-  emit('open-file', {
-    kind: 'file',
-    key: item.key,
-    id: item.id,
-    type: (item.type as DashboardFileNavItem['type']) || 'drive-file',
-    title: item.title,
-    folderId: item.folderId || '',
-    depth: 0,
-    fileKind: item.fileKind as DashboardFileNavItem['fileKind'],
-    templateType: item.templateType,
-  });
+  emit('toggle-collapse');
 }
 
 // Resizable Sash (drag < 110px collapses, drag from collapsed >= 56px re-opens)

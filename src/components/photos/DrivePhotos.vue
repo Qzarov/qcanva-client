@@ -6,8 +6,24 @@
     @keydown="onRootKeydown"
   >
     <!-- macOS Photos Topbar (NO < ↑ arrows) -->
-    <header class="dp-top" data-testid="gallery-topbar">
+    <header
+      class="dp-top"
+      :class="{ 'is-hidden': isTopChromeHidden }"
+      data-testid="gallery-topbar"
+    >
       <div class="dp-top-left">
+        <button
+          v-if="showSidebarExpand"
+          type="button"
+          class="dp-icon-btn sb-expand-btn"
+          data-sidebar-expand-btn
+          :aria-label="t('openNavigation')"
+          :title="t('openNavigation')"
+          @click="emit('expand-sidebar')"
+        >
+          <PanelLeft :size="16" aria-hidden="true" />
+        </button>
+
         <button
           v-if="effectiveAlbumId"
           type="button"
@@ -173,71 +189,24 @@
           <Heart :size="16" :fill="allTargetsFavorite ? 'currentColor' : 'none'" aria-hidden="true" />
         </button>
 
-        <form ref="searchWrapEl" class="dp-search" role="search" data-photos-search @submit.prevent="runSearchNow" @keydown.esc="onSearchEscape">
-          <Search :size="14" class="dp-search-icon" aria-hidden="true" />
-          <input
-            v-model="query"
-            type="search"
-            maxlength="200"
-            class="dp-search-input"
-            :placeholder="t('gallerySearchPlaceholder')"
-            :aria-label="t('gallerySearchPlaceholder')"
-            data-photos-search-input
-            @focus="suggestOpen = true"
-            @click="suggestOpen = true"
-          />
-          <button
-            v-if="query"
-            type="button"
-            class="dp-search-clear"
-            :aria-label="t('photosClearSearch')"
-            data-photos-search-clear
-            @click="clearSearch"
-          >
-            <X :size="13" aria-hidden="true" />
-          </button>
-
-          <div
-            v-if="suggestOpen"
-            class="dp-suggest-pop"
-            data-gallery-suggest-pop
-            role="dialog"
-            :aria-label="t('gallerySearchPlaceholder')"
-            @click.stop
-          >
-            <div class="dp-suggest-sec">
-              <div class="dp-suggest-label">{{ t('gallerySearchTags') }}</div>
-              <div class="dp-suggest-chips">
-                <button
-                  v-for="tag in suggestedTags"
-                  :key="tag"
-                  type="button"
-                  class="dp-suggest-chip"
-                  :data-suggest-tag="tag"
-                  @click="selectSuggestedTag(tag)"
-                >
-                  {{ tag }}
-                </button>
-              </div>
-            </div>
-            <div v-if="resolvedPeople.length > 0" class="dp-suggest-sec">
-              <div class="dp-suggest-label">{{ t('gallerySearchPeople') }}</div>
-              <div class="dp-suggest-chips">
-                <button
-                  v-for="person in resolvedPeople"
-                  :key="person.id"
-                  type="button"
-                  class="dp-suggest-chip"
-                  :class="{ active: selectedPeople.includes(person.id) }"
-                  :data-suggest-person="person.id"
-                  @click="toggleSuggestedPerson(person.id)"
-                >
-                  {{ person.name }}
-                </button>
-              </div>
-            </div>
-          </div>
-        </form>
+        <ExplorerInlineSearch
+          ref="inlineSearchRef"
+          v-model="query"
+          v-model:scope-mode="searchScopeMode"
+          v-model:type-filter="searchTypeFilter"
+          in-gallery
+          :scope-label="scopeLabel"
+          :albums="inlineSearchAlbums"
+          :folders="inlineSearchFolders"
+          :items="inlineSearchItems"
+          :ml-tags="suggestedTags"
+          :loading="searchLoading"
+          @select-tag="selectSuggestedTag"
+          @select-album="onOpenAlbum"
+          @select-folder="onSearchSelectFolder"
+          @open-item="onSearchOpenItem"
+          @submit="runSearchNow"
+        />
       </div>
     </header>
 
@@ -255,7 +224,7 @@
           v-if="!searchActive && !showPeopleGrid && activeSection !== 'trash'"
           class="dp-float-sort"
         >
-          <PhotosViewBar />
+          <PhotosViewBar :hidden="isTopChromeHidden" :force-visible="!isTopChromeHidden" @menu-open="sortMenuOpen = $event" />
         </div>
 
         <!-- Search: flat semantic CLIP/hybrid relevance grid -->
@@ -267,13 +236,14 @@
             {{ t('photosSearchError') }}
             <button type="button" class="dp-retry" @click="runSearchNow">{{ t('photosRetry') }}</button>
           </p>
-          <p v-else-if="searchLoading && !searchItems.length" class="dp-note" role="status">{{ t('photosLoading') }}</p>
-          <p v-else-if="!searchItems.length" class="dp-note" role="status" data-photos-search-empty>
+          <p v-else-if="searchLoading && !scopedSearchItems.length" class="dp-note" role="status">{{ t('photosLoading') }}</p>
+          <p v-else-if="!scopedSearchItems.length" class="dp-note" role="status" data-photos-search-empty>
             {{ t('photosSearchNothing') }}
           </p>
           <PhotosSearchGrid
-            v-if="searchItems.length"
-            :items="searchItems"
+            v-if="scopedSearchItems.length"
+            class="dp-search-grid"
+            :items="scopedSearchItems"
             :tile="view.state.value.tile"
             :current="currentId"
             :has-more="searchCursor !== null && !searchLoading"
@@ -468,6 +438,7 @@
       @jump="jumpViewer"
       @toggle-favorite="toggleSingleFavorite"
       @share="shareSingleItem"
+      @delete="onViewerDelete"
       @panel-changed="onPanelChanged"
     />
 
@@ -530,8 +501,8 @@ import {
   Heart,
   Info,
   LayoutGrid,
+  PanelLeft,
   RectangleHorizontal,
-  Search,
   Share2,
   Trash2,
   X,
@@ -549,6 +520,13 @@ import { useI18n, type MessageKey } from '../../composables/useI18n';
 import { useSpaces } from '../../composables/useSpaces';
 import { useToast } from '../../composables/useToast';
 import DashboardTrash from '../dashboard/DashboardTrash.vue';
+import ExplorerInlineSearch, {
+  type InlineSearchAlbum,
+  type InlineSearchFolder,
+  type InlineSearchItem,
+  type InlineSearchScopeMode,
+  type InlineSearchTypeFilter,
+} from '../dashboard/ExplorerInlineSearch.vue';
 import FolderPickerDialog from '../FolderPickerDialog.vue';
 import GalleryPeopleGrid, { type GalleryPerson } from './GalleryPeopleGrid.vue';
 import PhotoPanel from './PhotoPanel.vue';
@@ -566,6 +544,7 @@ const props = withDefaults(defineProps<{
   externalAlbumMembersCount?: number | null;
   externalFolderId?: string | null;
   hideInternalTabs?: boolean;
+  showSidebarExpand?: boolean;
   people?: readonly GalleryPerson[];
 }>(), {
   activeSection: 'library',
@@ -573,6 +552,7 @@ const props = withDefaults(defineProps<{
   externalAlbumMembersCount: null,
   externalFolderId: null,
   hideInternalTabs: false,
+  showSidebarExpand: false,
   people: undefined,
 });
 
@@ -584,6 +564,7 @@ const emit = defineEmits<{
   (e: 'select-album', albumId: string): void;
   (e: 'clear-album'): void;
   (e: 'open-trash'): void;
+  (e: 'expand-sidebar'): void;
   (e: 'update:counts', counts: GallerySidebarCounts): void;
 }>();
 
@@ -591,6 +572,7 @@ const { t, locale } = useI18n();
 const toast = useToast();
 const view = usePhotosView();
 const prefs = useExplorerLayoutPrefs();
+const { spaces, load: loadSpaces } = useSpaces();
 const mockMode = isPhotosMock();
 
 const fmt = (key: MessageKey, vars: Record<string, string | number>): string =>
@@ -611,9 +593,12 @@ const PERIOD_CONTROLS: { period: FeedPeriod; label: MessageKey }[] = [
 
 const rootEl = ref<HTMLElement | null>(null);
 const feedRef = ref<InstanceType<typeof PhotosFeed> | null>(null);
+const inlineSearchRef = ref<InstanceType<typeof ExplorerInlineSearch> | null>(null);
 
 const internalAlbumId = ref<string | null>(null);
 const albumName = ref('');
+const folderName = ref('');
+const albumSourceFolderIds = ref<Set<string>>(new Set());
 const effectiveAlbumId = computed(() => props.externalAlbumId ?? internalAlbumId.value);
 
 const selected = shallowRef<Set<string>>(new Set());
@@ -623,6 +608,7 @@ const panelId = ref<string | null>(null);
 const panelEpoch = ref(0);
 const panelWidth = ref(PANEL_DEFAULT_W);
 const panelDragging = ref(false);
+const sortMenuOpen = ref(false);
 const viewer = shallowRef<{ items: FeedItem[]; index: number } | null>(null);
 const viewerItem = computed(() => viewer.value?.items[viewer.value.index] ?? null);
 const currentId = computed(() => viewerItem.value?.fileId ?? focusedId.value ?? panelId.value);
@@ -631,22 +617,70 @@ const feedParams = computed(() => (
   effectiveAlbumId.value ? { ...view.feedParams.value, albumId: effectiveAlbumId.value } : view.feedParams.value
 ));
 
-// ----- search (live CLIP/hybrid POST /api/photos/search) -----
+// ----- search (unified S2 inline search + live CLIP/hybrid POST /api/photos/search) -----
 
 type SearchError = '' | 'unavailable' | 'failed';
 const query = ref('');
 const searchQuery = ref('');
+const searchScopeMode = ref<InlineSearchScopeMode>('current');
+const searchTypeFilter = ref<InlineSearchTypeFilter>('all');
 const searchItems = shallowRef<FeedItem[]>([]);
 const searchCursor = ref<string | null>(null);
 const searchLoading = ref(false);
 const searchError = ref<SearchError>('');
 const searchActive = computed(() => searchQuery.value !== '');
-const suggestOpen = ref(false);
-const searchWrapEl = ref<HTMLElement | null>(null);
 
 const SUGGESTED_TAGS_RU = ['природа', 'горы', 'море', 'портрет', 'архитектура', 'закат', 'еда', 'документы'] as const;
 const SUGGESTED_TAGS_EN = ['nature', 'mountains', 'sea', 'portrait', 'architecture', 'sunset', 'food', 'documents'] as const;
-const suggestedTags = computed(() => (locale.value === 'ru' ? SUGGESTED_TAGS_RU : SUGGESTED_TAGS_EN));
+const suggestedTags = computed<string[]>(() => [...(locale.value === 'ru' ? SUGGESTED_TAGS_RU : SUGGESTED_TAGS_EN)]);
+
+const scopeLabel = computed<string>(() => {
+  if (effectiveAlbumId.value) return albumName.value || effectiveAlbumId.value;
+  if (props.externalFolderId) return folderName.value || t('home');
+  return t('galleryLibrary');
+});
+
+function itemMatchesScope(item: FeedItem): boolean {
+  if (searchScopeMode.value !== 'current') return true;
+  if (effectiveAlbumId.value) {
+    if (item.albumIds.includes(effectiveAlbumId.value)) return true;
+    if (item.folderId && albumSourceFolderIds.value.has(item.folderId)) return true;
+    return false;
+  }
+  if (props.externalFolderId) {
+    return props.externalFolderId === 'root'
+      ? item.folderId === null
+      : item.folderId === props.externalFolderId;
+  }
+  return true;
+}
+
+const scopedSearchItems = computed<FeedItem[]>(() => searchItems.value.filter(itemMatchesScope));
+
+const inlineSearchAlbums = computed<InlineSearchAlbum[]>(() => {
+  if (searchScopeMode.value === 'current' && props.externalFolderId) return [];
+  return spaces.value.map((s) => ({
+    id: s.id,
+    name: s.name,
+    count: s.mediaCount ?? s.itemCount ?? s.sourceCount,
+  }));
+});
+
+const inlineSearchFolders = computed<InlineSearchFolder[]>(() => []);
+
+const inlineSearchItems = computed<InlineSearchItem[]>(() => {
+  const src = searchActive.value
+    ? scopedSearchItems.value
+    : (feedRef.value?.orderedItems() ?? []).filter(itemMatchesScope);
+  return src.slice(0, 20).map((it) => ({
+    id: it.fileId,
+    title: it.name,
+    type: 'media',
+    folderId: it.folderId,
+    fileId: it.fileId,
+    mimeType: it.mime,
+  }));
+});
 
 let searchGen = 0;
 let searchTimer: ReturnType<typeof setTimeout> | null = null;
@@ -710,7 +744,6 @@ function endSearch(): void {
 }
 
 function runSearchNow(): void {
-  suggestOpen.value = false;
   startSearch();
 }
 
@@ -720,29 +753,22 @@ function clearSearch(): void {
   endSearch();
 }
 
-function onSearchEscape(): void {
-  if (suggestOpen.value) {
-    suggestOpen.value = false;
-    return;
-  }
-  clearSearch();
-}
-
 function selectSuggestedTag(tag: string): void {
-  suggestOpen.value = false;
+  cancelSearchTimer();
   query.value = tag;
   startSearch();
 }
 
-function toggleSuggestedPerson(personId: string): void {
-  suggestOpen.value = false;
-  if (query.value !== '' || searchQuery.value !== '') {
-    clearSearch();
-  }
-  const exists = selectedPeople.value.includes(personId);
-  selectedPeople.value = exists
-    ? selectedPeople.value.filter((id) => id !== personId)
-    : [...selectedPeople.value, personId];
+function onSearchSelectFolder(folderId: string): void {
+  emit('openFolder', folderId, '');
+}
+
+function onSearchOpenItem(item: InlineSearchItem): void {
+  const targetId = item.fileId ?? item.id;
+  const found = shownItems().find((i) => i.fileId === targetId)
+    ?? searchItems.value.find((i) => i.fileId === targetId)
+    ?? feedRef.value?.orderedItems().find((i) => i.fileId === targetId);
+  if (found) onActivate(found);
 }
 
 function loadMoreSearch(): void {
@@ -752,10 +778,12 @@ function loadMoreSearch(): void {
 
 watch(query, (value) => {
   cancelSearchTimer();
-  if (value.trim() === '') {
+  const trimmed = value.trim();
+  if (trimmed === '') {
     if (searchActive.value) endSearch();
     return;
   }
+  if (trimmed === searchQuery.value) return;
   searchTimer = setTimeout(startSearch, SEARCH_DEBOUNCE_MS);
 });
 
@@ -802,6 +830,8 @@ watch(
   () => props.activeSection,
   (sec, prev) => {
     if (sec === prev) return;
+    searchScopeMode.value = 'current';
+    prefs.setHeadroomHidden(false);
     clearSearch();
     clearSelection();
     if (sec === 'trash') {
@@ -820,27 +850,64 @@ if (props.activeSection !== 'library') {
 watch(
   () => props.externalAlbumId,
   (id) => {
+    searchScopeMode.value = 'current';
+    prefs.setHeadroomHidden(false);
     clearSearch();
     clearSelection();
     albumName.value = '';
+    albumSourceFolderIds.value = new Set();
     if (id) void loadAlbumName(id);
   },
   { immediate: true },
 );
 
+watch(
+  () => props.externalFolderId,
+  (id) => {
+    searchScopeMode.value = 'current';
+    prefs.setHeadroomHidden(false);
+    clearSearch();
+    clearSelection();
+    folderName.value = '';
+    if (!id) return;
+    if (id === 'root') {
+      folderName.value = t('home');
+      return;
+    }
+    void loadFolderName(id);
+  },
+  { immediate: true },
+);
+
+async function loadFolderName(id: string): Promise<void> {
+  try {
+    if (typeof driveApi?.getFolder !== 'function') return;
+    const res = await driveApi.getFolder(id);
+    if (props.externalFolderId === id) {
+      folderName.value = res.folder?.name ?? '';
+    }
+  } catch {
+    // Ignore folder metadata error
+  }
+}
+
 async function loadAlbumName(id: string): Promise<void> {
   try {
     if (!isPhotosMock()) {
-      const { spaces, load: loadSpaces } = useSpaces();
       let found = spaces.value.find((s) => s.id === id);
       if (!found) {
         await loadSpaces();
         found = spaces.value.find((s) => s.id === id);
       }
       let resolvedName = found?.name ?? '';
-      if (!resolvedName && typeof spacesApi?.get === 'function') {
+      if ((!resolvedName || (found?.sourceCount ?? 0) > 0) && typeof spacesApi?.get === 'function') {
         const details = await spacesApi.get(id);
-        resolvedName = details.name;
+        if (!resolvedName) resolvedName = details.name;
+        if (effectiveAlbumId.value === id) {
+          albumSourceFolderIds.value = new Set(
+            (details.sources ?? []).map((s) => s.folderId).filter((x): x is string => Boolean(x)),
+          );
+        }
       }
       if (effectiveAlbumId.value === id) {
         albumName.value = resolvedName;
@@ -859,6 +926,8 @@ async function loadAlbumName(id: string): Promise<void> {
 function clearAlbumFilter(): void {
   internalAlbumId.value = null;
   albumName.value = '';
+  albumSourceFolderIds.value = new Set();
+  searchScopeMode.value = 'current';
   clearSelection();
   emit('clear-album');
 }
@@ -1180,7 +1249,54 @@ async function deleteFileIds(ids: string[]): Promise<void> {
   await Promise.allSettled(ids.map((id) => driveApi.trashFile(id)));
   clearSelection();
   if (panelId.value && ids.includes(panelId.value)) panelId.value = null;
+  feedRef.value?.removeItems?.(ids);
+  if (searchItems.value.some((i) => ids.includes(i.fileId))) {
+    const idSet = new Set(ids);
+    searchItems.value = searchItems.value.filter((i) => !idSet.has(i.fileId));
+  }
   void feedRef.value?.refresh();
+  void refreshSidebarCounts();
+}
+
+const deletingViewerIds = new Set<string>();
+async function onViewerDelete(item: FeedItem): Promise<void> {
+  if (!item?.fileId || deletingViewerIds.has(item.fileId)) return;
+  deletingViewerIds.add(item.fileId);
+  try {
+    await driveApi.trashFile(item.fileId);
+  } catch (err) {
+    deletingViewerIds.delete(item.fileId);
+    toast.show(err instanceof Error && err.message ? err.message : t('photosPanelSaveError'), 'error');
+    return;
+  }
+  deletingViewerIds.delete(item.fileId);
+
+  feedRef.value?.removeItems?.([item.fileId]);
+  if (searchItems.value.some((i) => i.fileId === item.fileId)) {
+    searchItems.value = searchItems.value.filter((i) => i.fileId !== item.fileId);
+  }
+  if (selected.value.has(item.fileId)) {
+    onToggleSelect([item.fileId], false);
+  }
+
+  const v = viewer.value;
+  if (v) {
+    const nextItems = v.items.filter((i) => i.fileId !== item.fileId);
+    if (nextItems.length === 0) {
+      viewer.value = null;
+      if (focusedId.value === item.fileId) focusedId.value = null;
+      if (panelId.value === item.fileId) panelId.value = null;
+    } else {
+      const nextIndex = Math.min(v.index, nextItems.length - 1);
+      const nextItem = nextItems[nextIndex]!;
+      viewer.value = { items: nextItems, index: nextIndex };
+      focusedId.value = nextItem.fileId;
+      if (panelOpen.value && panelId.value) panelId.value = nextItem.fileId;
+      emit('focus-photo', nextItem);
+      maybeLoadMoreForViewer(nextIndex, nextItems);
+    }
+  }
+
   void refreshSidebarCounts();
 }
 
@@ -1198,13 +1314,26 @@ async function deleteSelectedAction(): Promise<void> {
   await deleteFileIds([...selected.value]);
 }
 
+const isTopChromeHidden = computed(() => (
+  prefs.headroomHidden.value
+  && !searchActive.value
+  && selected.value.size < 2
+  && !ctxMenu.value
+  && !sortMenuOpen.value
+  && !actions.albumMenuOpen.value
+  && !moveOpen.value
+  && props.activeSection !== 'trash'
+  && !showPeopleGrid.value
+));
+
+watch(searchActive, (active) => {
+  if (active) prefs.setHeadroomHidden(false);
+});
+
 function onDocPointerDown(e: PointerEvent): void {
   const target = e.target as Node | null;
   if (ctxMenu.value && (!target || !ctxMenuEl.value?.contains(target))) {
     closeCtxMenu();
-  }
-  if (suggestOpen.value && (!target || !searchWrapEl.value?.contains(target))) {
-    suggestOpen.value = false;
   }
 }
 
@@ -1218,13 +1347,14 @@ function onWindowKeydown(e: KeyboardEvent): void {
 onMounted(() => {
   document.addEventListener('pointerdown', onDocPointerDown);
   window.addEventListener('keydown', onWindowKeydown);
+  if (!isPhotosMock()) void loadSpaces();
   void refreshSidebarCounts();
 });
 
 // ----- panel (resizable) and viewer -----
 
 function shownItems(): FeedItem[] {
-  return searchActive.value ? searchItems.value : (feedRef.value?.orderedItems() ?? []);
+  return searchActive.value ? scopedSearchItems.value : (feedRef.value?.orderedItems() ?? []);
 }
 
 const selectedFeedItems = computed<FeedItem[]>(() => {
@@ -1435,7 +1565,7 @@ function jumpViewer(index: number): void {
   maybeLoadMoreForViewer(index, v.items);
 }
 
-watch(searchItems, (list) => {
+watch(scopedSearchItems, (list) => {
   if (viewer.value && searchActive.value) {
     viewer.value = { ...viewer.value, items: list };
   }
@@ -1454,7 +1584,11 @@ function focusFile(fileId: string): void {
   void nextTick(() => focusTile(fileId));
 }
 
-defineExpose({ focusFile });
+function focusSearch(): void {
+  inlineSearchRef.value?.focus();
+}
+
+defineExpose({ focusFile, focusSearch });
 
 function closePanel(restoreFocus = true): void {
   const id = panelId.value;
@@ -1511,11 +1645,13 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', onWindowKeydown);
   cancelSearchTimer();
   searchGen++;
+  prefs.setHeadroomHidden(false);
 });
 </script>
 
 <style scoped>
 .drive-photos {
+  --dp-top-h: 46px;
   position: relative;
   display: flex;
   flex-direction: column;
@@ -1527,6 +1663,12 @@ onBeforeUnmount(() => {
 }
 
 .dp-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--dp-top-h, 46px);
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1536,8 +1678,16 @@ onBeforeUnmount(() => {
   background: var(--ui-glass-tint, transparent), var(--ui-glass-bg, transparent);
   backdrop-filter: blur(var(--ui-glass-blur, 16px)) saturate(1.18);
   -webkit-backdrop-filter: blur(var(--ui-glass-blur, 16px)) saturate(1.18);
-  flex: none;
-  z-index: 10;
+  z-index: 25;
+  transition: transform 0.22s ease, opacity 0.2s ease;
+}
+.dp-top.is-hidden {
+  transform: translateY(calc(-100% - 2px));
+  opacity: 0;
+  pointer-events: none;
+}
+.dp-top .sb-expand-btn {
+  display: inline-flex;
 }
 
 .dp-top-left,
@@ -1720,49 +1870,6 @@ onBeforeUnmount(() => {
   opacity: 0.45;
 }
 
-.dp-search {
-  position: relative;
-  display: flex;
-  align-items: center;
-  width: clamp(120px, 14vw, 196px);
-  flex: 1 1 130px;
-  min-width: 96px;
-  height: 28px;
-  gap: 6px;
-  padding: 0 9px;
-  border: 1px solid var(--ui-glass-border);
-  border-radius: 8px;
-  background: var(--ui-glass-btn-bg);
-}
-.dp-search-icon {
-  color: var(--ui-text-muted);
-  flex-shrink: 0;
-}
-.dp-search-input {
-  flex: 1;
-  min-width: 0;
-  height: 100%;
-  border: 0;
-  background: none;
-  color: var(--ui-text);
-  font: inherit;
-  font-size: 12px;
-  outline: none;
-  appearance: none;
-  -webkit-appearance: none;
-}
-.dp-search-input::-webkit-search-cancel-button,
-.dp-search-input::-webkit-search-decoration,
-.dp-search-input::-webkit-search-results-button,
-.dp-search-input::-webkit-search-results-decoration {
-  -webkit-appearance: none;
-  appearance: none;
-  display: none;
-}
-.dp-search:focus-within {
-  border-color: var(--ui-glass-accent-border);
-  box-shadow: var(--ui-glass-accent-shadow);
-}
 .dp-search-clear {
   display: inline-flex;
   align-items: center;
@@ -1804,9 +1911,13 @@ onBeforeUnmount(() => {
 
 .dp-float-sort {
   position: absolute;
-  top: 8px;
+  top: calc(var(--dp-top-h, 46px) + 8px);
   right: 64px;
   z-index: 12;
+}
+
+.dp-search-grid {
+  padding-top: calc(var(--dp-top-h, 46px) + 6px);
 }
 
 .dp-feed {
@@ -1818,11 +1929,12 @@ onBeforeUnmount(() => {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  padding-top: var(--dp-top-h, 46px);
 }
 
 .dp-note {
   margin: 0;
-  padding: 24px 20px;
+  padding: calc(var(--dp-top-h, 46px) + 24px) 20px 24px;
   color: var(--ui-text-secondary);
 }
 
@@ -1838,7 +1950,7 @@ onBeforeUnmount(() => {
 }
 
 .dp-mock {
-  margin: 0;
+  margin: var(--dp-top-h, 46px) 0 0;
   padding: 5px 12px;
   font-size: 12px;
   color: var(--ui-text-secondary);
@@ -1873,6 +1985,8 @@ onBeforeUnmount(() => {
   flex: none;
   max-width: 100%;
   min-height: 0;
+  box-sizing: border-box;
+  padding-top: var(--dp-top-h, 46px);
 }
 
 .dp-ctx-menu {
@@ -1930,74 +2044,11 @@ onBeforeUnmount(() => {
   padding: 5px 8px;
 }
 
-.dp-suggest-pop {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  width: 296px;
-  max-width: calc(100vw - 24px);
-  padding: 10px;
-  border-radius: 13px;
-  background: var(--ui-glass-tint), rgba(14, 22, 16, 0.9);
-  border: 1px solid var(--ui-glass-border);
-  box-shadow: var(--ui-glass-surface-shadow);
-  backdrop-filter: blur(var(--ui-glass-blur, 18px)) saturate(1.25);
-  -webkit-backdrop-filter: blur(var(--ui-glass-blur, 18px)) saturate(1.25);
-  color: var(--ui-text);
-  z-index: 60;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-:root[data-theme='light'] .dp-suggest-pop {
-  background: rgba(255, 255, 255, 0.94);
-  border-color: rgba(15, 36, 20, 0.16);
-  box-shadow: 0 12px 32px rgba(15, 36, 20, 0.14);
-  color: var(--ui-text);
-}
-.dp-suggest-sec {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.dp-suggest-label {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--ui-text-muted);
-}
-.dp-suggest-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-.dp-suggest-chip {
-  padding: 4px 10px;
-  border-radius: 999px;
-  border: 1px solid var(--ui-glass-border);
-  background: var(--ui-glass-btn-bg);
-  color: var(--ui-text-secondary);
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
-}
-.dp-suggest-chip:hover {
-  background: var(--ui-glass-btn-hover);
-  color: var(--ui-text);
-}
-.dp-suggest-chip.active {
-  background: var(--ui-glass-accent-bg);
-  border-color: var(--ui-glass-accent-border);
-  color: var(--ui-glass-accent-text);
-}
-
 .dp-trash-scroll {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 14px 18px;
+  padding: calc(var(--dp-top-h, 46px) + 14px) 18px 14px;
 }
 
 .dp-album-picker-backdrop {
@@ -2050,11 +2101,8 @@ onBeforeUnmount(() => {
 
 @media (max-width: 720px) {
   .dp-top {
-    flex-wrap: wrap;
-    padding: 8px 10px;
-  }
-  .dp-search {
-    width: 140px;
+    padding: 6px 8px;
+    gap: 6px;
   }
   .dp-panel-sash {
     display: none;

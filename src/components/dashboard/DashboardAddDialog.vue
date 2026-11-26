@@ -1,7 +1,7 @@
 <template>
-  <!-- "+ Add": 5 square green-glass tiles on top (unfolding their inline step
-       right underneath) + a large Liquid Glass upload dropzone directly below.
-       Always targets props.initialFolderId (no "Where" dropdown, no Upload tab). -->
+  <!-- "+ Add": 6 square green-glass tiles in a 3x2 grid on top (unfolding their
+       inline step right underneath) + a large Liquid Glass upload dropzone
+       directly below. Always targets props.initialFolderId. -->
   <UiModal
     ref="dialog"
     class="dashboard-modal dashboard-add-dialog"
@@ -21,7 +21,7 @@
       </button>
     </header>
 
-    <div class="dashboard-add-grid dashboard-add-grid-5" role="group" :aria-label="t('addCreate')">
+    <div class="dashboard-add-grid dashboard-add-grid-6" role="group" :aria-label="t('addCreate')">
       <button
         v-for="tile in createTiles"
         :key="tile.kind"
@@ -30,6 +30,7 @@
         :class="{ active: expanded === tile.kind }"
         :aria-expanded="expanded === tile.kind"
         :data-add-create="tile.kind"
+        :data-add-album-tile="tile.kind === 'album' ? '' : undefined"
         :disabled="busy"
         @click="onCreateTile(tile.kind)"
       >
@@ -40,7 +41,7 @@
       </button>
     </div>
 
-    <!-- Inline creation step unfolding cleanly under the 5 tiles. -->
+    <!-- Inline creation step unfolding cleanly under the 6 tiles. -->
     <Transition :css="false" mode="out-in" @enter="heightTransitionHooks.onEnter" @leave="heightTransitionHooks.onLeave">
       <div v-if="expanded === 'interactive-template'" key="template" class="dashboard-add-expand" data-add-expand="template">
         <div class="dashboard-add-grid dashboard-add-grid-3">
@@ -64,10 +65,13 @@
           ref="nameInput"
           v-model.trim="name"
           class="dashboard-modal-input"
-          :placeholder="expanded === 'folder' ? t('groupNameTitle') : t('itemName')"
+          :placeholder="namePlaceholder"
           data-add-name
         />
-        <UiButton type="submit" class="btn-primary" variant="primary" data-add-name-create :disabled="busy || !name">{{ t('create') }}</UiButton>
+        <div class="dashboard-add-form-actions">
+          <UiButton type="button" class="btn-ghost" variant="ghost" data-add-name-cancel @click="cancelNamedStep">{{ t('cancel') }}</UiButton>
+          <UiButton type="submit" class="btn-primary" variant="primary" data-add-name-create :disabled="busy || !name">{{ t('create') }}</UiButton>
+        </div>
       </form>
     </Transition>
 
@@ -131,6 +135,7 @@ import {
   FileInput,
   FileText,
   FolderPlus,
+  Images,
   LayoutTemplate,
   SquareKanban,
   Swords,
@@ -146,15 +151,15 @@ import UiButton from '../ui/UiButton.vue';
 import UiModal from '../ui/UiModal.vue';
 
 export type AddCreateKind = 'canvas' | 'html-document' | 'text-document';
-type CreateTile = AddCreateKind | 'interactive-template' | 'folder';
+type CreateTile = AddCreateKind | 'interactive-template' | 'folder' | 'album';
 type TemplateType = 'dnd-character' | 'trello-board';
 
 const props = defineProps<{
-  /** Own folders (kept for resolving target folder label). */
+  /** Own folders (kept for prop compatibility). */
   folders: ReadonlyArray<{ id: string; name: string; depth: number }>;
   /** Current destination folder ID, or Unsorted (''). */
   initialFolderId?: string;
-  /** Optional explicit destination folder display name. */
+  /** Optional explicit destination folder display name (unused; no caption shown). */
   targetFolderName?: string;
   /** Optional initial import kind when opened from a specific import action. */
   initialImport?: ImportKind;
@@ -167,6 +172,7 @@ const emit = defineEmits<{
   'create-template': [templateType: TemplateType, folderId: string];
   'import-character': [folderId: string];
   'create-folder': [name: string, folderId: string];
+  'create-album': [name: string];
   import: [kind: ImportKind, files: File[], folderId: string];
 }>();
 
@@ -183,6 +189,12 @@ const nameInput = ref<HTMLInputElement | null>(null);
 const name = ref('');
 const dragOver = ref(false);
 
+const namePlaceholder = computed(() => {
+  if (expanded.value === 'folder') return t('groupNameTitle');
+  if (expanded.value === 'album') return t('spaceNamePlaceholder');
+  return t('itemName');
+});
+
 watch(nameInput, (el) => el?.focus());
 watch(expanded, () => {
   if (namedStep.value) void nextTick(() => nameInput.value?.focus());
@@ -198,6 +210,7 @@ const createTiles = computed<Array<{ kind: CreateTile; label: string; icon: Comp
   { kind: 'html-document', label: 'HTML', icon: FileCode2 },
   { kind: 'interactive-template', label: t('addTemplate'), icon: LayoutTemplate },
   { kind: 'folder', label: t('group'), icon: FolderPlus },
+  { kind: 'album', label: t('photosKeyAlbum'), icon: Images },
 ]);
 
 const PROBLEM_TEXT: Record<ImportProblem, MessageKey> = {
@@ -213,13 +226,25 @@ const checking = computed(() => entries.value.some((entry) => !entry.asFile && e
 const readyCount = computed(() => entries.value.filter((entry) => entry.asFile || entry.check?.ok).length);
 
 const onCreateTile = (next: CreateTile) => {
-  expanded.value = expanded.value === next ? '' : next;
+  if (expanded.value === next) {
+    expanded.value = '';
+    name.value = '';
+    return;
+  }
+  name.value = '';
+  expanded.value = next;
+};
+
+const cancelNamedStep = () => {
+  expanded.value = '';
+  name.value = '';
 };
 
 const submitName = () => {
   const kind = expanded.value;
   if (!name.value || !namedStep.value) return;
   if (kind === 'folder') emit('create-folder', name.value, folderId.value);
+  else if (kind === 'album') emit('create-album', name.value);
   else emit('create', kind as AddCreateKind, folderId.value, name.value);
 };
 
@@ -336,15 +361,20 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.dashboard-add-grid-5 {
+.dashboard-add-grid-6 {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
 }
 .dashboard-add-grid-3 {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
+}
+.dashboard-add-form-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 .dashboard-add-option-icon {
   display: inline-grid;
@@ -389,8 +419,11 @@ onMounted(() => {
   color: var(--ui-text);
 }
 @media (max-width: 560px) {
-  .dashboard-add-grid-5 {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+  .dashboard-add-folder-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .dashboard-add-form-actions {
+    justify-content: flex-end;
   }
 }
 </style>

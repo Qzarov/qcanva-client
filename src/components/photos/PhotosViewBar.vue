@@ -7,9 +7,15 @@ import { usePhotosView, type CaptionKey } from './usePhotosView';
 
 const props = withDefaults(defineProps<{
   hidden?: boolean;
+  forceVisible?: boolean;
 }>(), {
   hidden: false,
+  forceVisible: false,
 });
+
+const emit = defineEmits<{
+  (e: 'menu-open', open: boolean): void;
+}>();
 
 const { t, locale } = useI18n();
 const prefs = useExplorerLayoutPrefs();
@@ -88,7 +94,13 @@ const open = ref(false);
 const root = ref<HTMLElement | null>(null);
 const pill = ref<HTMLButtonElement | null>(null);
 
-const isHeadroomHidden = computed(() => !open.value && (props.hidden || prefs.headroomHidden.value));
+const isHeadroomHidden = computed(() =>
+  !open.value && !props.forceVisible && (props.hidden || prefs.headroomHidden.value),
+);
+
+watch(open, (val) => {
+  emit('menu-open', val);
+});
 
 /** Viewport offset of the popup on phones, where it is pinned with `position: fixed`. */
 const popTop = ref(0);
@@ -251,11 +263,11 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick));
   display: inline-flex;
   align-items: center;
   font-size: 12px;
-  transition: transform 0.22s ease, opacity 0.18s ease;
+  transition: transform 0.22s ease, opacity 0.2s ease;
 }
 .pvb.is-hidden {
   opacity: 0;
-  transform: translateY(-48px);
+  transform: translateY(calc(-1 * (var(--dp-top-h, 46px) + 18px)));
   pointer-events: none;
 }
 :where(.pvb button) {

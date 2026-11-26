@@ -60,6 +60,15 @@
         <router-link to="/downloads" class="account-menu-item" data-account-menu-downloads @click="close(false)">
           <Download :size="17" aria-hidden="true" />{{ t('downloadsNavLabel') }}
         </router-link>
+        <router-link
+          v-if="resolvedShowAdmin"
+          to="/admin"
+          class="account-menu-item"
+          data-account-admin
+          @click="close(false)"
+        >
+          <Shield :size="17" aria-hidden="true" />{{ locale === 'ru' ? 'Админ-панель' : t('admin') }}
+        </router-link>
         <router-link to="/settings" class="account-menu-item" data-account-menu-settings @click="close(false)">
           <Settings :size="17" aria-hidden="true" />{{ t('settings') }}
         </router-link>
@@ -73,10 +82,10 @@
 
 <script setup lang="ts">
 import { useViewActivity } from '../composables/useViewActivity';
-import { Download, LogOut, Puzzle, Settings } from '@lucide/vue';
+import { Download, LogOut, Puzzle, Settings, Shield } from '@lucide/vue';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import { clearToken, getCurrentUser } from '../api/client';
+import * as clientApi from '../api/client';
 import { useI18n } from '../composables/useI18n';
 import { usePlugins } from '../composables/usePlugins';
 import LanguageToggle from './LanguageToggle.vue';
@@ -89,6 +98,7 @@ const props = withDefaults(defineProps<{
   placement?: 'header' | 'sidebar';
   /** Plugins only exist for canvases so far: off where they'd lead nowhere useful. */
   showPlugins?: boolean;
+  showAdmin?: boolean;
   /**
    * The Liquid Glass look of the menu. Opt-in while it is rolled out page by
    * page (the character sheet first); once every page has it, this becomes
@@ -99,14 +109,24 @@ const props = withDefaults(defineProps<{
   compact: false,
   placement: 'header',
   showPlugins: true,
+  showAdmin: undefined,
   glass: false,
 });
 
 const router = useRouter();
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const { reset: resetPlugins } = usePlugins();
 const open = ref(false);
-const currentUser = getCurrentUser();
+const currentUser = clientApi.getCurrentUser();
+const resolvedShowAdmin = computed(() => {
+  if (props.showAdmin !== undefined) return props.showAdmin;
+  try {
+    const checkAdmin = (clientApi as { isAdmin?: unknown }).isAdmin;
+    return typeof checkAdmin === 'function' ? Boolean((checkAdmin as () => boolean)()) : false;
+  } catch {
+    return false;
+  }
+});
 const userLabel = computed(() => currentUser?.name || currentUser?.email || 'User');
 const userTitle = computed(() => currentUser?.email || currentUser?.name || userLabel.value);
 const avatarLabel = computed(() => userLabel.value.trim().slice(0, 1).toUpperCase() || 'U');
@@ -175,7 +195,7 @@ const openFromKeyboard = () => {
 const signOut = () => {
   close(false);
   resetPlugins();
-  clearToken();
+  clientApi.clearToken();
   void router.push({ name: 'landing' });
 };
 

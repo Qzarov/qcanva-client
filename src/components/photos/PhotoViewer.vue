@@ -71,6 +71,16 @@
           </button>
           <button
             type="button"
+            class="pv-icon-btn pv-icon-btn-danger"
+            :aria-label="t('delete')"
+            :title="t('delete')"
+            data-viewer-delete
+            @click="emit('delete', item)"
+          >
+            <Trash2 :size="17" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
             class="pv-icon-btn"
             :class="{ active: sideInfoOpen }"
             :aria-pressed="sideInfoOpen"
@@ -195,11 +205,17 @@
   </div>
 </template>
 
+<script lang="ts">
+import type { FeedItem } from '../../api/photos';
+
+export type PhotoViewerItem = FeedItem;
+</script>
+
 <script setup lang="ts">
-import { ChevronLeft, ChevronRight, Download, Heart, Hourglass, Info, Share2 } from '@lucide/vue';
+import { ChevronLeft, ChevronRight, Download, Heart, Hourglass, Info, Share2, Trash2 } from '@lucide/vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { downloadDriveFile, driveApi, resolveDownloadUrl } from '../../api/drive';
-import { isPhotosMock, renditionUrl, type FeedItem } from '../../api/photos';
+import { isPhotosMock, renditionUrl } from '../../api/photos';
 import { useI18n } from '../../composables/useI18n';
 import PhotoPanel from './PhotoPanel.vue';
 
@@ -222,8 +238,9 @@ const emit = defineEmits<{
   (e: 'next'): void;
   (e: 'jump', index: number, item: FeedItem): void;
   (e: 'info', item: FeedItem): void;
-  (e: 'toggle-favorite', item: FeedItem): void;
-  (e: 'share', item: FeedItem): void;
+  (e: 'toggle-favorite', item: PhotoViewerItem): void;
+  (e: 'share', item: PhotoViewerItem): void;
+  (e: 'delete', item: PhotoViewerItem): void;
   (e: 'panel-changed', change: { fileId: string; favorite?: boolean; albumIds?: string[] }): void;
 }>();
 
@@ -596,6 +613,11 @@ onBeforeUnmount(() => {
 .pv-nav:hover {
   background: rgba(34, 52, 39, 0.82);
   border-color: rgba(140, 255, 140, 0.45);
+}
+.pv-icon-btn-danger:hover {
+  background: rgba(255, 93, 115, 0.22);
+  border-color: rgba(255, 93, 115, 0.55);
+  color: #ff8a9b;
 }
 .pv-back:focus-visible,
 .pv-icon-btn:focus-visible,

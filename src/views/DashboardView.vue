@@ -19,23 +19,23 @@
         v-if="isLoggedIn"
         :active-section="activeSection"
         :feed-section="isHomeFeed ? activeFeedSection : null"
+        :mode="sidebarMode"
         :width-state="sidebarWidthState"
         :collapsed="sidebarCollapsed"
-        :panel-mode="sidebarPanelMode"
-        :active-activity="activeActivity"
         :mobile-open="mobileSidebarOpen"
         :android-app="isAndroidApp"
         :folders="sidebarFolders"
         :spaces="isLoggedIn"
         :yandex-refresh-key="yandexRefreshKey"
+        :incoming-access-requests-count="incomingRequests.length"
+        :devices-online-count="devicesOnlineCount"
+        :devices-paired="devicesPaired"
         :folder-drag-id="folderDragId"
-        :search-folders="searchSidebarFolders"
-        :search-albums="searchSidebarAlbums"
-        :search-items="searchSidebarItems"
         @select="onSidebarSelect"
-        @select-activity="onSelectActivity"
+        @switch-mode="onSwitchSidebarMode"
         @toggle-mobile-drawer="onToggleMobileDrawer"
         @update:collapsed="onSidebarCollapsedChange"
+        @toggle-collapse="onSidebarCollapseButton"
         @open-yandex-file="openYandexSidebarFile"
         @create-space="createSpace"
         @create-folder="openCreateGroupModal"
@@ -70,6 +70,7 @@
             @select-folder="onGallerySelectFolder"
             @select-file="onGallerySelectFile"
             @select-yandex="openYandexPath"
+            @create-album="createSpace"
             @share-album="openAlbumShareById"
             @open-trash="onGalleryOpenTrash"
             @drop-favorites="onGalleryDropFavorites"
@@ -123,24 +124,31 @@
       ref="headroomBarRef"
       :headroom-hidden="headroomHidden"
       :elevated="headroomElevated"
-      :segments="explorerPathInfo.segments"
-      :editable-path="explorerPathInfo.editablePath"
       :view-mode="explorerViewMode"
       :album-view-mode="albumViewMode"
       :view-toggle-mode="headroomViewToggleMode"
       :can-go-back="activeSection.kind === 'folder' || activeSection.kind === 'yandex' || activeSection.kind === 'space'"
       :can-go-up="activeSection.kind === 'folder' || activeSection.kind === 'space' || activeSection.kind === 'yandex'"
       :show-nav-arrows="true"
-      :show-mobile-menu-button="true"
+      :show-expand-button="showSidebarExpand"
+      :show-mobile-menu-button="false"
       :android-app="isAndroidApp"
-      :path-error="pathBarError"
       v-model:search-query="searchQuery"
-      :search-placeholder="folderSearchPlaceholder"
+      v-model:search-scope-mode="s2ScopeMode"
+      :search-scope-label="s2ScopeLabel"
+      v-model:search-type-filter="s2TypeFilter"
+      :search-folders="s2SearchFolders"
+      :search-albums="s2SearchAlbums"
+      :search-items="s2SearchItems"
+      :search-ml-tags="allTagNames"
+      @expand-sidebar="onExpandSidebar"
       @open-mobile-sidebar="openMobileSidebar"
       @go-back="goToParentFolder"
       @go-up="goToParentFolder"
-      @select-segment="onSelectPathSegment"
-      @navigate-path="onNavigatePath"
+      @select-search-folder="onSearchSelectFolder"
+      @select-search-album="onSearchSelectAlbum"
+      @open-search-item="onSearchOpenItem"
+      @select-search-tag="onSearchSelectTag"
       @update:view-mode="setExplorerViewMode"
       @update:album-view-mode="setAlbumViewMode"
     >
@@ -256,6 +264,7 @@
       :class="{ 'app-main-gallery': isLoggedIn && activeSection.kind === 'gallery' }"
       @scroll.passive="onDashboardMainScroll"
       @pointerdown="onDashboardMainPointerDown"
+      @contextmenu="onDashboardMainContextMenu"
       @touchstart.passive="onDashboardPullStart"
       @touchmove="onDashboardPullMove"
       @touchend="onDashboardPullEnd"
@@ -527,6 +536,20 @@
               @drop-external-files="(p) => onDropExternalFilesToFolder(p.folderId, p.files)"
               @drop-on-folder="(targetFolderId, payload) => onDropGroupToFolder(targetFolderId, payload)"
             />
+            <div
+              v-if="showScopedSearchEverywhereCta"
+              class="explorer-search-everywhere-bar"
+              data-search-everywhere-bar
+            >
+              <button
+                type="button"
+                class="btn-secondary"
+                data-search-everywhere-btn
+                @click="s2ScopeMode = 'global'"
+              >
+                {{ locale === 'ru' ? 'Искать везде' : 'Search everywhere' }}
+              </button>
+            </div>
             <div class="dash-grid" v-show="explorerViewMode !== 'table'">
               <DashboardFolderResourceGrid
                 :items="homeRootItems"
@@ -619,6 +642,20 @@
                   @drop-external-files="(p) => onDropExternalFilesToFolder(p.folderId, p.files)"
                   @drop-on-folder="(targetFolderId, payload) => onDropGroupToFolder(targetFolderId, payload)"
                 />
+                <div
+                  v-if="showScopedSearchEverywhereCta"
+                  class="explorer-search-everywhere-bar"
+                  data-search-everywhere-bar
+                >
+                  <button
+                    type="button"
+                    class="btn-secondary"
+                    data-search-everywhere-btn
+                    @click="s2ScopeMode = 'global'"
+                  >
+                    {{ locale === 'ru' ? 'Искать везде' : 'Search everywhere' }}
+                  </button>
+                </div>
                 <div class="dash-grid" v-show="explorerViewMode !== 'table'">
                   <DashboardFolderResourceGrid
                     :items="activeFolder.items"
@@ -750,6 +787,8 @@
           :external-album-members-count="galleryAlbumMembersCount"
           :external-folder-id="galleryFolderId"
           :hide-internal-tabs="true"
+          :show-sidebar-expand="showSidebarExpand"
+          @expand-sidebar="onExpandSidebar"
           @focus-photo="onGalleryFocusPhoto"
           @clear-album="onGalleryClearAlbum"
           @select-album="onGallerySelectAlbum"
@@ -1006,6 +1045,7 @@
       @create-template="onAddCreateTemplate"
       @import-character="onAddImportCharacter"
       @create-folder="onAddCreateFolder"
+      @create-album="onAddCreateAlbum"
       @import="onAddImport"
     />
 
@@ -1127,14 +1167,19 @@ import { useI18n } from '../composables/useI18n';
 import { LAYOUT, matchesMedia, useMediaQuery } from '../composables/layoutMedia';
 import { useBackHandler } from '../composables/useBackHandler';
 import { useDocumentTitle } from '../composables/useDocumentTitle';
-import DashboardSidebar, { type TreeContextMenuPayload } from '../components/dashboard/DashboardSidebar.vue';
-import ExplorerHeadroomBar, { type ExplorerPathSegment, type HeadroomViewToggleMode } from '../components/dashboard/ExplorerHeadroomBar.vue';
+import DashboardSidebar, { type ExplorerSidebarMode, type TreeContextMenuPayload } from '../components/dashboard/DashboardSidebar.vue';
+import ExplorerHeadroomBar, { type HeadroomViewToggleMode } from '../components/dashboard/ExplorerHeadroomBar.vue';
 import ExplorerTableView, { type ExplorerSortCol, type ExplorerSortDir, type ExplorerTableRow } from '../components/dashboard/ExplorerTableView.vue';
 import ExplorerContextMenu, { type ExplorerContextMenuItem } from '../components/dashboard/ExplorerContextMenu.vue';
 import ExplorerDragBadge from '../components/dashboard/ExplorerDragBadge.vue';
-import ExplorerMobileTabBar, { type MobileTabId } from '../components/dashboard/ExplorerMobileTabBar.vue';
-import type { ExplorerActivityId } from '../components/dashboard/ExplorerActivityBar.vue';
-import type { SearchAlbumEntry, SearchFolderEntry, SearchItemEntry } from '../components/dashboard/ExplorerSearchSidebar.vue';
+import ExplorerMobileTabBar, { type ExplorerMobileTabId } from '../components/dashboard/ExplorerMobileTabBar.vue';
+import type {
+  InlineSearchAlbum,
+  InlineSearchFolder,
+  InlineSearchItem,
+  InlineSearchScopeMode,
+  InlineSearchTypeFilter,
+} from '../components/dashboard/ExplorerInlineSearch.vue';
 import AlbumShareDialog from '../components/dashboard/AlbumShareDialog.vue';
 import DashboardFilterMenu from '../components/dashboard/DashboardFilterMenu.vue';
 import DashboardSortMenu from '../components/dashboard/DashboardSortMenu.vue';
@@ -1143,7 +1188,7 @@ import GallerySidebar, { type GallerySection, type GallerySidebarCounts, type Ga
 import { photosApi, type FeedItem as PhotoFeedItem } from '../api/photos';
 import { createHeadroomScrollHandler, useExplorerLayoutPrefs } from '../composables/useExplorerLayoutPrefs';
 import { GROUP_DND_MIME, useExplorerGroupDnd, type GroupDragEntry, type GroupDragPayload } from '../composables/useExplorerGroupDnd';
-import { buildExplorerPath, buildFolderExplorerTableRows, resolveExplorerPath, resourceTypeLabel } from '../composables/useExplorerWorkspaceHelpers';
+import { buildFolderExplorerTableRows, resourceTypeLabel } from '../composables/useExplorerWorkspaceHelpers';
 import { forgetResourceTab } from '../tabs/forget';
 import DashboardViewToggle from '../components/dashboard/DashboardViewToggle.vue';
 import DashboardResourceCard from '../components/dashboard/DashboardResourceCard.vue';
@@ -1216,7 +1261,6 @@ import {
   type DashboardFolderNavItem,
   type DashboardSidebarNavItem,
   type DashboardSection,
-  type ExplorerSidebarPanel,
   type SidebarWidthState,
 } from '../dashboard/navigation';
 import { animateHeight, heightOfFirstChildren } from '../dashboard/motion';
@@ -1478,14 +1522,10 @@ export default defineComponent({
       headroomElevated.value = top > 8;
       handleHeadroomScroll(top);
     };
-    const searchPanelActive = ref(false);
-    const pathBarError = ref(false);
-    let pathErrorTimer: ReturnType<typeof setTimeout> | null = null;
-    const flashPathError = () => {
-      pathBarError.value = true;
-      if (pathErrorTimer) clearTimeout(pathErrorTimer);
-      pathErrorTimer = setTimeout(() => { pathBarError.value = false; }, 1600);
-    };
+    const s2ScopeMode = ref<InlineSearchScopeMode>('current');
+    const s2TypeFilter = ref<InlineSearchTypeFilter>('all');
+    const devicesOnlineCount = ref(0);
+    const devicesPaired = ref(false);
     const onSidebarCollapsedChange = (collapsed: boolean) => {
       layoutPrefs.setSidebarCollapsed(collapsed);
       writeSidebarWidthState(storage(), collapsed ? 'collapsed' : 'expanded');
@@ -2066,17 +2106,43 @@ export default defineComponent({
       && !activeFolderFileCount.value
       && !activeSubfolders.value.length,
     ));
+    const matchesS2ItemType = (itemType: FolderItem['type']): boolean => {
+      const f = s2TypeFilter.value;
+      if (f === 'all') return true;
+      if (f === 'doc') return itemType === 'canvas' || itemType === 'html-document' || itemType === 'text-document' || itemType === 'interactive-template';
+      return false;
+    };
     const activeFolder = computed(() => {
       const folder = allFolderSummaries.value.find((item) => item.id === selectedFolderId.value);
       if (selectedFolderId.value === 'legacy-resource-inbox' && legacyInboxSourceItems.value.length) {
         return buildLegacyInboxFolder(
-          sortFolderItems(legacyInboxSourceItems.value.filter((item) => matchesFolderItem(item, 'Inbox'))),
+          sortFolderItems(legacyInboxSourceItems.value.filter((item) => matchesFolderItem(item, 'Inbox') && matchesS2ItemType(item.type))),
         );
       }
       if (!folder) return null;
+      const isGlobalSearch = s2ScopeMode.value === 'global' && (Boolean(searchQuery.value.trim()) || s2TypeFilter.value !== 'all');
+      if (isGlobalSearch) {
+        const seen = new Set<string>();
+        const globalItems: FolderItem[] = [];
+        for (const summary of allFolderSummaries.value) {
+          for (const item of summary.items) {
+            const k = `${item.type}:${item.id}` as const;
+            if (seen.has(k)) continue;
+            const enriched = dashboardItemsByKey.value.get(k) || item;
+            if (matchesFolderItem(enriched, summary.name) && matchesS2ItemType(enriched.type)) {
+              seen.add(k);
+              globalItems.push(enriched);
+            }
+          }
+        }
+        return {
+          ...folder,
+          items: sortFolderItems(globalItems),
+        };
+      }
       return {
         ...folder,
-        items: sortFolderItems(folder.items.filter((item) => matchesFolderItem(item, folder.name))),
+        items: sortFolderItems(folder.items.filter((item) => matchesFolderItem(item, folder.name) && matchesS2ItemType(item.type))),
       };
     });
     const sidebarFolderRows = computed<DashboardFolderNavItem[]>(() => folderSummaries.value.map((folder) => ({
@@ -3721,6 +3787,16 @@ export default defineComponent({
       if (isLoggedIn) {
         void loadSpaces();
         void loadYandexStatus();
+        if (typeof driveApi.listDevices === 'function') {
+          void driveApi.listDevices().then((list) => {
+            devicesPaired.value = Array.isArray(list) && list.length > 0;
+            devicesOnlineCount.value = Array.isArray(list)
+              ? list.filter((d) => Boolean((d as { online?: boolean; status?: string }).online || (d as { status?: string }).status === 'online')).length
+              : 0;
+          }).catch(() => {
+            // Device status indicator stays quiet if endpoint is unavailable.
+          });
+        }
       }
     });
     const createSpace = async () => {
@@ -4426,6 +4502,19 @@ export default defineComponent({
       const created = await runAction('create-folder', () => resourceFolders.create(name, folderId || null), `Folder ${name} created`);
       if (created) await load({ showLoading: false });
     };
+    /** An album named in the dialog's 6th Album tile: creates a unified space and opens it. */
+    const onAddCreateAlbum = async (name: string) => {
+      const trimmed = name.trim();
+      if (!trimmed) return;
+      closeAddDialog();
+      try {
+        const space = await spacesApi.create(trimmed);
+        await loadSpaces(true);
+        selectDashboardSection({ kind: 'space', spaceId: space.id });
+      } catch (error) {
+        setFeedback('error', error instanceof Error && error.message ? error.message : t('spaceActionFailed'));
+      }
+    };
     /** Files the dialog checked: to the Drive, or each one a canvas / an HTML document. */
     const onAddImport = async (kind: ImportKind, files: File[], folderId: string) => {
       closeAddDialog();
@@ -4662,13 +4751,15 @@ export default defineComponent({
     const subfolderCounts = computed(() => childFolderCounts(allResourceFolders.value.map(({ id, parentId }) => ({ id, parentId }))));
     const folderLatest = computed(() => folderLatestChange(allFolderSummaries.value));
 
-    /** Direct children of the folder currently open, shown ahead of its items. */
+    /** Direct children of the folder currently open (or global folders on global search), shown ahead of its items. */
     const activeSubfolders = computed(() => {
       const parentId = activeFolder.value?.id;
       if (!parentId) return [];
+      if (s2TypeFilter.value !== 'all' && s2TypeFilter.value !== 'folder') return [];
       const needle = searchQuery.value.trim().toLocaleLowerCase();
+      const isGlobalSearch = s2ScopeMode.value === 'global' && (Boolean(needle) || s2TypeFilter.value !== 'all');
       return allResourceFolders.value
-        .filter((folder) => (folder.parentId ?? null) === parentId)
+        .filter((folder) => (isGlobalSearch ? true : (folder.parentId ?? null) === parentId))
         .filter((folder) => !needle || folder.name.toLocaleLowerCase().includes(needle))
         .map((folder) => ({
           id: folder.id,
@@ -4686,9 +4777,10 @@ export default defineComponent({
     });
 
     /** True once any of search/type/tags actually narrows the result set. */
-    const hasActiveFilter = computed(() => Boolean(searchQuery.value.trim() || selectedTags.value.length || contentTypes.value.length));
+    const hasActiveFilter = computed(() => Boolean(searchQuery.value.trim() || s2TypeFilter.value !== 'all' || selectedTags.value.length || contentTypes.value.length));
     const resetFilters = () => {
       searchQuery.value = '';
+      s2TypeFilter.value = 'all';
       selectedTags.value = [];
       contentTypes.value = [];
     };
@@ -5048,30 +5140,45 @@ export default defineComponent({
       onSidebarCollapsedChange(nextCollapsed);
     };
 
-    // ----- T-021 / T-018 Explorer Activity Bar, Editable Path, Table, Favorites, Group DnD, Context Menu & Gallery -----
-    const sidebarPanelMode = computed<ExplorerSidebarPanel>(() => {
-      if (searchPanelActive.value) return 'search';
-      if (activeSection.value.kind === 'gallery') return 'gallery';
-      return 'explorer';
-    });
+    // ----- T-021 / UX v2 Sidebar Mode Switcher, Inline S2 Search, Table, Favorites, Group DnD, Context Menu & Gallery -----
+    const sidebarMode = computed<ExplorerSidebarMode>(() => (
+      activeSection.value.kind === 'gallery' ? 'media' : 'files'
+    ));
 
-    const activeActivity = computed<ExplorerActivityId>(() => {
-      if (searchPanelActive.value) return 'search';
+    const mobileTabActivity = computed<ExplorerMobileTabId>(() => {
       if (activeSection.value.kind === 'gallery') return 'gallery';
-      if (activeSection.value.kind === 'trash') return 'trash';
       if (activeSection.value.kind === 'recent') return 'home';
       return 'explorer';
     });
 
-    const mobileTabActivity = computed<MobileTabId>(() => {
-      if (activeActivity.value === 'gallery') return 'gallery';
-      if (activeActivity.value === 'search') return 'search';
-      if (activeActivity.value === 'home') return 'home';
-      return 'explorer';
+    const showSidebarExpand = computed(() => {
+      if (!isLoggedIn || isAndroidApp.value) return false;
+      if (isMobileHeadroom.value) return !mobileSidebarOpen.value;
+      return sidebarCollapsed.value;
     });
 
+    const onExpandSidebar = () => {
+      if (isMobileHeadroom.value) {
+        openMobileSidebar();
+      } else {
+        onSidebarCollapsedChange(false);
+      }
+    };
+
+    const onSidebarCollapseButton = () => {
+      if (isMobileHeadroom.value && mobileSidebarOpen.value) {
+        closeMobileSidebar();
+      } else {
+        onSidebarCollapsedChange(true);
+      }
+    };
+
     const showFolderFab = computed(() => (
-      activeSection.value.kind === 'folder' || activeSection.value.kind === 'home'
+      !mediaViewer.value && (
+        activeSection.value.kind === 'recent'
+        || activeSection.value.kind === 'folder'
+        || activeSection.value.kind === 'home'
+      )
     ));
 
     const headroomSpaceCountLabel = computed(() => {
@@ -5092,45 +5199,32 @@ export default defineComponent({
       else openMobileSidebar();
     };
 
-    const onSelectActivity = (activity: ExplorerActivityId) => {
-      const narrowBrowser = !isAndroidApp.value && matchesMedia(LAYOUT.dashboardDrawer);
-      if (activity === 'search') {
-        searchPanelActive.value = true;
-        if (sidebarCollapsed.value) onSidebarCollapsedChange(false);
-        if (!matchesMedia(SIDEBAR_DESKTOP_QUERY)) openMobileSidebar();
-        return;
-      }
-      searchPanelActive.value = false;
-      if (activity === 'home') {
-        selectDashboardSection({ kind: 'recent' });
-        return;
-      }
-      if (activity === 'gallery') {
+    const onSwitchSidebarMode = (mode: ExplorerSidebarMode) => {
+      if (mode === 'media') {
         selectDashboardSection({ kind: 'gallery' });
-        if (narrowBrowser) openMobileSidebar();
         return;
       }
-      if (activity === 'trash') {
-        selectDashboardSection({ kind: 'trash' });
-        return;
-      }
-      // Explorer: restore lastExplorerRoute without resetting to home!
       const remembered = layoutPrefs.lastExplorerRoute.value;
       if (remembered) {
         selectDashboardSection(remembered);
       } else {
         const firstOwn = ownResourceFolders.value.find((f) => !isTechnicalFolder(f)) || allFolderSummaries.value[0];
         if (firstOwn) selectFolder(firstOwn.id);
-        else selectDashboardSection({ kind: 'shared' });
+        else selectDashboardSection({ kind: 'recent' });
       }
-      if (narrowBrowser) openMobileSidebar();
     };
 
-    const explorerPathInfo = computed(() => buildExplorerPath(activeSection.value, {
-      folders: allResourceFolders.value,
-      spaces: allSpaces.value,
-      t,
-    }));
+    const onSelectActivity = (activity: ExplorerMobileTabId) => {
+      if (activity === 'home') {
+        selectDashboardSection({ kind: 'recent' });
+        return;
+      }
+      if (activity === 'gallery') {
+        selectDashboardSection({ kind: 'gallery' });
+        return;
+      }
+      onSwitchSidebarMode('files');
+    };
 
     const headroomViewToggleMode = computed<HeadroomViewToggleMode>(() => {
       if (activeSection.value.kind === 'space') return 'album';
@@ -5138,110 +5232,185 @@ export default defineComponent({
       return 'explorer';
     });
 
-    const onSelectPathSegment = (seg: ExplorerPathSegment) => {
-      if (seg.id.startsWith('folder:')) {
-        selectFolder(seg.id.slice('folder:'.length));
-      } else if (seg.id.startsWith('yandex:')) {
-        openYandexPath(seg.id.slice('yandex:'.length) || '/');
-      } else if (seg.id.startsWith('space:')) {
-        selectDashboardSection({ kind: 'space', spaceId: seg.id.slice('space:'.length) });
-      } else if (seg.id === 'root:shared') {
-        selectDashboardSection({ kind: 'shared' });
-      } else if (seg.id === 'root:public') {
-        selectDashboardSection({ kind: 'public' });
-      } else if (seg.id === 'root:trash') {
-        selectDashboardSection({ kind: 'trash' });
-      } else if (seg.id === 'root:clouds') {
-        openYandexPath('/');
-      } else if (seg.id === 'root:albums') {
-        void onSidebarSelect({ kind: 'spaces' });
-      } else if (seg.id === 'root:qspace' || seg.id === 'root:home') {
-        selectDashboardSection({ kind: 'home' });
-      } else {
-        selectDashboardSection({ kind: 'recent' });
-      }
-    };
-
-    const onNavigatePath = (rawPath: string) => {
-      const target = resolveExplorerPath(rawPath, {
-        folders: allResourceFolders.value,
-        spaces: allSpaces.value,
-        t,
-      });
-      if (!target) {
-        flashPathError();
-        setFeedback('error', t('explorerPathNotFound'));
-        return;
-      }
-      if (target.kind === 'recent' || target.kind === 'spaces' || target.kind === 'interactive') {
-        void onSidebarSelect(target);
-        return;
-      }
-      selectDashboardSection(target);
-    };
-
-    // Global shortcuts: Ctrl/Cmd+K -> Search sidebar, Ctrl/Cmd+L -> Editable path bar
+    // Global shortcut: Ctrl/Cmd+K -> Unified S2 Inline Search in Files or Media
     const onExplorerShortcutKeydown = (event: KeyboardEvent) => {
       if (!isLoggedIn || !(event.ctrlKey || event.metaKey)) return;
       const key = event.key.toLowerCase();
       if (key === 'k') {
         event.preventDefault();
-        searchPanelActive.value = true;
-        if (sidebarCollapsed.value) onSidebarCollapsedChange(false);
-        if (!matchesMedia(SIDEBAR_DESKTOP_QUERY)) openMobileSidebar();
-      } else if (key === 'l' && activeSection.value.kind !== 'gallery') {
-        event.preventDefault();
-        headroomBarRef.value?.startPathEdit();
+        if (activeSection.value.kind === 'gallery') {
+          (galleryViewRef.value as { focusSearch?: () => void } | null)?.focusSearch?.();
+        } else {
+          headroomBarRef.value?.focusSearch?.();
+        }
       }
     };
     onMounted(() => window.addEventListener('keydown', onExplorerShortcutKeydown));
     onBeforeUnmount(() => {
       window.removeEventListener('keydown', onExplorerShortcutKeydown);
-      if (pathErrorTimer) clearTimeout(pathErrorTimer);
     });
 
-    // Search sidebar data (real folders, albums, resources & drive files)
-    const searchSidebarFolders = computed<SearchFolderEntry[]>(() =>
-      allResourceFolders.value.map((f) => ({
+    // Unified S2 Inline Search scope & data (real folders, albums, resources & drive files)
+    const s2ScopeLabel = computed<string | null>(() => {
+      if (activeSection.value.kind === 'folder' && activeFolder.value) return activeFolder.value.name;
+      if (activeSection.value.kind === 'home') return t('qSpace');
+      if (activeSection.value.kind === 'space' && activeSpace.value) return activeSpace.value.name;
+      return null;
+    });
+
+    watch(
+      () => activeSection.value,
+      () => {
+        if (!searchQuery.value.trim()) {
+          s2ScopeMode.value = 'current';
+        }
+      },
+    );
+
+    const activeSubtreeFolderIds = computed<Set<string> | null>(() => {
+      if (s2ScopeMode.value !== 'current') return null;
+      if (activeSection.value.kind !== 'folder' || !activeFolder.value) return null;
+      const set = new Set<string>([activeFolder.value.id]);
+      let grew = true;
+      while (grew) {
+        grew = false;
+        for (const f of allResourceFolders.value) {
+          if (f.parentId && set.has(f.parentId) && !set.has(f.id)) {
+            set.add(f.id);
+            grew = true;
+          }
+        }
+      }
+      return set;
+    });
+
+    const s2SearchFolders = computed<InlineSearchFolder[]>(() => {
+      const subtree = activeSubtreeFolderIds.value;
+      const list = subtree
+        ? allResourceFolders.value.filter((f) => subtree.has(f.id) && f.id !== activeFolder.value?.id)
+        : allResourceFolders.value;
+      return list.map((f) => ({
         id: f.id,
         name: f.name,
         path: folderPathById.value.get(f.id) || f.name,
-      })),
-    );
-    const searchSidebarAlbums = computed<SearchAlbumEntry[]>(() =>
-      allSpaces.value.map((s) => ({
+      }));
+    });
+
+    const s2SearchAlbums = computed<InlineSearchAlbum[]>(() => {
+      const list = s2ScopeMode.value === 'current' && activeSection.value.kind === 'space' && spaceId.value
+        ? allSpaces.value.filter((s) => s.id === spaceId.value)
+        : allSpaces.value;
+      return list.map((s) => ({
         id: s.id,
         name: s.name,
-        sourceCount: s.sourceCount,
-      })),
-    );
-    const searchSidebarItems = computed<SearchItemEntry[]>(() => {
-      const entries: SearchItemEntry[] = [];
+        count: s.sourceCount,
+      }));
+    });
+
+    const s2SearchItems = computed<InlineSearchItem[]>(() => {
+      const subtree = activeSubtreeFolderIds.value;
+      const inFolderScope = (fid?: string | null) => {
+        if (!subtree) return true;
+        return Boolean(fid && subtree.has(fid));
+      };
+      const mapTags = (raw?: CanvasTag[]) => (raw || []).map((tg) => tg.name).filter(Boolean);
+      const entries: InlineSearchItem[] = [];
       for (const item of own.value) {
-        entries.push({ key: selectionKey(item), id: item.id, title: item.title || t('untitled'), type: 'canvas', folderId: item.folderId });
+        if (!inFolderScope(item.folderId)) continue;
+        entries.push({
+          id: `canvas:${item.id}`,
+          title: item.title || t('untitled'),
+          type: 'canvas',
+          folderId: item.folderId,
+          folderName: item.folderId ? folderPathById.value.get(item.folderId) || null : null,
+          tags: mapTags(item.tags),
+        });
       }
       for (const item of allHtmlDocumentsRaw.value) {
-        entries.push({ key: selectionKey(item), id: item.id, title: item.title || t('untitled'), type: 'html-document', folderId: item.folderId });
+        if (!inFolderScope(item.folderId)) continue;
+        entries.push({
+          id: `html-document:${item.id}`,
+          title: item.title || t('untitled'),
+          type: 'html',
+          folderId: item.folderId,
+          folderName: item.folderId ? folderPathById.value.get(item.folderId) || null : null,
+          tags: mapTags(item.tags),
+        });
       }
       for (const item of allTextDocumentsRaw.value) {
-        entries.push({ key: selectionKey(item), id: item.id, title: item.title || t('untitled'), type: 'text-document', folderId: item.folderId });
+        if (!inFolderScope(item.folderId)) continue;
+        entries.push({
+          id: `text-document:${item.id}`,
+          title: item.title || t('untitled'),
+          type: 'document',
+          folderId: item.folderId,
+          folderName: item.folderId ? folderPathById.value.get(item.folderId) || null : null,
+          tags: mapTags(item.tags),
+        });
       }
       for (const item of interactiveTemplateItems.value) {
-        entries.push({ key: selectionKey({ type: 'interactive-template', id: item.id }), id: item.id, title: item.title || t('untitled'), type: 'interactive-template', folderId: item.folderId });
-      }
-      for (const file of folderDriveFiles.value) {
+        if (!inFolderScope(item.folderId)) continue;
         entries.push({
-          key: `drive-file:${file.id}`,
-          id: file.id,
+          id: `interactive-template:${item.id}`,
+          title: item.title || t('untitled'),
+          type: 'document',
+          folderId: item.folderId,
+          folderName: item.folderId ? folderPathById.value.get(item.folderId) || null : null,
+        });
+      }
+      const combinedDriveFiles = [...folderDriveFiles.value, ...homeRootDriveFiles.value];
+      const seenDrive = new Set<string>();
+      for (const file of combinedDriveFiles) {
+        if (seenDrive.has(file.id)) continue;
+        seenDrive.add(file.id);
+        if (!inFolderScope(file.folderId)) continue;
+        const lower = file.name.toLowerCase();
+        const isPdf = file.mime === 'application/pdf' || lower.endsWith('.pdf');
+        const isMedia = isVideoFile(file) || isPictureFile(file);
+        entries.push({
+          id: `drive-file:${file.id}`,
+          fileId: file.id,
           title: file.name,
-          type: 'drive-file',
-          mime: file.mime,
+          type: isPdf ? 'pdf' : isMedia ? 'media' : isMarkdownFile(file) ? 'document' : 'other',
+          mimeType: file.mime,
           folderId: file.folderId,
-          fileKind: isVideoFile(file) ? 'video' : isPictureFile(file) ? 'image' : isMarkdownFile(file) ? 'markdown' : 'file',
+          folderName: file.folderId ? folderPathById.value.get(file.folderId) || null : null,
         });
       }
       return entries;
     });
+
+    const onSearchSelectFolder = (folderId: string) => {
+      selectFolder(folderId);
+    };
+
+    const onSearchSelectAlbum = (albumId: string) => {
+      selectDashboardSection({ kind: 'space', spaceId: albumId });
+    };
+
+    const onSearchOpenItem = (item: InlineSearchItem) => {
+      const colonIdx = item.id.indexOf(':');
+      const kind = colonIdx > 0 ? item.id.slice(0, colonIdx) : '';
+      const rawId = colonIdx > 0 ? item.id.slice(colonIdx + 1) : item.id;
+      if (kind === 'drive-file' || item.fileId) {
+        const fid = item.fileId || rawId;
+        const file = folderDriveFiles.value.find((f) => f.id === fid)
+          || homeRootDriveFiles.value.find((f) => f.id === fid);
+        if (file) {
+          if (isDriveMedia(file)) openDriveImage(file);
+          else if (isMarkdownFile(file)) openDriveMarkdown(file);
+          else void downloadDriveFile(file.id, file.name);
+        } else {
+          void downloadDriveFile(fid, item.title);
+        }
+        return;
+      }
+      openSpaceResource(kind || 'canvas', rawId);
+    };
+
+    const onSearchSelectTag = (tag: string) => {
+      searchQuery.value = tag;
+    };
 
     // Home Favorites section (folders, albums/spaces, resources & drive files)
     type HomeFavoriteTile = {
@@ -5324,13 +5493,19 @@ export default defineComponent({
       }
     };
 
-    // Real Q Space/home root folder contents
+    // Real Q Space/home root folder contents (with global search expansion when s2ScopeMode === 'global')
     const homeRootSubfolders = computed(() => {
+      if (s2TypeFilter.value !== 'all' && s2TypeFilter.value !== 'folder') return [];
       const ownIds = new Set(ownResourceFolders.value.map((f) => f.id));
       const needle = searchQuery.value.trim().toLocaleLowerCase();
+      const isGlobalSearch = s2ScopeMode.value === 'global' && (Boolean(needle) || s2TypeFilter.value !== 'all');
       return allFolderSummaries.value
-        .filter((folder) => folder.role === 'owner' && (folder.parentId ?? null) === null && ownIds.has(folder.id))
-        .filter((folder) => !isTechnicalFolder(folder) || folder.items.length > 0 || (folderFiles.counts[folder.id] ?? 0) > 0)
+        .filter((folder) => (
+          isGlobalSearch
+            ? true
+            : folder.role === 'owner' && (folder.parentId ?? null) === null && ownIds.has(folder.id)
+        ))
+        .filter((folder) => isGlobalSearch || !isTechnicalFolder(folder) || folder.items.length > 0 || (folderFiles.counts[folder.id] ?? 0) > 0)
         .filter((folder) => !needle || folder.name.toLocaleLowerCase().includes(needle))
         .map((folder) => ({
           id: folder.id,
@@ -5343,19 +5518,45 @@ export default defineComponent({
         }))
         .sort((a, b) => a.name.localeCompare(b.name));
     });
-    const homeRootItems = computed<FolderItem[]>(() => sortFolderItems(
-      [
-        ...unfiledCanvases.value,
-        ...unfiledHtmlDocuments.value,
-        ...unfiledTextDocuments.value,
-        ...unfiledInteractiveTemplateItems.value,
-      ].filter((item) => matchesFolderItem(item, t('home'))),
-    ));
+    const homeRootItems = computed<FolderItem[]>(() => {
+      const isGlobalSearch = s2ScopeMode.value === 'global' && (Boolean(searchQuery.value.trim()) || s2TypeFilter.value !== 'all');
+      if (isGlobalSearch) {
+        const seen = new Set<string>();
+        const globalItems: FolderItem[] = [];
+        for (const summary of allFolderSummaries.value) {
+          for (const item of summary.items) {
+            const k = `${item.type}:${item.id}` as const;
+            if (seen.has(k)) continue;
+            const enriched = dashboardItemsByKey.value.get(k) || item;
+            if (matchesFolderItem(enriched, summary.name) && matchesS2ItemType(enriched.type)) {
+              seen.add(k);
+              globalItems.push(enriched);
+            }
+          }
+        }
+        return sortFolderItems(globalItems);
+      }
+      return sortFolderItems(
+        [
+          ...unfiledCanvases.value,
+          ...unfiledHtmlDocuments.value,
+          ...unfiledTextDocuments.value,
+          ...unfiledInteractiveTemplateItems.value,
+        ].filter((item) => matchesFolderItem(item, t('home')) && matchesS2ItemType(item.type)),
+      );
+    });
     const homeRootEmpty = computed(() => Boolean(
       !homeRootSubfolders.value.length
       && !homeRootItems.value.length
       && !homeRootFileCount.value,
     ));
+    const showScopedSearchEverywhereCta = computed(() => {
+      if (s2ScopeMode.value !== 'current' || !s2ScopeLabel.value) return false;
+      if (!searchQuery.value.trim() && s2TypeFilter.value === 'all') return false;
+      if (activeSection.value.kind === 'home') return homeRootEmpty.value;
+      if (activeSection.value.kind === 'folder') return activeFolderEmpty.value;
+      return false;
+    });
     const homeRootTableRows = computed<ExplorerTableRow[]>(() =>
       buildFolderExplorerTableRows(
         homeRootSubfolders.value,
@@ -6006,7 +6207,7 @@ export default defineComponent({
 
     const onEmptyAreaContextMenu = (event: MouseEvent) => {
       const target = event.target as HTMLElement | null;
-      if (target?.closest('[data-select-key], .subfolder-card, .canvas-card, .exp-row, button, a, input')) return;
+      if (target?.closest('[data-select-key], .subfolder-card, .canvas-card, .exp-row, button, a, input, textarea, [data-explorer-context-menu]')) return;
       explorerCtxMenu.value = {
         open: true,
         x: event.clientX,
@@ -6018,6 +6219,15 @@ export default defineComponent({
         canRename: false,
         isFavorite: false,
       };
+    };
+
+    const onDashboardMainContextMenu = (event: MouseEvent) => {
+      if (!isLoggedIn) return;
+      if (activeSection.value.kind !== 'home' && activeSection.value.kind !== 'folder') return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('[data-select-key], .subfolder-card, .canvas-card, .exp-row, button, a, input, textarea, [data-explorer-context-menu]')) return;
+      event.preventDefault();
+      onEmptyAreaContextMenu(event);
     };
 
     const onCtxMenuEmptyCreateFolder = () => {
@@ -6649,11 +6859,28 @@ export default defineComponent({
       openControlMenu,
       closeControlMenusForAccount,
       activeSection,
+      locale,
       sidebarWidthState,
       sidebarCollapsed,
-      sidebarPanelMode,
-      activeActivity,
+      sidebarMode,
       mobileTabActivity,
+      showSidebarExpand,
+      onExpandSidebar,
+      onSidebarCollapseButton,
+      onSwitchSidebarMode,
+      devicesOnlineCount,
+      devicesPaired,
+      s2ScopeMode,
+      s2TypeFilter,
+      s2ScopeLabel,
+      s2SearchFolders,
+      s2SearchAlbums,
+      s2SearchItems,
+      onSearchSelectFolder,
+      onSearchSelectAlbum,
+      onSearchOpenItem,
+      onSearchSelectTag,
+      showScopedSearchEverywhereCta,
       showFolderFab,
       addDialogTargetFolderName,
       explorerViewMode,
@@ -6664,18 +6891,11 @@ export default defineComponent({
       headroomHidden,
       headroomElevated,
       onDashboardMainScroll,
-      pathBarError,
-      explorerPathInfo,
       headroomViewToggleMode,
       headroomSpaceCountLabel,
-      onSelectPathSegment,
-      onNavigatePath,
       onSelectActivity,
       onToggleMobileDrawer,
       onSidebarCollapsedChange,
-      searchSidebarFolders,
-      searchSidebarAlbums,
-      searchSidebarItems,
       favoriteTiles,
       openFavoriteTile,
       homeRootSubfolders,
@@ -6719,6 +6939,7 @@ export default defineComponent({
       onSpaceTileContextMenu,
       onFavoriteTileContextMenu,
       onEmptyAreaContextMenu,
+      onDashboardMainContextMenu,
       onCtxMenuEmptyCreateFolder,
       onCtxMenuEmptyAdd,
       onCtxMenuEmptyRefresh,
@@ -6825,6 +7046,7 @@ export default defineComponent({
       onAddCreateTemplate,
       onAddImportCharacter,
       onAddCreateFolder,
+      onAddCreateAlbum,
       onAddImport,
       folderFilesRefreshKey,
       journalActive,

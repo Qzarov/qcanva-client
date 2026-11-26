@@ -121,7 +121,7 @@ describe('DashboardSidebar', () => {
   it('renders unified tree without Storage wrapper or RU button in header', async () => {
     const wrapper = mountSidebar({ activeSection: { kind: 'home' } });
 
-    expect(wrapper.get('[data-sidebar-title]').text()).toBe('Explorer');
+    expect(wrapper.get('[data-sidebar-title]').text()).toBe('Q Space');
     expect(wrapper.find('[data-sidebar-header] .language-toggle').exists()).toBe(false);
     expect(wrapper.find('[data-tree-key="root:qspace"]').exists()).toBe(true);
     expect(wrapper.find('[data-tree-key="root:clouds"]').exists()).toBe(true);
@@ -189,8 +189,11 @@ describe('DashboardSidebar', () => {
     const wrapper = mountSidebar({ widthState: 'collapsed' });
 
     expect(wrapper.get('.dashboard-sidebar').classes()).toContain('collapsed');
-    expect(wrapper.get('[data-activity="explorer"]').attributes('aria-label')).toBe('Explorer');
-    expect(wrapper.get('[data-activity="trash"]').attributes('aria-label')).toBe('Trash');
+    expect(wrapper.get('[data-sidebar-home-btn]').attributes('aria-label') || wrapper.get('[data-sidebar-home-btn]').text()).toContain('Home');
+    expect(wrapper.get('[data-sidebar-trash-btn]').attributes('aria-label')).toBe('Trash');
+    expect(wrapper.get('[data-mode-btn="files"]').text()).toContain('Files');
+    expect(wrapper.get('[data-mode-btn="media"]').text()).toContain('Media');
+    expect(wrapper.get('[data-sidebar-devices-btn]').attributes('aria-label')).toBe('Devices & Sync');
     expect(wrapper.get('[data-dashboard-section="public"]').attributes('aria-label')).toBe('Public');
   });
 
@@ -303,7 +306,7 @@ describe('DashboardSidebar', () => {
   it('loops focus within the open mobile drawer in both directions', async () => {
     const wrapper = mountSidebar({ mobileOpen: true }, document.body);
     await wrapper.vm.$nextTick();
-    const first = wrapper.get('[data-sidebar-new-folder]').element as HTMLButtonElement;
+    const first = wrapper.get('[data-sidebar-brand-home]').element as HTMLButtonElement;
     const last = wrapper.get('[data-source-link]').element as HTMLAnchorElement;
 
     last.focus();
@@ -317,7 +320,7 @@ describe('DashboardSidebar', () => {
 
   it('does not trap Tab while the sidebar is in its desktop presentation', async () => {
     const wrapper = mountSidebar({ mobileOpen: false }, document.body);
-    const first = wrapper.get('[data-sidebar-new-folder]').element as HTMLButtonElement;
+    const first = wrapper.get('[data-sidebar-brand-home]').element as HTMLButtonElement;
     const last = wrapper.get('[data-source-link]').element as HTMLAnchorElement;
 
     last.focus();
@@ -329,7 +332,8 @@ describe('DashboardSidebar', () => {
 
   it('loops focus around real visible account-menu controls and ignores hidden or roving-tabindex controls', async () => {
     const wrapper = mountSidebarWithAccountMenu({}, document.body);
-    const first = wrapper.get('[data-sidebar-new-folder]').element as HTMLButtonElement;
+    const first = wrapper.get('[data-sidebar-brand-home]').element as HTMLButtonElement;
+    (wrapper.get('[data-source-link]').element as HTMLElement).hidden = true;
 
     await wrapper.get('[data-account-menu-trigger]').trigger('click');
     await wrapper.vm.$nextTick();
@@ -346,7 +350,8 @@ describe('DashboardSidebar', () => {
 
   it('does not treat roving tabindex -1 theme options as the end of the mobile focus loop', async () => {
     const wrapper = mountSidebarWithAccountMenu({}, document.body);
-    const first = wrapper.get('[data-sidebar-new-folder]').element as HTMLButtonElement;
+    const first = wrapper.get('[data-sidebar-brand-home]').element as HTMLButtonElement;
+    (wrapper.get('[data-source-link]').element as HTMLElement).hidden = true;
 
     await wrapper.get('[data-account-menu-trigger]').trigger('click');
     await wrapper.vm.$nextTick();
@@ -401,16 +406,19 @@ describe('DashboardSidebar', () => {
     resetSpaces();
   });
 
-  it('renders Download apps link in the Activity Bar for both expanded and collapsed modes', () => {
-    const expanded = mountSidebar();
-    const link = expanded.get('[data-sidebar-downloads]');
-    expect(link.attributes('href')).toBe('/downloads');
-    expect(link.attributes('aria-label')).toBe('Download apps');
+  it('renders Devices & Sync button in the footer and Download apps inside AccountMenu', async () => {
+    const expanded = mountSidebar({ devicesOnlineCount: 2 });
+    const devices = expanded.get('[data-sidebar-devices-btn]');
+    expect(devices.attributes('href')).toBe('/drive/devices');
+    expect(devices.attributes('aria-label')).toBe('Devices & Sync');
+    expect(devices.find('.sb-devices-dot').exists()).toBe(true);
 
-    const collapsed = mountSidebar({ widthState: 'collapsed' });
-    const collapsedLink = collapsed.get('[data-sidebar-downloads]');
-    expect(collapsedLink.attributes('aria-label')).toBe('Download apps');
-    expect(collapsedLink.attributes('title')).toBe('Download apps');
+    const withMenu = mount(DashboardSidebar, {
+      props: { activeSection: { kind: 'home' }, widthState: 'expanded', mobileOpen: false, folders },
+      global: { stubs: { RouterLink: { props: ['to'], template: '<a :href="typeof to === \'string\' ? to : (to?.path || \'\')"><slot /></a>' } } },
+    });
+    await withMenu.get('[data-account-menu-trigger]').trigger('click');
+    expect(withMenu.get('[data-account-menu-downloads]').attributes('href')).toBe('/downloads');
   });
 
   it('resolves file labels safely with fallback to name or untitled and emits toggle-folder when showFilesInTree turns on', async () => {

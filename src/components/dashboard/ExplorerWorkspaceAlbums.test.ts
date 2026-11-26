@@ -234,7 +234,7 @@ describe('DashboardAddDialog redesign', () => {
     useI18n().setLocale('ru');
   });
 
-  it('has NO "Куда" select and NO "Загрузить" tab, shows 5 square tiles + dropzone below', async () => {
+  it('has NO "Куда" select and NO "Загрузить" tab, shows 6 square tiles + dropzone below', async () => {
     const wrapper = mount(DashboardAddDialog, {
       props: {
         folders: [{ id: 'folder-work', name: 'Работа', depth: 0 }],
@@ -254,8 +254,9 @@ describe('DashboardAddDialog redesign', () => {
       'html-document',
       'interactive-template',
       'folder',
+      'album',
     ]);
-    expect(tiles.map((el) => el.text())).toEqual(['Канвас', 'Документ', 'HTML', 'Шаблон', 'Папка']);
+    expect(tiles.map((el) => el.text())).toEqual(['Канвас', 'Документ', 'HTML', 'Шаблон', 'Папка', 'Альбом']);
 
     expect(wrapper.find('[data-add-drop]').exists()).toBe(true);
     expect(wrapper.get('[data-add-drop]').text()).toContain('Перетащите файлы сюда или нажмите, чтобы выбрать');

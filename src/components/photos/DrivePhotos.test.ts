@@ -248,7 +248,7 @@ describe('DrivePhotos', () => {
   });
 
   async function typeQuery(w: VueWrapper, text: string): Promise<void> {
-    await w.get('[data-photos-search-input]').setValue(text);
+    await w.get('[data-s2-input]').setValue(text);
     await vi.advanceTimersByTimeAsync(400);
     await flushPromises();
   }
@@ -312,11 +312,11 @@ describe('DrivePhotos', () => {
     expect(w.find('[data-testid="viewbar-stub"]').exists()).toBe(false);
     expect(w.findAll('[data-testid="photos-search-grid"] [data-file-id]').map((n) => n.attributes('data-file-id'))).toEqual(['f7', 'f8']);
 
-    await w.get('[data-photos-search-clear]').trigger('click');
+    await w.get('[data-s2-clear]').trigger('click');
     await flushPromises();
     expect(w.find('[data-testid="photos-search-grid"]').exists()).toBe(false);
     expect(w.find('[data-testid="feed-stub"]').exists()).toBe(true);
-    expect((w.get('[data-photos-search-input]').element as HTMLInputElement).value).toBe('');
+    expect((w.get('[data-s2-input]').element as HTMLInputElement).value).toBe('');
   });
 
   it('whitespace query returns to the feed without calling the hub', async () => {
@@ -372,8 +372,12 @@ describe('DrivePhotos', () => {
     const countsEmits = w.emitted('update:counts') ?? [];
     const lastCounts = countsEmits[countsEmits.length - 1]?.[0] as { people?: number } | undefined;
     expect(lastCounts?.people ?? 0).toBe(0);
-    await w.get('[data-photos-search-input]').trigger('focus');
-    expect(w.find('[data-suggest-person="owner-1"]').exists()).toBe(false);
+    await w.get('[data-s2-input]').trigger('focus');
+    await flushPromises();
+    const pop = document.body.querySelector('[data-s2-popover]');
+    expect(pop).toBeTruthy();
+    expect(pop?.querySelector('[data-suggest-person="owner-1"]')).toBeNull();
+    expect(pop?.textContent ?? '').not.toContain('Оля');
   });
 
   it('shows People grid only when activeSection is "people"', async () => {
@@ -496,14 +500,14 @@ describe('DrivePhotos', () => {
     });
   });
 
-  it('switching section within debounce cancels pending search, caps search input at 200, and shows mock banner when mock enabled', async () => {
+  it('switching section within debounce cancels pending search and shows mock banner when mock enabled', async () => {
     vi.mocked(isPhotosMock).mockReturnValueOnce(true);
     const w = mountIt();
     await flushPromises();
     expect(w.get('[data-photos-mock-banner]').text()).toBeTruthy();
 
-    const input = w.get('[data-photos-search-input]');
-    expect(input.attributes('maxlength')).toBe('200');
+    const input = w.get('[data-s2-input]');
+    expect(input.attributes('type')).toBe('text');
     await input.setValue('pending query');
     await w.setProps({ activeSection: 'favorites' });
     await vi.advanceTimersByTimeAsync(400);
@@ -542,34 +546,32 @@ describe('DrivePhotos', () => {
     expect(w.find('[data-testid="feed-stub"]').exists()).toBe(false);
   });
 
-  it('opens search suggestions popover on input focus/click with semantic tags (no #) and people chips, closes on Escape or selection', async () => {
-    const w = mountIt({
-      people: [{ id: 'p1', name: 'Анна', count: 3, coverHash: null }],
-    });
+  it('opens teleported search popover on input focus/click with semantic ML tags (no #) and scope pill, closes on Escape or selection', async () => {
+    const w = mountIt();
     await flushPromises();
-    expect(w.find('[data-gallery-suggest-pop]').exists()).toBe(false);
+    expect(document.body.querySelector('[data-s2-popover]')).toBeNull();
+    expect(w.get('[data-s2-scope-pill]').text()).toContain('в: Медиатека');
 
-    const input = w.get('[data-photos-search-input]');
+    const input = w.get('[data-s2-input]');
     await input.trigger('focus');
-    const pop = w.get('[data-gallery-suggest-pop]');
-    expect(pop.text()).toContain('Смысловые теги');
-    expect(pop.text()).toContain('Люди');
-    expect(pop.text()).not.toContain('#');
+    await flushPromises();
+    const pop = document.body.querySelector('[data-s2-popover]');
+    expect(pop).toBeTruthy();
+    expect(pop?.textContent).toContain('Смысловые ML-метки');
+    expect(pop?.textContent).not.toContain('#');
 
     await input.trigger('keydown', { key: 'Escape' });
-    expect(w.find('[data-gallery-suggest-pop]').exists()).toBe(false);
+    await flushPromises();
+    expect(document.body.querySelector('[data-s2-popover]')).toBeNull();
 
     await input.trigger('click');
-    await w.get('[data-suggest-tag="природа"]').trigger('click');
     await flushPromises();
-    expect(w.find('[data-gallery-suggest-pop]').exists()).toBe(false);
+    const tagChip = document.body.querySelector<HTMLButtonElement>('[data-s2-ml-chip="природа"]');
+    expect(tagChip).toBeTruthy();
+    tagChip!.click();
+    await flushPromises();
+    expect(document.body.querySelector('[data-s2-popover]')).toBeNull();
     expect(searchMock).toHaveBeenCalledWith('природа', expect.any(Object));
-
-    await w.get('[data-photos-search-clear]').trigger('click');
-    await input.trigger('focus');
-    await w.get('[data-suggest-person="p1"]').trigger('click');
-    expect(w.find('[data-gallery-suggest-pop]').exists()).toBe(false);
-    expect(w.get('[data-testid="gallery-people-crumb"]').text()).toContain('Анна');
   });
 
   it('passes selectedItems to PhotoPanel for 2+ group inspector and wires group actions', async () => {
@@ -649,7 +651,7 @@ describe('DrivePhotos', () => {
     expect(w.get('[data-testid="favorite-btn"]').classes()).toContain('dim');
   });
 
-  it('refreshes people count on units-loaded, clears text query on toggleSuggestedPerson, closes popover on chip Escape, and refreshes albums on ctxAddToAlbum', async () => {
+  it('refreshes people count on units-loaded, clears text query on selecting album from search, closes popover on Escape, and refreshes albums on ctxAddToAlbum', async () => {
     const w = mountIt({ people: [{ id: 'owner-1', name: 'Оля', count: 1, coverHash: null }] });
     await flushPromises();
 
@@ -660,20 +662,29 @@ describe('DrivePhotos', () => {
     const lastCounts = countsEmits[countsEmits.length - 1]?.[0] as { people?: number };
     expect(lastCounts?.people).toBe(1);
 
-    // Search text + focus -> Esc on chip closes popover; toggling suggested person clears active query
-    const input = w.get('[data-photos-search-input]');
-    await input.setValue('закат');
+    // Search text + focus -> Esc closes popover; selecting album from search clears active query & emits select-album
+    const input = w.get('[data-s2-input]');
+    await input.setValue('Алтай');
     await vi.advanceTimersByTimeAsync(400);
     await flushPromises();
     await input.trigger('focus');
-    const personChip = w.get('[data-suggest-person="owner-1"]');
-    await personChip.trigger('keydown', { key: 'Escape' });
-    expect(w.find('[data-gallery-suggest-pop]').exists()).toBe(false);
+    await flushPromises();
+    expect(document.body.querySelector('[data-s2-popover]')).toBeTruthy();
+    await input.trigger('keydown', { key: 'Escape' });
+    await flushPromises();
+    expect(document.body.querySelector('[data-s2-popover]')).toBeNull();
 
     await input.trigger('focus');
-    await w.get('[data-suggest-person="owner-1"]').trigger('click');
+    await flushPromises();
+    const albumRow = document.body.querySelector<HTMLButtonElement>('[data-s2-album="alb1"]');
+    expect(albumRow).toBeTruthy();
+    albumRow!.click();
+    await flushPromises();
     expect((input.element as HTMLInputElement).value).toBe('');
-    expect(w.get('[data-testid="gallery-people-crumb"]').text()).toContain('Оля');
+    expect(w.emitted('select-album')?.[0]).toEqual(['alb1']);
+    expect(w.get('[data-testid="gallery-album-crumb"]').text()).toContain('Алтай');
+    await w.get('[data-testid="gallery-album-crumb"]').trigger('click');
+    await flushPromises();
 
     // ctxAddToAlbum refreshes albums and increments panelEpoch
     spacesAddItemsMock.mockResolvedValueOnce({ added: 1 });

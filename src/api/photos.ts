@@ -351,6 +351,7 @@ export const hubPhotosApi: PhotosApi = {
     return request<void>(`/me/preferences/${encodeURIComponent(key)}`, {
       method: 'PUT',
       body: JSON.stringify({ value }),
+      keepalive: true,
     });
   },
 };

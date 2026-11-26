@@ -258,31 +258,37 @@ describe('DashboardView T-021 + T-018 Explorer Redesign Integration', () => {
     expect(w2.find('[data-explorer-table]').exists()).toBe(true);
   });
 
-  it('never force-opens a collapsed sidebar when switching to Gallery or Home', async () => {
+  it('never force-opens a collapsed sidebar when switching between Files and Media or Home', async () => {
     const wrapper = mountDashboard();
     await flushPromises();
 
-    // Collapse sidebar via active Activity Bar icon (`home`)
-    await wrapper.get('[data-activity="home"]').trigger('click');
+    // Collapse sidebar via header collapse button
+    await wrapper.get('[data-sidebar-collapse-btn]').trigger('click');
     await nextTick();
     expect(useExplorerLayoutPrefs().sidebarCollapsed.value).toBe(true);
     expect(wrapper.get('.dashboard-sidebar').classes()).toContain('collapsed');
+    expect(wrapper.find('[data-sidebar-expand-btn]').exists()).toBe(true);
 
-    // Switch to Gallery -> sidebar MUST stay collapsed
-    await wrapper.get('[data-activity="gallery"]').trigger('click');
+    // Switch to Media (Gallery) -> sidebar MUST stay collapsed
+    await wrapper.get('[data-mode-btn="media"]').trigger('click');
     await nextTick();
     expect((wrapper.vm as any).activeSection).toEqual({ kind: 'gallery' });
     expect(wrapper.get('.dashboard-sidebar').classes()).toContain('collapsed');
     expect(wrapper.find('[data-drive-photos-stub]').exists()).toBe(true);
 
-    // Switch back to Home -> sidebar MUST still stay collapsed
-    await wrapper.get('[data-activity="home"]').trigger('click');
+    // Switch back to Files -> sidebar MUST still stay collapsed
+    await wrapper.get('[data-mode-btn="files"]').trigger('click');
+    await nextTick();
+    expect(wrapper.get('.dashboard-sidebar').classes()).toContain('collapsed');
+
+    // Switch to Home -> sidebar MUST still stay collapsed
+    await wrapper.get('[data-sidebar-home-btn]').trigger('click');
     await nextTick();
     expect((wrapper.vm as any).activeSection).toEqual({ kind: 'recent' });
     expect(wrapper.get('.dashboard-sidebar').classes()).toContain('collapsed');
   });
 
-  it('restores lastExplorerRoute when clicking Explorer in Activity Bar instead of resetting to home', async () => {
+  it('restores lastExplorerRoute when switching from Home or Media back to Files instead of resetting to home', async () => {
     const wrapper = mountDashboard();
     await flushPromises();
 
@@ -292,44 +298,64 @@ describe('DashboardView T-021 + T-018 Explorer Redesign Integration', () => {
     await nextTick();
     expect((wrapper.vm as any).activeSection).toEqual({ kind: 'folder', folderId: 'folder-child' });
 
-    // Switch to Home, then click Explorer in Activity Bar -> restores folder-child!
-    await wrapper.get('[data-activity="home"]').trigger('click');
+    // Switch to Home, then click Files mode switcher -> restores folder-child!
+    await wrapper.get('[data-sidebar-home-btn]').trigger('click');
     await nextTick();
     expect((wrapper.vm as any).activeSection).toEqual({ kind: 'recent' });
 
-    await wrapper.get('[data-activity="explorer"]').trigger('click');
+    await wrapper.get('[data-mode-btn="files"]').trigger('click');
+    await nextTick();
+    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'folder', folderId: 'folder-child' });
+
+    // Switch to Media and back to Files -> still restores folder-child!
+    await wrapper.get('[data-mode-btn="media"]').trigger('click');
+    await nextTick();
+    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'gallery' });
+    await wrapper.get('[data-mode-btn="files"]').trigger('click');
     await nextTick();
     expect((wrapper.vm as any).activeSection).toEqual({ kind: 'folder', folderId: 'folder-child' });
   });
 
-  it('navigates via the editable glass path bar with no spaces around /', async () => {
+  it('focuses inline search on Ctrl+K and navigates to folders & albums via teleported popover (no .path-frame or ActivityBar)', async () => {
     const wrapper = mountDashboard();
     await flushPromises();
 
-    await wrapper.get('[data-folder-toggle="folder-home"]').trigger('click');
-    await nextTick();
-    await wrapper.get('[data-dashboard-folder="folder-child"]').trigger('click');
-    await nextTick();
+    expect(wrapper.find('[data-activity-bar]').exists()).toBe(false);
+    expect(wrapper.find('[data-explorer-search]').exists()).toBe(false);
+    expect(wrapper.find('.path-frame').exists()).toBe(false);
 
-    await wrapper.get('[data-path-fill]').trigger('click');
-    const pathInput = wrapper.get('[data-path-input]');
-    expect((pathInput.element as HTMLInputElement).value).toBe('Q Space/home/Поездки/Грузия');
-
-    await pathInput.setValue('Q Space/home/Поездки');
-    await pathInput.trigger('keydown', { key: 'Enter' });
+    // Ctrl+K focuses ExplorerInlineSearch input and opens teleported popover
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }));
     await nextTick();
-    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'folder', folderId: 'folder-home' });
+    const s2Input = wrapper.get('[data-s2-input]');
+    expect(document.activeElement).toBe(s2Input.element);
+    const pop = document.body.querySelector('[data-s2-popover]') as HTMLElement | null;
+    expect(pop).not.toBeNull();
 
-    // Navigate to Album via path bar
-    await wrapper.get('[data-path-fill]').trigger('click');
-    const albumInput = wrapper.get('[data-path-input]');
-    await albumInput.setValue('Альбомы/Семья');
-    await albumInput.trigger('keydown', { key: 'Enter' });
+    // Pick folder from S2 popover
+    await s2Input.setValue('Грузия');
+    await nextTick();
+    const folderBtn = document.body.querySelector('[data-s2-folder="folder-child"]') as HTMLButtonElement | null;
+    expect(folderBtn).not.toBeNull();
+    folderBtn!.click();
+    await nextTick();
+    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'folder', folderId: 'folder-child' });
+
+    // Clear scope, pick Album from S2 popover
+    await s2Input.trigger('focus');
+    await nextTick();
+    const scopeClear = wrapper.find('[data-s2-scope-clear]');
+    if (scopeClear.exists()) await scopeClear.trigger('click');
+    await s2Input.setValue('Семья');
+    await nextTick();
+    const albumBtn = document.body.querySelector('[data-s2-album="alb-1"]') as HTMLButtonElement | null;
+    expect(albumBtn).not.toBeNull();
+    albumBtn!.click();
     await nextTick();
     expect((wrapper.vm as any).activeSection).toEqual({ kind: 'space', spaceId: 'alb-1' });
   });
 
-  it('shows the round + FAB ONLY inside concrete Q Space folders and Q Space/home (hidden on Главная, Yandex, Album, Trash, Gallery)', async () => {
+  it('shows the round + FAB on Главная (recent), Q Space/home, and concrete Q Space folders (hidden on Yandex, Album, Trash, Gallery)', async () => {
     useYandexDisk().status.value = { enabled: true, connected: true, reconnectRequired: false, login: 'vlad', displayName: 'Vlad', email: null, avatarUrl: null };
     useSpaces().spaces.value = [{ id: 'alb-1', name: 'Семья', role: 'owner', ownerId: 'user-1', memberCount: 2, sourceCount: 1, itemCount: 5, updatedAt: '2026-11-20T10:00:00Z' }];
     useSpaces().loaded.value = true;
@@ -337,8 +363,8 @@ describe('DashboardView T-021 + T-018 Explorer Redesign Integration', () => {
     const wrapper = mountDashboard();
     await flushPromises();
 
-    // Главная (recent) -> hidden
-    expect(wrapper.find('[data-explorer-fab]').exists()).toBe(false);
+    // Главная (recent) -> visible in UX v2
+    expect(wrapper.find('[data-explorer-fab]').exists()).toBe(true);
 
     // Real Q Space/home root -> visible
     await wrapper.get('[data-home-link]').trigger('click');
@@ -362,12 +388,12 @@ describe('DashboardView T-021 + T-018 Explorer Redesign Integration', () => {
     expect(wrapper.find('[data-explorer-fab]').exists()).toBe(false);
 
     // Trash -> hidden
-    await wrapper.get('[data-activity="trash"]').trigger('click');
+    await wrapper.get('[data-sidebar-trash-btn]').trigger('click');
     await nextTick();
     expect(wrapper.find('[data-explorer-fab]').exists()).toBe(false);
 
     // Gallery -> hidden
-    await wrapper.get('[data-activity="gallery"]').trigger('click');
+    await wrapper.get('[data-mode-btn="media"]').trigger('click');
     await nextTick();
     expect(wrapper.find('[data-explorer-fab]').exists()).toBe(false);
   });
@@ -456,16 +482,13 @@ describe('DashboardView T-021 + T-018 Explorer Redesign Integration', () => {
     await wrapper.get('[data-dashboard-section="shared"]').trigger('click');
     await flushPromises();
     expect((wrapper.vm as any).activeSection).toEqual({ kind: 'shared' });
-    await wrapper.get('[data-path-fill]').trigger('click');
-    expect((wrapper.get('[data-path-input]').element as HTMLInputElement).value).toBe('Q Space/shared');
-    await wrapper.get('[data-path-input]').trigger('keydown', { key: 'Escape' });
+    expect(wrapper.find('[data-dashboard-view="shared"]').exists()).toBe(true);
     expect(useExplorerLayoutPrefs().lastExplorerRoute.value).toEqual({ kind: 'shared' });
 
     await wrapper.get('[data-dashboard-section="public"]').trigger('click');
     await flushPromises();
     expect((wrapper.vm as any).activeSection).toEqual({ kind: 'public' });
-    await wrapper.get('[data-path-fill]').trigger('click');
-    expect((wrapper.get('[data-path-input]').element as HTMLInputElement).value).toBe('Q Space/public');
+    expect(wrapper.find('[data-dashboard-view="public"]').exists()).toBe(true);
     expect(useExplorerLayoutPrefs().lastExplorerRoute.value).toEqual({ kind: 'public' });
 
     // Open folder -> still zero duplicate view toggles or folder header back/+ controls
@@ -535,7 +558,7 @@ describe('DashboardView T-021 + T-018 Explorer Redesign Integration', () => {
 
     // On Главная (recent)
     expect((wrapper.vm as any).activeSection).toEqual({ kind: 'recent' });
-    expect((wrapper.vm as any).explorerPathInfo.editablePath).toBe('Главная');
+    expect(wrapper.find('[data-s2-scope-pill]').exists()).toBe(false);
     expect(resolveExplorerPath('Главная', { folders: [], spaces: [], t })).toEqual({ kind: 'recent' });
     expect(resolveExplorerPath('Home', { folders: [], spaces: [], t })).toEqual({ kind: 'recent' });
     expect(resolveExplorerPath('Q Space', { folders: [], spaces: [], t })).toEqual({ kind: 'home' });
@@ -545,7 +568,7 @@ describe('DashboardView T-021 + T-018 Explorer Redesign Integration', () => {
     await wrapper.get('[data-home-link]').trigger('click');
     await flushPromises();
     expect((wrapper.vm as any).activeSection).toEqual({ kind: 'home' });
-    expect((wrapper.vm as any).explorerPathInfo.editablePath).toBe('Q Space/home');
+    expect(wrapper.get('[data-s2-scope-pill]').text()).toContain('в: Q Space');
     const homeView = wrapper.get('[data-dashboard-view="home"]');
     expect(homeView.text()).toContain('Поездки');
     expect(homeView.text()).toContain('Корневой канвас');
@@ -720,37 +743,39 @@ describe('DashboardView T-021 + T-018 Explorer Redesign Integration', () => {
     expect(favBox.text()).toContain('Маршрут');
   });
 
-  it('opens mobile drawer and expands collapsed sidebar on Поиск, and prioritizes search sidebar over Gallery mode', async () => {
+  it('renders 4-tab mobile bottom bar without Поиск, opens mobile drawer on Меню, and preserves sidebarCollapsed across modes', async () => {
     isNativePlatform.mockReturnValue(true);
     const wrapper = mountDashboard();
     await flushPromises();
 
+    expect(wrapper.findAll('.m-tab')).toHaveLength(4);
+    expect(wrapper.find('[data-mobile-tab="search"]').exists()).toBe(false);
+
     // Collapse sidebar and enter Gallery mode
-    await wrapper.get('[data-activity="home"]').trigger('click');
+    await wrapper.get('[data-sidebar-collapse-btn]').trigger('click');
     await nextTick();
     expect(useExplorerLayoutPrefs().sidebarCollapsed.value).toBe(true);
 
-    await wrapper.get('[data-activity="gallery"]').trigger('click');
+    await wrapper.get('[data-mobile-tab="gallery"]').trigger('click');
     await nextTick();
     expect((wrapper.vm as any).activeSection).toEqual({ kind: 'gallery' });
-    expect((wrapper.vm as any).sidebarPanelMode).toBe('gallery');
+    expect((wrapper.vm as any).sidebarMode).toBe('media');
+    expect(useExplorerLayoutPrefs().sidebarCollapsed.value).toBe(true);
 
-    // Tapping mobile Поиск tab expands collapsed sidebar, opens mobile drawer, and renders ExplorerSearchSidebar over Gallery
-    await wrapper.get('[data-mobile-tab="search"]').trigger('click');
+    // Tapping Меню opens mobile drawer without losing mode
+    await wrapper.get('[data-mobile-tab="menu"]').trigger('click');
     await nextTick();
-    expect(useExplorerLayoutPrefs().sidebarCollapsed.value).toBe(false);
     expect((wrapper.vm as any).mobileSidebarOpen).toBe(true);
     expect(wrapper.get('.dashboard-sidebar').classes()).toContain('mobile-open');
-    expect((wrapper.vm as any).sidebarPanelMode).toBe('search');
-    expect(wrapper.find('[data-explorer-search]').exists()).toBe(true);
 
-    // Switching back to Галерея / Главная clears searchPanelActive
-    await wrapper.get('[data-activity="gallery"]').trigger('click');
+    // Switching back to Файлы preserves sidebarCollapsed
+    await wrapper.get('[data-mode-btn="files"]').trigger('click');
     await nextTick();
-    expect((wrapper.vm as any).sidebarPanelMode).toBe('gallery');
+    expect((wrapper.vm as any).sidebarMode).toBe('files');
+    expect(useExplorerLayoutPrefs().sidebarCollapsed.value).toBe(true);
   });
 
-  it('highlights Проводник on Q Space/home, persists home in lastExplorerRoute, avoids stale FAB folderId, and navigates ↑ correctly', async () => {
+  it('highlights Files mode on Q Space/home, persists home in lastExplorerRoute, avoids stale FAB folderId, and navigates ↑ correctly', async () => {
     const wrapper = mountDashboard();
     await flushPromises();
 
@@ -763,11 +788,11 @@ describe('DashboardView T-021 + T-018 Explorer Redesign Integration', () => {
     await nextTick();
     expect((wrapper.vm as any).activeSection).toEqual({ kind: 'home' });
 
-    // Activity Bar & Mobile Tab Bar highlight 'explorer' (NOT 'home') and canGoUp is false
-    expect((wrapper.vm as any).activeActivity).toBe('explorer');
+    // Mode switch & Mobile Tab Bar highlight 'files'/'explorer' and canGoUp is false
+    expect((wrapper.vm as any).sidebarMode).toBe('files');
     expect((wrapper.vm as any).mobileTabActivity).toBe('explorer');
-    expect(wrapper.get('[data-activity="explorer"]').classes()).toContain('active');
-    expect(wrapper.get('[data-activity="home"]').classes()).not.toContain('active');
+    expect(wrapper.get('[data-mode-btn="files"]').classes()).toContain('active');
+    expect(wrapper.get('[data-sidebar-home-btn]').classes()).not.toContain('active');
     expect(wrapper.get('[data-nav-up]').attributes('disabled')).toBeDefined();
 
     // Clicking + FAB on Q Space/home opens AddDialog with empty folderId (not stale 'folder-home')
@@ -777,12 +802,12 @@ describe('DashboardView T-021 + T-018 Explorer Redesign Integration', () => {
     expect((wrapper.vm as any).addDialog.folderId).toBe('');
     (wrapper.vm as any).closeAddDialog();
 
-    // lastExplorerRoute saves { kind: 'home' } across Главная -> Проводник switch
+    // lastExplorerRoute saves { kind: 'home' } across Главная -> Файлы switch
     expect(useExplorerLayoutPrefs().lastExplorerRoute.value).toEqual({ kind: 'home' });
-    await wrapper.get('[data-activity="home"]').trigger('click');
+    await wrapper.get('[data-sidebar-home-btn]').trigger('click');
     await nextTick();
     expect((wrapper.vm as any).activeSection).toEqual({ kind: 'recent' });
-    await wrapper.get('[data-activity="explorer"]').trigger('click');
+    await wrapper.get('[data-mode-btn="files"]').trigger('click');
     await nextTick();
     expect((wrapper.vm as any).activeSection).toEqual({ kind: 'home' });
 
@@ -904,7 +929,7 @@ describe('DashboardView T-021 + T-018 Explorer Redesign Integration', () => {
     expect(headroom.find('[data-filter-menu-trigger]').exists()).toBe(false);
   });
 
-  it('renders contextual Search in <Folder> in ExplorerHeadroomBar, filters Grid & Table in home and folders, and clears on ✕', async () => {
+  it('renders contextual ExplorerInlineSearch with scope pills in ExplorerHeadroomBar, filters Grid & Table in home and folders, and clears on ×', async () => {
     vi.mocked(canvas.list).mockResolvedValueOnce({
       own: [
         { id: 'c-unfiled-1', title: 'Корневой бюджет', folderId: null, updatedAt: '2026-11-22T10:00:00Z' },
@@ -918,13 +943,14 @@ describe('DashboardView T-021 + T-018 Explorer Redesign Integration', () => {
     const wrapper = mountDashboard();
     await flushPromises();
 
-    const searchInput = wrapper.get('[data-headroom-search-input]');
-    expect(searchInput.attributes('placeholder')).toBe('Поиск на Главной…');
+    const searchInput = wrapper.get('[data-s2-input]');
+    expect(wrapper.find('[data-s2-scope-pill]').exists()).toBe(false);
+    expect(searchInput.attributes('placeholder')).toBe('Поиск по всему Q Space…');
 
-    // Q Space/home placeholder and filtering in both Grid and Table
+    // Q Space/home scope pill and filtering in both Grid and Table
     await wrapper.get('[data-home-link]').trigger('click');
     await nextTick();
-    expect(searchInput.attributes('placeholder')).toBe('Поиск в home…');
+    expect(wrapper.get('[data-s2-scope-pill]').text()).toContain('в: Q Space');
 
     await searchInput.setValue('бюджет');
     await nextTick();
@@ -939,17 +965,17 @@ describe('DashboardView T-021 + T-018 Explorer Redesign Integration', () => {
     expect(wrapper.find('[data-dashboard-view="home"] [data-row-key="canvas:c-unfiled-2"]').exists()).toBe(false);
     expect(wrapper.find('[data-dashboard-view="home"] [data-row-key="folder:folder-home"]').exists()).toBe(false);
 
-    // Clear on ✕ restores home items & subfolder
-    await wrapper.get('[data-headroom-search-clear]').trigger('click');
+    // Clear on × restores home items & subfolder
+    await wrapper.get('[data-s2-clear]').trigger('click');
     await nextTick();
     expect((searchInput.element as HTMLInputElement).value).toBe('');
     expect(wrapper.find('[data-dashboard-view="home"] [data-row-key="canvas:c-unfiled-2"]').exists()).toBe(true);
     expect(wrapper.find('[data-dashboard-view="home"] [data-row-key="folder:folder-home"]').exists()).toBe(true);
 
-    // Folder placeholder and filtering (subfolders + items in both Table and Grid)
+    // Folder scope pill and filtering (subfolders + items in both Table and Grid)
     await wrapper.get('[data-dashboard-folder="folder-home"]').trigger('click');
     await nextTick();
-    expect(searchInput.attributes('placeholder')).toBe('Поиск в Поездки…');
+    expect(wrapper.get('[data-s2-scope-pill]').text()).toContain('в: Поездки');
 
     await searchInput.setValue('Грузия');
     await nextTick();
@@ -963,20 +989,20 @@ describe('DashboardView T-021 + T-018 Explorer Redesign Integration', () => {
     expect(folderGrid.text()).not.toContain('Маршрут');
     expect(folderGrid.find('[data-folder-empty]').exists()).toBe(false);
 
-    await wrapper.get('[data-headroom-search-clear]').trigger('click');
+    await wrapper.get('[data-s2-clear]').trigger('click');
     await nextTick();
 
-    // Album & Yandex Disk placeholders
+    // Album & Yandex Disk scope pills
     (wrapper.vm as any).selectDashboardSection({ kind: 'space', spaceId: 'alb-1' });
     await flushPromises();
-    expect(searchInput.attributes('placeholder')).toBe('Поиск в Семья…');
+    expect(wrapper.get('[data-s2-scope-pill]').text()).toContain('в: Семья');
 
     (wrapper.vm as any).openYandexPath('/');
     await nextTick();
-    expect(searchInput.attributes('placeholder')).toBe('Поиск в Яндекс Диске…');
+    expect(wrapper.find('[data-s2-scope-pill]').exists()).toBe(false);
   });
 
-  it('B-008: never enables Android mode in a narrow web browser (<= 768px), keeps Activity Bar + desktop popovers + slide-out drawer, and enables Android mode only when Capacitor.isNativePlatform() === true', async () => {
+  it('B-008: never enables Android mode in a narrow web browser (<= 768px), keeps desktop popovers + expand-sidebar drawer trigger, and enables Android mode only when Capacitor.isNativePlatform() === true', async () => {
     const stubNarrowMatchMedia = () => {
       vi.stubGlobal('matchMedia', vi.fn((query: string) => ({
         matches: query === LAYOUT.dashboardDrawer,
@@ -997,7 +1023,8 @@ describe('DashboardView T-021 + T-018 Explorer Redesign Integration', () => {
 
     expect(webWrapper.get('.dashboard-view').classes()).not.toContain('is-android-app');
     expect(webWrapper.find('[data-mobile-tabbar]').exists()).toBe(false);
-    expect(webWrapper.find('[data-activity-bar]').exists()).toBe(true);
+    expect(webWrapper.find('[data-activity-bar]').exists()).toBe(false);
+    expect(webWrapper.find('[data-sidebar-expand-btn]').exists()).toBe(true);
 
     // Filter & Sort menus stay crisp desktop dropdowns (NOT phone bottom sheets)
     await webWrapper.get('[data-filter-menu-trigger]').trigger('click');
@@ -1010,26 +1037,19 @@ describe('DashboardView T-021 + T-018 Explorer Redesign Integration', () => {
     expect(webWrapper.find('[data-sort-menu]').exists()).toBe(true);
     expect(webWrapper.get('[data-sort-menu]').classes()).not.toContain('dashboard-menu-sheet');
 
-    // Clicking Проводник, Поиск, and Галерея on Activity Bar in narrow browser opens the overlay drawer,
-    // and clicking the active icon toggles it closed/open
-    await webWrapper.get('[data-activity="explorer"]').trigger('click');
+    // Expand button in Headroom opens the slide-out overlay drawer, and close button closes it
+    await webWrapper.get('[data-sidebar-expand-btn]').trigger('click');
     await nextTick();
     expect((webWrapper.vm as any).mobileSidebarOpen).toBe(true);
     expect(webWrapper.get('.dashboard-sidebar').classes()).toContain('mobile-open');
 
-    await webWrapper.get('[data-activity="explorer"]').trigger('click');
+    await webWrapper.get('[data-sidebar-close]').trigger('click');
     await nextTick();
     expect((webWrapper.vm as any).mobileSidebarOpen).toBe(false);
 
-    await webWrapper.get('[data-activity="search"]').trigger('click');
-    await nextTick();
-    expect((webWrapper.vm as any).mobileSidebarOpen).toBe(true);
-    expect((webWrapper.vm as any).sidebarPanelMode).toBe('search');
-
-    await webWrapper.get('[data-activity="gallery"]').trigger('click');
+    await webWrapper.get('[data-mode-btn="media"]').trigger('click');
     await nextTick();
     expect((webWrapper.vm as any).activeSection).toEqual({ kind: 'gallery' });
-    expect((webWrapper.vm as any).mobileSidebarOpen).toBe(true);
 
     webWrapper.unmount();
 
@@ -1041,6 +1061,7 @@ describe('DashboardView T-021 + T-018 Explorer Redesign Integration', () => {
 
     expect(androidWrapper.get('.dashboard-view').classes()).toContain('is-android-app');
     expect(androidWrapper.find('[data-mobile-tabbar]').exists()).toBe(true);
+    expect(androidWrapper.find('[data-mobile-tab="search"]').exists()).toBe(false);
 
     // Filter & Sort menus open as phone bottom sheets teleported to body
     await androidWrapper.get('[data-filter-menu-trigger]').trigger('click');

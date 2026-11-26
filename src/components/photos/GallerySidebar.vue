@@ -11,6 +11,7 @@ import {
   Heart,
   House,
   Image as ImageIcon,
+  Plus,
   Send,
   Share2,
   Trash2,
@@ -81,6 +82,7 @@ const emit = defineEmits<{
   (e: 'select-yandex', path: string): void;
   (e: 'select-file', fileId: string, folderId: string | null): void;
   (e: 'share-album', id: string): void;
+  (e: 'create-album'): void;
   (e: 'open-trash'): void;
   (e: 'drop-favorites', fileIds: string[]): void;
   (e: 'drop-album', albumId: string, fileIds: string[]): void;
@@ -577,7 +579,19 @@ onBeforeUnmount(() => {
     </div>
 
     <!-- Section: Альбомы (ONE unified list backed by useSpaces()) -->
-    <div class="gs-section-label">{{ t('galleryAlbums') }}</div>
+    <div class="gs-section-label gs-section-head">
+      <span>{{ t('galleryAlbums') }}</span>
+      <button
+        type="button"
+        class="tree-alb-add-btn"
+        data-tree-add-album-btn
+        :aria-label="t('spaceNew')"
+        :title="t('spaceNew')"
+        @click.stop="emit('create-album')"
+      >
+        <Plus :size="13" aria-hidden="true" />
+      </button>
+    </div>
     <div class="gs-list" role="list">
       <div
         v-for="alb in albumsList"
@@ -923,6 +937,30 @@ onBeforeUnmount(() => {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--ui-text-muted);
+}
+.gs-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.tree-alb-add-btn {
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ui-text-muted);
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  margin-left: 2px;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.tree-alb-add-btn:hover {
+  background: var(--ui-glass-accent-bg);
+  color: var(--ui-glass-accent-text);
 }
 .gs-list {
   display: flex;

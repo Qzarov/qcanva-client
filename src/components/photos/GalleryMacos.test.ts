@@ -430,9 +430,17 @@ describe('macOS Photos Gallery (T-021)', () => {
       await flushPromises();
       await flushPromises();
 
-      // CSS rule hides native search cancel button so there is strictly one × clear button
-      expect(drivePhotosSource).toContain('::-webkit-search-cancel-button');
-      expect(drivePhotosSource).toContain('appearance: none');
+      // Unified ExplorerInlineSearch uses type="text" with a single [data-s2-clear] button (no native search cancel button)
+      expect(drivePhotosSource).toContain('<ExplorerInlineSearch');
+      const searchInput = wrapper.get('[data-s2-input]');
+      expect(searchInput.attributes('type')).toBe('text');
+      expect(wrapper.findAll('[data-s2-clear]')).toHaveLength(0);
+      await searchInput.setValue('закат');
+      await nextTick();
+      expect(wrapper.findAll('[data-s2-clear]')).toHaveLength(1);
+      await wrapper.get('[data-s2-clear]').trigger('click');
+      await nextTick();
+      expect((searchInput.element as HTMLInputElement).value).toBe('');
 
       // Toggle info panel with shortcut "I"
       await wrapper.get('[data-drive-photos]').trigger('keydown', { key: 'i' });
