@@ -26,6 +26,7 @@ import { useI18n } from '../../composables/useI18n';
 vi.mock('../../api/spaces', () => ({
   spacesApi: {
     get: vi.fn(),
+    create: vi.fn().mockResolvedValue({ id: 'new-alb-1', name: 'Новый' }),
     feed: vi.fn(),
     feedTypes: vi.fn().mockResolvedValue({ types: [] }),
     rename: vi.fn(),
@@ -33,7 +34,8 @@ vi.mock('../../api/spaces', () => ({
     addMember: vi.fn(),
     setRole: vi.fn(),
     removeMember: vi.fn(),
-    addQspaceFolder: vi.fn(),
+    addItems: vi.fn().mockResolvedValue({ added: 1 }),
+    addQspaceFolder: vi.fn().mockResolvedValue({}),
     addYandexFolder: vi.fn(),
     removeSource: vi.fn().mockResolvedValue(undefined),
     removeItems: vi.fn().mockResolvedValue({ removed: 1 }),
@@ -677,19 +679,36 @@ describe('DashboardSpace (T-018 Albums redesign)', () => {
     expect(wrapper.find('[data-row-key="source:src-1"]').exists()).toBe(true);
     expect(wrapper.find('[data-row-key="q:file:direct-1"]').exists()).toBe(true);
 
-    // Right-click direct item shows "Убрать из альбома", hides dead "Добавить в альбом" when no other albums exist, and calls spacesApi.removeItems
+    // Right-click direct item shows "Убрать из альбома", keeps "В альбом >" available for "+ Новый альбом…", and calls spacesApi.removeItems
     await wrapper.setProps({ viewMode: 'grid' });
     await nextTick();
     await wrapper.get('[data-space-item="q:file:direct-1"]').trigger('contextmenu', { clientX: 40, clientY: 50 });
     await nextTick();
-    expect(wrapper.find('[data-explorer-context-menu] [data-ctx-action="add-to-album"]').exists()).toBe(false);
+    const directAlbumBtn = wrapper.get('[data-explorer-context-menu] [data-ctx-action="add-to-album"]');
+    await directAlbumBtn.trigger('mouseenter');
+    await nextTick();
+    expect(document.body.querySelector('[data-ctx-album-list] [data-ctx-new-album]')).toBeTruthy();
     const removeDirectBtn = wrapper.get('[data-explorer-context-menu] [data-ctx-action="remove-from-album"]');
     expect(removeDirectBtn.text()).toContain('Убрать из альбома');
     await removeDirectBtn.trigger('click');
     await flushPromises();
     expect(spacesApi.removeItems).toHaveBeenCalledWith('space-1', ['direct-1']);
 
-    // Right-click attached source folder shows "Убрать из альбома" and calls spacesApi.removeSource
+    // Right-click attached Q Space folder shows "В альбом >" (+ Новый альбом… creates album & adds folder) AND "Убрать из альбома"
+    await wrapper.get('[data-space-folder="folder-1"]').trigger('contextmenu', { clientX: 50, clientY: 60 });
+    await nextTick();
+    const folderAlbumBtn = wrapper.get('[data-explorer-context-menu] [data-ctx-action="add-to-album"]');
+    await folderAlbumBtn.trigger('mouseenter');
+    await nextTick();
+    const newAlbumFromFolderBtn = document.body.querySelector<HTMLButtonElement>('[data-ctx-album-list] [data-ctx-new-album]');
+    expect(newAlbumFromFolderBtn).toBeTruthy();
+    vi.mocked(promptDialog).mockResolvedValueOnce('Горы-копия');
+    newAlbumFromFolderBtn!.click();
+    await flushPromises();
+    expect(spacesApi.create).toHaveBeenCalledWith('Горы-копия');
+    expect(spacesApi.addQspaceFolder).toHaveBeenCalledWith('new-alb-1', 'folder-1');
+
+    // Re-open folder context menu and remove source from current album
     await wrapper.get('[data-space-folder="folder-1"]').trigger('contextmenu', { clientX: 50, clientY: 60 });
     await nextTick();
     await wrapper.get('[data-explorer-context-menu] [data-ctx-action="remove-from-album"]').trigger('click');
@@ -868,15 +887,185 @@ describe('ExplorerContextMenu & ExplorerDragBadge', () => {
     expect(leftPx).toBeLessThan(window.innerWidth);
     expect(topPx).toBeLessThan(window.innerHeight);
 
-    // Album submenu
-    await menu.get('[data-ctx-action="add-to-album"]').trigger('click');
-    await menu.get('[data-ctx-album="alb-1"]').trigger('click');
+    // Album submenu (hover opens teleported side flyout without clicking)
+    await menu.get('[data-ctx-action="add-to-album"]').trigger('mouseenter');
+    await nextTick();
+    const albumBtn = document.body.querySelector<HTMLButtonElement>('[data-ctx-album-list] [data-ctx-album="alb-1"]');
+    expect(albumBtn).toBeTruthy();
+    albumBtn!.click();
+    await nextTick();
     expect(wrapper.emitted('add-to-album')?.[0]?.[0]).toBe('alb-1');
     expect(wrapper.emitted('close')).toBeTruthy();
 
     // Esc closes menu
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     expect(wrapper.emitted('close')?.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('B-022: ExplorerContextMenu hover flyout supports diagonal grace timer, click-after-hover stay open, outside-click safety, scroll safety, + New Album, and keyboard arrows', async () => {
+    vi.useFakeTimers();
+    try {
+      const wrapper = mount(ExplorerContextMenu, {
+        attachTo: document.body,
+        props: {
+          open: true,
+          x: 100,
+          y: 120,
+          items: [{ key: 'drive-file:f-1', id: 'f-1', name: 'One.jpg', kind: 'drive-file' }],
+          albums: [
+            { id: 'alb-1', name: 'Отпуск', active: true },
+            { id: 'alb-2', name: 'Работа' },
+          ],
+        },
+      });
+      await nextTick();
+
+      const menu = wrapper.get('[data-explorer-context-menu]');
+      const triggerBtn = menu.get('[data-ctx-action="add-to-album"]');
+      expect(document.body.querySelector('[data-ctx-album-list]')).toBeNull();
+
+      // Hover opens teleported flyout immediately without clicking
+      await triggerBtn.trigger('mouseenter');
+      await nextTick();
+      const flyout = document.body.querySelector<HTMLElement>('[data-ctx-album-list]');
+      expect(flyout).toBeTruthy();
+      expect(menu.element.contains(flyout!)).toBe(false);
+      expect(document.body.contains(flyout!)).toBe(true);
+      expect(triggerBtn.classes()).toContain('is-submenu-open');
+      expect(flyout!.querySelector('[data-ctx-album="alb-1"]')).toBeTruthy();
+      expect(flyout!.querySelector('[data-ctx-new-album]')).toBeTruthy();
+
+      // Clicking trigger after hover does NOT toggle flyout closed
+      await triggerBtn.trigger('click');
+      await nextTick();
+      expect(document.body.querySelector('[data-ctx-album-list]')).toBeTruthy();
+
+      // Diagonal cursor path: mouseleave trigger -> 100ms -> mouseenter flyout keeps it open
+      await triggerBtn.trigger('mouseleave');
+      await vi.advanceTimersByTimeAsync(100);
+      expect(document.body.querySelector('[data-ctx-album-list]')).toBeTruthy();
+      flyout!.dispatchEvent(new MouseEvent('mouseenter', { bubbles: false }));
+      await vi.advanceTimersByTimeAsync(250);
+      expect(document.body.querySelector('[data-ctx-album-list]')).toBeTruthy();
+
+      // Scrolling inside the flyout scroll container does NOT close the menu
+      const scrollEl = flyout!.querySelector('.explorer-ctx-flyout-scroll')!;
+      scrollEl.dispatchEvent(new Event('scroll', { bubbles: false }));
+      await nextTick();
+      expect(wrapper.emitted('close')).toBeFalsy();
+
+      // Pointerdown + mousedown + focusout inside teleported flyout does NOT close menu prematurely before @click
+      const alb2Btn = flyout!.querySelector<HTMLButtonElement>('[data-ctx-album="alb-2"]')!;
+      alb2Btn.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+      alb2Btn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      menu.element.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: alb2Btn }));
+      await nextTick();
+      expect(wrapper.emitted('close')).toBeFalsy();
+
+      // Clicking album row emits add-to-album + close
+      alb2Btn.click();
+      await nextTick();
+      expect(wrapper.emitted('add-to-album')?.[0]?.[0]).toBe('alb-2');
+      expect(wrapper.emitted('close')?.length).toBe(1);
+
+      // Clicking "+ Новый альбом…" emits add-to-album with undefined albumId + close
+      const newAlbBtn = document.body.querySelector<HTMLButtonElement>('[data-ctx-album-list] [data-ctx-new-album]')!;
+      newAlbBtn.click();
+      await nextTick();
+      expect(wrapper.emitted('add-to-album')?.[1]?.[0]).toBeUndefined();
+      expect(wrapper.emitted('close')?.length).toBe(2);
+
+      // Leaving flyout closes after 180ms grace timer
+      flyout!.dispatchEvent(new MouseEvent('mouseleave', { bubbles: false }));
+      await vi.advanceTimersByTimeAsync(179);
+      expect(document.body.querySelector('[data-ctx-album-list]')).toBeTruthy();
+      await vi.advanceTimersByTimeAsync(2);
+      await nextTick();
+      expect(document.body.querySelector('[data-ctx-album-list]')).toBeNull();
+
+      // Keyboard ArrowRight opens flyout and focuses first button; ArrowLeft closes and returns focus to trigger
+      await triggerBtn.trigger('keydown', { key: 'ArrowRight' });
+      await nextTick();
+      const reopenedFlyout = document.body.querySelector<HTMLElement>('[data-ctx-album-list]');
+      expect(reopenedFlyout).toBeTruthy();
+      expect(document.activeElement).toBe(reopenedFlyout!.querySelector('[data-ctx-album="alb-1"]'));
+      reopenedFlyout!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+      await nextTick();
+      expect(document.body.querySelector('[data-ctx-album-list]')).toBeNull();
+      expect(document.activeElement).toBe(triggerBtn.element);
+
+      // Touch tap sequence (pointerdown touch -> compatibility mouseenter -> click) opens on tap 1 and closes on tap 2
+      await triggerBtn.trigger('pointerdown', { pointerType: 'touch' });
+      await triggerBtn.trigger('mouseenter');
+      await triggerBtn.trigger('click');
+      await nextTick();
+      expect(document.body.querySelector('[data-ctx-album-list]')).toBeTruthy();
+      await triggerBtn.trigger('pointerdown', { pointerType: 'touch' });
+      await triggerBtn.trigger('mouseenter');
+      await triggerBtn.trigger('click');
+      await nextTick();
+      expect(document.body.querySelector('[data-ctx-album-list]')).toBeNull();
+
+      // Hybrid laptop: mouse pointerenter after a touch tap restores mouse hover opening
+      await triggerBtn.trigger('pointerdown', { pointerType: 'touch' });
+      await triggerBtn.trigger('pointerenter', { pointerType: 'mouse' });
+      await triggerBtn.trigger('mouseenter');
+      await nextTick();
+      expect(document.body.querySelector('[data-ctx-album-list]')).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('B-022: ExplorerContextMenu flyout opens on right near left edge and auto-flips left near right edge', async () => {
+    const origInnerWidth = window.innerWidth;
+    const origInnerHeight = window.innerHeight;
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1280 });
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 800 });
+
+    try {
+      const wrapper = mount(ExplorerContextMenu, {
+        attachTo: document.body,
+        props: {
+          open: true,
+          x: 40,
+          y: 140,
+          items: [{ key: 'drive-file:f-1', id: 'f-1', name: 'One.jpg', kind: 'drive-file' }],
+          albums: [{ id: 'alb-1', name: 'Отпуск' }],
+        },
+      });
+      await nextTick();
+
+      const menuEl = wrapper.get('[data-explorer-context-menu]').element as HTMLElement;
+      const triggerEl = wrapper.get('[data-ctx-action="add-to-album"]').element as HTMLElement;
+      vi.spyOn(menuEl, 'getBoundingClientRect').mockReturnValue({
+        left: 40, right: 260, top: 140, bottom: 420, width: 220, height: 280, x: 40, y: 140, toJSON: () => ({}),
+      });
+      vi.spyOn(triggerEl, 'getBoundingClientRect').mockReturnValue({
+        left: 46, right: 254, top: 210, bottom: 242, width: 208, height: 32, x: 46, y: 210, toJSON: () => ({}),
+      });
+
+      await wrapper.get('[data-ctx-action="add-to-album"]').trigger('mouseenter');
+      await nextTick();
+      const rightFlyout = document.body.querySelector<HTMLElement>('[data-ctx-album-list]')!;
+      expect(rightFlyout.getAttribute('data-flyout-side')).toBe('right');
+      expect(parseInt(rightFlyout.style.left, 10)).toBe(266);
+
+      // Now simulate menu near right edge -> flips to left
+      vi.spyOn(menuEl, 'getBoundingClientRect').mockReturnValue({
+        left: 1020, right: 1240, top: 140, bottom: 420, width: 220, height: 280, x: 1020, y: 140, toJSON: () => ({}),
+      });
+      vi.spyOn(rightFlyout, 'getBoundingClientRect').mockReturnValue({
+        left: 0, right: 216, top: 0, bottom: 100, width: 216, height: 100, x: 0, y: 0, toJSON: () => ({}),
+      });
+      await wrapper.get('[data-ctx-action="add-to-album"]').trigger('mouseenter');
+      await nextTick();
+      expect(rightFlyout.getAttribute('data-flyout-side')).toBe('left');
+      expect(parseInt(rightFlyout.style.left, 10)).toBe(1020 - 216 - 6);
+    } finally {
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: origInnerWidth });
+      Object.defineProperty(window, 'innerHeight', { configurable: true, value: origInnerHeight });
+    }
   });
 
   it('renders empty-area context menu with create-folder, add, and refresh actions and closes on click', async () => {

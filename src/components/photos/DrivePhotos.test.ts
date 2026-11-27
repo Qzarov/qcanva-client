@@ -700,12 +700,17 @@ describe('DrivePhotos', () => {
     await w.get('[data-testid="gallery-album-crumb"]').trigger('click');
     await flushPromises();
 
-    // ctxAddToAlbum refreshes albums and increments panelEpoch
+    // ctxAddToAlbum preloads albums once on contextmenu (no duplicate request on quick hover), refreshes albums and increments panelEpoch
     spacesAddItemsMock.mockResolvedValueOnce({ added: 1 });
+    const listCallsBefore = spacesListMock.mock.calls.length;
     await w.get('[data-file-id="f0"]').trigger('contextmenu');
-    await w.get('[data-ctx-album]').trigger('click');
+    // Hover immediately while preload is still in flight — must NOT fire a duplicate list request
+    await w.get('[data-ctx-album]').trigger('mouseenter');
     await flushPromises();
-    await w.get('.dp-ctx-sub-item').trigger('click');
+    expect(spacesListMock.mock.calls.length).toBe(listCallsBefore + 1);
+    const flyoutItem = document.body.querySelector<HTMLButtonElement>('[data-gallery-ctx-album-flyout] [data-gallery-ctx-album="alb1"]');
+    expect(flyoutItem).toBeTruthy();
+    flyoutItem!.click();
     await flushPromises();
     expect(spacesAddItemsMock).toHaveBeenCalledWith('alb1', ['f0']);
     expect(feedRefreshAlbums).toHaveBeenCalled();

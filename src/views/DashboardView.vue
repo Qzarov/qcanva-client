@@ -1144,6 +1144,7 @@
       :items="explorerCtxMenu.items"
       :empty-area="explorerCtxMenu.emptyArea"
       :can-move="explorerCtxMenu.canMove"
+      :can-album="contextMenuCanAlbum"
       :can-delete="explorerCtxMenu.canDelete"
       :can-rename="explorerCtxMenu.canRename"
       :can-properties="explorerCtxMenu.canProperties"
@@ -6242,9 +6243,41 @@ export default defineComponent({
       isFavorite: false,
     });
 
-    const contextMenuAlbums = computed(() =>
-      allSpaces.value.map((s) => ({ id: s.id, name: s.name })),
+    const isAlbumEligibleContextItem = (item: ExplorerContextMenuItem): boolean => {
+      if (!item || item.key.startsWith('y:')) return false;
+      if (
+        item.kind === 'space'
+        || item.kind === 'album'
+        || item.key.startsWith('space:')
+        || item.key.startsWith('album:')
+      ) {
+        return false;
+      }
+      if (item.kind === 'folder' || item.key.startsWith('folder:')) {
+        return Boolean(item.id || item.key.replace(/^folder:/, ''));
+      }
+      if (item.kind === 'drive-file' || item.kind === 'file' || item.key.startsWith('drive-file:')) {
+        return Boolean(item.id || item.key.replace(/^drive-file:/, ''));
+      }
+      return false;
+    };
+
+    const contextMenuCanAlbum = computed(() =>
+      !explorerCtxMenu.value.emptyArea
+      && explorerCtxMenu.value.items.some(isAlbumEligibleContextItem),
     );
+
+    const contextMenuAlbums = computed(() => {
+      const single = explorerCtxMenu.value.items.length === 1 ? explorerCtxMenu.value.items[0] : null;
+      const activeIds = new Set<string>(single?.albumIds ?? single?.albums ?? []);
+      return allSpaces.value
+        .filter((s) => !s.unlisted && (!s.role || s.role === 'owner' || s.role === 'editor'))
+        .map((s) => ({
+          id: s.id,
+          name: s.name,
+          active: activeIds.size > 0 ? activeIds.has(s.id) : false,
+        }));
+    });
 
     const openContextMenuForItems = (x: number, y: number, items: ExplorerContextMenuItem[]) => {
       if (!items.length) return;
@@ -6514,19 +6547,44 @@ export default defineComponent({
       }
     };
 
-    const onCtxMenuAddToAlbum = (albumId: string | undefined, items: readonly ExplorerContextMenuItem[]) => {
-      if (!albumId) return;
-      const fallbackFolderId = activeSection.value.kind === 'folder' ? (activeFolder.value?.id ?? null) : null;
-      void onDropGroupToAlbum(albumId, {
+    const onCtxMenuAddToAlbum = async (albumId: string | undefined, items: readonly ExplorerContextMenuItem[]) => {
+      const eligible = items.filter(isAlbumEligibleContextItem);
+      if (!eligible.length) return;
+      let targetAlbumId = albumId;
+      if (!targetAlbumId) {
+        const allowed = await plansApi.mine().then((info) => info.plan?.canCreateSpaces !== false).catch(() => true);
+        if (!allowed) {
+          setFeedback('error', t('planErrorSpaces'));
+          return;
+        }
+        const name = (await promptDialog({
+          title: t('spaceNew'),
+          placeholder: t('spaceNamePlaceholder'),
+          confirmLabel: t('create'),
+          cancelLabel: t('cancel'),
+        }))?.trim();
+        if (!name) return;
+        try {
+          const space = await spacesApi.create(name);
+          targetAlbumId = space.id;
+          await loadSpaces(true);
+        } catch (error) {
+          setFeedback('error', error instanceof Error && error.message ? error.message : t('spaceActionFailed'));
+          return;
+        }
+      }
+      await onDropGroupToAlbum(targetAlbumId, {
         source: 'explorer',
-        items: items.map((i) => ({
+        items: eligible.map((i) => ({
           key: i.key,
           id: i.id || '',
           kind: i.kind || 'file',
-          folderId: i.kind === 'folder' ? (i.id ?? null) : fallbackFolderId,
+          folderId: (i.kind === 'folder' || i.key.startsWith('folder:'))
+            ? (i.id || i.key.replace(/^folder:/, ''))
+            : null,
         })),
-        keys: items.map((i) => i.key),
-        count: items.length,
+        keys: eligible.map((i) => i.key),
+        count: eligible.length,
       });
     };
 
@@ -7220,6 +7278,7 @@ export default defineComponent({
       propertiesFile,
       explorerCtxMenu,
       contextMenuAlbums,
+      contextMenuCanAlbum,
       onTableRowContextMenu,
       onGridItemContextMenu,
       onGridDriveFileContextMenu,

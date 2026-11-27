@@ -81,35 +81,31 @@
         <span>{{ shareLabel }}</span>
       </button>
 
-      <div v-if="canAlbum" class="explorer-ctx-album-wrap">
+      <div
+        v-if="canAlbum"
+        class="explorer-ctx-album-wrap"
+      >
         <button
+          ref="albumTriggerEl"
           type="button"
           class="explorer-ctx-item"
+          :class="{ 'is-submenu-open': albumsOpen }"
           role="menuitem"
-          :aria-expanded="albums?.length ? albumsOpen : undefined"
+          aria-haspopup="menu"
+          :aria-expanded="albumsOpen"
           data-ctx-action="add-to-album"
-          @click="onAlbumTrigger"
+          @pointerenter="onAlbumTriggerPointerEnter"
+          @mouseenter="onAlbumTriggerEnter"
+          @mouseleave="scheduleCloseAlbums"
+          @focusin="onAlbumTriggerFocusIn"
+          @keydown="onAlbumTriggerKeydown"
+          @pointerdown="onAlbumTriggerPointerDown"
+          @click="onAlbumTriggerClick"
         >
           <FolderHeart :size="15" aria-hidden="true" />
           <span>{{ t('explorerAddToAlbum') }}</span>
-          <ChevronRight v-if="albums?.length" :size="13" class="explorer-ctx-chevron" :class="{ open: albumsOpen }" aria-hidden="true" />
+          <ChevronRight :size="13" class="explorer-ctx-chevron" aria-hidden="true" />
         </button>
-
-        <div v-if="albumsOpen && albums?.length" class="explorer-ctx-sub" data-ctx-album-list>
-          <button
-            v-for="album in albums"
-            :key="album.id"
-            type="button"
-            class="explorer-ctx-item explorer-ctx-sub-item"
-            role="menuitem"
-            :data-ctx-album="album.id"
-            @click="onPickAlbum(album.id)"
-          >
-            <span class="explorer-ctx-dot" :style="{ background: album.color || 'var(--color-brands, #44cf6e)' }" aria-hidden="true"></span>
-            <span class="explorer-ctx-sub-name">{{ album.name }}</span>
-            <Check v-if="album.active" :size="13" aria-hidden="true" />
-          </button>
-        </div>
       </div>
 
       <button
@@ -206,6 +202,62 @@
       </template>
     </div>
   </Transition>
+
+  <Teleport to="body">
+    <Transition name="ctx-flyout-pop">
+      <div
+        v-if="open && !emptyArea && items.length > 0 && canAlbum && albumsOpen"
+        ref="flyoutEl"
+        class="explorer-ctx-flyout"
+        role="menu"
+        tabindex="-1"
+        :aria-label="t('explorerAddToAlbum')"
+        :data-flyout-side="flyoutSide"
+        data-ctx-album-list
+        :style="flyoutStyle"
+        @mouseenter="cancelCloseAlbums"
+        @mouseleave="scheduleCloseAlbums"
+        @pointerdown="markPointerInside"
+        @mousedown="markPointerInside"
+        @focusin="cancelCloseAlbums"
+        @focusout="onMenuFocusOut"
+        @keydown="onFlyoutKeydown"
+        @click.stop
+        @contextmenu.prevent
+      >
+        <div v-if="albums?.length" class="explorer-ctx-flyout-scroll">
+          <button
+            v-for="album in albums"
+            :key="album.id"
+            type="button"
+            class="explorer-ctx-item explorer-ctx-sub-item"
+            role="menuitem"
+            :data-ctx-album="album.id"
+            @click="onPickAlbum(album.id)"
+          >
+            <span class="explorer-ctx-dot" :style="{ background: album.color || 'var(--color-brands, #44cf6e)' }" aria-hidden="true"></span>
+            <span class="explorer-ctx-sub-name">{{ album.name }}</span>
+            <Check v-if="album.active" :size="13" class="explorer-ctx-check" aria-hidden="true" />
+          </button>
+        </div>
+        <div
+          v-if="albums?.length"
+          class="explorer-ctx-sep"
+          role="separator"
+        ></div>
+        <button
+          type="button"
+          class="explorer-ctx-item explorer-ctx-sub-item explorer-ctx-new-album"
+          role="menuitem"
+          data-ctx-new-album
+          @click="onCreateNewAlbum"
+        >
+          <Plus :size="14" aria-hidden="true" />
+          <span class="explorer-ctx-sub-name">{{ t('photosPanelNewAlbum') }}</span>
+        </button>
+      </div>
+    </Transition>
+  </Teleport>
 </template>
 
 <script lang="ts">
@@ -214,6 +266,8 @@ export interface ExplorerContextMenuItem {
   id?: string | null;
   name?: string;
   kind?: string;
+  albums?: ReadonlyArray<string>;
+  albumIds?: ReadonlyArray<string>;
 }
 
 export interface ExplorerContextMenuAlbum {
@@ -302,8 +356,16 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 const menuEl = ref<HTMLElement | null>(null);
+const albumTriggerEl = ref<HTMLButtonElement | null>(null);
+const flyoutEl = ref<HTMLElement | null>(null);
 const albumsOpen = ref(false);
 const measured = ref({ w: 232, h: 300 });
+const flyoutSide = ref<'right' | 'left'>('right');
+const flyoutPos = ref<{ left: number; top: number }>({ left: 0, top: 0 });
+const FLYOUT_CLOSE_DELAY_MS = 180;
+let albumsCloseTimer: ReturnType<typeof setTimeout> | null = null;
+let albumsOpenedByHover = false;
+let lastAlbumPointerType = '';
 
 const count = computed(() => props.items.length);
 const withCount = (label: string) => (count.value > 1 ? `${label} (${count.value})` : label);
@@ -339,6 +401,11 @@ const positionStyle = computed(() => {
   };
 });
 
+const flyoutStyle = computed(() => ({
+  left: `${Math.round(flyoutPos.value.left)}px`,
+  top: `${Math.round(flyoutPos.value.top)}px`,
+}));
+
 function measureMenu(): void {
   const el = menuEl.value;
   if (!el) return;
@@ -348,9 +415,93 @@ function measureMenu(): void {
   }
 }
 
+function measureFlyout(): void {
+  const vw = typeof window !== 'undefined' && window.innerWidth > 0 ? window.innerWidth : 1280;
+  const vh = typeof window !== 'undefined' && window.innerHeight > 0 ? window.innerHeight : 800;
+  const menuRect = menuEl.value?.getBoundingClientRect();
+  const triggerRect = albumTriggerEl.value?.getBoundingClientRect();
+  const flyoutRect = flyoutEl.value?.getBoundingClientRect();
+
+  const fallbackMenuLeft = Number.parseFloat(positionStyle.value.left) || props.x;
+  const fallbackMenuTop = Number.parseFloat(positionStyle.value.top) || props.y;
+  const hasMenuRect = Boolean(menuRect && (menuRect.width > 0 || menuRect.right > 0 || menuRect.left > 0));
+  const menuLeft = hasMenuRect ? menuRect!.left : fallbackMenuLeft;
+  const menuRight = hasMenuRect ? menuRect!.right : fallbackMenuLeft + measured.value.w;
+  const menuTop = hasMenuRect ? menuRect!.top : fallbackMenuTop;
+
+  const rawFlyoutW = flyoutEl.value?.offsetWidth || (flyoutRect && flyoutRect.width > 0 ? flyoutRect.width : 0);
+  const flyoutWidth = rawFlyoutW > 0 ? rawFlyoutW : 216;
+  const estimatedHeight = Math.min(320, ((props.albums?.length ?? 0) + 1) * 32 + 20);
+  const rawFlyoutH = flyoutEl.value?.offsetHeight || (flyoutRect && flyoutRect.height > 0 ? flyoutRect.height : 0);
+  const flyoutHeight = rawFlyoutH > 0 ? rawFlyoutH : estimatedHeight;
+
+  const gap = 6;
+  let side: 'right' | 'left' = 'right';
+  let left = menuRight + gap;
+  if (menuRight + flyoutWidth + 12 > vw && menuLeft - flyoutWidth - gap >= 4) {
+    side = 'left';
+    left = Math.max(8, menuLeft - flyoutWidth - gap);
+  } else if (menuRight + flyoutWidth + 12 > vw) {
+    left = Math.max(8, Math.min(menuRight + gap, Math.max(8, vw - flyoutWidth - 8)));
+  }
+
+  const hasTriggerRect = Boolean(triggerRect && (triggerRect.height > 0 || triggerRect.top > 0));
+  const anchorTop = hasTriggerRect ? triggerRect!.top : menuTop;
+  const top = Math.max(8, Math.min(anchorTop - 4, Math.max(8, vh - flyoutHeight - 8)));
+
+  flyoutSide.value = side;
+  flyoutPos.value = { left, top };
+}
+
+function cancelCloseAlbums(): void {
+  if (albumsCloseTimer !== null) {
+    clearTimeout(albumsCloseTimer);
+    albumsCloseTimer = null;
+  }
+}
+
+function scheduleCloseAlbums(): void {
+  cancelCloseAlbums();
+  albumsCloseTimer = setTimeout(() => {
+    albumsCloseTimer = null;
+    albumsOpen.value = false;
+    albumsOpenedByHover = false;
+  }, FLYOUT_CLOSE_DELAY_MS);
+}
+
+function openAlbumsFlyout(byHover: boolean, focusFirst = false): void {
+  cancelCloseAlbums();
+  const wasOpen = albumsOpen.value;
+  albumsOpen.value = true;
+  if (byHover) albumsOpenedByHover = true;
+  else if (!wasOpen) albumsOpenedByHover = false;
+  measureFlyout();
+  void nextTick(() => {
+    measureFlyout();
+    if (focusFirst) {
+      const firstBtn = flyoutEl.value?.querySelector<HTMLButtonElement>('button[role="menuitem"]');
+      firstBtn?.focus({ preventScroll: true });
+    }
+  });
+}
+
+function closeAlbumsFlyout(returnFocus = false): void {
+  cancelCloseAlbums();
+  albumsOpen.value = false;
+  albumsOpenedByHover = false;
+  if (returnFocus) {
+    albumTriggerEl.value?.focus({ preventScroll: true });
+  }
+}
+
 let pointerInsideMenu = false;
 let pointerInsideTimer: ReturnType<typeof setTimeout> | null = null;
 let listenersAttached = false;
+
+function isInsideMenuOrFlyout(node: Node | null): boolean {
+  if (!node) return false;
+  return Boolean(menuEl.value?.contains(node) || flyoutEl.value?.contains(node));
+}
 
 function clearPointerInsideTimer(): void {
   if (pointerInsideTimer !== null) {
@@ -378,14 +529,14 @@ function focusAndMeasureMenu(): void {
 function onOutsidePointerDown(event: Event): void {
   if (!menuEl.value) return;
   const target = event.target as Node | null;
-  if (target && menuEl.value.contains(target)) return;
+  if (isInsideMenuOrFlyout(target)) return;
   emit('close');
 }
 
 function onMenuFocusOut(event: FocusEvent): void {
   if (!props.open || pointerInsideMenu) return;
   const next = event.relatedTarget as Node | null;
-  if (!next || !menuEl.value?.contains(next)) {
+  if (!next || !isInsideMenuOrFlyout(next)) {
     emit('close');
   }
 }
@@ -393,7 +544,7 @@ function onMenuFocusOut(event: FocusEvent): void {
 function onDocFocusIn(event: FocusEvent): void {
   if (!menuEl.value) return;
   const target = event.target as Node | null;
-  if (target && !menuEl.value.contains(target)) {
+  if (target && !isInsideMenuOrFlyout(target)) {
     emit('close');
   }
 }
@@ -405,7 +556,7 @@ function onWindowBlur(): void {
 function onWindowScroll(event: Event): void {
   if (!menuEl.value) return;
   const target = event.target as Node | null;
-  if (target && menuEl.value.contains(target)) return;
+  if (isInsideMenuOrFlyout(target)) return;
   emit('close');
 }
 
@@ -444,7 +595,8 @@ function detachListeners(): void {
 }
 
 watch(() => props.open, (isOpen) => {
-  albumsOpen.value = false;
+  closeAlbumsFlyout();
+  lastAlbumPointerType = '';
   if (isOpen) {
     attachListeners();
     focusAndMeasureMenu();
@@ -455,11 +607,19 @@ watch(() => props.open, (isOpen) => {
 
 watch(() => [props.x, props.y] as const, () => {
   if (props.open) {
+    closeAlbumsFlyout();
     focusAndMeasureMenu();
   }
 });
 
+watch(() => props.albums?.length, () => {
+  if (props.open && albumsOpen.value) {
+    void nextTick(measureFlyout);
+  }
+});
+
 onBeforeUnmount(() => {
+  cancelCloseAlbums();
   detachListeners();
 });
 
@@ -474,18 +634,69 @@ function onShare(): void {
   emit('close');
 }
 
-function onAlbumTrigger(): void {
-  if (props.albums?.length) {
-    albumsOpen.value = !albumsOpen.value;
-    void nextTick(measureMenu);
+function onAlbumTriggerPointerEnter(event: PointerEvent): void {
+  if (event.pointerType) {
+    lastAlbumPointerType = event.pointerType;
+  }
+}
+
+function onAlbumTriggerEnter(): void {
+  if (lastAlbumPointerType === 'touch') return;
+  openAlbumsFlyout(true);
+}
+
+function onAlbumTriggerFocusIn(): void {
+  cancelCloseAlbums();
+}
+
+function onAlbumTriggerPointerDown(event: PointerEvent): void {
+  lastAlbumPointerType = event.pointerType || 'mouse';
+}
+
+function onAlbumTriggerKeydown(event: KeyboardEvent): void {
+  if (event.key === 'ArrowRight') {
+    event.preventDefault();
+    event.stopPropagation();
+    openAlbumsFlyout(false, true);
+  } else if (event.key === 'ArrowLeft' && albumsOpen.value) {
+    event.preventDefault();
+    event.stopPropagation();
+    closeAlbumsFlyout(true);
+  } else if (event.key === 'Enter' || event.key === ' ') {
+    lastAlbumPointerType = 'keyboard';
+  }
+}
+
+function onFlyoutKeydown(event: KeyboardEvent): void {
+  if (event.key === 'ArrowLeft') {
+    event.preventDefault();
+    event.stopPropagation();
+    closeAlbumsFlyout(true);
+  }
+}
+
+function onAlbumTriggerClick(): void {
+  const pointerType = lastAlbumPointerType;
+  lastAlbumPointerType = '';
+  if (!albumsOpen.value) {
+    openAlbumsFlyout(false);
     return;
   }
-  emit('add-to-album', undefined, props.items);
-  emit('close');
+  if (pointerType === 'touch' || pointerType === 'keyboard' || !albumsOpenedByHover) {
+    closeAlbumsFlyout();
+    return;
+  }
+  cancelCloseAlbums();
+  void nextTick(measureFlyout);
 }
 
 function onPickAlbum(albumId: string): void {
   emit('add-to-album', albumId, props.items);
+  emit('close');
+}
+
+function onCreateNewAlbum(): void {
+  emit('add-to-album', undefined, props.items);
   emit('close');
 }
 
@@ -587,7 +798,8 @@ function onRefresh(): void {
   text-align: left;
   cursor: pointer;
 }
-.explorer-ctx-item:hover {
+.explorer-ctx-item:hover,
+.explorer-ctx-item.is-submenu-open {
   background: var(--ui-glass-btn-hover, var(--ui-surface-subtle));
 }
 .explorer-ctx-item.danger {
@@ -599,25 +811,58 @@ function onRefresh(): void {
 
 .explorer-ctx-chevron {
   margin-left: auto;
-  transition: transform 0.14s ease;
-}
-.explorer-ctx-chevron.open {
-  transform: rotate(90deg);
+  flex: none;
+  opacity: 0.72;
 }
 
-.explorer-ctx-sub {
+.explorer-ctx-flyout {
+  position: fixed;
+  z-index: 1910;
+  min-width: 204px;
+  max-width: min(272px, calc(100vw - 16px));
+  max-height: min(320px, calc(100dvh - 16px));
+  padding: 6px;
+  border-radius: 13px;
+  background: var(--ui-glass-tint), var(--explorer-glass-bg-deep, var(--ui-surface-elevated));
+  border: 1px solid var(--ui-glass-border, var(--ui-border));
+  box-shadow: var(--ui-glass-surface-shadow, var(--shadow-dropdown));
+  backdrop-filter: blur(var(--ui-glass-blur, 18px)) saturate(1.25);
+  -webkit-backdrop-filter: blur(var(--ui-glass-blur, 18px)) saturate(1.25);
   display: flex;
   flex-direction: column;
-  gap: 1px;
-  margin: 2px 0 4px 14px;
-  padding-left: 8px;
-  border-left: 1px solid var(--ui-glass-border, var(--ui-border));
-  max-height: 160px;
+  gap: 2px;
+  color: var(--ui-text);
+  outline: none;
+  overflow: visible;
+  transform-origin: top left;
+}
+.explorer-ctx-flyout[data-flyout-side="left"] {
+  transform-origin: top right;
+}
+.explorer-ctx-flyout::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -10px;
+  width: 10px;
+}
+.explorer-ctx-flyout[data-flyout-side="left"]::before {
+  left: auto;
+  right: -10px;
+}
+.explorer-ctx-flyout-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  flex: 1 1 auto;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .explorer-ctx-sub-item {
-  padding: 5px 8px;
-  font-size: 12px;
+  padding: 6px 9px;
+  font-size: 12.5px;
 }
 .explorer-ctx-sub-name {
   flex: 1;
@@ -631,6 +876,14 @@ function onRefresh(): void {
   height: 8px;
   border-radius: 50%;
   flex: none;
+}
+.explorer-ctx-check {
+  flex: none;
+  color: var(--ui-glass-accent-text, var(--color-brands));
+}
+.explorer-ctx-new-album {
+  color: var(--ui-glass-accent-text, var(--color-brands));
+  font-weight: 500;
 }
 
 .explorer-ctx-sep {

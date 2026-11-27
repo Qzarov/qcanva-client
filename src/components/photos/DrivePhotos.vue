@@ -327,35 +327,27 @@
 
         <div class="dp-ctx-sep" role="separator"></div>
 
-        <button
-          type="button"
-          role="menuitem"
-          class="dp-ctx-item"
-          data-ctx-album
-          @click="ctxToggleAlbumSubmenu"
-        >
-          <FolderPlus :size="14" aria-hidden="true" />
-          <span>{{ t('explorerAddToAlbum') }}</span>
-        </button>
-
-        <div v-if="ctxAlbumsOpen" class="dp-ctx-sub">
+        <div class="dp-ctx-album-wrap">
           <button
-            v-for="alb in ctxAlbumsList"
-            :key="alb.id"
+            ref="ctxAlbumTriggerEl"
             type="button"
             role="menuitem"
-            class="dp-ctx-item dp-ctx-sub-item"
-            @click="ctxAddToAlbum(alb.id)"
+            aria-haspopup="menu"
+            :aria-expanded="ctxAlbumsOpen"
+            class="dp-ctx-item"
+            :class="{ 'is-submenu-open': ctxAlbumsOpen }"
+            data-ctx-album
+            @pointerenter="onCtxAlbumTriggerPointerEnter"
+            @mouseenter="onCtxAlbumTriggerEnter"
+            @mouseleave="scheduleCloseCtxAlbums"
+            @focusin="cancelCloseCtxAlbums"
+            @keydown="onCtxAlbumTriggerKeydown"
+            @pointerdown="onCtxAlbumTriggerPointerDown"
+            @click="onCtxAlbumTriggerClick"
           >
-            <span>{{ alb.name }}</span>
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            class="dp-ctx-item dp-ctx-sub-item"
-            @click="ctxCreateAlbumAndAdd"
-          >
-            <span>{{ t('photosPanelNewAlbum') }}</span>
+            <FolderPlus :size="14" aria-hidden="true" />
+            <span>{{ t('explorerAddToAlbum') }}</span>
+            <ChevronRight :size="13" class="dp-ctx-chevron" aria-hidden="true" />
           </button>
         </div>
 
@@ -412,6 +404,58 @@
         </button>
       </div>
     </Transition>
+
+    <Teleport to="body">
+      <Transition name="ctx-flyout-pop">
+        <div
+          v-if="ctxMenu && ctxAlbumsOpen"
+          ref="ctxFlyoutEl"
+          class="dp-ctx-flyout"
+          role="menu"
+          tabindex="-1"
+          :aria-label="t('explorerAddToAlbum')"
+          :data-flyout-side="ctxFlyoutSide"
+          data-gallery-ctx-album-flyout
+          :style="ctxFlyoutStyle"
+          @mouseenter="cancelCloseCtxAlbums"
+          @mouseleave="scheduleCloseCtxAlbums"
+          @pointerdown="markPointerInsideCtx"
+          @mousedown="markPointerInsideCtx"
+          @focusin="cancelCloseCtxAlbums"
+          @focusout="onCtxFocusOut"
+          @keydown="onCtxFlyoutKeydown"
+          @click.stop
+          @contextmenu.prevent
+        >
+          <div v-if="ctxAlbumsList.length" class="dp-ctx-flyout-scroll">
+            <button
+              v-for="alb in ctxAlbumsList"
+              :key="alb.id"
+              type="button"
+              role="menuitem"
+              class="dp-ctx-item dp-ctx-sub-item"
+              :data-gallery-ctx-album="alb.id"
+              @click="ctxAddToAlbum(alb.id)"
+            >
+              <span class="dp-ctx-dot" aria-hidden="true"></span>
+              <span class="dp-ctx-sub-name">{{ alb.name }}</span>
+              <Check v-if="ctxSingleItemAlbumIds.has(alb.id)" :size="13" class="dp-ctx-check" aria-hidden="true" />
+            </button>
+          </div>
+          <div v-if="ctxAlbumsList.length" class="dp-ctx-sep" role="separator"></div>
+          <button
+            type="button"
+            role="menuitem"
+            class="dp-ctx-item dp-ctx-sub-item dp-ctx-new-album"
+            data-gallery-ctx-new-album
+            @click="ctxCreateAlbumAndAdd"
+          >
+            <Plus :size="14" aria-hidden="true" />
+            <span class="dp-ctx-sub-name">{{ t('photosPanelNewAlbum') }}</span>
+          </button>
+        </div>
+      </Transition>
+    </Teleport>
 
     <PhotoViewer
       v-if="viewerItem"
@@ -483,7 +527,9 @@
 
 <script setup lang="ts">
 import {
+  Check,
   ChevronLeft,
+  ChevronRight,
   Download,
   FolderInput,
   FolderOpen,
@@ -492,6 +538,7 @@ import {
   Info,
   LayoutGrid,
   PanelLeft,
+  Plus,
   RectangleHorizontal,
   Share2,
   Trash2,
@@ -1118,9 +1165,24 @@ function folderOf(fileId: string): string | null | undefined {
 
 const ctxMenu = ref<{ x: number; y: number; item: FeedItem; targets: string[] } | null>(null);
 const ctxMenuEl = ref<HTMLElement | null>(null);
+const ctxAlbumTriggerEl = ref<HTMLButtonElement | null>(null);
+const ctxFlyoutEl = ref<HTMLElement | null>(null);
 const ctxAlbumsOpen = ref(false);
 const ctxAlbumsList = ref<Album[]>([]);
 const ctxActionTargets = ref<string[] | null>(null);
+const ctxFlyoutSide = ref<'right' | 'left'>('right');
+const ctxFlyoutPos = ref<{ left: number; top: number }>({ left: 0, top: 0 });
+const ctxFlyoutStyle = computed(() => ({
+  left: `${Math.round(ctxFlyoutPos.value.left)}px`,
+  top: `${Math.round(ctxFlyoutPos.value.top)}px`,
+}));
+const CTX_FLYOUT_CLOSE_DELAY_MS = 180;
+let ctxAlbumsCloseTimer: ReturnType<typeof setTimeout> | null = null;
+let ctxAlbumsOpenedByHover = false;
+let ctxLastAlbumPointerType = '';
+let ctxAlbumsLoadSeq = 0;
+let ctxAlbumsLoaded = false;
+let ctxAlbumsLoading = false;
 
 const moveTargetIds = computed(() =>
   ctxMenu.value?.targets
@@ -1202,10 +1264,121 @@ function markPointerInsideCtx(): void {
   }, 0);
 }
 
+function isInsideCtxMenuOrFlyout(node: Node | null): boolean {
+  if (!node) return false;
+  return Boolean(ctxMenuEl.value?.contains(node) || ctxFlyoutEl.value?.contains(node));
+}
+
+function measureCtxFlyout(): void {
+  const vw = typeof window !== 'undefined' && window.innerWidth > 0 ? window.innerWidth : 1280;
+  const vh = typeof window !== 'undefined' && window.innerHeight > 0 ? window.innerHeight : 800;
+  const menuRect = ctxMenuEl.value?.getBoundingClientRect();
+  const triggerRect = ctxAlbumTriggerEl.value?.getBoundingClientRect();
+  const flyoutRect = ctxFlyoutEl.value?.getBoundingClientRect();
+
+  const fallbackLeft = ctxMenu.value?.x ?? 8;
+  const fallbackTop = ctxMenu.value?.y ?? 8;
+  const hasMenuRect = Boolean(menuRect && (menuRect.width > 0 || menuRect.right > 0 || menuRect.left > 0));
+  const menuLeft = hasMenuRect ? menuRect!.left : fallbackLeft;
+  const menuRight = hasMenuRect ? menuRect!.right : fallbackLeft + 220;
+  const menuTop = hasMenuRect ? menuRect!.top : fallbackTop;
+
+  const rawFlyoutW = ctxFlyoutEl.value?.offsetWidth || (flyoutRect && flyoutRect.width > 0 ? flyoutRect.width : 0);
+  const flyoutWidth = rawFlyoutW > 0 ? rawFlyoutW : 216;
+  const estimatedHeight = Math.min(320, (ctxAlbumsList.value.length + 1) * 32 + 20);
+  const rawFlyoutH = ctxFlyoutEl.value?.offsetHeight || (flyoutRect && flyoutRect.height > 0 ? flyoutRect.height : 0);
+  const flyoutHeight = rawFlyoutH > 0 ? rawFlyoutH : estimatedHeight;
+
+  const gap = 6;
+  let side: 'right' | 'left' = 'right';
+  let left = menuRight + gap;
+  if (menuRight + flyoutWidth + 12 > vw && menuLeft - flyoutWidth - gap >= 4) {
+    side = 'left';
+    left = Math.max(8, menuLeft - flyoutWidth - gap);
+  } else if (menuRight + flyoutWidth + 12 > vw) {
+    left = Math.max(8, Math.min(menuRight + gap, Math.max(8, vw - flyoutWidth - 8)));
+  }
+
+  const hasTriggerRect = Boolean(triggerRect && (triggerRect.height > 0 || triggerRect.top > 0));
+  const anchorTop = hasTriggerRect ? triggerRect!.top : menuTop;
+  const top = Math.max(8, Math.min(anchorTop - 4, Math.max(8, vh - flyoutHeight - 8)));
+
+  ctxFlyoutSide.value = side;
+  ctxFlyoutPos.value = { left, top };
+}
+
+function cancelCloseCtxAlbums(): void {
+  if (ctxAlbumsCloseTimer !== null) {
+    clearTimeout(ctxAlbumsCloseTimer);
+    ctxAlbumsCloseTimer = null;
+  }
+}
+
+function scheduleCloseCtxAlbums(): void {
+  cancelCloseCtxAlbums();
+  ctxAlbumsCloseTimer = setTimeout(() => {
+    ctxAlbumsCloseTimer = null;
+    ctxAlbumsOpen.value = false;
+    ctxAlbumsOpenedByHover = false;
+  }, CTX_FLYOUT_CLOSE_DELAY_MS);
+}
+
+async function preloadCtxAlbums(): Promise<void> {
+  const seq = ++ctxAlbumsLoadSeq;
+  ctxAlbumsLoading = true;
+  try {
+    const list = await listGalleryAlbums();
+    if (seq === ctxAlbumsLoadSeq && ctxMenu.value) {
+      ctxAlbumsList.value = list;
+      ctxAlbumsLoaded = true;
+      if (ctxAlbumsOpen.value) {
+        void nextTick(measureCtxFlyout);
+      }
+    }
+  } catch {
+    if (seq === ctxAlbumsLoadSeq && ctxMenu.value) {
+      ctxAlbumsList.value = [];
+      ctxAlbumsLoaded = true;
+    }
+  } finally {
+    if (seq === ctxAlbumsLoadSeq) {
+      ctxAlbumsLoading = false;
+    }
+  }
+}
+
+function openCtxAlbumsFlyout(byHover: boolean, focusFirst = false): void {
+  cancelCloseCtxAlbums();
+  const wasOpen = ctxAlbumsOpen.value;
+  ctxAlbumsOpen.value = true;
+  if (byHover) ctxAlbumsOpenedByHover = true;
+  else if (!wasOpen) ctxAlbumsOpenedByHover = false;
+  if (!ctxAlbumsLoaded && !ctxAlbumsLoading) {
+    void preloadCtxAlbums();
+  }
+  measureCtxFlyout();
+  void nextTick(() => {
+    measureCtxFlyout();
+    if (focusFirst) {
+      const firstBtn = ctxFlyoutEl.value?.querySelector<HTMLButtonElement>('button[role="menuitem"]');
+      firstBtn?.focus({ preventScroll: true });
+    }
+  });
+}
+
+function closeCtxAlbumsFlyout(returnFocus = false): void {
+  cancelCloseCtxAlbums();
+  ctxAlbumsOpen.value = false;
+  ctxAlbumsOpenedByHover = false;
+  if (returnFocus) {
+    ctxAlbumTriggerEl.value?.focus({ preventScroll: true });
+  }
+}
+
 function onOutsidePointer(e: Event): void {
   if (!ctxMenu.value || !ctxMenuEl.value) return;
   const target = e.target as Node | null;
-  if (!target || !ctxMenuEl.value.contains(target)) {
+  if (!isInsideCtxMenuOrFlyout(target)) {
     closeCtxMenu();
   }
 }
@@ -1213,7 +1386,7 @@ function onOutsidePointer(e: Event): void {
 function onCtxFocusOut(e: FocusEvent): void {
   if (!ctxMenu.value || pointerInsideCtx) return;
   const next = e.relatedTarget as Node | null;
-  if (!next || !ctxMenuEl.value?.contains(next)) {
+  if (!next || !isInsideCtxMenuOrFlyout(next)) {
     closeCtxMenu();
   }
 }
@@ -1221,7 +1394,7 @@ function onCtxFocusOut(e: FocusEvent): void {
 function onDocFocusIn(e: FocusEvent): void {
   if (!ctxMenu.value || !ctxMenuEl.value) return;
   const target = e.target as Node | null;
-  if (target && !ctxMenuEl.value.contains(target)) {
+  if (target && !isInsideCtxMenuOrFlyout(target)) {
     closeCtxMenu();
   }
 }
@@ -1229,7 +1402,7 @@ function onDocFocusIn(e: FocusEvent): void {
 function onWindowScroll(e: Event): void {
   if (!ctxMenu.value || !ctxMenuEl.value) return;
   const target = e.target as Node | null;
-  if (target && ctxMenuEl.value.contains(target)) return;
+  if (isInsideCtxMenuOrFlyout(target)) return;
   closeCtxMenu();
 }
 
@@ -1256,6 +1429,12 @@ function detachCtxListeners(): void {
 }
 
 function closeCtxMenu(): void {
+  cancelCloseCtxAlbums();
+  ctxAlbumsOpenedByHover = false;
+  ctxLastAlbumPointerType = '';
+  ctxAlbumsLoadSeq++;
+  ctxAlbumsLoaded = false;
+  ctxAlbumsLoading = false;
   ctxMenu.value = null;
   ctxAlbumsOpen.value = false;
   clearPointerInsideCtx();
@@ -1271,8 +1450,14 @@ function onFeedContextMenu(e: MouseEvent, item: FeedItem): void {
   const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
   const x = Math.min(e.clientX, vw - 240);
   const y = Math.min(e.clientY, vh - 320);
+  cancelCloseCtxAlbums();
   ctxAlbumsOpen.value = false;
+  ctxAlbumsOpenedByHover = false;
+  ctxLastAlbumPointerType = '';
+  ctxAlbumsLoaded = false;
+  ctxAlbumsLoading = false;
   ctxMenu.value = { x: Math.max(8, x), y: Math.max(8, y), item, targets };
+  void preloadCtxAlbums();
   attachCtxListeners();
   void nextTick(() => {
     ctxMenuEl.value?.focus({ preventScroll: true });
@@ -1280,6 +1465,11 @@ function onFeedContextMenu(e: MouseEvent, item: FeedItem): void {
 }
 
 const ctxTargetIds = computed(() => ctxMenu.value?.targets ?? []);
+const ctxSingleItemAlbumIds = computed<ReadonlySet<string>>(() => {
+  if (!ctxMenu.value || ctxMenu.value.targets.length !== 1) return new Set();
+  const item = findLoadedItem(ctxMenu.value.targets[0]!) ?? ctxMenu.value.item;
+  return new Set(item?.albumIds ?? []);
+});
 const ctxAllFavorite = computed(() =>
   ctxTargetIds.value.length > 0 && ctxTargetIds.value.every((id) => findLoadedItem(id)?.favorite === true),
 );
@@ -1370,15 +1560,56 @@ async function ctxShare(): Promise<void> {
   else if (ids.length > 1) emit('share-photos', ids);
 }
 
-async function ctxToggleAlbumSubmenu(): Promise<void> {
-  ctxAlbumsOpen.value = !ctxAlbumsOpen.value;
-  if (ctxAlbumsOpen.value) {
-    try {
-      ctxAlbumsList.value = await listGalleryAlbums();
-    } catch {
-      ctxAlbumsList.value = [];
-    }
+function onCtxAlbumTriggerPointerEnter(e: PointerEvent): void {
+  if (e.pointerType) {
+    ctxLastAlbumPointerType = e.pointerType;
   }
+}
+
+function onCtxAlbumTriggerEnter(): void {
+  if (ctxLastAlbumPointerType === 'touch') return;
+  openCtxAlbumsFlyout(true);
+}
+
+function onCtxAlbumTriggerPointerDown(e: PointerEvent): void {
+  ctxLastAlbumPointerType = e.pointerType || 'mouse';
+}
+
+function onCtxAlbumTriggerKeydown(e: KeyboardEvent): void {
+  if (e.key === 'ArrowRight') {
+    e.preventDefault();
+    e.stopPropagation();
+    openCtxAlbumsFlyout(false, true);
+  } else if (e.key === 'ArrowLeft' && ctxAlbumsOpen.value) {
+    e.preventDefault();
+    e.stopPropagation();
+    closeCtxAlbumsFlyout(true);
+  } else if (e.key === 'Enter' || e.key === ' ') {
+    ctxLastAlbumPointerType = 'keyboard';
+  }
+}
+
+function onCtxFlyoutKeydown(e: KeyboardEvent): void {
+  if (e.key === 'ArrowLeft') {
+    e.preventDefault();
+    e.stopPropagation();
+    closeCtxAlbumsFlyout(true);
+  }
+}
+
+function onCtxAlbumTriggerClick(): void {
+  const pointerType = ctxLastAlbumPointerType;
+  ctxLastAlbumPointerType = '';
+  if (!ctxAlbumsOpen.value) {
+    openCtxAlbumsFlyout(false);
+    return;
+  }
+  if (pointerType === 'touch' || pointerType === 'keyboard' || !ctxAlbumsOpenedByHover) {
+    closeCtxAlbumsFlyout();
+    return;
+  }
+  cancelCloseCtxAlbums();
+  void nextTick(measureCtxFlyout);
 }
 
 async function ctxAddToAlbum(albId: string): Promise<void> {
@@ -1959,6 +2190,7 @@ function onPanelChanged(change: { fileId: string; favorite?: boolean; albumIds?:
 
 onBeforeUnmount(() => {
   stopDrag?.();
+  cancelCloseCtxAlbums();
   clearPointerInsideCtx();
   detachCtxListeners();
   window.removeEventListener('keydown', onWindowKeydown);
@@ -2362,7 +2594,8 @@ onBeforeUnmount(() => {
   text-align: left;
   cursor: pointer;
 }
-.dp-ctx-item:hover {
+.dp-ctx-item:hover,
+.dp-ctx-item.is-submenu-open {
   background: var(--ui-glass-btn-hover);
 }
 .dp-ctx-danger {
@@ -2373,17 +2606,81 @@ onBeforeUnmount(() => {
   background: var(--ui-glass-border);
   margin: 3px 4px;
 }
-.dp-ctx-sub {
+.dp-ctx-chevron {
+  margin-left: auto;
+  flex: none;
+  opacity: 0.72;
+}
+.dp-ctx-flyout {
+  position: fixed;
+  z-index: 1110;
+  min-width: 204px;
+  max-width: min(272px, calc(100vw - 16px));
+  max-height: min(320px, calc(100dvh - 16px));
+  padding: 6px;
+  border-radius: 13px;
+  background: var(--ui-glass-tint), var(--ui-surface-solid);
+  border: 1px solid var(--ui-glass-border);
+  box-shadow: var(--ui-glass-surface-shadow);
+  backdrop-filter: blur(var(--ui-glass-blur, 18px)) saturate(1.25);
+  -webkit-backdrop-filter: blur(var(--ui-glass-blur, 18px)) saturate(1.25);
   display: flex;
   flex-direction: column;
-  gap: 1px;
-  padding-left: 14px;
-  max-height: 160px;
+  gap: 2px;
+  color: var(--ui-text);
+  outline: none;
+  overflow: visible;
+  transform-origin: top left;
+}
+.dp-ctx-flyout[data-flyout-side="left"] {
+  transform-origin: top right;
+}
+.dp-ctx-flyout::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -10px;
+  width: 10px;
+}
+.dp-ctx-flyout[data-flyout-side="left"]::before {
+  left: auto;
+  right: -10px;
+}
+.dp-ctx-flyout-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  flex: 1 1 auto;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .dp-ctx-sub-item {
   font-size: 12.5px;
-  padding: 5px 8px;
+  padding: 6px 9px;
+}
+.dp-ctx-sub-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dp-ctx-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--color-brands, #44cf6e);
+}
+.dp-ctx-check {
+  flex: none;
+  color: var(--ui-glass-accent-text, var(--color-brands));
+}
+.dp-ctx-new-album {
+  color: var(--ui-glass-accent-text, var(--color-brands));
+  font-weight: 500;
 }
 
 .dp-trash-scroll {

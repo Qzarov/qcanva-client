@@ -1339,15 +1339,21 @@ const ctxCanDelete = computed(() => {
 
 const otherAlbums = computed(() =>
   allSpaces.value
-    .filter((s) => s.id !== props.spaceId && (s.role === 'owner' || s.role === 'editor'))
+    .filter((s) => !s.unlisted && s.id !== props.spaceId && (s.role === 'owner' || s.role === 'editor'))
     .map((s) => ({ id: s.id, name: s.name })),
 );
 
-const ctxCanAddToOtherAlbum = computed(() =>
-  !ctxMenu.folder
-  && otherAlbums.value.length > 0
-  && ctxMenu.items.some((it) => it.origin === 'qspace' && it.kind === 'file' && Boolean(it.id)),
-);
+function qspaceFolderIdOf(folder: SpaceFolderEntry | null): string | null {
+  if (!folder) return null;
+  if (folder.kind !== 'source-qspace' && folder.kind !== 'qspace-subfolder') return null;
+  return folder.folderId || folder.id || null;
+}
+
+const ctxCanAddToOtherAlbum = computed(() => {
+  if (ctxMenu.emptyArea) return false;
+  if (ctxMenu.folder) return Boolean(qspaceFolderIdOf(ctxMenu.folder));
+  return ctxMenu.items.some((it) => it.origin === 'qspace' && it.kind === 'file' && Boolean(it.id));
+});
 
 const ctxCanRemoveFromAlbum = computed(() => {
   if (!canAdd.value) return false;
@@ -1442,13 +1448,35 @@ function onCtxOpen(entry: ExplorerContextMenuItem): void {
 }
 
 async function onCtxAddToAlbum(albumId: string | undefined): Promise<void> {
-  if (!albumId) return;
+  const folderId = qspaceFolderIdOf(ctxMenu.folder);
   const fileIds = ctxMenu.items
     .filter((it) => it.origin === 'qspace' && it.kind === 'file' && Boolean(it.id))
     .map((it) => it.id!);
-  if (!fileIds.length) return;
+  if (!folderId && !fileIds.length) return;
+  let targetAlbumId = albumId;
+  if (!targetAlbumId) {
+    const name = (await promptDialog({
+      title: t('spaceNew'),
+      placeholder: t('spaceNamePlaceholder'),
+      confirmLabel: t('create'),
+      cancelLabel: t('cancel'),
+    }))?.trim();
+    if (!name) return;
+    try {
+      const created = await spacesApi.create(name);
+      targetAlbumId = created.id;
+    } catch (err) {
+      emit('feedback', 'error', errorText(err, t('spaceActionFailed')));
+      return;
+    }
+  }
   try {
-    await spacesApi.addItems(albumId, fileIds);
+    if (fileIds.length) {
+      await spacesApi.addItems(targetAlbumId, fileIds);
+    }
+    if (folderId) {
+      await spacesApi.addQspaceFolder(targetAlbumId, folderId);
+    }
     emit('feedback', 'success', t('explorerAddToAlbum'));
     void loadSpaces(true);
   } catch (err) {

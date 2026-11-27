@@ -971,6 +971,68 @@ describe('Gallery UX v2 & B-009/B-011/B-014 regressions', () => {
     expect(w.find('[data-testid="gallery-context-menu"]').exists()).toBe(false);
   });
 
+  it('B-022: gallery context menu preloads albums and opens hover flyout without clicking, with diagonal grace timer & outside-click safety', async () => {
+    vi.useFakeTimers();
+    try {
+      const w = mountDrivePhotos();
+      await settle();
+
+      await w.get('[data-file-id="f1"]').trigger('contextmenu', { clientX: 100, clientY: 120 });
+      await settle();
+      expect(w.find('[data-testid="gallery-context-menu"]').exists()).toBe(true);
+      expect(document.body.querySelector('[data-gallery-ctx-album-flyout]')).toBeNull();
+
+      // Hover opens teleported flyout with preloaded albums + "+ Новый альбом…"
+      const trigger = w.get('[data-testid="gallery-context-menu"] [data-ctx-album]');
+      await trigger.trigger('mouseenter');
+      await nextTick();
+      const flyout = document.body.querySelector<HTMLElement>('[data-gallery-ctx-album-flyout]');
+      expect(flyout).toBeTruthy();
+      expect(w.get('[data-testid="gallery-context-menu"]').element.contains(flyout!)).toBe(false);
+      expect(document.body.contains(flyout!)).toBe(true);
+      expect(flyout!.querySelector('[data-gallery-ctx-new-album]')).toBeTruthy();
+
+      // Diagonal mouseleave -> mouseenter flyout within 180ms keeps flyout open
+      await trigger.trigger('mouseleave');
+      await vi.advanceTimersByTimeAsync(120);
+      expect(document.body.querySelector('[data-gallery-ctx-album-flyout]')).toBeTruthy();
+      flyout!.dispatchEvent(new MouseEvent('mouseenter', { bubbles: false }));
+      await vi.advanceTimersByTimeAsync(250);
+      expect(document.body.querySelector('[data-gallery-ctx-album-flyout]')).toBeTruthy();
+
+      // Pointerdown + focusout inside flyout does NOT close context menu prematurely
+      const newBtn = flyout!.querySelector<HTMLButtonElement>('[data-gallery-ctx-new-album]')!;
+      newBtn.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+      newBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      w.get('[data-testid="gallery-context-menu"]').element.dispatchEvent(
+        new FocusEvent('focusout', { bubbles: true, relatedTarget: newBtn }),
+      );
+      await nextTick();
+      expect(w.find('[data-testid="gallery-context-menu"]').exists()).toBe(true);
+
+      // Leaving flyout closes it after 180ms while keeping parent menu open
+      flyout!.dispatchEvent(new MouseEvent('mouseleave', { bubbles: false }));
+      await vi.advanceTimersByTimeAsync(185);
+      await nextTick();
+      expect(document.body.querySelector('[data-gallery-ctx-album-flyout]')).toBeNull();
+      expect(w.find('[data-testid="gallery-context-menu"]').exists()).toBe(true);
+
+      // Touch tap sequence (pointerdown touch -> compatibility mouseenter -> click) opens on tap 1 and closes on tap 2
+      await trigger.trigger('pointerdown', { pointerType: 'touch' });
+      await trigger.trigger('mouseenter');
+      await trigger.trigger('click');
+      await nextTick();
+      expect(document.body.querySelector('[data-gallery-ctx-album-flyout]')).toBeTruthy();
+      await trigger.trigger('pointerdown', { pointerType: 'touch' });
+      await trigger.trigger('mouseenter');
+      await trigger.trigger('click');
+      await nextTick();
+      expect(document.body.querySelector('[data-gallery-ctx-album-flyout]')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('UX polish: PhotosFeed renders gradient curtains (.pgh-curtain, no .pgh-pill) on sticky-head and overlay headers with flush docking when headroom-hidden', async () => {
     expect(photosFeedSource).toMatch(/\.pf-stick\s*\{[^}]*top:\s*var\(--dp-top-h,\s*50px\);/);
     expect(photosFeedSource).toMatch(/\.pf\.headroom-hidden\s+\.pf-stick\s*\{[^}]*top:\s*0;/);
