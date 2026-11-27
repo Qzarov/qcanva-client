@@ -943,15 +943,20 @@ async function loadQspaceFolder(folderId: string) {
     );
 
     let trail: Array<{ id: string; name: string }> = [];
-    if (folderRes?.path?.length) {
-      const startIdx = folderRes.path.findIndex((c) => sourceFolderMap.has(c.id));
-      const trimmed = startIdx >= 0 ? folderRes.path.slice(startIdx) : folderRes.path;
-      trail = trimmed.map((c) => ({ id: c.id, name: c.name }));
+    if (folderRes) {
+      const ancestors = (folderRes.path ?? []).map((c) => ({ id: c.id, name: c.name }));
+      const known = props.folderOptions.find((f) => f.id === folderId);
+      const currentName = sourceFolderMap.get(folderId)?.title || folderRes.folder?.name || known?.name || folderId;
+      const fullPath = ancestors[ancestors.length - 1]?.id === folderId
+        ? ancestors
+        : [...ancestors, { id: folderId, name: currentName }];
+      const startIdx = fullPath.findIndex((c) => sourceFolderMap.has(c.id));
+      trail = startIdx >= 0 ? fullPath.slice(startIdx) : fullPath;
     } else if (sourceFolderMap.has(folderId)) {
       trail = [{ id: folderId, name: sourceFolderMap.get(folderId)!.title }];
     } else {
       const known = props.folderOptions.find((f) => f.id === folderId);
-      const name = folderRes?.folder?.name || known?.name || folderId;
+      const name = known?.name || folderId;
       const existingIdx = folderTrail.value.findIndex((c) => c.id === folderId);
       if (existingIdx >= 0) {
         trail = folderTrail.value.slice(0, existingIdx + 1);

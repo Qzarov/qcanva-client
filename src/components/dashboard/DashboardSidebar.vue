@@ -828,14 +828,17 @@ async function syncAlbumTreeToActiveSection(section: DashboardSection): Promise<
   if (!chain.length && typeof driveApi?.getFolder === 'function') {
     try {
       const info = await driveApi.getFolder(targetFolderId);
-      const crumbs = info?.path ?? [];
-      const startIdx = crumbs.findIndex((c) => sourceRootIds.has(c.id));
-      const trimmed = startIdx >= 0 ? crumbs.slice(startIdx) : crumbs;
-      for (let i = 0; i < trimmed.length - 1; i += 1) {
+      const rawCrumbs = info?.path ?? [];
+      const ancestors = rawCrumbs[rawCrumbs.length - 1]?.id === targetFolderId
+        ? rawCrumbs.slice(0, -1)
+        : rawCrumbs;
+      const startIdx = ancestors.findIndex((c) => sourceRootIds.has(c.id));
+      const trimmed = startIdx >= 0 ? ancestors.slice(startIdx) : [];
+      for (let i = 0; i < trimmed.length; i += 1) {
         const ancestorId = trimmed[i]!.id;
         chain.push(ancestorId);
-        const childId = trimmed[i + 1]?.id;
-        if (childId) albumRemoteParentById[childId] = ancestorId;
+        const childId = i + 1 < trimmed.length ? trimmed[i + 1]!.id : targetFolderId;
+        albumRemoteParentById[childId] = ancestorId;
       }
     } catch {
       // Ignore path lookup errors; folder remains open in workspace.
