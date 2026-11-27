@@ -64,6 +64,7 @@ export type DriveItem = Refine<
   snippet?: string | null; // нет в схеме хаба
   hash?: string;
   mediaProcessed?: boolean;
+  videoRendition?: boolean;
 };
 
 export type DriveItemsResponse = Override<
@@ -388,6 +389,27 @@ export function resolveDownloadUrl(url: string, apiBase: string = API_BASE): str
   const origin = typeof window !== 'undefined' && window.location ? window.location.origin : '';
   const combined = `${base}${url.startsWith('/') ? '' : '/'}${url}`;
   return `${origin}${combined.startsWith('/') ? '' : '/'}${combined}`;
+}
+
+/**
+ * Appends `inline=1` to Hub `/api/drive/files/...` URLs when not already present,
+ * so inline `<video>` and `<img>` playback gets `Content-Disposition: inline`,
+ * resolved `video/*` `Content-Type`, `X-Accel-Buffering: no`, and caching headers.
+ */
+export function withInlineParam(url: string): string {
+  if (!url || !url.includes('/api/drive/files/')) return url;
+  const hashIdx = url.indexOf('#');
+  const withoutHash = hashIdx >= 0 ? url.slice(0, hashIdx) : url;
+  const hashPart = hashIdx >= 0 ? url.slice(hashIdx) : '';
+  const qIdx = withoutHash.indexOf('?');
+  const base = qIdx >= 0 ? withoutHash.slice(0, qIdx) : withoutHash;
+  const query = qIdx >= 0 ? withoutHash.slice(qIdx + 1) : '';
+  const params = new URLSearchParams(query);
+  if (!params.has('inline')) {
+    params.set('inline', '1');
+  }
+  const qs = params.toString();
+  return `${base}${qs ? `?${qs}` : ''}${hashPart}`;
 }
 
 export function downloadFileFromUrl(absoluteUrl: string, filename?: string): void {

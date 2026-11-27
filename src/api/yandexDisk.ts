@@ -71,10 +71,21 @@ const YANDEX_MEDIA_MAX_ITEMS = 1000;
 const YANDEX_MEDIA_BFS_CONCURRENCY = 4;
 const YANDEX_MEDIA_BFS_MAX_FOLDERS = 40;
 
+const YANDEX_VIDEO_EXT_RE = /\.(mp4|mov|webm|mkv|avi|m4v|3gp|ogv|mts|m2ts)$/i;
+
+export function isYandexVideoItem(item: Pick<YandexItem, 'name' | 'mime' | 'mediaType'>): boolean {
+  return (
+    item.mediaType === 'video' ||
+    Boolean(item.mime?.toLowerCase().startsWith('video/')) ||
+    YANDEX_VIDEO_EXT_RE.test(item.name || '')
+  );
+}
+
 export function isYandexMediaItem(item: YandexItem): boolean {
   if (item.type !== 'file') return false;
-  if (item.mediaType === 'image' || item.mediaType === 'video') return true;
-  if (item.mime && (item.mime.startsWith('image/') || item.mime.startsWith('video/'))) return true;
+  if (isYandexVideoItem(item)) return true;
+  if (item.mediaType === 'image') return true;
+  if (item.mime && item.mime.toLowerCase().startsWith('image/')) return true;
   return false;
 }
 
@@ -379,6 +390,7 @@ export const yandexDisk = {
   move: (from: string, to: string) => request<YandexOutcome>('/yandex-disk/move', json({ from, to })),
   remove: (path: string) => request<YandexOutcome>(`/yandex-disk/items${q({ path })}`, { method: 'DELETE' }),
   downloadLink: (path: string) => request<{ href: string }>(`/yandex-disk/download${q({ path })}`),
+  streamLink: (path: string) => request<{ url: string }>('/yandex-disk/stream-link', json({ path })),
   publish: (path: string) => request<YandexItem>('/yandex-disk/publish', json({ path })),
   operation: (id: string) => request<{ status: 'success' | 'failed' | 'in-progress' }>(`/yandex-disk/operations/${encodeURIComponent(id)}`),
 };

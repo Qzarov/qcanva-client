@@ -7,9 +7,12 @@ vi.mock('./client', async (importOriginal) => {
 });
 
 import { ApiError, request } from './client';
+import { withInlineParam } from './drive';
 import { spacesApi } from './spaces';
 import {
+  isYandexMediaItem,
   isYandexReconnectError,
+  isYandexVideoItem,
   joinYandexPath,
   settleYandexOutcome,
   uploadYandexFile,
@@ -231,6 +234,60 @@ describe('Yandex Disk calls', () => {
           resources: [{ kind: 'text-document', id: 'td-1' }],
         }),
       }),
+    );
+  });
+
+  it('streamLink and spacesApi.yandexStreamLink call the signed streaming fallback endpoints', async () => {
+    mockedRequest.mockResolvedValueOnce({ url: '/api/yandex-disk/stream?path=%2Fclip.mkv&t=tok1' });
+    const res = await yandexDisk.streamLink('/clip.mkv');
+    expect(res.url).toBe('/api/yandex-disk/stream?path=%2Fclip.mkv&t=tok1');
+    expect(mockedRequest).toHaveBeenLastCalledWith(
+      '/yandex-disk/stream-link',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ path: '/clip.mkv' }) }),
+    );
+
+    mockedRequest.mockResolvedValueOnce({ url: '/api/yandex-disk/stream?path=%2FShared%2Fclip.mov&t=tok2' });
+    const spaceRes = await spacesApi.yandexStreamLink('sp-1', 'src-2', '/Shared/clip.mov');
+    expect(spaceRes.url).toBe('/api/yandex-disk/stream?path=%2FShared%2Fclip.mov&t=tok2');
+    expect(mockedRequest).toHaveBeenLastCalledWith(
+      '/spaces/sp-1/yandex-stream-link?sourceId=src-2&path=%2FShared%2Fclip.mov',
+    );
+  });
+
+  it('isYandexVideoItem / isYandexMediaItem detect .mkv/.mov/.avi videos even when mediaType is compressed or unknown', () => {
+    const mkv = {
+      path: '/Movies/demo.mkv',
+      name: 'demo.mkv',
+      type: 'file' as const,
+      size: 1234,
+      mime: 'application/octet-stream',
+      mediaType: 'compressed',
+      md5: null,
+      createdAt: null,
+      modifiedAt: null,
+      publicUrl: null,
+      previewUrl: null,
+    };
+    const mov = { ...mkv, path: '/Movies/clip.MOV', name: 'clip.MOV', mediaType: 'unknown', mime: null };
+    const pdf = { ...mkv, path: '/Docs/a.pdf', name: 'a.pdf', mediaType: 'document', mime: 'application/pdf' };
+    expect(isYandexVideoItem(mkv)).toBe(true);
+    expect(isYandexVideoItem(mov)).toBe(true);
+    expect(isYandexVideoItem(pdf)).toBe(false);
+    expect(isYandexMediaItem(mkv)).toBe(true);
+    expect(isYandexMediaItem(mov)).toBe(true);
+    expect(isYandexMediaItem(pdf)).toBe(false);
+  });
+
+  it('withInlineParam appends inline=1 to /api/drive/files/ URLs once and leaves external URLs untouched', () => {
+    expect(withInlineParam('https://hub.example/api/drive/files/f1?token=abc')).toBe(
+      'https://hub.example/api/drive/files/f1?token=abc&inline=1',
+    );
+    expect(withInlineParam('https://hub.example/api/drive/files/f1?token=abc&inline=1')).toBe(
+      'https://hub.example/api/drive/files/f1?token=abc&inline=1',
+    );
+    expect(withInlineParam('/api/drive/files/f1/download')).toBe('/api/drive/files/f1/download?inline=1');
+    expect(withInlineParam('https://downloader.disk.yandex.ru/disk/video.mp4?foo=1')).toBe(
+      'https://downloader.disk.yandex.ru/disk/video.mp4?foo=1',
     );
   });
 });

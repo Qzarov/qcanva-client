@@ -406,7 +406,8 @@ describe('PhotoViewer filmstrip LMB drag-to-scroll & ViewerMediaItem fallbacks',
     expect(resolveVideo).toHaveBeenCalledTimes(1);
     const video = wrapper.get('video[data-viewer-video]');
     expect(video.attributes('src')).toBe('https://downloader.disk.yandex.ru/disk/clip.mp4');
-    expect(video.attributes('referrerpolicy')).toBe('no-referrer');
+    expect(video.attributes('referrerpolicy')).toBeUndefined();
+    expect(video.attributes('preload')).toBe('metadata');
     expect(video.attributes('poster')).toBe('https://downloader.disk.yandex.ru/preview/clip.jpg');
 
     // Sibling video without preview renders clean icon placeholder in filmstrip

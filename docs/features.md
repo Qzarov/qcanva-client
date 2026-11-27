@@ -1,4 +1,4 @@
-> Сверено с `q-space` @ 7f83f24 + `feat/explorer-albums-gallery-redesign`, 2026-11-26.
+> Сверено с `q-space` @ 7f83f24 + `feat/explorer-albums-gallery-redesign`, 2026-11-27.
 
 # Функциональная карта веб-клиента QCanva (qcanva-client)
 
@@ -111,7 +111,7 @@
 | Перенос выделенных фото в папку диска (частичный сбой не теряет выделение неудавшихся) | за флагом `VITE_PHOTOS_ENABLED` | `src/components/photos/usePhotoSelectionActions.ts`, `src/components/FolderPickerDialog.vue` | `PATCH /api/drive/files/:id` |
 | Изменяемая по ширине панель фото справа (`240..480 px`, закрытие перетаскиванием/кнопкой): избранное, открыть, скачать оригинал, сведения, путь, альбомы, где хранится, описание | за флагом `VITE_PHOTOS_ENABLED` | `src/components/photos/PhotoPanel.vue`, `src/components/photos/DrivePhotos.vue` | `GET/PATCH /api/photos/files/:id`, `PUT /api/photos/albums/:id/items` |
 | Переход к папке фото на вкладке «Файлы» и синхронизация фокуса в дереве Галереи | за флагом `VITE_PHOTOS_ENABLED` | `src/components/photos/DrivePhotos.vue`, `src/components/photos/GallerySidebar.vue`, `src/views/DriveView.vue` | `—` |
-| Полупрозрачный просмотр фото и видео (клик по фону закрывает, `ⓘ` открывает боковую панель без закрытия, нижняя лента миниатюр Filmstrip) | за флагом `VITE_PHOTOS_ENABLED` | `src/components/photos/PhotoViewer.vue` | `POST /api/media/tokens` |
+| Полупрозрачный просмотр фото и видео (клик по фону закрывает, `ⓘ` открывает боковую панель без закрытия, нижняя лента миниатюр Filmstrip; умный выбор `videoRendition` / `inline=1` без лишних 404, прямой стриминг с Яндекс Диска через `referrer: same-origin` с Range-фоллбэком и UX неподдерживаемого кодека с переносом в Q Space) | в интерфейсе | `src/components/photos/PhotoViewer.vue`, `src/api/yandexDisk.ts`, `src/api/spaces.ts`, `src/api/drive.ts`, `index.html` | `POST /api/media/tokens`, `GET /api/drive/files/:id?inline=1`, `POST /api/yandex-disk/stream-link`, `GET /api/spaces/:id/yandex-stream-link`, `GET /api/yandex-disk/stream` |
 | Альбомы: список с обложками и числом фото в боковой панели, создание и добавление из ленты и панели фото | за флагом `VITE_PHOTOS_ENABLED` | `src/components/photos/GallerySidebar.vue`, `src/components/photos/PhotoPanel.vue`, `src/components/photos/usePhotoSelectionActions.ts` | `GET/POST /api/photos/albums` |
 | Просмотр одного альбома лентой с возвратом к списку или переходом через сайдбар | за флагом `VITE_PHOTOS_ENABLED` | `src/components/photos/DrivePhotos.vue`, `src/components/photos/GallerySidebar.vue` | `GET /api/photos/feed/summary`, `GET /api/photos/feed/items` |
 | Поиск по фото: плоская сетка результатов по релевантности без групп и слайдера; при недоступности поиска на хабе — «Поиск сейчас недоступен» | за флагом `VITE_PHOTOS_ENABLED` | `src/components/photos/DrivePhotos.vue`, `src/components/photos/PhotosSearchGrid.vue` | `POST /api/photos/search` |

@@ -1216,6 +1216,7 @@
       @delete="onMediaViewerDelete"
       @panel-changed="onMediaViewerPanelChanged"
       @select-tag="onMediaViewerSelectTag"
+      @transfer-to-qspace="onMediaViewerTransferToQspace"
     />
 
     <MarkdownDocumentViewer
@@ -1320,7 +1321,7 @@ import { alertDialog, confirmDelete, confirmDialog, promptDialog } from '../comp
 import { selectAll, selectRange, selectionKey, toggleSelection } from '../dashboard/selection';
 import { buildZip, canvasFileContent, safeFileName, saveBlob, splitFileName, textDocumentFileContent, uniqueFileName, type ArchiveFile } from '../dashboard/archive';
 import { DEFAULT_TAG_COLOR, genTagId, normalizeCanvas, normalizeHtmlDocument, normalizeInteractiveTemplate, normalizeResourceFolder, normalizeTextDocument } from '../dashboard/resource-normalizers';
-import { downloadDriveFile, driveApi, formatFileSize, resolveDownloadUrl, type DriveItem } from '../api/drive';
+import { downloadDriveFile, driveApi, formatFileSize, resolveDownloadUrl, withInlineParam, type DriveItem } from '../api/drive';
 import { useSidebarDriveFiles } from '../composables/useSidebarDriveFiles';
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
@@ -1410,6 +1411,8 @@ import { useSpaces } from '../composables/useSpaces';
 import {
   downloadYandexLink,
   fetchYandexContent,
+  isYandexMediaItem,
+  isYandexVideoItem,
   joinYandexPath,
   settleYandexOutcome,
   uploadYandexFile,
@@ -4362,31 +4365,41 @@ export default defineComponent({
     const mediaViewerCanShare = computed(() => mediaViewerIsQspaceFile.value);
     const mediaViewerCanDelete = computed(() => mediaViewerIsQspaceFile.value);
     const mediaViewerCanInfo = computed(() => mediaViewerIsQspaceFile.value);
-    const yandexViewerItem = (file: YandexItem): ViewerMediaItem => ({
-      fileId: `yandex:${file.path}`,
-      hash: '',
-      name: file.name,
-      mime: file.mime || (file.mediaType === 'video' ? 'video/*' : 'image/*'),
-      kind: file.mediaType === 'video' ? 'video' : 'photo',
-      processed: false,
-      takenAt: file.modifiedAt ?? null,
-      localTakenAt: file.modifiedAt ?? null,
-      width: null,
-      height: null,
-      durationSec: null,
-      bytes: file.size ?? 0,
-      folderId: null,
-      favorite: layoutPrefs.isFavorite(`yandex:${file.path}`),
-      albumIds: [],
-      thumbhash: null,
-      share: null,
-      previewSrc: yandexPreviewUrl(file),
-      resolveOriginalUrl: async () => (await yandexDisk.downloadLink(file.path)).href,
-      downloadAction: () => downloadYandexFile(file),
-      noReferrer: true,
-      sizeBytes: file.size ?? undefined,
-      mimeType: file.mime ?? undefined,
-    });
+    const yandexViewerItem = (file: YandexItem): ViewerMediaItem => {
+      const isVid = isYandexVideoItem(file);
+      return {
+        fileId: `yandex:${file.path}`,
+        hash: '',
+        name: file.name,
+        mime: file.mime || (isVid ? 'video/*' : 'image/*'),
+        kind: isVid ? 'video' : 'photo',
+        processed: false,
+        takenAt: file.modifiedAt ?? null,
+        localTakenAt: file.modifiedAt ?? null,
+        width: null,
+        height: null,
+        durationSec: null,
+        bytes: file.size ?? 0,
+        folderId: null,
+        favorite: layoutPrefs.isFavorite(`yandex:${file.path}`),
+        albumIds: [],
+        thumbhash: null,
+        share: null,
+        previewSrc: yandexPreviewUrl(file),
+        resolveOriginalUrl: async () => (await yandexDisk.downloadLink(file.path)).href,
+        ...(isVid
+          ? {
+              resolveStreamFallbackUrl: async () =>
+                resolveDownloadUrl((await yandexDisk.streamLink(file.path)).url),
+            }
+          : {}),
+        downloadAction: () => downloadYandexFile(file),
+        noReferrer: true,
+        yandexPath: file.path,
+        sizeBytes: file.size ?? undefined,
+        mimeType: file.mime ?? undefined,
+      };
+    };
     /** Card pictures the folder's files found (hub-made for HEIC, RAW, videos): the viewer starts on them. */
     const folderDrivePreviews = ref<Readonly<Record<string, string>>>({});
     const driveViewerItem = (
@@ -4403,6 +4416,7 @@ export default defineComponent({
         mime: file.mime || (isVid ? 'video/*' : 'image/*'),
         kind: isVid ? 'video' : 'photo',
         processed: Boolean(hash),
+        videoRendition: (file as { videoRendition?: boolean }).videoRendition,
         takenAt,
         localTakenAt: takenAt,
         width: (file as { width?: number | null }).width ?? null,
@@ -4415,7 +4429,7 @@ export default defineComponent({
         thumbhash: null,
         share: null,
         previewSrc: folderDrivePreviews.value[file.id] ?? null,
-        resolveOriginalUrl: async () => resolveDownloadUrl((await driveApi.getDownloadLink(file.id)).url),
+        resolveOriginalUrl: async () => withInlineParam(resolveDownloadUrl((await driveApi.getDownloadLink(file.id)).url)),
         downloadAction: async () => {
           try {
             await downloadDriveFile(file.id, file.name);
@@ -4428,7 +4442,7 @@ export default defineComponent({
       };
     };
     const isDriveMedia = (file: DriveItem) => isPictureFile(file) || isVideoFile(file);
-    const isYandexMedia = (item: YandexItem) => item.mediaType === 'image' || item.mediaType === 'video';
+    const isYandexMedia = (item: YandexItem) => isYandexMediaItem(item);
     /** A picture or a video of a Yandex folder: the folder's pictures and videos, from it. */
     const openYandexImage = (file: YandexItem) => {
       const media = yandexFiles.value.filter(isYandexMedia);
@@ -4458,13 +4472,16 @@ export default defineComponent({
       const mapped: ViewerMediaItem[] = items.map((item) => {
         const isYandex = Boolean(item.noReferrer || item.origin === 'yandex' || item.key.startsWith('y:'));
         const fileId = item.fileId || (isYandex ? item.key : item.key.replace(/^q:file:/, ''));
+        const yandexPath = item.yandexPath ?? (isYandex && fileId.startsWith('yandex:') ? fileId.slice('yandex:'.length) : null);
+        const hash = item.hash || '';
         return {
           fileId,
-          hash: '',
+          hash,
           name: item.name,
           mime: item.mimeType || (item.kind === 'video' ? 'video/*' : 'image/*'),
           kind: item.kind === 'video' ? 'video' : 'photo',
-          processed: false,
+          processed: Boolean(!isYandex && hash && item.mediaProcessed !== false),
+          videoRendition: item.videoRendition,
           takenAt: item.date ?? null,
           localTakenAt: item.date ?? null,
           width: null,
@@ -4477,11 +4494,18 @@ export default defineComponent({
             : (Boolean(fileId) && layoutPrefs.isFavorite(`drive-file:${fileId}`)),
           albumIds: spaceId.value ? [spaceId.value] : [],
           thumbhash: null,
-          share: null,
+          share: item.ownedByOther
+            ? { rootFolderId: spaceId.value ?? '', rootName: '', ownerId: 'other', ownerName: '' }
+            : null,
           previewSrc: item.preview ?? null,
-          resolveOriginalUrl: async () => (await item.loadFull()) ?? '',
+          resolveOriginalUrl: async () => {
+            const url = (await item.loadFull()) ?? '';
+            return url ? withInlineParam(url) : '';
+          },
+          resolveStreamFallbackUrl: item.resolveStreamFallbackUrl,
           downloadAction: item.download,
           noReferrer: isYandex,
+          yandexPath,
           sizeBytes: item.sizeBytes ?? undefined,
           mimeType: item.mimeType ?? undefined,
         };
@@ -4574,6 +4598,12 @@ export default defineComponent({
     const onMediaViewerSelectTag = (tag: string) => {
       mediaViewer.value = null;
       onSearchSelectTag(tag);
+    };
+    const onMediaViewerTransferToQspace = (item: ViewerMediaItem) => {
+      const yandexPath = item.yandexPath || (item.fileId.startsWith('yandex:') ? item.fileId.slice('yandex:'.length) : '');
+      if (!yandexPath) return;
+      mediaViewer.value = null;
+      openYandexTransferModal([yandexPath]);
     };
     const onMediaViewerDelete = async () => {
       const state = mediaViewer.value;
@@ -6094,7 +6124,7 @@ export default defineComponent({
           .map((file) => {
             const lower = file.name.toLowerCase();
             const isPdf = file.mime === 'application/pdf' || lower.endsWith('.pdf');
-            const isMedia = file.mediaType === 'image' || file.mediaType === 'video';
+            const isMedia = isYandexMediaItem(file);
             return {
               id: `yandex:${file.path}`,
               title: file.name,
@@ -8277,22 +8307,40 @@ export default defineComponent({
           const media = spaceFeedItems.value.filter((other) => other.kind === 'file' && (isPictureFile({ name: other.name, mime: other.mime }) || isVideoFile({ name: other.name, mime: other.mime })));
           if (media.some((m) => m.key === spaceItem.key)) {
             openSpaceMedia(
-              media.map((m) => ({
-                key: m.key,
-                name: m.name,
-                kind: isVideoFile({ name: m.name, mime: m.mime }) ? 'video' : 'image',
-                date: m.updatedAt,
-                preview: null,
-                loadFull: async () => (m.origin === 'yandex' && spaceId.value && m.sourceId && m.path
-                  ? (await spacesApi.yandexDownload(spaceId.value, m.sourceId, m.path)).href
-                  : resolveDownloadUrl((await driveApi.getDownloadLink(m.id!)).url)),
-                download: async () => { await downloadDriveFile(m.id!, m.name); },
-                fileId: m.origin === 'qspace' ? m.id : null,
-                noReferrer: m.origin === 'yandex',
-                sizeBytes: m.size ?? null,
-                mimeType: m.mime ?? null,
-                origin: m.origin,
-              })),
+              media.map((m) => {
+                const isVid = isVideoFile({ name: m.name, mime: m.mime });
+                const isYandex = m.origin === 'yandex';
+                const cleanYPath = m.path ? m.path.replace(/^disk:/, '') : null;
+                const ownerId = m.owner?.id ?? m.addedBy?.id ?? null;
+                const ownedByOther = Boolean(isYandex && currentUser.value?.id && ownerId && ownerId !== currentUser.value.id);
+                return {
+                  key: m.key,
+                  name: m.name,
+                  kind: isVid ? 'video' : 'image',
+                  date: m.updatedAt,
+                  preview: null,
+                  loadFull: async () => (isYandex && spaceId.value && m.sourceId && m.path
+                    ? (await spacesApi.yandexDownload(spaceId.value, m.sourceId, m.path)).href
+                    : withInlineParam(resolveDownloadUrl((await driveApi.getDownloadLink(m.id!)).url))),
+                  ...(isYandex && isVid && spaceId.value && m.sourceId && m.path
+                    ? {
+                        resolveStreamFallbackUrl: async () =>
+                          resolveDownloadUrl((await spacesApi.yandexStreamLink(spaceId.value!, m.sourceId!, m.path!)).url),
+                      }
+                    : {}),
+                  download: async () => { await downloadDriveFile(m.id!, m.name); },
+                  fileId: m.origin === 'qspace' ? m.id : (cleanYPath ? `yandex:${cleanYPath}` : null),
+                  noReferrer: isYandex,
+                  sizeBytes: m.size ?? null,
+                  mimeType: m.mime ?? null,
+                  origin: m.origin,
+                  hash: m.hash ?? null,
+                  mediaProcessed: m.mediaProcessed,
+                  videoRendition: m.videoRendition,
+                  yandexPath: cleanYPath,
+                  ownedByOther,
+                };
+              }),
               Math.max(0, media.findIndex((m) => m.key === spaceItem.key)),
             );
             return true;
@@ -9188,6 +9236,7 @@ export default defineComponent({
       onMediaViewerPanelChanged,
       onMediaViewerShare,
       onMediaViewerSelectTag,
+      onMediaViewerTransferToQspace,
       onMediaViewerDelete,
       onDashboardMainPointerDown,
       mobileSidebarOpen,

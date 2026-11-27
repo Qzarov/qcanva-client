@@ -600,6 +600,7 @@
       @delete="onViewerDelete"
       @panel-changed="onPanelChanged"
       @select-tag="onViewerSelectTag"
+      @transfer-to-qspace="onViewerTransferToQspace"
     />
 
     <FolderPickerDialog
@@ -674,7 +675,7 @@ import {
   X,
 } from '@lucide/vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
-import { resourceFolders, type ResourceFolderSummary } from '../../api/client';
+import { getCurrentUser, resourceFolders, type ResourceFolderSummary } from '../../api/client';
 import { downloadDriveFile, driveApi, resolveDownloadUrl } from '../../api/drive';
 import {
   isPhotosMock,
@@ -688,6 +689,7 @@ import {
 import { spacesApi, type SpaceFeedItem } from '../../api/spaces';
 import {
   downloadYandexLink,
+  isYandexVideoItem,
   settleYandexOutcome,
   yandexDisk,
   yandexParentPath,
@@ -943,7 +945,7 @@ const yandexScopeName = computed(() =>
 );
 
 function yandexItemToViewerMedia(item: YandexItem): YandexViewerMediaItem {
-  const isVideo = item.mediaType === 'video' || Boolean(item.mime?.toLowerCase().startsWith('video/'));
+  const isVideo = isYandexVideoItem(item);
   const fileId = `${YANDEX_ID_PREFIX}${item.path}`;
   const parentPath = yandexParentPath(item.path);
   const takenAt = item.modifiedAt || item.createdAt || new Date().toISOString();
@@ -974,6 +976,12 @@ function yandexItemToViewerMedia(item: YandexItem): YandexViewerMediaItem {
     yandexPath: item.path,
     publicUrl: item.publicUrl,
     resolveOriginalUrl: async () => (await yandexDisk.downloadLink(item.path)).href,
+    ...(isVideo
+      ? {
+          resolveStreamFallbackUrl: async () =>
+            resolveDownloadUrl((await yandexDisk.streamLink(item.path)).url),
+        }
+      : {}),
     downloadAction: async () => {
       const { href } = await yandexDisk.downloadLink(item.path);
       downloadYandexLink(href, item.name);
@@ -984,8 +992,8 @@ function yandexItemToViewerMedia(item: YandexItem): YandexViewerMediaItem {
 function spaceFeedYandexItemToViewerMedia(spaceId: string, item: SpaceFeedItem): YandexViewerMediaItem | null {
   if (item.origin !== 'yandex' || !item.path) return null;
   const mime = (item.mime ?? '').toLowerCase();
-  const isVideo = item.mediaType === 'video' || mime.startsWith('video/');
-  const isImage = item.mediaType === 'image' || mime.startsWith('image/');
+  const isVideo = isYandexVideoItem({ name: item.name, mime: item.mime, mediaType: item.mediaType });
+  const isImage = !isVideo && (item.mediaType === 'image' || mime.startsWith('image/'));
   if (!isVideo && !isImage) return null;
   const fileId = `${YANDEX_ID_PREFIX}${item.path}`;
   const parentPath = yandexParentPath(item.path);
@@ -994,6 +1002,9 @@ function spaceFeedYandexItemToViewerMedia(spaceId: string, item: SpaceFeedItem):
   const previewSrc = item.previewUrl ? resolveDownloadUrl(item.previewUrl) : null;
   const sourceId = item.sourceId;
   const yPath = item.path;
+  const meId = typeof getCurrentUser === 'function' ? getCurrentUser()?.id ?? null : null;
+  const owner = item.owner ?? item.addedBy;
+  const ownedByOther = Boolean(meId && owner?.id && owner.id !== meId);
   return {
     fileId,
     hash: item.hash || fileId,
@@ -1011,7 +1022,14 @@ function spaceFeedYandexItemToViewerMedia(spaceId: string, item: SpaceFeedItem):
     favorite: prefs.isFavorite(fileId),
     albumIds: [spaceId],
     thumbhash: null,
-    share: null,
+    share: ownedByOther
+      ? {
+          rootFolderId: sourceId ?? spaceId,
+          rootName: folderLabel,
+          ownerId: owner!.id,
+          ownerName: owner!.name ?? '',
+        }
+      : null,
     previewSrc,
     noReferrer: true,
     sizeBytes: item.size ?? undefined,
@@ -1025,6 +1043,16 @@ function spaceFeedYandexItemToViewerMedia(spaceId: string, item: SpaceFeedItem):
       }
       return (await yandexDisk.downloadLink(yPath)).href;
     },
+    ...(isVideo
+      ? {
+          resolveStreamFallbackUrl: async () => {
+            if (sourceId && typeof spacesApi?.yandexStreamLink === 'function') {
+              return resolveDownloadUrl((await spacesApi.yandexStreamLink(spaceId, sourceId, yPath)).url);
+            }
+            return resolveDownloadUrl((await yandexDisk.streamLink(yPath)).url);
+          },
+        }
+      : {}),
     downloadAction: async () => {
       const res = sourceId && typeof spacesApi?.yandexDownload === 'function'
         ? await spacesApi.yandexDownload(spaceId, sourceId, yPath)
@@ -2786,6 +2814,13 @@ async function onViewerDelete(item: ViewerMediaItem): Promise<void> {
   } else {
     void refreshSidebarCounts();
   }
+}
+
+function onViewerTransferToQspace(item: ViewerMediaItem): void {
+  const path = item.yandexPath || (isYandexFileId(item.fileId) ? yandexPathFromFileId(item.fileId) : '');
+  if (!path) return;
+  viewer.value = null;
+  emit('move-yandex-items', [path]);
 }
 
 async function ctxDelete(): Promise<void> {

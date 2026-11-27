@@ -147,7 +147,8 @@ describe('PhotoViewer', () => {
     expect(w.find('video').exists()).toBe(false);
     const ph = w.get('[data-viewer-video-unavailable]');
     expect(ph.find('img').attributes('src')).toBe('blob:h1:preview');
-    expect(ph.text()).toBe('Видео доступно, когда домашний компьютер в сети');
+    expect(ph.get('[role="status"]').text()).toBe('Видео доступно, когда домашний компьютер в сети');
+    expect(ph.find('[data-viewer-download-fallback]').exists()).toBe(true);
   });
 
   it('shows the same message when no link can be made', async () => {
@@ -157,7 +158,112 @@ describe('PhotoViewer', () => {
     });
     linkMock.mockRejectedValue(new Error('offline'));
     const w = await setup(mkItem({ kind: 'video', mime: 'video/mp4' }));
-    expect(w.get('[data-viewer-video-unavailable]').text()).toBe('Видео доступно, когда домашний компьютер в сети');
+    const ph = w.get('[data-viewer-video-unavailable]');
+    expect(ph.get('[role="status"]').text()).toBe('Видео доступно, когда домашний компьютер в сети');
+    expect(ph.find('[data-viewer-download-fallback]').exists()).toBe(true);
+  });
+
+  it('skips renditionUrl("video") when videoRendition is false and loads inline original directly without 404 fallback', async () => {
+    const w = await setup(
+      mkItem({ fileId: 'v-pending', hash: 'h-pending', kind: 'video', mime: 'video/mp4', name: 'fresh.mp4', processed: true, videoRendition: false }),
+    );
+    expect(renditionMock).not.toHaveBeenCalledWith('h-pending', 'video');
+    expect(linkMock).toHaveBeenCalledWith('v-pending');
+    const video = w.get('video[data-viewer-video]');
+    expect(video.attributes('src')).toContain('/api/drive/files/v1/download');
+    expect(video.attributes('src')).toContain('inline=1');
+    expect(video.attributes('preload')).toBe('metadata');
+    expect(video.attributes('referrerpolicy')).toBeUndefined();
+  });
+
+  it('loads renditionUrl("video") when videoRendition is true', async () => {
+    const w = await setup(
+      mkItem({ fileId: 'v-ready', hash: 'h-ready', kind: 'video', mime: 'video/mp4', name: 'ready.mp4', processed: true, videoRendition: true }),
+    );
+    expect(renditionMock).toHaveBeenCalledWith('h-ready', 'video');
+    expect(linkMock).not.toHaveBeenCalled();
+    const video = w.get('video[data-viewer-video]');
+    expect(video.attributes('src')).toBe('blob:h-ready:video');
+    expect(video.attributes('preload')).toBe('metadata');
+  });
+
+  it('Yandex video tries direct CDN first, falls back to resolveStreamFallbackUrl, and shows unsupported-codec UX + transfer-to-qspace on second error', async () => {
+    const resolveOriginalUrl = vi.fn().mockResolvedValue('https://downloader.disk.yandex.ru/disk/direct.mkv');
+    const resolveStreamFallbackUrl = vi.fn().mockResolvedValue('http://localhost/api/yandex-disk/stream?path=%2FMovies%2Fclip.mkv&t=sig');
+    const yandexVideo = {
+      ...mkItem({
+        fileId: 'yandex:/Movies/clip.mkv',
+        hash: '',
+        kind: 'video',
+        mime: 'video/x-matroska',
+        name: 'clip.mkv',
+        processed: false,
+      }),
+      noReferrer: true,
+      yandexPath: '/Movies/clip.mkv',
+      resolveOriginalUrl,
+      resolveStreamFallbackUrl,
+    };
+
+    const w = await setup(yandexVideo);
+    expect(renditionMock).not.toHaveBeenCalled();
+    expect(resolveOriginalUrl).toHaveBeenCalledTimes(1);
+    expect(resolveStreamFallbackUrl).not.toHaveBeenCalled();
+    const firstVideo = w.get('video[data-viewer-video]');
+    expect(firstVideo.attributes('src')).toBe('https://downloader.disk.yandex.ru/disk/direct.mkv');
+    expect(firstVideo.attributes('referrerpolicy')).toBeUndefined();
+    expect(firstVideo.attributes('preload')).toBe('metadata');
+
+    // First error -> tries signed hub Range stream fallback
+    await firstVideo.trigger('error');
+    await flushPromises();
+    expect(resolveStreamFallbackUrl).toHaveBeenCalledTimes(1);
+    const fallbackVideo = w.get('video[data-viewer-video]');
+    expect(fallbackVideo.attributes('src')).toBe('http://localhost/api/yandex-disk/stream?path=%2FMovies%2Fclip.mkv&t=sig');
+
+    // Second error (unsupported codec) -> honest UX with Transfer to Q Space + Download original
+    await fallbackVideo.trigger('error');
+    await flushPromises();
+    expect(w.find('video[data-viewer-video]').exists()).toBe(false);
+    const codecPlaceholder = w.get('[data-viewer-video-codec-unsupported]');
+    expect(codecPlaceholder.get('[role="status"]').text()).toBe(
+      'Неподдерживаемый кодек — воспроизвести получится только при переносе в Q Space',
+    );
+    expect(codecPlaceholder.get('[data-viewer-transfer-qspace]').text()).toBe('Перенести в Q Space');
+    expect(codecPlaceholder.get('[data-viewer-download-fallback]').text()).toBe('Скачать оригинал');
+
+    await codecPlaceholder.get('[data-viewer-transfer-qspace]').trigger('click');
+    expect(w.emitted('transfer-to-qspace')).toEqual([[yandexVideo]]);
+  });
+
+  it('hides transfer-to-qspace button for shared Yandex video owned by another user while keeping download fallback', async () => {
+    const resolveOriginalUrl = vi.fn().mockResolvedValue('https://downloader.disk.yandex.ru/disk/shared.mkv');
+    const resolveStreamFallbackUrl = vi.fn().mockResolvedValue('http://localhost/api/yandex-disk/stream?path=%2FShared%2Fshared.mkv&t=sig');
+    const sharedYandexVideo = {
+      ...mkItem({
+        fileId: 'yandex:/Shared/shared.mkv',
+        hash: '',
+        kind: 'video',
+        mime: 'video/x-matroska',
+        name: 'shared.mkv',
+        processed: false,
+        share: { rootFolderId: 'src-1', rootName: 'Shared', ownerId: 'other-user', ownerName: 'Other' },
+      }),
+      noReferrer: true,
+      yandexPath: '/Shared/shared.mkv',
+      resolveOriginalUrl,
+      resolveStreamFallbackUrl,
+    };
+
+    const w = await setup(sharedYandexVideo);
+    await w.get('video[data-viewer-video]').trigger('error');
+    await flushPromises();
+    await w.get('video[data-viewer-video]').trigger('error');
+    await flushPromises();
+
+    const codecPlaceholder = w.get('[data-viewer-video-codec-unsupported]');
+    expect(codecPlaceholder.find('[data-viewer-transfer-qspace]').exists()).toBe(false);
+    expect(codecPlaceholder.find('[data-viewer-download-fallback]').exists()).toBe(true);
   });
 
   it('emits next/prev on arrows only when available, close on Escape', async () => {

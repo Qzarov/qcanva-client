@@ -53,6 +53,7 @@ export type FeedItem = {
   mime: string;
   kind: 'photo' | 'video';
   processed: boolean;
+  videoRendition?: boolean;
   takenAt: string | null;
   localTakenAt: string | null;
   width: number | null;

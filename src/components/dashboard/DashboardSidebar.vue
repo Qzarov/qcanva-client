@@ -228,8 +228,8 @@
                   <FileIcon v-else :size="15" />
                 </template>
                 <template v-else-if="row.kind === 'yandex-file' && row.yandexItem">
-                  <Video v-if="row.yandexItem.mediaType === 'video'" :size="15" />
-                  <ImageIcon v-else-if="row.yandexItem.mediaType === 'image'" :size="15" />
+                  <Video v-if="isYandexVideoItem(row.yandexItem)" :size="15" />
+                  <ImageIcon v-else-if="row.yandexItem.mediaType === 'image' || row.yandexItem.mime?.toLowerCase().startsWith('image/')" :size="15" />
                   <ResourceIcon v-else-if="isMarkdownFile(row.yandexItem)" kind="text-document" :size="15" />
                   <FileIcon v-else :size="15" />
                 </template>
@@ -386,7 +386,7 @@ import {
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch, type CSSProperties } from 'vue';
 import { driveApi } from '../../api/drive';
 import { spacesApi, type SpaceDetails } from '../../api/spaces';
-import { yandexDisk, type YandexItem } from '../../api/yandexDisk';
+import { isYandexVideoItem, yandexDisk, type YandexItem } from '../../api/yandexDisk';
 import { SOURCE_CODE_URL } from '../../app-info';
 import { LAYOUT, matchesMedia } from '../../composables/layoutMedia';
 import { hasDataTransferFiles } from '../../composables/useDriveDropzone';

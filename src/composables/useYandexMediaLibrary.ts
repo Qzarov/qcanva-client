@@ -1,7 +1,9 @@
 import { computed, readonly, ref, shallowRef } from 'vue';
 import { onAuthCleared } from '../api/client';
+import { resolveDownloadUrl } from '../api/drive';
 import {
   downloadYandexLink,
+  isYandexVideoItem,
   yandexDisk,
   yandexParentPath,
   yandexPreviewUrl,
@@ -34,8 +36,7 @@ function mapYandexItemToViewerMedia(
   item: YandexItem,
   favoritesSet: ReadonlySet<string>,
 ): YandexMediaLibraryItem {
-  const isVideo =
-    item.mediaType === 'video' || Boolean(item.mime?.toLowerCase().startsWith('video/'));
+  const isVideo = isYandexVideoItem(item);
   const fileId = `${YANDEX_ID_PREFIX}${item.path}`;
   const takenAt = item.modifiedAt || item.createdAt || null;
   const parentPath = yandexParentPath(item.path);
@@ -64,6 +65,12 @@ function mapYandexItemToViewerMedia(
     yandexPath: item.path,
     publicUrl: item.publicUrl,
     resolveOriginalUrl: async () => (await yandexDisk.downloadLink(item.path)).href,
+    ...(isVideo
+      ? {
+          resolveStreamFallbackUrl: async () =>
+            resolveDownloadUrl((await yandexDisk.streamLink(item.path)).url),
+        }
+      : {}),
     downloadAction: async () => {
       const { href } = await yandexDisk.downloadLink(item.path);
       downloadYandexLink(href, item.name);

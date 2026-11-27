@@ -4,7 +4,7 @@
  * src/drive/thumbs/thumb-formats.ts). A RAW or a HEIC often arrives as
  * application/octet-stream, so the extension decides.
  */
-const VIDEO_EXT = new Set(['mp4', 'm4v', 'mov', 'webm', 'mkv', 'avi', '3gp', 'mts', 'm2ts', 'wmv', 'mpg', 'mpeg']);
+const VIDEO_EXT = new Set(['mp4', 'm4v', 'mov', 'webm', 'mkv', 'avi', '3gp', 'ogv', 'mts', 'm2ts', 'wmv', 'mpg', 'mpeg']);
 const HEIF_EXT = new Set(['heic', 'heif', 'avif', 'hif']);
 const RAW_EXT = new Set(['cr2', 'cr3', 'nef', 'nrw', 'arw', 'srf', 'sr2', 'dng', 'orf', 'rw2', 'raf', 'pef', 'srw', 'x3f', '3fr', 'iiq', 'rwl']);
 const IMAGE_EXT = new Set(['jpg', 'jpeg', 'jfif', 'png', 'webp', 'gif', 'tif', 'tiff', 'bmp']);

@@ -348,7 +348,7 @@ import { spacesApi, type SpaceDetails, type SpaceFeedItem, type SpaceFeedType, t
 import SpaceFilterDialog from './SpaceFilterDialog.vue';
 
 import { LAYOUT, matchesMedia } from '../../composables/layoutMedia';
-import { downloadDriveFile, driveApi, getFileExtension, resolveDownloadUrl, type DriveItem } from '../../api/drive';
+import { downloadDriveFile, driveApi, getFileExtension, resolveDownloadUrl, withInlineParam, type DriveItem } from '../../api/drive';
 import { invalidateRenditionToken, renditionUrl } from '../../api/photos';
 import { downloadYandexLink } from '../../api/yandexDisk';
 import { confirmDialog, promptDialog } from '../../composables/appDialog';
@@ -384,6 +384,12 @@ export type SpaceMediaViewerItem = MediaViewerItem & {
   sizeBytes?: number | null;
   mimeType?: string | null;
   origin?: 'qspace' | 'yandex';
+  hash?: string | null;
+  mediaProcessed?: boolean;
+  videoRendition?: boolean;
+  yandexPath?: string | null;
+  resolveStreamFallbackUrl?: () => Promise<string>;
+  ownedByOther?: boolean;
 };
 
 type ViewMode = 'grid' | 'table' | 'list';
@@ -903,6 +909,7 @@ function mapDriveItemToSpaceFeedItem(it: DriveItem, sourceId: string | null): Sp
     previewUrl: null,
     hash: it.hash ?? null,
     mediaProcessed: it.mediaProcessed,
+    videoRendition: it.videoRendition,
     folderId: it.parentId ?? null,
   };
 }
@@ -1827,22 +1834,40 @@ const markdownViewerItem = (item: SpaceFeedItem): MarkdownViewerItem => ({
   download: () => download(item),
 });
 
-const viewerItem = (item: SpaceFeedItem): SpaceMediaViewerItem => ({
-  key: item.key,
-  name: item.name,
-  kind: isVideo(item) ? 'video' : 'image',
-  date: item.updatedAt,
-  preview: previewOf(item),
-  loadFull: async () => (item.origin === 'yandex'
-    ? (await spacesApi.yandexDownload(props.spaceId, item.sourceId!, item.path!)).href
-    : resolveDownloadUrl((await driveApi.getDownloadLink(item.id!)).url)),
-  download: () => download(item),
-  fileId: item.origin === 'qspace' ? item.id : (item.path ? `yandex:${item.path.replace(/^disk:/, '')}` : null),
-  noReferrer: item.origin === 'yandex',
-  sizeBytes: item.size ?? null,
-  mimeType: item.mime ?? null,
-  origin: item.origin,
-});
+const viewerItem = (item: SpaceFeedItem): SpaceMediaViewerItem => {
+  const isVid = isVideo(item);
+  const isYandex = item.origin === 'yandex';
+  const cleanYandexPath = item.path ? item.path.replace(/^disk:/, '') : null;
+  const ownerId = item.owner?.id ?? item.addedBy?.id ?? null;
+  const ownedByOther = Boolean(isYandex && props.meId && ownerId && ownerId !== props.meId);
+  return {
+    key: item.key,
+    name: item.name,
+    kind: isVid ? 'video' : 'image',
+    date: item.updatedAt,
+    preview: previewOf(item),
+    loadFull: async () => (isYandex
+      ? (await spacesApi.yandexDownload(props.spaceId, item.sourceId!, item.path!)).href
+      : withInlineParam(resolveDownloadUrl((await driveApi.getDownloadLink(item.id!)).url))),
+    download: () => download(item),
+    fileId: item.origin === 'qspace' ? item.id : (cleanYandexPath ? `yandex:${cleanYandexPath}` : null),
+    noReferrer: isYandex,
+    sizeBytes: item.size ?? null,
+    mimeType: item.mime ?? null,
+    origin: item.origin,
+    hash: item.hash ?? null,
+    mediaProcessed: item.mediaProcessed,
+    videoRendition: item.videoRendition,
+    yandexPath: cleanYandexPath,
+    ownedByOther,
+    ...(isYandex && isVid && item.sourceId && item.path
+      ? {
+          resolveStreamFallbackUrl: async () =>
+            resolveDownloadUrl((await spacesApi.yandexStreamLink(props.spaceId, item.sourceId!, item.path!)).url),
+        }
+      : {}),
+  };
+};
 
 async function download(item: SpaceFeedItem) {
   try {

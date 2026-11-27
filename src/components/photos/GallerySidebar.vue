@@ -37,6 +37,8 @@ import { driveApi, type DriveItem } from '../../api/drive';
 import { photosApi, renditionUrl, type Album } from '../../api/photos';
 import { spacesApi, type SpaceRole, type SpaceSummary } from '../../api/spaces';
 import {
+  isYandexMediaItem,
+  isYandexVideoItem,
   joinYandexPath,
   settleYandexOutcome,
   yandexDisk,
@@ -668,17 +670,6 @@ const yandexNodes = reactive<Record<string, YandexTreeNode>>({});
 const yandexExpandedPaths = ref<Set<string>>(new Set());
 
 const isYandexPathExpanded = (path: string): boolean => yandexExpandedPaths.value.has(path);
-
-function isYandexMediaItem(item: YandexItem): boolean {
-  if (item.type !== 'file') return false;
-  if (item.mediaType === 'image' || item.mediaType === 'video') return true;
-  const mime = (item.mime ?? '').toLowerCase();
-  return mime.startsWith('image/') || mime.startsWith('video/');
-}
-
-function isYandexVideoItem(item: YandexItem): boolean {
-  return item.mediaType === 'video' || Boolean(item.mime?.toLowerCase().startsWith('video/'));
-}
 
 function yandexNodeHasChildren(path: string): boolean {
   if (!yandexStatus.value?.connected) return false;

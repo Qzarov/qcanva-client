@@ -166,8 +166,8 @@
             >
               <div class="card-title card-title-with-icon">
                 <span class="folder-file-kind" aria-hidden="true">
-                  <Video v-if="file.mediaType === 'video'" :size="16" />
-                  <ImageIcon v-else-if="file.mediaType === 'image'" :size="16" />
+                  <Video v-if="isVideo(file)" :size="16" />
+                  <ImageIcon v-else-if="isImage(file)" :size="16" />
                   <ResourceIcon v-else-if="isMarkdown(file)" kind="text-document" :size="16" />
                   <FileIcon v-else :size="16" />
                 </span>
@@ -184,8 +184,8 @@
               <!-- Yandex's list says whether it has a preview: without one the drawn picture is short. -->
               <span v-if="withPicture(file) || previewOf(file)" class="folder-file-thumb" :class="{ 'is-empty': !previewOf(file), 'is-pictureless': !previewOf(file) }" aria-hidden="true">
                 <img v-if="previewOf(file)" :src="previewOf(file)!" alt="" loading="lazy" decoding="async" data-yandex-preview @error="brokenPreviews.add(file.path)" />
-                <FilePlaceholder v-else :name="file.name" :kind="file.mediaType === 'video' ? 'video' : file.mediaType === 'image' ? 'picture' : 'file'" />
-                <span v-if="file.mediaType === 'video' && previewOf(file)" class="folder-file-play"><Play :size="14" aria-hidden="true" /></span>
+                <FilePlaceholder v-else :name="file.name" :kind="isVideo(file) ? 'video' : isImage(file) ? 'picture' : 'file'" />
+                <span v-if="isVideo(file) && previewOf(file)" class="folder-file-play"><Play :size="14" aria-hidden="true" /></span>
               </span>
               <button class="card-manage" :title="t('groupActions')" :data-yandex-file-menu="file.path" @click.stop="toggleMenu('file:' + file.path)">⋯</button>
               <Transition name="card-menu-pop">
@@ -246,7 +246,9 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ArrowLeft, Cloud, File as FileIcon, Image as ImageIcon, Play, Plus, Video } from '@lucide/vue';
 import {
   downloadYandexLink,
+  isYandexMediaItem,
   isYandexReconnectError,
+  isYandexVideoItem,
   joinYandexPath,
   settleYandexOutcome,
   uploadYandexFile,
@@ -405,7 +407,9 @@ function onFileEnter(event: KeyboardEvent, file: YandexItem): void {
 }
 
 const keyOf = (item: YandexItem) => `yandex:${item.path}`;
-const isMedia = (item: YandexItem) => item.mediaType === 'image' || item.mediaType === 'video';
+const isVideo = (item: YandexItem) => item.type === 'file' && isYandexVideoItem(item);
+const isImage = (item: YandexItem) => item.type === 'file' && !isVideo(item) && (item.mediaType === 'image' || Boolean(item.mime?.toLowerCase().startsWith('image/')));
+const isMedia = (item: YandexItem) => isYandexMediaItem(item);
 const isMarkdown = (item: YandexItem) => !isMedia(item) && isMarkdownFile({ name: item.name, mime: item.mime });
 /** A picture square: pictures, videos, PDFs, EPUBs and text files (Yandex's preview, or the drawn one). */
 const withPicture = (item: YandexItem) => isMedia(item) || isDocumentWithPicture({ name: item.name, mime: item.mime });
@@ -760,7 +764,7 @@ function onCtxDelete(entries: ReadonlyArray<ExplorerContextMenuItem>): void {
 /** A picture or a video opens in the viewer; a Markdown file opens as a document; any other file downloads. */
 function open(file: YandexItem) {
   menu.value = '';
-  if (file.mediaType === 'image' || file.mediaType === 'video') emit('open-image', file);
+  if (isMedia(file)) emit('open-image', file);
   else if (isMarkdown(file)) emit('open-markdown', file);
   else void download(file);
 }

@@ -76,6 +76,7 @@ export type SpaceFeedItem = {
   previewUrl: string | null;
   hash?: string | null;
   mediaProcessed?: boolean;
+  videoRendition?: boolean;
   folderId?: string | null;
 };
 
@@ -175,4 +176,6 @@ export const spacesApi = {
   },
   yandexDownload: (id: string, sourceId: string, path: string) =>
     request<{ href: string }>(`/spaces/${encodeURIComponent(id)}/sources/${encodeURIComponent(sourceId)}/download?path=${encodeURIComponent(path)}`),
+  yandexStreamLink: (id: string, sourceId: string, path: string) =>
+    request<{ url: string }>(`/spaces/${encodeURIComponent(id)}/yandex-stream-link?sourceId=${encodeURIComponent(sourceId)}&path=${encodeURIComponent(path)}`),
 };

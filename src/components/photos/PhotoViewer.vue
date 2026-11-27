@@ -125,9 +125,9 @@
             v-if="videoSrc"
             :key="`${item.fileId}:${videoSource}`"
             class="pv-media"
-            :referrerpolicy="item.noReferrer ? 'no-referrer' : undefined"
             :src="videoSrc"
             :poster="imgSrc ?? undefined"
+            preload="metadata"
             controls
             autoplay
             playsinline
@@ -135,7 +135,13 @@
             @click.stop
             @error="onVideoError"
           />
-          <div v-else class="pv-ph" data-viewer-video-unavailable @click.stop>
+          <div
+            v-else
+            class="pv-ph"
+            data-viewer-video-unavailable
+            :data-viewer-video-codec-unsupported="videoCodecUnsupported ? '' : undefined"
+            @click.stop
+          >
             <img
               v-if="imgSrc"
               class="pv-media pv-dim"
@@ -144,7 +150,28 @@
               alt=""
               @error="onImgError"
             />
-            <p role="status">{{ videoFailed ? t('photosVideoOffline') : t('photosVideoLoading') }}</p>
+            <p role="status">
+              {{ videoCodecUnsupported ? t('photosVideoUnsupportedCodec') : (videoFailed ? t('photosVideoOffline') : t('photosVideoLoading')) }}
+            </p>
+            <div v-if="videoFailed" class="pv-ph-actions">
+              <button
+                v-if="videoCodecUnsupported && canTransferToQspace"
+                type="button"
+                class="pv-ph-btn pv-ph-btn-primary"
+                data-viewer-transfer-qspace
+                @click.stop="emit('transfer-to-qspace', item)"
+              >
+                {{ t('yandexTransferConfirm') }}
+              </button>
+              <button
+                type="button"
+                class="pv-ph-btn"
+                data-viewer-download-fallback
+                @click.stop="downloadCurrent"
+              >
+                {{ t('photosDownloadOriginal') }}
+              </button>
+            </div>
           </div>
         </template>
         <img
@@ -264,8 +291,10 @@ export type ViewerMediaItem = FeedItem & {
   previewSrc?: string | null;
   originalSrc?: string | null;
   resolveOriginalUrl?: () => Promise<string>;
+  resolveStreamFallbackUrl?: () => Promise<string>;
   downloadAction?: () => Promise<void> | void;
   noReferrer?: boolean;
+  yandexPath?: string | null;
   sizeBytes?: number;
   mimeType?: string;
 };
@@ -287,7 +316,7 @@ import {
   Trash2,
 } from '@lucide/vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { downloadDriveFile, driveApi, resolveDownloadUrl } from '../../api/drive';
+import { downloadDriveFile, driveApi, resolveDownloadUrl, withInlineParam } from '../../api/drive';
 import { isPhotosMock, renditionUrl } from '../../api/photos';
 import { matchesMedia } from '../../composables/layoutMedia';
 import { useI18n } from '../../composables/useI18n';
@@ -325,6 +354,7 @@ const emit = defineEmits<{
   (e: 'delete', item: ViewerMediaItem): void;
   (e: 'panel-changed', change: { fileId: string; favorite?: boolean; albumIds?: string[] }): void;
   (e: 'select-tag', tag: string): void;
+  (e: 'transfer-to-qspace', item: ViewerMediaItem): void;
 }>();
 
 const { t, locale } = useI18n();
@@ -682,14 +712,14 @@ function hasCustomImageFallback(item: ViewerMediaItem): boolean {
 }
 
 async function resolveOriginalMediaUrl(item: ViewerMediaItem): Promise<string | null> {
-  if (item.originalSrc) return item.originalSrc;
+  if (item.originalSrc) return withInlineParam(item.originalSrc);
   if (item.resolveOriginalUrl) {
     const url = await item.resolveOriginalUrl();
-    return url || null;
+    return url ? withInlineParam(url) : null;
   }
   if (!isPhotosMock() && item.fileId) {
     const link = await driveApi.getDownloadLink(item.fileId);
-    return resolveDownloadUrl(link.url);
+    return withInlineParam(resolveDownloadUrl(link.url));
   }
   return null;
 }
@@ -715,10 +745,12 @@ async function loadImage(): Promise<void> {
   }
   if (allowFallback) {
     if (item.previewSrc) steps.push('previewSrc');
-    if (item.originalSrc) steps.push('originalSrc');
-    if (item.resolveOriginalUrl) steps.push('resolveOriginal');
-    if (!item.hash && !item.resolveOriginalUrl && item.fileId && !isPhotosMock()) {
-      steps.push('downloadLink');
+    if (item.kind !== 'video') {
+      if (item.originalSrc) steps.push('originalSrc');
+      if (item.resolveOriginalUrl) steps.push('resolveOriginal');
+      if (!item.hash && !item.resolveOriginalUrl && item.fileId && !isPhotosMock()) {
+        steps.push('downloadLink');
+      }
     }
   }
 
@@ -736,7 +768,7 @@ async function loadImage(): Promise<void> {
         url = (await item.resolveOriginalUrl?.()) || null;
       } else if (step === 'downloadLink') {
         const link = await driveApi.getDownloadLink(item.fileId);
-        url = resolveDownloadUrl(link.url);
+        url = withInlineParam(resolveDownloadUrl(link.url));
       }
       if (request !== imgRequest) return;
       if (!url) {
@@ -770,12 +802,56 @@ function onImgError(): void {
   void loadImage();
 }
 
-// ----- video: the rendition, else the original, else the preview frame -----
+// ----- video: the rendition, else the original, else Range fallback / unsupported codec UX -----
 
 const videoSrc = ref<string | null>(null);
-const videoSource = ref<'rendition' | 'original' | null>(null);
+const videoSource = ref<'rendition' | 'original' | 'stream-fallback' | null>(null);
 const videoFailed = ref(false);
+const videoCodecUnsupported = ref(false);
 let videoRequest = 0;
+
+function isYandexViewerItem(item: ViewerMediaItem): boolean {
+  return Boolean(item.fileId.startsWith('yandex:') || item.yandexPath || item.noReferrer);
+}
+
+const canTransferToQspace = computed(() => {
+  const item = props.item;
+  if (item.share) return false;
+  return Boolean(item.fileId.startsWith('yandex:') || item.yandexPath);
+});
+
+async function loadStreamFallback(request: number, priorCodecError = false): Promise<void> {
+  const item = props.item;
+  if (typeof item.resolveStreamFallbackUrl !== 'function') {
+    videoSrc.value = null;
+    videoFailed.value = true;
+    if (priorCodecError && isYandexViewerItem(item)) {
+      videoCodecUnsupported.value = true;
+    }
+    return;
+  }
+  try {
+    const url = await item.resolveStreamFallbackUrl();
+    if (request !== videoRequest) return;
+    if (url) {
+      videoSrc.value = url;
+      videoSource.value = 'stream-fallback';
+    } else {
+      videoSrc.value = null;
+      videoFailed.value = true;
+      if (isYandexViewerItem(item)) {
+        videoCodecUnsupported.value = true;
+      }
+    }
+  } catch {
+    if (request !== videoRequest) return;
+    videoSrc.value = null;
+    videoFailed.value = true;
+    if (priorCodecError && isYandexViewerItem(item)) {
+      videoCodecUnsupported.value = true;
+    }
+  }
+}
 
 async function loadOriginal(request: number): Promise<void> {
   const item = props.item;
@@ -785,15 +861,17 @@ async function loadOriginal(request: number): Promise<void> {
     if (url) {
       videoSrc.value = url;
       videoSource.value = 'original';
-    } else {
-      videoSrc.value = null;
-      videoFailed.value = true;
+      return;
     }
   } catch {
     if (request !== videoRequest) return;
-    videoSrc.value = null;
-    videoFailed.value = true;
   }
+  if (typeof item.resolveStreamFallbackUrl === 'function') {
+    await loadStreamFallback(request);
+    return;
+  }
+  videoSrc.value = null;
+  videoFailed.value = true;
 }
 
 async function loadVideo(): Promise<void> {
@@ -801,13 +879,20 @@ async function loadVideo(): Promise<void> {
   videoSrc.value = null;
   videoSource.value = null;
   videoFailed.value = false;
+  videoCodecUnsupported.value = false;
   const item = props.item;
   if (item.kind !== 'video') return;
   if (isPhotosMock() && !item.originalSrc && !item.resolveOriginalUrl) {
     videoFailed.value = true;
     return;
   }
-  if (item.processed && item.hash && !item.fileId.startsWith('yandex:') && !isPhotosMock()) {
+  if (
+    item.processed &&
+    item.hash &&
+    !item.fileId.startsWith('yandex:') &&
+    !isPhotosMock() &&
+    item.videoRendition !== false
+  ) {
     try {
       const url = await renditionUrl(item.hash, 'video');
       if (request !== videoRequest) return;
@@ -821,14 +906,25 @@ async function loadVideo(): Promise<void> {
   await loadOriginal(request);
 }
 
-function onVideoError(): void {
+function onVideoError(event?: Event): void {
   const request = videoRequest;
+  const item = props.item;
+  const mediaErrCode = (event?.target as HTMLVideoElement | null)?.error?.code ?? null;
+  const isCodecOrSrcErr = mediaErrCode === 3 || mediaErrCode === 4;
+
   if (videoSource.value === 'rendition') {
     void loadOriginal(request);
-  } else {
-    videoSrc.value = null;
-    videoFailed.value = true;
+    return;
   }
+  if (videoSource.value === 'original' && typeof item.resolveStreamFallbackUrl === 'function') {
+    void loadStreamFallback(request, isCodecOrSrcErr);
+    return;
+  }
+  if (isYandexViewerItem(item) && (videoSource.value === 'stream-fallback' || isCodecOrSrcErr)) {
+    videoCodecUnsupported.value = true;
+  }
+  videoSrc.value = null;
+  videoFailed.value = true;
 }
 
 // ----- zoom, pan, pinch, full-res upgrade -----
@@ -1530,6 +1626,46 @@ onBeforeUnmount(() => {
   min-height: 0;
   text-align: center;
   color: rgba(220, 245, 220, 0.78);
+}
+.pv-ph-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+.pv-ph-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(20, 30, 23, 0.76);
+  color: #f0fff0;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.pv-ph-btn:hover {
+  background: rgba(34, 52, 39, 0.9);
+  border-color: rgba(140, 255, 140, 0.5);
+}
+.pv-ph-btn-primary {
+  border-color: rgba(140, 255, 140, 0.65);
+  background: rgba(0, 255, 0, 0.2);
+  color: #b8ffb8;
+}
+.pv-ph-btn-primary:hover {
+  background: rgba(0, 255, 0, 0.3);
+  border-color: rgba(140, 255, 140, 0.9);
+  color: #f0fff0;
+}
+.pv-ph-btn:focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 2px;
 }
 .pv-filmstrip {
   display: flex;
