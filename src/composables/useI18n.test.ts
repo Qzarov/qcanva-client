@@ -32,6 +32,18 @@ describe('useI18n storage failure handling', () => {
     expect(useI18n().locale.value).toBe('ru');
     expect(document.documentElement.lang).toBe('ru');
   });
+
+  it('defaults to Russian (ru) when localStorage has no qcanva:locale', async () => {
+    const storage = {
+      getItem: vi.fn(() => null),
+      setItem: vi.fn(),
+    };
+    Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: storage });
+    const { useI18n } = await import('./useI18n');
+
+    expect(storage.getItem).toHaveBeenCalledWith('qcanva:locale');
+    expect(useI18n().locale.value).toBe('ru');
+  });
 });
 
 describe('locale maps stay parallel', () => {

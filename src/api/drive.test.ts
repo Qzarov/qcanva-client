@@ -5,12 +5,15 @@ import {
   driveApi,
   downloadDriveFile,
   formatFileSize,
+  formatUpload413Error,
   getFileExtension,
   isDeviceOnline,
   liveReplicas,
+  parseUploadAnswer,
   resolveDownloadUrl,
   uploadFile,
 } from './drive';
+import { parseYandexUploadAnswer, uploadYandexFile } from './yandexDisk';
 import { request, setToken } from './client';
 import { useI18n } from '../composables/useI18n';
 
@@ -158,6 +161,55 @@ describe('drive API and utilities', () => {
       await assertion;
     });
 
+    it('reports exact 500 MB limit when 413 JSON includes limitBytes', async () => {
+      const file = new File(['huge'], 'huge.iso', { type: 'application/octet-stream' });
+      const handle = uploadFile('root', file);
+
+      const assertion = expect(handle.promise).rejects.toThrow('Файл превышает лимит (500 МБ)');
+      mockXHR.status = 413;
+      mockXHR.responseText = JSON.stringify({ limitBytes: 524288000 });
+      mockXHR.onload();
+
+      await assertion;
+    });
+
+    it('reports exact 5 GB limit when 413 JSON includes 5 GiB limitBytes', async () => {
+      const file = new File(['huge'], 'huge.iso', { type: 'application/octet-stream' });
+      const handle = uploadFile('root', file);
+
+      const assertion = expect(handle.promise).rejects.toThrow('Файл превышает лимит (5 ГБ)');
+      mockXHR.status = 413;
+      mockXHR.responseText = JSON.stringify({ limitBytes: 5368709120 });
+      mockXHR.onload();
+
+      await assertion;
+    });
+
+    it('reports proxy size limit when 413 returns nginx HTML (without falsely claiming 2 GB)', async () => {
+      const file = new File(['huge'], 'huge.iso', { type: 'application/octet-stream' });
+      const handle = uploadFile('root', file);
+
+      const assertion = expect(handle.promise).rejects.toThrow('Превышен лимит размера запроса на прокси-сервере (413)');
+      mockXHR.status = 413;
+      mockXHR.getResponseHeader = vi.fn().mockReturnValue('text/html; charset=utf-8');
+      mockXHR.responseText = '<html><head><title>413 Request Entity Too Large</title></head><body><center><h1>413 Request Entity Too Large</h1></center><hr><center>nginx/1.24.0</center></body></html>';
+      mockXHR.onload();
+
+      await assertion;
+    });
+
+    it('preserves specific server message on 413 JSON without limitBytes', async () => {
+      const file = new File(['huge'], 'huge.iso', { type: 'application/octet-stream' });
+      const handle = uploadFile('root', file);
+
+      const assertion = expect(handle.promise).rejects.toThrow('Upload limit for this folder is 250 MB');
+      mockXHR.status = 413;
+      mockXHR.responseText = JSON.stringify({ message: 'Upload limit for this folder is 250 MB' });
+      mockXHR.onload();
+
+      await assertion;
+    });
+
     it('cancels upload when abort is called', async () => {
       const file = new File(['content'], 'test.pdf');
       const handle = uploadFile('root', file);
@@ -283,6 +335,63 @@ describe('drive API and utilities', () => {
       const r = (state: string) => ({ nodeId: state, name: state, kind: 'pc', state, verifiedAt: null });
       expect(liveReplicas(['present', 'verified', 'evicting', 'evicted'].map(r)).map((x) => x.state))
         .toEqual(['present', 'verified']);
+    });
+  });
+
+  describe('B-003 HTTP 413 error mapping across fetch/native and XHR upload paths', () => {
+    it('formatUpload413Error handles 500 MB, 5 GB, proxy HTML, custom message, and fallback in RU and EN', () => {
+      expect(formatUpload413Error(JSON.stringify({ limitBytes: 524288000 }), 'application/json')).toBe('Файл превышает лимит (500 МБ)');
+      expect(formatUpload413Error(JSON.stringify({ limitBytes: 5368709120 }), 'application/json')).toBe('Файл превышает лимит (5 ГБ)');
+      expect(formatUpload413Error('<html><head><title>413 Request Entity Too Large</title></head><body>nginx</body></html>')).toBe(
+        'Превышен лимит размера запроса на прокси-сервере (413)',
+      );
+      expect(formatUpload413Error(JSON.stringify({ message: 'Custom 413 error' }))).toBe('Custom 413 error');
+      expect(formatUpload413Error('{}')).toBe('Файл больше 2 ГБ');
+
+      useI18n().setLocale('en');
+      expect(formatUpload413Error(JSON.stringify({ limitBytes: 524288000 }))).toBe('File exceeds the 500 MB limit');
+      expect(formatUpload413Error(JSON.stringify({ limitBytes: 5368709120 }))).toBe('File exceeds the 5 GB limit');
+      expect(formatUpload413Error('<html><head><title>413 Request Entity Too Large</title></head></html>', 'text/html')).toBe(
+        'Upload rejected by proxy size limit (413)',
+      );
+    });
+
+    it('parseUploadAnswer (fetch/native path) maps 413 limitBytes and nginx HTML accurately', () => {
+      expect(() => parseUploadAnswer(413, JSON.stringify({ limitBytes: 524288000 }))).toThrow('Файл превышает лимит (500 МБ)');
+      expect(() => parseUploadAnswer(413, JSON.stringify({ limitBytes: 5368709120 }))).toThrow('Файл превышает лимит (5 ГБ)');
+      expect(() => parseUploadAnswer(413, '<html><head><title>413 Request Entity Too Large</title></head></html>')).toThrow(
+        'Превышен лимит размера запроса на прокси-сервере (413)',
+      );
+    });
+
+    it('parseYandexUploadAnswer and uploadYandexFile XHR map 413 limitBytes and nginx HTML accurately', async () => {
+      expect(() => parseYandexUploadAnswer(413, JSON.stringify({ limitBytes: 524288000 }))).toThrow('Файл превышает лимит (500 МБ)');
+      expect(() => parseYandexUploadAnswer(413, '<html><head><title>413 Request Entity Too Large</title></head></html>')).toThrow(
+        'Превышен лимит размера запроса на прокси-сервере (413)',
+      );
+
+      const originalXHR = window.XMLHttpRequest;
+      const mockXHR: any = {
+        open: vi.fn(),
+        setRequestHeader: vi.fn(),
+        send: vi.fn(),
+        abort: vi.fn(),
+        getResponseHeader: vi.fn().mockReturnValue('text/html'),
+        upload: {},
+        status: 413,
+        responseText: '<html><head><title>413 Request Entity Too Large</title></head></html>',
+      };
+      const MockCtor = vi.fn(function (this: any) { return mockXHR; });
+      window.XMLHttpRequest = MockCtor as any;
+      try {
+        const file = new File(['x'], 'big.bin');
+        const handle = uploadYandexFile('/big.bin', file);
+        const assertion = expect(handle.promise).rejects.toThrow('Превышен лимит размера запроса на прокси-сервере (413)');
+        mockXHR.onload();
+        await assertion;
+      } finally {
+        window.XMLHttpRequest = originalXHR;
+      }
     });
   });
 });

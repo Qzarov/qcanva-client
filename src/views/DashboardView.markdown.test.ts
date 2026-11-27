@@ -17,6 +17,7 @@ vi.mock('vue-router', () => ({
 }));
 
 vi.mock('../api/client', () => ({
+  onAuthCleared: vi.fn(),
   API_BASE: '/api',
   accessRequests: { incoming: vi.fn().mockResolvedValue([]) },
   canvas: { create: vi.fn(), list: vi.fn().mockResolvedValue({ own: [], shared: [], public: [], welcome: null }), update: vi.fn() },

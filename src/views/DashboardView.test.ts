@@ -7,6 +7,9 @@ import DashboardView from './DashboardView.vue';
 import { canvas, htmlDocuments, interactiveTemplates, recentResources, resourceFolders, textDocuments } from '../api/client';
 import { runBackHandlers } from '../composables/useBackHandler';
 import { currentAppDialog } from '../composables/appDialog';
+import { resetDashboardReturnOriginForTests } from '../composables/useDashboardReturnOrigin';
+import { resetExplorerGroupDnd } from '../composables/useExplorerGroupDnd';
+import { resetExplorerLayoutPrefs } from '../composables/useExplorerLayoutPrefs';
 import { useI18n } from '../composables/useI18n';
 
 const push = vi.fn();
@@ -19,6 +22,7 @@ vi.mock('vue-router', () => ({
 }));
 
 vi.mock('../api/client', () => ({
+  onAuthCleared: vi.fn(),
   accessRequests: {
     incoming: vi.fn().mockResolvedValue([]),
   },
@@ -114,6 +118,8 @@ function mountDashboard(options: MountingOptions<any> = {}) {
 function stubSidebarDesktopMedia(initialMatches = false) {
   let matches = initialMatches;
   const listeners = new Set<(event: MediaQueryListEvent) => void>();
+  const drawerListeners = new Set<(event: MediaQueryListEvent) => void>();
+  const drawerQuery = '(max-width: 768px)';
   const media = {
     get matches() {
       return matches;
@@ -130,12 +136,29 @@ function stubSidebarDesktopMedia(initialMatches = false) {
     dispatch(nextMatches: boolean) {
       matches = nextMatches;
       listeners.forEach((listener) => listener({ matches: nextMatches, media: SIDEBAR_DESKTOP_QUERY } as MediaQueryListEvent));
+      drawerListeners.forEach((listener) => listener({ matches: !nextMatches, media: drawerQuery } as MediaQueryListEvent));
       window.dispatchEvent(new Event('resize'));
     },
   } as unknown as MediaQueryList & { dispatch(nextMatches: boolean): void };
 
+  const drawerMedia = {
+    get matches() {
+      return !matches;
+    },
+    media: drawerQuery,
+    addEventListener: vi.fn((type: string, listener: EventListener) => {
+      if (type === 'change') drawerListeners.add(listener as (event: MediaQueryListEvent) => void);
+    }),
+    removeEventListener: vi.fn((type: string, listener: EventListener) => {
+      if (type === 'change') drawerListeners.delete(listener as (event: MediaQueryListEvent) => void);
+    }),
+    addListener: vi.fn((listener: (event: MediaQueryListEvent) => void) => drawerListeners.add(listener)),
+    removeListener: vi.fn((listener: (event: MediaQueryListEvent) => void) => drawerListeners.delete(listener)),
+  } as unknown as MediaQueryList;
+
   vi.stubGlobal('matchMedia', vi.fn((query: string) => {
     if (query === SIDEBAR_DESKTOP_QUERY) return media;
+    if (query === drawerQuery) return drawerMedia;
     return {
       matches: false,
       media: query,
@@ -162,6 +185,8 @@ function withDefaultFolders() {
 
 describe('browser tab title', () => {
   it('shows "Home" (localized) as the tab title', async () => {
+    resetExplorerLayoutPrefs(true);
+    useI18n().setLocale('en');
     const wrapper = mountDashboard();
     await flushPromises();
 
@@ -175,6 +200,10 @@ describe('dashboard sidebar navigation', () => {
     vi.clearAllMocks();
     dashboardRoute.query = {};
     localStorage.clear();
+    resetDashboardReturnOriginForTests();
+    resetExplorerLayoutPrefs(true);
+    resetExplorerGroupDnd();
+    useI18n().setLocale('en');
     withDefaultFolders();
     vi.mocked(interactiveTemplates.list).mockResolvedValue({ templates: [] });
   });
@@ -184,54 +213,50 @@ describe('dashboard sidebar navigation', () => {
     document.body.innerHTML = '';
   });
 
-  it('keeps the authenticated QCanva brand in the sidebar instead of duplicating it in the dashboard header', async () => {
+  it('keeps the authenticated QCanva brand in the unified sidebar instead of duplicating it in the dashboard header', async () => {
     const wrapper = mountDashboard();
     await flushPromises();
 
     expect(wrapper.find('.app-header .dashboard-brand').exists()).toBe(false);
-    expect(wrapper.get('.dashboard-sidebar .dashboard-sidebar-brand img').attributes('alt')).toBe('QCanva');
+    expect(wrapper.get('[data-sidebar-brand-home]').text()).toBe('Q');
   });
 
-  it('starts on the feed with Home collapsed, and the sidebar never swaps the feed for a page', async () => {
+  it('starts on the feed with Q Space home expanded, and clicking shared opens the dedicated Q Space/shared view', async () => {
     const wrapper = mountDashboard();
     await flushPromises();
 
     expect(wrapper.get('[data-dashboard-view="recent"]').isVisible()).toBe(true);
-    expect(wrapper.get('[data-home-disclosure]').attributes('aria-expanded')).toBe('false');
+    expect(wrapper.get('[data-home-disclosure]').attributes('aria-expanded')).toBe('true');
+    // An empty section on Home offers just "+ Add" in its grid, no caption saying it is empty.
+    expect(wrapper.get('[data-feed-empty="shared"]').text()).toBe('Add');
+    expect(wrapper.get('[data-feed-section="shared"]').text()).not.toContain('Nothing has been shared with you yet.');
 
-    // Nothing is shared with this user: Shared is still a feed section.
+    // Clicking Q Space -> shared in the unified tree opens the dedicated shared explorer view.
     await wrapper.get('[data-dashboard-section="shared"]').trigger('click');
     await flushPromises();
 
-    expect(wrapper.find('[data-dashboard-view="shared"]').exists()).toBe(false);
-    expect(wrapper.get('[data-dashboard-view="recent"]').isVisible()).toBe(true);
-    // An empty section offers just "+ Add" in its grid, no caption saying it is empty.
-    expect(wrapper.get('[data-feed-empty="shared"]').text()).toBe('Add');
-    expect(wrapper.get('[data-feed-section="shared"]').text()).not.toContain('Nothing has been shared with you yet.');
+    expect(wrapper.find('[data-dashboard-view="shared"]').exists()).toBe(true);
+    expect(wrapper.find('[data-dashboard-view="recent"]').exists()).toBe(false);
+    expect(wrapper.get('[data-dashboard-section="shared"]').classes()).toContain('active');
   });
 
-  it('scrolls the home feed to a sidebar section that has content, instead of opening a page', async () => {
+  it('opens Q Space/shared directly from the unified tree when shared has content', async () => {
     vi.mocked(canvas.list).mockResolvedValueOnce({
       own: [],
       shared: [{ id: 'shared-1', title: 'From a teammate', tags: [], ownerId: 'someone-else' }],
       public: [],
       welcome: null,
     } as never);
-    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(() => {});
-    // In the document: the feed finds its section by id.
     const wrapper = mountDashboard({ attachTo: document.body });
     await flushPromises();
 
     await wrapper.get('[data-dashboard-section="shared"]').trigger('click');
     await flushPromises();
 
-    // Still the one feed, scrolled to its Shared section.
-    expect(wrapper.find('[data-dashboard-view="recent"]').exists()).toBe(true);
-    expect(wrapper.find('[data-dashboard-view="shared"]').exists()).toBe(false);
-    expect(scrollIntoView.mock.contexts.some((el) => (el as Element).id === 'feed-shared')).toBe(true);
-    // The sidebar marks the section on screen, not Home.
+    expect(wrapper.find('[data-dashboard-view="shared"]').exists()).toBe(true);
+    expect(wrapper.find('[data-dashboard-view="recent"]').exists()).toBe(false);
+    expect(wrapper.get('[data-dashboard-view="shared"]').text()).toContain('From a teammate');
     expect(wrapper.get('[data-dashboard-section="shared"]').classes()).toContain('active');
-    scrollIntoView.mockRestore();
     wrapper.unmount();
   });
 
@@ -262,16 +287,17 @@ describe('dashboard sidebar navigation', () => {
     await flushPromises();
 
     expect(wrapper.get('[data-recent-layout]').classes()).toContain('dashboard-recents-grid');
-    expect(wrapper.get('[data-view-mode="grid"]').attributes('aria-pressed')).toBe('true');
+    expect(wrapper.get('[data-headroom-bar] [data-view-toggle="grid"]').attributes('aria-pressed')).toBe('true');
     expect(wrapper.get('.dashboard-recent-card').text()).toContain('MVP board');
 
-    await wrapper.get('[data-view-mode="list"]').trigger('click');
+    await wrapper.get('[data-headroom-bar] [data-view-toggle="table"]').trigger('click');
 
-    expect(wrapper.get('[data-recent-layout]').classes()).toContain('dashboard-recents-list');
-    expect(wrapper.get('[data-view-mode="list"]').attributes('aria-pressed')).toBe('true');
+    expect(wrapper.find('[data-explorer-table]').exists()).toBe(true);
+    expect(wrapper.get('[data-headroom-bar] [data-view-toggle="table"]').attributes('aria-pressed')).toBe('true');
     expect(localStorage.getItem('qcanva:dashboard-recents-view:v1')).toBe('list');
+    expect(localStorage.getItem('qspace:viewMode')).toBe('table');
 
-    await wrapper.get('.dashboard-recent-card').trigger('click');
+    await wrapper.get('[data-row-key="interactive-template:template-1"]').trigger('dblclick');
     expect(push).toHaveBeenCalledWith({ name: 'interactive-template', params: { id: 'template-1' } });
   });
 
@@ -281,7 +307,7 @@ describe('dashboard sidebar navigation', () => {
     const wrapper = mountDashboard();
     await flushPromises();
 
-    expect(wrapper.get('[data-view-mode="list"]').attributes('aria-pressed')).toBe('true');
+    expect(wrapper.get('[data-headroom-bar] [data-view-toggle="table"]').attributes('aria-pressed')).toBe('true');
     expect((wrapper.vm as any).recentViewMode).toBe('list');
   });
 
@@ -320,11 +346,16 @@ describe('dashboard sidebar navigation', () => {
     expect(card.find('.badge-owner').exists()).toBe(false);
   });
 
-  it('opens a folder from a tile on the Recent page', async () => {
+  it('selects a folder tile on 1st click and opens it on dblclick on the Recent page', async () => {
     const wrapper = mountDashboard();
     await flushPromises();
 
-    await wrapper.get('[data-recent-folder-tile="folder-b"]').trigger('click');
+    const tile = wrapper.get('[data-recent-folder-tile="folder-b"]');
+    await tile.trigger('click');
+    expect((wrapper.vm as any).selectedKeys).toEqual(['folder:folder-b']);
+    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'recent' });
+
+    await tile.trigger('dblclick');
 
     expect((wrapper.vm as any).activeSection).toEqual({ kind: 'folder', folderId: 'folder-b' });
   });
@@ -333,24 +364,23 @@ describe('dashboard sidebar navigation', () => {
     const wrapper = mountDashboard();
     await flushPromises();
 
-    await wrapper.get('[data-home-disclosure]').trigger('click');
     await wrapper.get('[data-dashboard-folder="folder-b"]').trigger('click');
 
     expect((wrapper.vm as any).activeSection).toEqual({ kind: 'folder', folderId: 'folder-b' });
-    expect(wrapper.get('[data-dashboard-view="folder"]').text()).toContain('Target');
+    expect(wrapper.get('[data-headroom-bar]').text()).toContain('Target');
+    expect(wrapper.get('[data-dashboard-view="folder"]').text()).toContain('Doc 1');
   });
 
-  it('returns to Recent from a folder view via the Back button', async () => {
+  it('returns to Home from a folder view via the Back button', async () => {
     const wrapper = mountDashboard();
     await flushPromises();
 
-    await wrapper.get('[data-home-disclosure]').trigger('click');
     await wrapper.get('[data-dashboard-folder="folder-b"]').trigger('click');
     expect((wrapper.vm as any).activeSection).toEqual({ kind: 'folder', folderId: 'folder-b' });
 
-    await wrapper.get('[data-folder-back-button]').trigger('click');
+    await wrapper.get('[data-headroom-bar] [data-nav-back]').trigger('click');
 
-    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'recent' });
+    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'home' });
   });
 
   it('ignores a legacy folder back-link query param and shows Recent instead', async () => {
@@ -387,7 +417,7 @@ describe('dashboard sidebar navigation', () => {
     expect(wrapper.find('[data-dashboard-folder="folder-c"]').exists()).toBe(false);
     expect(vm.activeSection).toEqual({ kind: 'folder', folderId: 'folder-c' });
     expect(vm.selectedFolderId).toBe('folder-c');
-    expect(wrapper.get('[data-dashboard-view="folder"]').text()).toContain('Archive');
+    expect(wrapper.get('[data-headroom-bar]').text()).toContain('Archive');
   });
 
   it('home is one feed: Recent, Folders, Shared, Interactive, Public in order, each capped with "Show all"', async () => {
@@ -539,20 +569,21 @@ describe('dashboard sidebar navigation', () => {
     // «⋯» — только управление папкой: пункты создания переехали в «+».
     expect(wrapper.find('[data-folder-create]').exists()).toBe(false);
 
-    // «+» папки — окно «Добавить», эта папка уже выбрана.
-    await wrapper.get('[data-folder-create-menu]').trigger('click');
+    // «+» FAB папки — окно «Добавить», эта папка уже выбрана (без выпадающего списка «Куда»).
+    await wrapper.get('[data-explorer-fab]').trigger('click');
     await nextTick();
-    expect((wrapper.get('[data-add-folder]').element as HTMLSelectElement).value).toBe('folder-b');
+    expect(wrapper.find('[data-add-folder]').exists()).toBe(false);
+    expect(wrapper.find('[data-add-target-folder]').exists()).toBe(false);
     await createNamed(wrapper, 'text-document', 'Notes');
     expect(wrapper.find('[data-add-dialog]').exists()).toBe(false);
     expect(textDocuments.create).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Notes', folderId: 'folder-b' }));
-    await wrapper.get('[data-folder-create-menu]').trigger('click');
+    await wrapper.get('[data-explorer-fab]').trigger('click');
     await nextTick();
     await createNamed(wrapper, 'canvas', 'Board');
     expect(canvas.create).toHaveBeenLastCalledWith('Board', undefined, 'folder-b');
   });
 
-  it('lets the Add dialog pick the destination folder, defaulting to the folder you are in', async () => {
+  it('targets the open folder directly from the Add dialog without a destination dropdown', async () => {
     withDefaultFolders();
     const wrapper = mountDashboard();
     await flushPromises();
@@ -562,12 +593,11 @@ describe('dashboard sidebar navigation', () => {
 
     vm.openAddDialog();
     await nextTick();
-    const picker = wrapper.get('[data-add-folder]');
-    expect((picker.element as HTMLSelectElement).value).toBe('folder-c');
+    expect(wrapper.find('[data-add-folder]').exists()).toBe(false);
+    expect(wrapper.find('[data-add-target-folder]').exists()).toBe(false);
 
-    await picker.setValue('folder-b');
     await createNamed(wrapper, 'text-document', 'Plan');
-    expect(textDocuments.create).toHaveBeenLastCalledWith(expect.objectContaining({ folderId: 'folder-b' }));
+    expect(textDocuments.create).toHaveBeenLastCalledWith(expect.objectContaining({ folderId: 'folder-c' }));
   });
 
   it('keeps creating into Unsorted from the Add dialog when you are not inside a folder', async () => {
@@ -577,7 +607,8 @@ describe('dashboard sidebar navigation', () => {
     const vm = wrapper.vm as any;
     vm.openAddDialog();
     await nextTick();
-    expect((wrapper.get('[data-add-folder]').element as HTMLSelectElement).value).toBe('');
+    expect(wrapper.find('[data-add-folder]').exists()).toBe(false);
+    expect(wrapper.find('[data-add-target-folder]').exists()).toBe(false);
     await createNamed(wrapper, 'text-document', 'Plan');
     // folder-a is the mocked "Unsorted".
     expect(textDocuments.create).toHaveBeenLastCalledWith(expect.objectContaining({ folderId: 'folder-a' }));
@@ -639,7 +670,7 @@ describe('dashboard sidebar navigation', () => {
     expect(runBackHandlers()).toBe(true);
     expect(vm.activeSection).toEqual({ kind: 'folder', folderId: 'folder-b' });
     expect(runBackHandlers()).toBe(true);
-    expect(vm.activeSection).toEqual({ kind: 'recent' });
+    expect(vm.activeSection).toEqual({ kind: 'home' });
     // Home: nothing left to step back to - main.ts may now offer to exit.
     expect(runBackHandlers()).toBe(false);
 
@@ -661,7 +692,7 @@ describe('dashboard sidebar navigation', () => {
     expect(vm.activeSection).toEqual({ kind: 'folder', folderId: 'folder-b' });
     expect(vm.selectedFolderId).toBe('folder-b');
     expect(vm.activeFolder.items).toEqual([]);
-    expect(wrapper.get('[data-dashboard-view="folder"]').text()).toContain('Target');
+    expect(wrapper.get('[data-headroom-bar]').text()).toContain('Target');
     expect(wrapper.get('[data-folder-empty]').text()).toContain('Nothing matches the current filters.');
     await wrapper.get('[data-folder-empty] [data-reset-filters]').trigger('click');
     expect(vm.searchQuery).toBe('');
@@ -684,7 +715,7 @@ describe('dashboard sidebar navigation', () => {
 
     expect(vm.selectedFolderId).toBe('folder-c');
     expect(vm.activeSection).toEqual({ kind: 'folder', folderId: 'folder-c' });
-    expect(wrapper.get('[data-dashboard-view="folder"]').text()).toContain('Archive');
+    expect(wrapper.get('[data-headroom-bar]').text()).toContain('Archive');
   });
 
   it('does not render the old in-content folder navigation', async () => {
@@ -694,7 +725,7 @@ describe('dashboard sidebar navigation', () => {
     expect(wrapper.find('.dashboard-folder-nav').exists()).toBe(false);
   });
 
-  it('scrolls to Interactive templates on the feed from the sidebar', async () => {
+  it('scrolls to Interactive templates on the feed when selected', async () => {
     vi.mocked(interactiveTemplates.list).mockResolvedValueOnce({
       templates: [{
         id: 'template-1',
@@ -709,7 +740,7 @@ describe('dashboard sidebar navigation', () => {
     const wrapper = mountDashboard();
     await flushPromises();
 
-    await wrapper.get('[data-dashboard-section="interactive"]').trigger('click');
+    await (wrapper.vm as any).onSidebarSelect({ kind: 'interactive' });
     await flushPromises();
 
     expect((wrapper.vm as any).activeSection).toEqual({ kind: 'recent' });
@@ -723,7 +754,7 @@ describe('dashboard sidebar navigation', () => {
     ] });
     const wrapper = mountDashboard();
     await flushPromises();
-    await wrapper.get('[data-dashboard-section="interactive"]').trigger('click');
+    await (wrapper.vm as any).onSidebarSelect({ kind: 'interactive' });
     // Each kind wears its own icon (a sheet, a board) in place of a plate naming it.
     expect(wrapper.get('[data-template-resource="hero"] .card-title').text()).toBe('Лира');
     expect(wrapper.get('[data-template-resource="hero"] .resource-icon').attributes('data-resource-kind')).toBe('sheet');
@@ -773,7 +804,7 @@ describe('dashboard sidebar navigation', () => {
     vm.selectFolder('folder-b');
     await nextTick();
 
-    await wrapper.get('[data-folder-create-menu]').trigger('click');
+    await wrapper.get('[data-explorer-fab]').trigger('click');
     await nextTick();
     await wrapper.get('[data-add-create="interactive-template"]').trigger('click');
     await nextTick();
@@ -846,17 +877,23 @@ describe('dashboard sidebar navigation', () => {
       vm.resetFilters();
       apply();
       await nextTick();
-      for (const section of ['shared', 'interactive', 'public'] as const) {
-        scrollIntoView.mockClear();
-        await wrapper.get(`[data-dashboard-section="${section}"]`).trigger('click');
-        await flushPromises();
-        expect(vm.activeSection).toEqual({ kind: 'recent' });
-        expect(scrollIntoView.mock.contexts.some((el) => (el as Element).id === `feed-${section}`)).toBe(true);
-      }
+      // Feed-only sections (interactive) scroll within Home; shared/public open their dedicated Q Space explorer sections.
+      scrollIntoView.mockClear();
+      await vm.onSidebarSelect({ kind: 'interactive' });
+      await flushPromises();
+      expect(vm.activeSection).toEqual({ kind: 'recent' });
+      expect(scrollIntoView.mock.contexts.some((el) => (el as Element).id === 'feed-interactive')).toBe(true);
       for (const button of wrapper.findAll('[data-feed-show-all]')) {
         await button.trigger('click');
         expect(vm.activeSection).toEqual({ kind: 'recent' });
       }
+      for (const explorerSection of ['shared', 'public'] as const) {
+        await vm.onSidebarSelect({ kind: explorerSection });
+        await flushPromises();
+        expect(vm.activeSection).toEqual({ kind: explorerSection });
+      }
+      await vm.onSidebarSelect({ kind: 'recent' });
+      await flushPromises();
     }
     vm.resetFilters();
     vi.mocked(textDocuments.list).mockResolvedValue({ documents: [] } as never);
@@ -905,7 +942,6 @@ describe('dashboard sidebar navigation', () => {
     const wrapper = mountDashboard();
     await flushPromises();
     const vm = wrapper.vm as any;
-    await wrapper.get('[data-home-disclosure]').trigger('click');
     const folderIds = () => wrapper.findAll('[data-dashboard-folder]').map((el) => el.attributes('data-dashboard-folder'));
     const before = folderIds();
     expect(before.length).toBeGreaterThan(0);
@@ -919,27 +955,18 @@ describe('dashboard sidebar navigation', () => {
     expect(folderIds()).toEqual(before);
   });
 
-  it('sorts from one icon in the toolbar: its menu picks the order, one menu open at a time', async () => {
+  it('opens the Headroom filter menu and keeps Public heading clean without per-section sort triggers', async () => {
     const wrapper = mountDashboard();
     await flushPromises();
     const vm = wrapper.vm as any;
-    // The sections no longer carry sort buttons of their own.
     expect(wrapper.findAll('.dash-sort-button-mobile')).toHaveLength(0);
     expect(wrapper.find('.dash-sort-select').exists()).toBe(false);
 
-    const desktopSort = wrapper.get('.dashboard-toolbar-desktop[data-sort-menu-trigger], .dashboard-toolbar-desktop [data-sort-menu-trigger]');
-    await desktopSort.trigger('click');
-    expect(wrapper.findAll('[data-sort-menu]')).toHaveLength(1);
-    expect(wrapper.get('[data-sort-option="updated-desc"]').attributes('aria-checked')).toBe('true');
-    await wrapper.get('[data-sort-option="title-asc"]').trigger('click');
+    const headroomFilter = wrapper.get('[data-headroom-bar] [data-filter-menu-trigger]');
+    await headroomFilter.trigger('click');
+    expect(wrapper.find('[data-filter-menu]').exists()).toBe(true);
+    vm.sortMode = 'title-asc';
     expect(vm.sortMode).toBe('title-asc');
-    expect(wrapper.find('[data-sort-menu]').exists()).toBe(false);
-
-    // The filter menu and the sort menu do not stay open together.
-    await wrapper.get('.dashboard-toolbar-desktop [data-filter-menu-trigger], .dashboard-toolbar-desktop[data-filter-menu-trigger]').trigger('click');
-    await desktopSort.trigger('click');
-    expect(wrapper.find('[data-filter-menu]').exists()).toBe(false);
-    expect(wrapper.find('[data-sort-menu]').exists()).toBe(true);
   });
 
   it('keeps Public and its Mine/Others switch in the feed when "Mine" has nothing', async () => {
@@ -978,17 +1005,21 @@ describe('dashboard sidebar navigation', () => {
     expect(shell().classes()).not.toContain('dashboard-list-view');
     expect(wrapper.find('[data-section="shared"]').exists()).toBe(true);
 
-    await wrapper.get('[data-view-mode="list"]').trigger('click');
-    expect(shell().classes()).toContain('dashboard-list-view');
+    // B-020: Logged-in table mode renders ExplorerTableView and never applies legacy .dashboard-list-view to .dashboard-shell
+    await wrapper.get('[data-headroom-bar] [data-view-toggle="table"]').trigger('click');
+    expect(shell().classes()).not.toContain('dashboard-list-view');
+    expect(wrapper.find('[data-explorer-table]').exists()).toBe(true);
 
-    // A folder follows the same choice, and has the switch in its heading.
-    await wrapper.get('[data-recent-folder-tile="folder-b"]').trigger('click');
-    expect(shell().classes()).toContain('dashboard-list-view');
-    const folderToggle = wrapper.get('[data-dashboard-view="folder"] .folder-view-toggle');
-    expect(folderToggle.get('[data-view-mode="list"]').attributes('aria-pressed')).toBe('true');
-    await folderToggle.get('[data-view-mode="grid"]').trigger('click');
+    // A folder follows the same choice via the single Headroom view toggle (no duplicate toggle in folder heading).
+    await wrapper.get('[data-recent-folder-tile="folder-b"]').trigger('dblclick');
+    expect(shell().classes()).not.toContain('dashboard-list-view');
+    expect(wrapper.find('[data-dashboard-view="folder"] [data-explorer-table]').exists()).toBe(true);
+    expect(wrapper.find('[data-dashboard-view="folder"] .folder-view-toggle').exists()).toBe(false);
+    expect(wrapper.get('[data-headroom-bar] [data-view-toggle="table"]').attributes('aria-pressed')).toBe('true');
+    await wrapper.get('[data-headroom-bar] [data-view-toggle="grid"]').trigger('click');
     expect(shell().classes()).not.toContain('dashboard-list-view');
     expect(localStorage.getItem('qcanva:dashboard-recents-view:v1')).toBe('grid');
+    expect(localStorage.getItem('qspace:viewMode')).toBe('grid');
   });
 
   it('adds my own public resources to Public even when the server list (latest 100) left them out', async () => {
@@ -1047,7 +1078,7 @@ describe('dashboard sidebar navigation', () => {
     vi.mocked(textDocuments.publicList).mockResolvedValue({ documents: [] } as never);
   });
 
-  it('keeps the Public heading to its title and switch: the order is the toolbar\'s', async () => {
+  it('keeps the Public heading to its title and switch without inline sort controls', async () => {
     const wrapper = mountDashboard();
     await flushPromises();
     await wrapper.get('[data-dashboard-section="public"]').trigger('click');
@@ -1055,8 +1086,7 @@ describe('dashboard sidebar navigation', () => {
     const head = wrapper.get('[data-section="public"] .dash-section-head');
     expect(head.find('h2').exists()).toBe(true);
     expect(head.find('[data-sort-menu-trigger]').exists()).toBe(false);
-    // One sort icon for a computer and one for a phone's header, nothing else.
-    expect(wrapper.findAll('[data-sort-menu-trigger]')).toHaveLength(2);
+    expect(wrapper.findAll('[data-headroom-bar] [data-filter-menu-trigger]')).toHaveLength(1);
   });
 
   it('filters interactive templates by search and resource type', async () => {
@@ -1117,29 +1147,30 @@ describe('dashboard sidebar navigation', () => {
     const wrapper = mountDashboard();
     await flushPromises();
 
-    await wrapper.get('[data-home-disclosure]').trigger('click');
     expect(wrapper.find('[data-dashboard-folder="child"]').exists()).toBe(false);
     expect(wrapper.find('[data-folder-toggle="parent"]').exists()).toBe(true);
   });
 
-  it('restores and persists the desktop sidebar width', async () => {
-    localStorage.setItem('qcanva:dashboard-sidebar:v1', 'collapsed');
+  it('restores and persists the desktop sidebar collapsed state', async () => {
+    localStorage.setItem('qspace:sidebarCollapsed', '1');
+    resetExplorerLayoutPrefs(false);
     const wrapper = mountDashboard();
     await flushPromises();
 
     expect(wrapper.get('.dashboard-sidebar').classes()).toContain('collapsed');
-    await wrapper.get('[data-sidebar-width-toggle]').trigger('click');
-    expect(localStorage.getItem('qcanva:dashboard-sidebar:v1')).toBe('expanded');
+    await wrapper.get('[data-sidebar-expand-btn]').trigger('click');
+    expect(localStorage.getItem('qspace:sidebarCollapsed')).toBe('0');
   });
 
   it('opens the drawer with focus inside and closes it from the explicit close button', async () => {
+    stubSidebarDesktopMedia(false);
     document.body.style.overflow = 'clip';
     const wrapper = mountDashboard({ attachTo: document.body });
     await flushPromises();
-    const opener = wrapper.get('[data-mobile-sidebar-open]').element as HTMLButtonElement;
+    const opener = wrapper.get('[data-sidebar-expand-btn]').element as HTMLButtonElement;
 
     opener.focus();
-    await wrapper.get('[data-mobile-sidebar-open]').trigger('click');
+    await wrapper.get('[data-sidebar-expand-btn]').trigger('click');
     await nextTick();
 
     expect(document.body.style.overflow).toBe('hidden');
@@ -1149,42 +1180,47 @@ describe('dashboard sidebar navigation', () => {
     await nextTick();
 
     expect(document.body.style.overflow).toBe('clip');
-    expect(document.activeElement).toBe(opener);
+    expect(document.activeElement).toBe(wrapper.get('[data-sidebar-home-btn]').element);
     wrapper.unmount();
   });
 
   it.each([
     ['backdrop', async (wrapper: ReturnType<typeof mountDashboard>) => {
       await wrapper.get('[data-sidebar-backdrop]').trigger('click');
+      return wrapper.get('[data-sidebar-home-btn]').element;
     }],
     ['Escape', async (wrapper: ReturnType<typeof mountDashboard>) => {
       await wrapper.get('.dashboard-sidebar').trigger('keydown', { key: 'Escape' });
+      return wrapper.get('[data-sidebar-home-btn]').element;
     }],
     ['destination selection', async (wrapper: ReturnType<typeof mountDashboard>) => {
       await wrapper.get('[data-dashboard-section="shared"]').trigger('click');
+      return wrapper.get('[data-dashboard-section="shared"]').element;
     }],
-  ])('restores scroll and opener focus after closing from %s', async (_label, closeDrawer) => {
+  ])('restores scroll and focus after closing from %s', async (_label, closeDrawer) => {
+    stubSidebarDesktopMedia(false);
     const wrapper = mountDashboard({ attachTo: document.body });
     await flushPromises();
-    const opener = wrapper.get('[data-mobile-sidebar-open]').element as HTMLButtonElement;
+    const opener = wrapper.get('[data-sidebar-expand-btn]').element as HTMLButtonElement;
 
     opener.focus();
-    await wrapper.get('[data-mobile-sidebar-open]').trigger('click');
+    await wrapper.get('[data-sidebar-expand-btn]').trigger('click');
     await nextTick();
-    await closeDrawer(wrapper);
+    const expectedFocus = await closeDrawer(wrapper);
     await nextTick();
 
     expect(document.body.style.overflow).toBe('');
-    expect(document.activeElement).toBe(opener);
+    expect(document.activeElement).toBe(expectedFocus);
     wrapper.unmount();
   });
 
   it('restores body scroll if the dashboard unmounts with the drawer open', async () => {
+    stubSidebarDesktopMedia(false);
     document.body.style.overflow = 'clip';
     const wrapper = mountDashboard({ attachTo: document.body });
     await flushPromises();
 
-    await wrapper.get('[data-mobile-sidebar-open]').trigger('click');
+    await wrapper.get('[data-sidebar-expand-btn]').trigger('click');
     await nextTick();
     expect(document.body.style.overflow).toBe('hidden');
 
@@ -1193,30 +1229,34 @@ describe('dashboard sidebar navigation', () => {
     expect(document.body.style.overflow).toBe('clip');
   });
 
-  it('keeps the remembered desktop width while opening and selecting in the mobile drawer', async () => {
-    localStorage.setItem('qcanva:dashboard-sidebar:v1', 'collapsed');
+  it('keeps the remembered desktop collapsed state while opening and selecting in the mobile drawer', async () => {
+    stubSidebarDesktopMedia(false);
+    localStorage.setItem('qspace:sidebarCollapsed', '1');
+    resetExplorerLayoutPrefs(false);
     const wrapper = mountDashboard({ attachTo: document.body });
     await flushPromises();
 
-    await wrapper.get('[data-mobile-sidebar-open]').trigger('click');
+    await wrapper.get('[data-sidebar-expand-btn]').trigger('click');
     await nextTick();
     await wrapper.get('[data-dashboard-section="public"]').trigger('click');
     await nextTick();
 
-    expect(localStorage.getItem('qcanva:dashboard-sidebar:v1')).toBe('collapsed');
+    expect(localStorage.getItem('qspace:sidebarCollapsed')).toBe('1');
     expect(wrapper.get('.dashboard-sidebar').classes()).toContain('collapsed');
     wrapper.unmount();
   });
 
   it('closes the mobile drawer through the cleanup path when the viewport becomes desktop', async () => {
     const media = stubSidebarDesktopMedia(false);
+    localStorage.setItem('qspace:sidebarCollapsed', '1');
+    resetExplorerLayoutPrefs(false);
     document.body.style.overflow = 'clip';
     const wrapper = mountDashboard({ attachTo: document.body });
     await flushPromises();
-    const opener = wrapper.get('[data-mobile-sidebar-open]').element as HTMLButtonElement;
+    const opener = wrapper.get('[data-sidebar-expand-btn]').element as HTMLButtonElement;
 
     opener.focus();
-    await wrapper.get('[data-mobile-sidebar-open]').trigger('click');
+    await wrapper.get('[data-sidebar-expand-btn]').trigger('click');
     await nextTick();
     expect(document.body.style.overflow).toBe('hidden');
 
@@ -1228,7 +1268,7 @@ describe('dashboard sidebar navigation', () => {
     expect(document.body.style.overflow).toBe('clip');
     expect(wrapper.find('[data-sidebar-backdrop]').exists()).toBe(false);
     expect(wrapper.get('.dashboard-sidebar').attributes('aria-modal')).toBeUndefined();
-    expect(document.activeElement).toBe(opener);
+    expect(document.activeElement).toBe(wrapper.get('[data-sidebar-home-btn]').element);
     wrapper.unmount();
   });
 
@@ -1236,11 +1276,11 @@ describe('dashboard sidebar navigation', () => {
     const media = stubSidebarDesktopMedia(false);
     const wrapper = mountDashboard({ attachTo: document.body });
     await flushPromises();
-    const opener = wrapper.get('[data-mobile-sidebar-open]').element as HTMLButtonElement;
-    const desktopFallback = wrapper.get('[data-home-link]').element as HTMLButtonElement;
+    const opener = wrapper.get('[data-sidebar-expand-btn]').element as HTMLButtonElement;
+    const desktopFallback = wrapper.get('[data-sidebar-home-btn]').element as HTMLElement;
 
     opener.focus();
-    await wrapper.get('[data-mobile-sidebar-open]').trigger('click');
+    await wrapper.get('[data-sidebar-expand-btn]').trigger('click');
     await nextTick();
 
     opener.style.display = 'none';
@@ -1249,13 +1289,13 @@ describe('dashboard sidebar navigation', () => {
     await nextTick();
 
     expect((wrapper.vm as any).mobileSidebarOpen).toBe(false);
-    expect(document.activeElement).toBe(desktopFallback);
+    expect(desktopFallback.contains(document.activeElement)).toBe(true);
     expect(getComputedStyle(document.activeElement as HTMLElement).display).not.toBe('none');
     wrapper.unmount();
   });
 
-  it('forwards folder drag events to the existing reorder behavior', async () => {
-    const reorder = vi.mocked(resourceFolders.reorder);
+  it('nests a single dragged sidebar folder inside the target folder via moveFolder', async () => {
+    const moveFolder = vi.mocked(resourceFolders.moveFolder);
     const transfer = {
       types: [] as string[],
       effectAllowed: '',
@@ -1267,50 +1307,47 @@ describe('dashboard sidebar navigation', () => {
     const wrapper = mountDashboard();
     await flushPromises();
 
-    await wrapper.get('[data-home-disclosure]').trigger('click');
     await wrapper.get('[data-dashboard-folder="folder-c"]').trigger('dragstart', { dataTransfer: transfer });
     await wrapper.get('[data-dashboard-folder="folder-b"]').trigger('drop', { dataTransfer: transfer });
     await flushPromises();
 
-    expect(reorder).toHaveBeenCalledWith(['folder-a', 'folder-c', 'folder-b']);
+    expect(moveFolder).toHaveBeenCalledWith('folder-c', 'folder-b');
   });
 });
 
 describe('DashboardView groups', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetExplorerLayoutPrefs(true);
+    resetExplorerGroupDnd();
+    useI18n().setLocale('en');
     withDefaultFolders();
   });
 
-  it('opens the Add dialog from the Add button, and the account menu closes for it', async () => {
+  it('opens the Add dialog from folder FAB/button, closes account menu, and renders 6 create tiles plus dropzone', async () => {
     const wrapper = mountDashboard();
     await flushPromises();
+    const vm = wrapper.vm as any;
+    vm.selectFolder('folder-b');
+    await nextTick();
 
     await wrapper.get('[data-account-menu-trigger]').trigger('click');
     expect(wrapper.find('[data-account-menu]').exists()).toBe(true);
 
-    await wrapper.get('[data-add-button]').trigger('click');
+    await wrapper.get('[data-explorer-fab]').trigger('click');
     expect(wrapper.find('[data-add-dialog]').exists()).toBe(true);
     expect(wrapper.find('[data-account-menu]').exists()).toBe(false);
-    // Create and Upload are tabs: short names, no captions.
-    expect(wrapper.findAll('[data-add-create]').map((tile) => tile.text())).toEqual(['Canvas', 'Document', 'HTML', 'Template', 'Folder']);
-    // Nothing is made without a name: a tile opens the name field, Create waits for it.
+    expect(wrapper.findAll('[data-add-create]').map((tile) => tile.text())).toEqual(['Canvas', 'Document', 'HTML', 'Template', 'Folder', 'Album']);
     await wrapper.get('[data-add-create="html-document"]').trigger('click');
     await nextTick();
     expect(wrapper.get('[data-add-name-create]').attributes('disabled')).toBeDefined();
     expect(htmlDocuments.create).not.toHaveBeenCalled();
-    expect(wrapper.find('[data-add-import]').exists()).toBe(false);
-    await wrapper.get('[data-add-tab="upload"]').trigger('click');
-    expect(wrapper.findAll('[data-add-import]').map((tile) => tile.attributes('data-add-import'))).toEqual(['file', 'canvas', 'markdown', 'html', 'folder']);
-    expect(wrapper.findAll('[data-add-import]').map((tile) => tile.find('strong').text())).toEqual(['File', 'Canvas', 'Document', 'HTML', 'Folder']);
-    // Uploading a folder is shown but not yet usable.
-    const folderUpload = wrapper.get('[data-add-import="folder"]');
-    expect(folderUpload.attributes('disabled')).toBeDefined();
-    expect(folderUpload.text()).toContain('In development');
+    expect(wrapper.find('[data-add-tab="upload"]').exists()).toBe(false);
+    expect(wrapper.find('[data-add-drop]').exists()).toBe(true);
     expect(wrapper.find('.dashboard-new-menu .control-popover').exists()).toBe(false);
   });
 
-  it('lists every own folder as a destination, one whose parent is missing too, and reads them afresh on open', async () => {
+  it('lists every own folder in folderOptions, one whose parent is missing too, and refreshes on openAddDialog', async () => {
     vi.mocked(resourceFolders.list).mockResolvedValue({
       own: [
         { id: 'root-folder', name: 'Projects', role: 'owner', parentId: null, canvases: [], htmlDocuments: [], textDocuments: [] },
@@ -1328,8 +1365,7 @@ describe('DashboardView groups', () => {
     vm.openAddDialog();
     await flushPromises();
     expect(vi.mocked(resourceFolders.list).mock.calls.length).toBeGreaterThan(calls);
-    const names = wrapper.findAll('[data-add-folder] option').map((option) => option.text().trim());
-    expect(names).toEqual(expect.arrayContaining(['Models', 'Prints', 'Projects']));
+    expect(vm.folderOptions.map((option: any) => option.name)).toEqual(['Models', 'Prints', 'Projects']);
   });
 
   it('creates a group without creating or opening a canvas', async () => {
@@ -1655,7 +1691,9 @@ describe('DashboardView groups', () => {
     expect((wrapper.vm as any).activeFolder?.id).toBe('folder-b');
     expect((wrapper.vm as any).activeFolder?.items.map((item: any) => item.type)).toContain('html-document');
     expect(wrapper.find('[data-resource-icon="html-document"]').exists()).toBe(true);
-    (wrapper.vm as any).selectFolder('legacy-resource-inbox');
+    // Unfiled personal documents appear directly in Home (no synthetic Inbox folder).
+    expect((wrapper.vm as any).folderSummaries.some((folder: any) => folder.id === 'legacy-resource-inbox')).toBe(false);
+    (wrapper.vm as any).selectDashboardSection({ kind: 'home' });
     await wrapper.vm.$nextTick();
     expect(wrapper.find('[data-resource-icon="text-document"]').exists()).toBe(true);
     expect(wrapper.findAll('.badge').map((badge) => badge.text())).not.toContain('HTML');
@@ -1947,7 +1985,7 @@ describe('DashboardView groups', () => {
       expect(subfolderAt).toBeLessThan(itemAt);
     });
 
-    it('opens a subfolder when its card is clicked', async () => {
+    it('selects a subfolder on 1st click and opens it on dblclick', async () => {
       withNestedFolders();
       const wrapper = mountDashboard();
       await flushPromises();
@@ -1955,13 +1993,19 @@ describe('DashboardView groups', () => {
       vm.selectFolder('folder-b');
       await nextTick();
 
-      await wrapper.find('.subfolder-card').trigger('click');
+      const card = wrapper.find('.subfolder-card');
+      await card.trigger('click');
+      await nextTick();
+      expect(vm.selectedKeys).toEqual(['folder:folder-c']);
+      expect(vm.selectedFolderId).toBe('folder-b');
+
+      await card.trigger('dblclick');
       await nextTick();
 
       expect(vm.selectedFolderId).toBe('folder-c');
     });
 
-    it('shows the open subfolder name and counts right next to the arrow', async () => {
+    it('shows the open subfolder name and counts cleanly without duplicating the Headroom back arrow', async () => {
       withNestedFolders();
       const wrapper = mountDashboard();
       await flushPromises();
@@ -1970,20 +2014,14 @@ describe('DashboardView groups', () => {
       vm.selectFolder('folder-c');
       await nextTick();
 
-      const header = wrapper.find('.folder-manager-main');
-      expect(header.exists()).toBe(true);
-      // One arrow only, then the title block, so the folder info reads as
-      // belonging to the arrow rather than drifting to the far edge.
-      const children = Array.from(header.element.children).map((node) => node.className);
-      expect(children[0]).toContain('folder-back-button');
-      expect(children[1]).toContain('folder-manager-title');
-
-      const title = wrapper.find('.folder-manager-title');
-      expect(title.find('.folder-manager-name').text()).toBe('Archive');
-      expect(title.find('.folder-manager-count').exists()).toBe(true);
+      expect(wrapper.find('.folder-manager-top').exists()).toBe(false);
+      expect(wrapper.find('.folder-back-button').exists()).toBe(false);
+      expect(wrapper.find('[data-headroom-bar] [data-nav-back]').exists()).toBe(true);
+      expect(wrapper.get('[data-headroom-bar]').text()).toContain('Archive');
+      expect(wrapper.find('[data-headroom-folder-menu]').exists()).toBe(true);
     });
 
-    it('has exactly one back arrow: to the parent folder when nested, to Recent at the root', async () => {
+    it('has exactly one back arrow in the Headroom bar: to the parent folder when nested, to Home at the root', async () => {
       withNestedFolders();
       const wrapper = mountDashboard();
       await flushPromises();
@@ -1991,15 +2029,17 @@ describe('DashboardView groups', () => {
 
       vm.selectFolder('folder-b');
       await nextTick();
-      expect(wrapper.findAll('.folder-back-button')).toHaveLength(1);
-      await wrapper.get('.folder-back-button').trigger('click');
+      expect(wrapper.findAll('.folder-back-button')).toHaveLength(0);
+      expect(wrapper.findAll('[data-headroom-bar] [data-nav-back]')).toHaveLength(1);
+      await wrapper.get('[data-headroom-bar] [data-nav-back]').trigger('click');
       await nextTick();
-      expect(vm.activeSection).toEqual({ kind: 'recent' });
+      expect(vm.activeSection).toEqual({ kind: 'home' });
 
       vm.selectFolder('folder-c');
       await nextTick();
-      expect(wrapper.findAll('.folder-back-button')).toHaveLength(1);
-      await wrapper.get('.folder-back-button').trigger('click');
+      expect(wrapper.findAll('.folder-back-button')).toHaveLength(0);
+      expect(wrapper.findAll('[data-headroom-bar] [data-nav-back]')).toHaveLength(1);
+      await wrapper.get('[data-headroom-bar] [data-nav-back]').trigger('click');
       await nextTick();
       expect(vm.selectedFolderId).toBe('folder-b');
     });
@@ -2268,6 +2308,7 @@ describe('DashboardView groups', () => {
 
     beforeEach(() => {
       localStorage.clear();
+      resetExplorerLayoutPrefs(true);
     });
 
     it('stores the folder that was opened', async () => {
@@ -2441,6 +2482,9 @@ describe('mobile Dashboard filters: Recent, folder counters, tag sheet', () => {
     vi.clearAllMocks();
     dashboardRoute.query = {};
     localStorage.clear();
+    resetDashboardReturnOriginForTests();
+    resetExplorerLayoutPrefs(true);
+    useI18n().setLocale('en');
     withDefaultFolders();
     vi.mocked(interactiveTemplates.list).mockResolvedValue({ templates: [] });
   });
@@ -2594,7 +2638,7 @@ describe('mobile Dashboard filters: Recent, folder counters, tag sheet', () => {
     expect(wrapper.find('.tag-filter-list-desktop').exists()).toBe(false);
     expect(wrapper.find('.tag-filter-list-mobile').exists()).toBe(false);
 
-    await wrapper.get('.dashboard-toolbar-desktop [data-filter-menu-trigger], .dashboard-toolbar-desktop[data-filter-menu-trigger]').trigger('click');
+    await wrapper.get('[data-headroom-bar] [data-filter-menu-trigger]').trigger('click');
     const chips = () => wrapper.findAll('[data-filter-menu] [data-filter-tag]');
     expect(chips().map((el) => el.text())).toEqual(['#architecture', '#dev']);
     await wrapper.get('[data-filter-tag="dev"]').trigger('click');
@@ -2602,7 +2646,7 @@ describe('mobile Dashboard filters: Recent, folder counters, tag sheet', () => {
     expect(wrapper.get('[data-filter-tag="dev"]').attributes('aria-pressed')).toBe('true');
     // Both still listed: a selected tag does not hide the others.
     expect(chips()).toHaveLength(2);
-    expect(wrapper.get('.dashboard-toolbar-desktop [data-filter-count], .dashboard-toolbar-desktop[data-filter-count]').text()).toBe('1');
+    expect(wrapper.get('[data-headroom-bar] [data-filter-count]').text()).toBe('1');
   });
 
   it('filters by several types at once from the filter menu, with Files only in a folder, and resets', async () => {
@@ -2611,7 +2655,7 @@ describe('mobile Dashboard filters: Recent, folder counters, tag sheet', () => {
     const vm = wrapper.vm as any;
     expect(wrapper.find('.content-type-tabs').exists()).toBe(false);
 
-    const trigger = () => wrapper.get('.dashboard-toolbar-desktop [data-filter-menu-trigger], .dashboard-toolbar-desktop[data-filter-menu-trigger]');
+    const trigger = () => wrapper.get('[data-headroom-bar] [data-filter-menu-trigger]');
     await trigger().trigger('click');
     const types = () => wrapper.findAll('[data-filter-menu] [data-filter-type]').map((el) => el.attributes('data-filter-type'));
     expect(types()).toEqual(['canvas', 'html-document', 'text-document', 'interactive-template']);
@@ -2996,7 +3040,7 @@ describe('mobile Dashboard filters: Recent, folder counters, tag sheet', () => {
     // The tag exists (allTagNames), and is rendered as a selectable chip -
     // this is the bug: it used to be silently dropped.
     expect(vm.allTagNames).toContain('nicheTag');
-    await wrapper.get('.dashboard-toolbar-desktop [data-filter-menu-trigger], .dashboard-toolbar-desktop[data-filter-menu-trigger]').trigger('click');
+    await wrapper.get('[data-headroom-bar] [data-filter-menu-trigger]').trigger('click');
     expect(wrapper.findAll('[data-filter-menu] [data-filter-tag]').some((el) => el.text() === '#nicheTag')).toBe(true);
 
     // Baseline: Recent shows the one item that's actually in its history.
@@ -3024,6 +3068,8 @@ describe('Home/Spaces Yandex Disk display', () => {
     vi.clearAllMocks();
     dashboardRoute.query = {};
     localStorage.clear();
+    resetDashboardReturnOriginForTests();
+    resetExplorerLayoutPrefs(true);
     useI18n().setLocale('en');
     withDefaultFolders();
     vi.mocked(interactiveTemplates.list).mockResolvedValue({ templates: [] });
@@ -3042,7 +3088,7 @@ describe('Home/Spaces Yandex Disk display', () => {
     document.body.innerHTML = '';
   });
 
-  it('displays connected Yandex Disk in Home/Spaces with item count and account name, and opens Yandex Disk on click', async () => {
+  it('shows Yandex Disk only under Clouds in the sidebar (never under Альбомы on Home) and opens Yandex Disk on click', async () => {
     const { yandexDisk } = await import('../api/yandexDisk');
     const { useYandexDisk } = await import('../composables/useYandexDisk');
     const { useSpaces } = await import('../composables/useSpaces');
@@ -3072,13 +3118,14 @@ describe('Home/Spaces Yandex Disk display', () => {
     const wrapper = mountDashboard();
     await flushPromises();
 
-    const yandexTile = wrapper.get('[data-recent-space-tile="yandex"]');
-    expect(yandexTile.get('.subfolder-card-name').text()).toBe('Yandex Disk');
-    expect(yandexTile.get('[data-recent-yandex-count]').text()).toBe('12');
-    expect(yandexTile.get('[data-recent-yandex-account]').text()).toBe('Ivan Petrov');
+    // Yandex Disk must NOT appear in #feed-spaces on Home; only real spaces appear there
+    expect(wrapper.find('[data-recent-space-tile="yandex"]').exists()).toBe(false);
     expect(wrapper.get('[data-recent-space-tile="space-1"] .subfolder-card-name').text()).toBe('Family');
 
-    await yandexTile.trigger('click');
+    // Yandex Disk lives under Clouds in the sidebar
+    const yandexRow = wrapper.get('[data-space="yandex"]');
+    expect(yandexRow.text()).toContain('Yandex Disk');
+    await yandexRow.trigger('click');
     await flushPromises();
 
     expect((wrapper.vm as any).activeSection).toEqual({ kind: 'yandex', path: '/' });
@@ -3086,7 +3133,7 @@ describe('Home/Spaces Yandex Disk display', () => {
     listSpy.mockRestore();
   });
 
-  it('displays disconnected Yandex Disk in Home/Spaces with Connect/Reconnect status and filters by searchQuery', async () => {
+  it('filters Home/Spaces tiles by searchQuery without showing Yandex Disk', async () => {
     const { useYandexDisk } = await import('../composables/useYandexDisk');
     const { useSpaces } = await import('../composables/useSpaces');
 
@@ -3097,23 +3144,24 @@ describe('Home/Spaces Yandex Disk display', () => {
       login: null,
       displayName: null,
     };
-    useSpaces().spaces.value = [];
+    useSpaces().spaces.value = [
+      { id: 'space-1', name: 'Family', role: 'owner', ownerId: 'user-1', memberCount: 2, sourceCount: 3, updatedAt: '2026-11-07T10:00:00Z' },
+    ];
     useSpaces().loaded.value = true;
 
     const wrapper = mountDashboard();
     await flushPromises();
 
-    const yandexTile = wrapper.get('[data-recent-space-tile="yandex"]');
-    expect(yandexTile.get('.subfolder-card-name').text()).toBe('Yandex Disk');
-    expect(yandexTile.get('[data-recent-yandex-status]').text()).toBe('Connect again');
+    expect(wrapper.find('[data-recent-space-tile="yandex"]').exists()).toBe(false);
+    expect(wrapper.find('[data-recent-space-tile="space-1"]').exists()).toBe(true);
 
     const vm = wrapper.vm as any;
-    vm.searchQuery = 'yandex';
+    vm.searchQuery = 'family';
     await nextTick();
-    expect(wrapper.find('[data-recent-space-tile="yandex"]').exists()).toBe(true);
+    expect(wrapper.find('[data-recent-space-tile="space-1"]').exists()).toBe(true);
 
     vm.searchQuery = 'unmatched-space-query';
     await nextTick();
-    expect(wrapper.find('[data-recent-space-tile="yandex"]').exists()).toBe(false);
+    expect(wrapper.find('[data-recent-space-tile="space-1"]').exists()).toBe(false);
   });
 });

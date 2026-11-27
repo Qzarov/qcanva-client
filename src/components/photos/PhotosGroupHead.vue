@@ -11,6 +11,8 @@ const props = defineProps<{
   pressed: boolean;
   /** Selection mode: the circle is always visible. */
   selecting?: boolean;
+  /** Render inside a semi-transparent gradient curtain over the photo wall. */
+  curtain?: boolean;
   level: 'h1' | 'h2';
 }>();
 
@@ -19,7 +21,7 @@ const { t } = useI18n();
 </script>
 
 <template>
-  <div class="pgh" :class="[`pgh-${level}`, { selecting }]">
+  <div class="pgh" :class="[`pgh-${level}`, { selecting, 'pgh-curtain': curtain }]">
     <button
       type="button"
       class="pgh-pick"
@@ -44,9 +46,55 @@ const { t } = useI18n();
   color: var(--ui-text);
 }
 .pgh-h1 {
-  font-size: 22px;
+  align-items: center;
+  font-size: 16px;
   font-weight: 700;
   letter-spacing: -0.01em;
+}
+.pgh-curtain {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #f4fff6;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+.pgh-curtain .pgh-count {
+  color: rgba(240, 255, 240, 0.78);
+  font-size: 12.5px;
+  font-weight: 500;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+.pgh-curtain .pgh-path {
+  color: rgba(240, 255, 240, 0.72);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+.pgh-curtain .pgh-pick,
+.pgh-curtain.selecting .pgh-pick {
+  pointer-events: auto;
+}
+:root[data-theme='light'] .pgh-curtain {
+  color: var(--ui-text);
+  text-shadow: none;
+}
+:root[data-theme='light'] .pgh-curtain .pgh-count {
+  color: rgba(15, 36, 20, 0.78);
+  font-weight: 600;
+  text-shadow: none;
+}
+:root[data-theme='light'] .pgh-curtain .pgh-path {
+  color: var(--ui-text-muted);
+  text-shadow: none;
 }
 .pgh-h2 {
   align-items: center;
@@ -104,6 +152,7 @@ const { t } = useI18n();
   opacity: 0;
   transition: opacity 0.12s;
   cursor: pointer;
+  pointer-events: auto;
 }
 .pgh:hover .pgh-pick,
 .pgh.selecting .pgh-pick,

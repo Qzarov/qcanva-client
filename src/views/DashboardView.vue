@@ -1,41 +1,96 @@
 <template>
   <div
     class="app-layout dashboard-view"
+    :class="{ 'is-android-app': isAndroidApp }"
     @click.capture="onAppClickCapture"
     @keydown.capture="onAppKeydownCapture"
     @click="closeCardMenu"
   >
     <div
-      class="dashboard-app-shell"
+      class="dashboard-app-shell explorer-app-shell"
       :class="{
-        'sidebar-collapsed': isLoggedIn && sidebarWidthState === 'collapsed',
+        'sidebar-collapsed': isLoggedIn && sidebarCollapsed,
         'dashboard-app-shell-public': !isLoggedIn,
+        'is-gallery-mode': isLoggedIn && activeSection.kind === 'gallery',
       }"
     >
       <DashboardSidebar
+        ref="sidebarRef"
         :admin="admin"
         v-if="isLoggedIn"
         :active-section="activeSection"
         :feed-section="isHomeFeed ? activeFeedSection : null"
+        :mode="sidebarMode"
         :width-state="sidebarWidthState"
+        :collapsed="sidebarCollapsed"
         :mobile-open="mobileSidebarOpen"
+        :android-app="isAndroidApp"
         :folders="sidebarFolders"
+        :all-folders="sidebarAllFolders"
+        :album-related-folder-ids="activeSection.kind === 'space' ? activeAlbumRelatedFolderIds : null"
+        :album-related-yandex-paths="activeSection.kind === 'space' ? activeAlbumRelatedYandexPaths : null"
+        :selected-workspace-keys="selectedKeys"
         :spaces="isLoggedIn"
         :yandex-refresh-key="yandexRefreshKey"
+        :incoming-access-requests-count="incomingRequests.length"
+        :devices-online-count="devicesOnlineCount"
+        :devices-paired="devicesPaired"
+        :folder-drag-id="folderDragId"
         @select="onSidebarSelect"
+        @switch-mode="onSwitchSidebarMode"
+        @toggle-mobile-drawer="onToggleMobileDrawer"
+        @update:collapsed="onSidebarCollapsedChange"
+        @toggle-collapse="onSidebarCollapseButton"
         @open-yandex-file="openYandexSidebarFile"
         @create-space="createSpace"
+        @create-folder="openCreateGroupModal"
+        @share-space="openAlbumShareById"
         @toggle-width="toggleSidebarWidth"
         @close-mobile="closeMobileSidebar"
         @open-file="openSidebarFile"
         @toggle-folder="toggleTreeExpanded"
+        @navigate-up="goToParentFolder"
+        @tree-contextmenu="onTreeContextMenu"
+        @drop-group-to-folder="(p) => onDropGroupToFolder(p.folderId, p.drag)"
+        @drop-group-to-album="(p) => onDropGroupToAlbum(p.albumId, p.drag)"
+        @drop-external-files="(p) => onDropExternalFilesToFolder(p.folderId, p.files)"
         @folder-drag-start="onSidebarFolderDragStart"
         @folder-drag-end="onFolderDragEnd"
         @folder-drag-enter="onSidebarFolderDragEnter"
         @folder-drag-over="onSidebarFolderDragOver"
         @folder-drag-leave="onSidebarFolderDragLeave"
         @folder-drop="onSidebarFolderDrop"
-      />
+      >
+        <template #gallery-sidebar>
+          <GallerySidebar
+            ref="gallerySidebarRef"
+            :active-section="(gallerySection as GallerySection)"
+            :active-album-id="galleryAlbumId"
+            :active-folder-id="galleryFolderId"
+            :active-yandex-path="galleryYandexPath"
+            :album-related-folder-ids="galleryAlbumId ? activeAlbumRelatedFolderIds : null"
+            :album-related-yandex-paths="galleryAlbumId ? activeAlbumRelatedYandexPaths : null"
+            :highlighted-folder-id="galleryHighlightFolderId"
+            :highlighted-file-id="galleryHighlightFileId"
+            :folders="galleryStorageFolders"
+            :counts="gallerySidebarCounts"
+            @select-section="onGallerySelectSection"
+            @select-album="onGallerySelectAlbum"
+            @select-folder="onGallerySelectFolder"
+            @select-file="onGallerySelectFile"
+            @select-yandex="onGallerySelectYandex"
+            @create-album="createSpace"
+            @share-album="openAlbumShareById"
+            @open-trash="onGalleryOpenTrash"
+            @drop-favorites="onGalleryDropFavorites"
+            @drop-album="onGalleryDropAlbum"
+            @drop-folder="onGalleryDropFolder"
+            @folder-contextmenu="onGalleryFolderContextMenu"
+            @yandex-contextmenu="onGalleryYandexContextMenu"
+            @album-sources-changed="onGalleryAlbumSourcesChanged"
+          />
+        </template>
+      </DashboardSidebar>
       <div
         class="dashboard-central-shell"
         data-dashboard-dropzone
@@ -49,23 +104,6 @@
         :label="externalDropLabel"
         :show-input="false"
       />
-      <Transition name="dashboard-selection-bar">
-        <DashboardSelectionBar
-          v-if="isLoggedIn && selectedKeys.length"
-          :selected-count="selectedKeys.length"
-          :selected-size="selectedSize"
-          :all-on-screen-selected="allOnScreenSelected"
-          :can-move="canBulkMove"
-          :bulk-delete-count="bulkDeleteCount"
-          :is-busy="isBusy"
-          :download-busy="downloadStatus.phase === 'collect' || downloadStatus.phase === 'pack'"
-          @clear="clearSelection"
-          @select-all="selectAllOnScreen"
-          @move="openBulkMoveModal"
-          @download="bulkDownload"
-          @delete="bulkDelete"
-        />
-      </Transition>
       <div
         v-if="marquee"
         class="dashboard-marquee"
@@ -93,39 +131,159 @@
         :transfer-status-percent="transferStatusPercent"
       />
     <DashboardPublicHeader v-if="!isLoggedIn" v-model:search-query="searchQuery" :folder-search-placeholder="folderSearchPlaceholder" />
-    <DashboardAuthHeader
-      v-else
+    <ExplorerHeadroomBar
+      v-else-if="activeSection.kind !== 'gallery'"
+      ref="headroomBarRef"
+      :headroom-hidden="headroomHidden"
+      :elevated="headroomElevated"
+      :view-mode="explorerViewMode"
+      :album-view-mode="albumViewMode"
+      :view-toggle-mode="headroomViewToggleMode"
+      :can-go-back="activeSection.kind === 'folder' || activeSection.kind === 'yandex' || activeSection.kind === 'space'"
+      :can-go-up="activeSection.kind === 'folder' || activeSection.kind === 'space' || activeSection.kind === 'yandex'"
+      :show-nav-arrows="true"
+      :show-expand-button="showSidebarExpand"
+      :show-mobile-menu-button="false"
+      :android-app="isAndroidApp"
       v-model:search-query="searchQuery"
-      :open-control-menu="openControlMenu"
-      :content-types="contentTypes"
-      :all-tag-names="allTagNames"
-      :selected-tags="selectedTags"
-      :with-files="activeSection.kind === 'folder'"
-      :sort-mode="sortMode"
-      :folder-search-placeholder="folderSearchPlaceholder"
-      @open-sidebar="openMobileSidebar"
-      @toggle-menu="toggleToolbarMenu"
-      @update-types="contentTypes = $event"
-      @toggle-tag="toggleSelectedTag"
-      @reset-filters="clearTypeAndTagFilters"
-      @select-sort="selectSortMode"
-    />
+      v-model:search-scope-mode="s2ScopeMode"
+      :search-scope-label="s2ScopeLabel"
+      v-model:search-type-filter="s2TypeFilter"
+      :search-folders="s2SearchFolders"
+      :search-albums="s2SearchAlbums"
+      :search-items="s2SearchItems"
+      :search-ml-tags="allTagNames"
+      @expand-sidebar="onExpandSidebar"
+      @open-mobile-sidebar="openMobileSidebar"
+      @go-back="goToParentFolder"
+      @go-up="goToParentFolder"
+      @select-search-folder="onSearchSelectFolder"
+      @select-search-album="onSearchSelectAlbum"
+      @open-search-item="onSearchOpenItem"
+      @select-search-tag="onSearchSelectTag"
+      @update:view-mode="setExplorerViewMode"
+      @update:album-view-mode="setAlbumViewMode"
+    >
+      <template #filters>
+        <DashboardFilterMenu
+          v-if="spaceId === null"
+          :open="openControlMenu === 'filter:desktop'"
+          :types="contentTypes"
+          :tags="allTagNames"
+          :selected-tags="selectedTags"
+          :with-files="activeSection.kind === 'folder' || activeSection.kind === 'home'"
+          :sheet="isAndroidApp && isMobileHeadroom"
+          @toggle="toggleToolbarMenu('filter:desktop')"
+          @update:types="contentTypes = $event"
+          @toggle-tag="toggleSelectedTag"
+          @reset="clearTypeAndTagFilters"
+        />
+        <button
+          v-else
+          type="button"
+          class="icon-btn headroom-space-filter-btn"
+          :class="{ active: (spaceView?.activeFilterCount ?? 0) > 0 }"
+          :aria-label="t('filters')"
+          :title="t('filters')"
+          :aria-expanded="Boolean(spaceView?.filterMenuOpen)"
+          data-headroom-space-filter
+          @click.stop="spaceView?.toggleFilters()"
+        >
+          <SlidersHorizontal :size="15" aria-hidden="true" />
+          <span
+            v-if="(spaceView?.activeFilterCount ?? 0) > 0"
+            class="dashboard-filter-badge"
+            data-headroom-space-filter-count
+          >{{ spaceView?.activeFilterCount }}</span>
+        </button>
+        <DashboardSortMenu
+          v-if="activeSection.kind !== 'trash'"
+          :open="openControlMenu === 'sort:desktop'"
+          :mode="sortMode"
+          :sheet="isAndroidApp && isMobileHeadroom"
+          @toggle="toggleToolbarMenu('sort:desktop')"
+          @select="selectSortMode"
+        />
+      </template>
+      <template #actions>
+        <button
+          v-if="selectedKeys.length >= 1"
+          type="button"
+          class="dp-sel-badge explorer-sel-badge"
+          data-explorer-sel-badge
+          :title="t('clearSelection')"
+          :aria-label="t('clearSelection')"
+          @click="clearSelection"
+        >
+          <span>{{ selectedKeys.length }}</span>
+          <span aria-hidden="true">✕</span>
+        </button>
+
+        <div
+          v-if="activeSection.kind === 'folder' && activeFolder && activeFolder.role === 'owner'"
+          class="folder-manager-menu headroom-folder-menu"
+        >
+          <button
+            type="button"
+            class="icon-btn headroom-actions-trigger"
+            data-headroom-folder-menu
+            :title="t('groupActions')"
+            :aria-label="t('groupActions')"
+            :aria-expanded="openControlMenu === 'folder:' + activeFolder.id"
+            :disabled="isBusy"
+            @click.stop="toggleFolderMenu(activeFolder.id)"
+          >⋯</button>
+          <Transition name="card-menu-pop">
+            <div
+              v-if="openControlMenu === 'folder:' + activeFolder.id"
+              class="mobile-action-popover headroom-action-popover"
+              data-headroom-folder-actions
+              @click.stop
+            >
+              <button type="button" class="card-menu-item" data-folder-import @click="openAddDialog({ folderId: activeFolder.id, importKind: 'file' })" :disabled="isBusy">{{ t('import') }}</button>
+              <button type="button" class="card-menu-item" data-folder-share @click="openFolderShareModal(activeFolder)" :disabled="isBusy">{{ t('share') }}</button>
+              <button v-if="activeFolder.name !== 'Unsorted'" type="button" class="card-menu-item" data-folder-rename @click="openRenameFolderModal(activeFolder)" :disabled="isBusy">{{ t('rename') }}</button>
+              <button type="button" class="card-menu-item" data-folder-add-subfolder @click="openSubfolderModal(activeFolder)" :disabled="isBusy">{{ t('addFolder') }}</button>
+              <button v-if="activeFolder.name !== 'Unsorted'" type="button" class="card-menu-item" data-action="move-folder-parent" @click="openFolderParentModal(activeFolder)" :disabled="isBusy">{{ t('moveFolderInto') }}</button>
+              <button v-if="activeFolder.name !== 'Unsorted'" type="button" class="card-menu-item danger" data-folder-delete @click="deleteFolder(activeFolder)" :disabled="isBusy">{{ t('delete') }}</button>
+            </div>
+          </Transition>
+        </div>
+
+        <template v-if="spaceId !== null && activeSpace">
+          <button
+            type="button"
+            class="headroom-members-pill"
+            data-headroom-space-members
+            :title="headroomSpaceCountLabel"
+            :aria-label="headroomSpaceCountLabel"
+            @click="openAlbumShareById(spaceId)"
+          >
+            <Users :size="13" aria-hidden="true" />
+            <span class="headroom-members-prefix">{{ headroomSpaceCountPrefix }}</span><span class="headroom-members-num">{{ headroomSpaceMembersTotal }}</span>
+          </button>
+        </template>
+      </template>
+    </ExplorerHeadroomBar>
 
     <main
       ref="dashboardMain"
       class="app-main dashboard"
-      @pointerdown="startMarquee"
+      :class="{ 'app-main-gallery': isLoggedIn && activeSection.kind === 'gallery' }"
+      @scroll.passive="onDashboardMainScroll"
+      @pointerdown="onDashboardMainPointerDown"
+      @contextmenu="onDashboardMainContextMenu"
       @touchstart.passive="onDashboardPullStart"
       @touchmove="onDashboardPullMove"
       @touchend="onDashboardPullEnd"
       @touchcancel="resetDashboardPull"
     >
     <!-- One grid/list choice for the whole dashboard: every feed section
-         and every folder (the switch sits in Recents' and the folder's heading). -->
+         and every folder (persisted in localStorage via qspace:viewMode). -->
     <div
       ref="dashboardShell"
       class="dashboard-shell"
-      :class="[{ 'dashboard-list-view': recentViewMode === 'list', 'dashboard-selecting': selectedKeys.length > 0, 'dashboard-marquee-active': Boolean(marquee) }, 'dashboard-nav-' + navDirection]"
+      :class="[{ 'dashboard-list-view': !isLoggedIn && recentViewMode === 'list', 'dashboard-selecting': selectedKeys.length > 0, 'dashboard-marquee-active': Boolean(marquee), 'dashboard-shell-gallery': isLoggedIn && activeSection.kind === 'gallery' }, 'dashboard-nav-' + navDirection]"
       @click.capture="onSelectionClickCapture"
       @pointerdown.capture="onSelectionPointerDown"
       @pointermove.capture="onSelectionPointerMove"
@@ -134,6 +292,7 @@
       @contextmenu.capture="onSelectionContextMenu"
     >
     <DashboardToolbarControls
+      v-if="!isLoggedIn"
       :show-controls="spaceId === null"
       :filter-open="openControlMenu === 'filter:desktop'"
       :sort-open="openControlMenu === 'sort:desktop'"
@@ -167,18 +326,56 @@
       data-dashboard-view="recent"
       data-feed-section="recent"
     >
+      <template v-if="favoriteTiles.length">
+        <div id="feed-favorites" class="dash-section-head dashboard-recent-folders-head" data-feed-section="favorites">
+          <h2>{{ t('explorerFavorites') }}</h2>
+        </div>
+        <div class="dash-grid subfolder-grid" data-home-favorites>
+          <button
+            v-for="fav in favoriteTiles"
+            :key="fav.key"
+            type="button"
+            class="subfolder-card"
+            :data-favorite-tile="fav.key"
+            :data-select-key="fav.key"
+            :data-selected="selectedKeys.includes(fav.key) || undefined"
+            @dblclick.stop="openFavoriteTile(fav)"
+            @keydown.enter.prevent="openFavoriteTile(fav)"
+            @contextmenu.prevent.stop="onFavoriteTileContextMenu($event, fav)"
+          >
+            <span class="subfolder-card-icon" aria-hidden="true">
+              <UsersRound v-if="fav.kind === 'space'" :size="13" />
+              <Folder v-else-if="fav.kind === 'folder'" :size="13" />
+              <FileIcon v-else-if="fav.kind === 'drive-file' || fav.kind === 'file'" :size="13" />
+              <ResourceIcon v-else :kind="fav.kind" :size="13" />
+            </span>
+            <span class="subfolder-card-name">{{ fav.name }}</span>
+            <span class="subfolder-card-count">{{ fav.subtitle }}</span>
+          </button>
+        </div>
+      </template>
+
       <div class="dash-section-head dashboard-recent-head">
         <h2>{{ t('recents') }}</h2>
-        <div class="dashboard-recent-head-controls">
-          <DashboardViewToggle :mode="recentViewMode" @update:mode="setRecentViewMode" />
-        </div>
       </div>
       <p v-if="recentRefreshFailed && visibleRecent.length" class="dashboard-recents-stale" role="status" data-recent-stale>
         {{ t('recentStale') }}
         <button type="button" class="dash-empty-reset" @click.stop="retryRecent">{{ t('retry') }}</button>
       </p>
+      <ExplorerTableView
+        v-if="visibleRecent.length && explorerViewMode === 'table'"
+        :rows="recentTableRows"
+        :selected-keys="selectedKeys"
+        :hide-albums="true"
+        :external-sort-mode="sortMode"
+        :external-sort-seq="sortSyncSeq"
+        @update:selected-keys="onWorkspaceSelectionChange"
+        @update:sort="onExplorerTableSort"
+        @open="openExplorerTableRow"
+        @contextmenu="onTableRowContextMenu"
+      />
       <DashboardRecentResources
-        v-if="visibleRecent.length"
+        v-else-if="visibleRecent.length"
         :items="visibleRecent"
         :recent-view-mode="recentViewMode"
         :is-logged-in="isLoggedIn"
@@ -189,6 +386,7 @@
         :format-mobile-date="formatCardDateMobile"
         @open="openRecentResource"
         @toggle="(item) => toggleSelected(selectionKey(item))"
+        @contextmenu="(ev, item) => onGridItemContextMenu(ev, item)"
       />
       <div v-else-if="recentRefreshFailed" class="dash-empty dashboard-recents-error" role="alert" data-recent-error>
         {{ t('recentLoadFailed') }}
@@ -216,6 +414,16 @@
 
       <div id="feed-folders" class="dash-section-head dashboard-recent-folders-head dashboard-feed-anchor" data-feed-anchor="folders">
         <h2>{{ t('folders') }}</h2>
+        <button
+          type="button"
+          class="tree-alb-add-btn dashboard-feed-folders-add"
+          data-feed-folders-add
+          :aria-label="t('explorerNewFolder')"
+          :title="t('explorerNewFolder')"
+          @click.stop="openCreateGroupModal()"
+        >
+          <Plus :size="14" aria-hidden="true" />
+        </button>
       </div>
       <div v-if="recentFolderTiles.length" class="dash-grid subfolder-grid" data-recent-folders>
         <button
@@ -223,9 +431,16 @@
           :key="'recent-folder-' + folder.id"
           type="button"
           class="subfolder-card"
-          :class="{ 'subfolder-card-zero-match': folder.zeroMatch }"
+          :class="{ 'subfolder-card-zero-match': folder.zeroMatch, 'is-drop-target': recentFolderDropTargetId === folder.id }"
           :data-recent-folder-tile="folder.id"
-          @click="selectFolder(folder.id)"
+          :data-select-key="'folder:' + folder.id"
+          :data-selected="selectedKeys.includes('folder:' + folder.id) || undefined"
+          @dblclick.stop="selectFolder(folder.id)"
+          @keydown.enter.prevent="selectFolder(folder.id)"
+          @contextmenu.prevent.stop="onGridFolderContextMenu($event, folder)"
+          @dragover="onRecentFolderDragOver($event, folder.id)"
+          @dragleave="onRecentFolderDragLeave($event, folder.id)"
+          @drop="onRecentFolderDrop($event, folder.id)"
         >
           <span class="subfolder-card-icon" aria-hidden="true">▤</span>
           <span class="subfolder-card-name">{{ folder.name }}</span>
@@ -239,40 +454,42 @@
         </button>
       </div>
 
-      <!-- Spaces, after the folders and like them: Yandex Disk (when enabled on
-           the hub) and each shared space as a tile. -->
+      <!-- Unified Albums (Spaces) on Home feed. Yandex Disk lives only under Clouds. -->
       <div id="feed-spaces" class="dash-section-head dashboard-recent-folders-head dashboard-feed-anchor" data-feed-anchor="spaces">
         <h2>{{ t('spaces') }}</h2>
       </div>
-      <div v-if="showYandexSpaceTile || spaceTiles.length" class="dash-grid subfolder-grid" data-recent-spaces>
-        <button
-          v-if="showYandexSpaceTile"
-          key="recent-space-yandex"
-          type="button"
-          class="subfolder-card"
-          data-recent-space-tile="yandex"
-          data-recent-yandex-tile
-          @click="openYandexPath('/')"
-        >
-          <span class="subfolder-card-icon" aria-hidden="true"><Cloud :size="13" /></span>
-          <span class="subfolder-card-name">{{ t('yandexDisk') }}</span>
-          <span v-if="yandexRootCount !== null" class="subfolder-card-count" data-recent-yandex-count>{{ yandexRootCount || t('emptyFolder') }}</span>
-          <span v-else-if="!yandexStatus?.connected" class="subfolder-card-count" data-recent-yandex-status>{{ yandexStatus?.reconnectRequired ? t('yandexReconnect') : t('yandexConnect') }}</span>
-          <span v-if="yandexAccountLabel" class="subfolder-card-date" data-recent-yandex-account>{{ yandexAccountLabel }}</span>
-        </button>
-        <button
+      <div v-if="spaceTiles.length" class="dash-grid subfolder-grid" data-recent-spaces>
+        <div
           v-for="space in spaceTiles"
           :key="'recent-space-' + space.id"
-          type="button"
-          class="subfolder-card"
-          :data-recent-space-tile="space.id"
-          @click="selectDashboardSection({ kind: 'space', spaceId: space.id })"
+          class="space-overview-card-wrap"
         >
-          <span class="subfolder-card-icon" aria-hidden="true"><UsersRound :size="13" /></span>
-          <span class="subfolder-card-name">{{ space.name }}</span>
-          <span class="subfolder-card-count">{{ space.sourceCount || t('emptyFolder') }}</span>
-          <span v-if="space.updatedAt" class="subfolder-card-date" data-folder-tile-date>{{ formatDate(space.updatedAt) }}</span>
-        </button>
+          <button
+            type="button"
+            class="subfolder-card"
+            :data-recent-space-tile="space.id"
+            :data-select-key="'space:' + space.id"
+            :data-selected="selectedKeys.includes('space:' + space.id) || undefined"
+            @dblclick.stop="selectDashboardSection({ kind: 'space', spaceId: space.id })"
+            @keydown.enter.prevent="selectDashboardSection({ kind: 'space', spaceId: space.id })"
+            @contextmenu.prevent.stop="onSpaceTileContextMenu($event, space)"
+          >
+            <span class="subfolder-card-icon" aria-hidden="true"><UsersRound :size="13" /></span>
+            <span class="subfolder-card-name">{{ space.name }}</span>
+            <span class="subfolder-card-count">{{ space.itemCount || space.sourceCount || t('emptyFolder') }}</span>
+            <span v-if="space.updatedAt" class="subfolder-card-date" data-folder-tile-date>{{ formatDate(space.updatedAt) }}</span>
+          </button>
+          <button
+            type="button"
+            class="space-overview-share-btn"
+            :aria-label="t('share')"
+            :title="t('share')"
+            :data-recent-space-share="space.id"
+            @click.stop="openAlbumShareById(space.id)"
+          >
+            {{ t('share') }}
+          </button>
+        </div>
       </div>
       <div v-else class="dash-grid subfolder-grid" data-recent-spaces-empty>
         <button type="button" class="dashboard-add-tile dashboard-add-tile-folder" data-feed-add="spaces" @click.stop="createSpace">
@@ -314,6 +531,111 @@
       />
 
       <section
+        v-if="isLoggedIn && activeSection.kind === 'home'"
+        class="dashboard-folder-content"
+        data-dashboard-view="home"
+      >
+        <div class="folder-manager-row">
+          <div class="folder-manager-body" @contextmenu.prevent.stop="onEmptyAreaContextMenu">
+            <ExplorerTableView
+              v-if="explorerViewMode === 'table'"
+              :rows="homeRootTableRows"
+              :selected-keys="selectedKeys"
+              :external-sort-mode="sortMode"
+              :external-sort-seq="sortSyncSeq"
+              :allow-empty-context-menu="true"
+              @update:selected-keys="onWorkspaceSelectionChange"
+              @update:sort="onExplorerTableSort"
+              @open="openExplorerTableRow"
+              @contextmenu="onTableRowContextMenu"
+              @empty-contextmenu="onEmptyAreaContextMenu"
+              @drop-on-folder="(targetRow, payload) => onDropGroupToFolder(targetRow.id, payload)"
+              @drop-external-files="(p) => onDropExternalFilesToFolder(p.folderId, p.files)"
+            />
+            <DashboardActiveSubfolders
+              v-if="explorerViewMode !== 'table'"
+              :subfolders="homeRootSubfolders"
+              :active-folder-empty="homeRootEmpty"
+              :has-active-filter="hasActiveFilter"
+              :is-owner="true"
+              :format-date="formatDate"
+              :selected-keys="selectedKeys"
+              :build-group-drag-entries="buildGroupDragEntriesForKeys"
+              @select="selectFolder"
+              @reset="resetFilters"
+              @add="openAddDialog()"
+              @contextmenu="(ev, folder) => onGridFolderContextMenu(ev, folder)"
+              @drop-external-files="(p) => onDropExternalFilesToFolder(p.folderId, p.files)"
+              @drop-on-folder="(targetFolderId, payload) => onDropGroupToFolder(targetFolderId, payload)"
+            />
+            <div
+              v-if="showScopedSearchEverywhereCta"
+              class="explorer-search-everywhere-bar"
+              data-search-everywhere-bar
+            >
+              <button
+                type="button"
+                class="btn-secondary"
+                data-search-everywhere-btn
+                @click="s2ScopeMode = 'global'"
+              >
+                {{ locale === 'ru' ? 'Искать везде' : 'Search everywhere' }}
+              </button>
+            </div>
+            <div class="dash-grid" v-show="explorerViewMode !== 'table'">
+              <DashboardFolderResourceGrid
+                :items="homeRootItems"
+                :selected-keys="selectedKeys"
+                :is-logged-in="isLoggedIn"
+                :is-busy="isBusy"
+                :dragging-resource-id="draggingResourceId"
+                :open-menu-canvas-id="openMenuCanvasId"
+                :renaming-id="renamingId"
+                :card-menu-style="cardMenuStyle"
+                :selection-key="selectionKey"
+                :is-selected="isSelected"
+                :is-owned-resource="isOwnedResource"
+                :format-date="formatDate"
+                :format-card-date-mobile="formatCardDateMobile"
+                :interactive-template-type-label="interactiveTemplateTypeLabel"
+                :resource-actions="resourceActions"
+                @open-canvas="openCanvasFromCard"
+                @open-html="openHtmlDocumentFromCard"
+                @open-text="openTextDocumentFromCard"
+                @open-interactive="openInteractiveTemplate"
+                @remember="(type, routeId) => rememberRecentResource(type, routeId, { skipServerMark: true })"
+                @start-rename="startRename"
+                @finish-rename="finishRename"
+                @cancel-rename="renamingId = ''"
+                @toggle-selected="toggleSelected"
+                @toggle-pinned="togglePinned"
+                @toggle-menu="toggleCardMenu"
+                @select-action="handleResourceAction"
+                @contextmenu="(ev, item) => onGridItemContextMenu(ev, item)"
+              />
+              <DashboardFolderFiles
+                folder-id="root"
+                :query="searchQuery"
+                :filtered-out="(!typePasses(contentTypes, 'file') && !typePasses(contentTypes, 'text-document')) || selectedTags.length > 0"
+                :markdown-only="!typePasses(contentTypes, 'file') && typePasses(contentTypes, 'text-document')"
+                :sort-mode="sortMode"
+                :refresh-key="folderFilesRefreshKey"
+                :selectable="isLoggedIn"
+                :selected-keys="selectedKeys"
+                @count="homeRootFileCount = $event"
+                @files="homeRootDriveFiles = $event"
+                @toggle-select="toggleSelected"
+                @open-image="openDriveImage"
+                @open-markdown="openDriveMarkdown"
+                @previews="folderDrivePreviews = $event"
+                @contextmenu="(ev, file) => onGridDriveFileContextMenu(ev, file)"
+              />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section
         v-if="isLoggedIn && activeSection.kind === 'folder' && activeFolder"
         class="dashboard-folder-content"
         data-dashboard-view="folder"
@@ -322,37 +644,56 @@
             :key="activeFolder.id"
             class="folder-manager-row"
           >
-              <DashboardFolderHeader
-                :active-folder="activeFolder"
-                :active-folder-file-count="activeFolderFileCount"
-                :recent-view-mode="recentViewMode"
-                :is-busy="isBusy"
-                :menu-open="openControlMenu === 'folder:' + activeFolder.id"
-                @back="goToParentFolder"
-                @update:view-mode="setRecentViewMode"
-                @add="openAddDialog({ folderId: activeFolder.id })"
-                @toggle-menu="toggleFolderMenu(activeFolder.id)"
-                @import="openAddDialog({ folderId: activeFolder.id, importKind: 'file' })"
-                @share="openFolderShareModal(activeFolder)"
-                @rename="openRenameFolderModal(activeFolder)"
-                @add-subfolder="openSubfolderModal(activeFolder)"
-                @move-parent="openFolderParentModal(activeFolder)"
-                @delete="deleteFolder(activeFolder)"
-              />
-              <div ref="activeFolderBody" class="folder-manager-body" @scroll="onFolderBodyScroll">
+              <div ref="activeFolderBody" class="folder-manager-body" @scroll="onFolderBodyScroll" @contextmenu.prevent.stop="onEmptyAreaContextMenu">
+                <ExplorerTableView
+                  v-if="explorerViewMode === 'table'"
+                  :rows="activeFolderTableRows"
+                  :selected-keys="selectedKeys"
+                  :external-sort-mode="sortMode"
+                  :external-sort-seq="sortSyncSeq"
+                  :allow-empty-context-menu="true"
+                  @update:selected-keys="onWorkspaceSelectionChange"
+                  @update:sort="onExplorerTableSort"
+                  @open="openExplorerTableRow"
+                  @contextmenu="onTableRowContextMenu"
+                  @empty-contextmenu="onEmptyAreaContextMenu"
+                  @drop-on-folder="(targetRow, payload) => onDropGroupToFolder(targetRow.id, payload)"
+                  @drop-external-files="(p) => onDropExternalFilesToFolder(p.folderId, p.files)"
+                />
                 <DashboardActiveSubfolders
+                  v-if="explorerViewMode !== 'table'"
                   :subfolders="activeSubfolders"
                   :active-folder-empty="activeFolderEmpty"
                   :has-active-filter="hasActiveFilter"
                   :is-owner="activeFolder.role === 'owner'"
                   :format-date="formatDate"
+                  :selected-keys="selectedKeys"
+                  :build-group-drag-entries="buildGroupDragEntriesForKeys"
                   @select="selectFolder"
                   @reset="resetFilters"
                   @add="openAddFromTile('folder')"
+                  @contextmenu="(ev, folder) => onGridFolderContextMenu(ev, folder)"
+                  @drop-external-files="(p) => onDropExternalFilesToFolder(p.folderId, p.files)"
+                  @drop-on-folder="(targetFolderId, payload) => onDropGroupToFolder(targetFolderId, payload)"
                 />
-                <div class="dash-grid">
+                <div
+                  v-if="showScopedSearchEverywhereCta"
+                  class="explorer-search-everywhere-bar"
+                  data-search-everywhere-bar
+                >
+                  <button
+                    type="button"
+                    class="btn-secondary"
+                    data-search-everywhere-btn
+                    @click="s2ScopeMode = 'global'"
+                  >
+                    {{ locale === 'ru' ? 'Искать везде' : 'Search everywhere' }}
+                  </button>
+                </div>
+                <div class="dash-grid" v-show="explorerViewMode !== 'table'">
                   <DashboardFolderResourceGrid
                     :items="activeFolder.items"
+                    :selected-keys="selectedKeys"
                     :is-logged-in="isLoggedIn"
                     :is-busy="isBusy"
                     :dragging-resource-id="draggingResourceId"
@@ -370,7 +711,7 @@
                     @open-html="openHtmlDocumentFromCard"
                     @open-text="openTextDocumentFromCard"
                     @open-interactive="openInteractiveTemplate"
-                    @remember="rememberRecentResource"
+                    @remember="(type, routeId) => rememberRecentResource(type, routeId, { skipServerMark: true })"
                     @start-rename="startRename"
                     @finish-rename="finishRename"
                     @cancel-rename="renamingId = ''"
@@ -378,6 +719,7 @@
                     @toggle-pinned="togglePinned"
                     @toggle-menu="toggleCardMenu"
                     @select-action="handleResourceAction"
+                    @contextmenu="(ev, item) => onGridItemContextMenu(ev, item)"
                   />
                   <DashboardFolderFiles
                     :folder-id="activeFolder.id"
@@ -394,6 +736,7 @@
                     @open-image="openDriveImage"
                     @open-markdown="openDriveMarkdown"
                     @previews="folderDrivePreviews = $event"
+                    @contextmenu="(ev, file) => onGridDriveFileContextMenu(ev, file)"
                   />
                 </div>
               </div>
@@ -408,22 +751,38 @@
         <DashboardYandexDisk
           ref="yandexView"
           :path="yandexPath"
-          :query="searchQuery"
+          :query="s2ScopeMode === 'current' ? searchQuery : ''"
           :sort-mode="sortMode"
           :view-mode="recentViewMode"
+          :hide-view-toggle="true"
           :refresh-key="yandexRefreshKey"
           :selected-keys="selectedKeys"
           @navigate="openYandexPath"
           @update:view-mode="setRecentViewMode"
+          @update:selected-keys="onWorkspaceSelectionChange"
           @toggle-select="toggleSelected"
           @items="yandexFiles = $event"
           @upload="uploadToYandex"
           @move="openYandexMove"
-          @changed="yandexRefreshKey += 1"
+          @changed="onYandexDiskChanged"
           @feedback="setFeedback"
           @open-image="openYandexImage"
           @open-markdown="openYandexMarkdown"
         />
+        <div
+          v-if="showScopedSearchEverywhereCta"
+          class="explorer-search-everywhere-bar"
+          data-search-everywhere-bar
+        >
+          <button
+            type="button"
+            class="btn-secondary"
+            data-search-everywhere-btn
+            @click="s2ScopeMode = 'global'"
+          >
+            {{ locale === 'ru' ? 'Искать везде' : 'Search everywhere' }}
+          </button>
+        </div>
       </section>
 
       <section
@@ -434,19 +793,33 @@
         <DashboardSpace
           ref="spaceView"
           :space-id="spaceId"
-          :view-mode="recentViewMode"
+          :view-mode="explorerViewMode"
+          :hierarchical="true"
+          :active-folder-id="activeSpaceFolderId"
+          :active-yandex-source-id="activeSpaceYandexSourceId"
+          :active-yandex-subpath="activeSpaceYandexSubpath"
+          :sort-mode="sortMode"
+          :external-sort-seq="sortSyncSeq"
+          :hide-view-toggle="true"
+          :hide-header="true"
           :query="searchQuery"
           :me-id="currentUser?.id || ''"
           :folder-options="folderOptions"
           :selected-keys="selectedKeys"
-          @update:view-mode="setRecentViewMode"
+          @update:view-mode="setExplorerViewMode"
+          @update:selected-keys="onWorkspaceSelectionChange"
+          @update:sort="onExplorerTableSort"
+          @navigate-space-folder="onNavigateSpaceFolder"
           @open="openSpaceResource"
-          @open-media="(items, start) => (mediaViewer = { items, start })"
+          @open-media="openSpaceMedia"
           @open-markdown="openSpaceMarkdown"
+          @drop-on-folder="(targetFolderId, payload) => onDropGroupToFolder(targetFolderId, payload)"
           @toggle-select="toggleSelected"
           @items="spaceFeedItems = $event"
           @space="activeSpace = $event"
           @gone="leaveSpaceSection"
+          @move="openBulkMoveModal"
+          @delete="bulkDelete"
           @feedback="setFeedback"
         />
       </section>
@@ -459,6 +832,36 @@
         <DashboardTrash @restored="onTrashRestored" @feedback="setFeedback" />
       </section>
 
+      <section
+        v-if="isLoggedIn && activeSection.kind === 'gallery'"
+        class="dashboard-gallery-content"
+        data-dashboard-view="gallery"
+      >
+        <DrivePhotos
+          ref="galleryViewRef"
+          :key="galleryRefreshKey"
+          :active-section="(gallerySection as GallerySection)"
+          :external-album-id="galleryAlbumId"
+          :external-album-members-count="galleryAlbumMembersCount"
+          :external-folder-id="galleryFolderId"
+          :external-yandex-path="galleryYandexPath"
+          :folders="galleryStorageFolders"
+          :hide-internal-tabs="true"
+          :show-sidebar-expand="showSidebarExpand"
+          @expand-sidebar="onExpandSidebar"
+          @focus-photo="onGalleryFocusPhoto"
+          @clear-album="onGalleryClearAlbum"
+          @select-album="onGallerySelectAlbum"
+          @select-yandex-path="onGallerySelectYandexPath"
+          @share-album="openAlbumShareById"
+          @share-photos="onGallerySharePhotos"
+          @open-trash="onGalleryOpenTrash"
+          @update:counts="gallerySidebarCounts = $event"
+          @show-folder-in-gallery="onGalleryShowFolder"
+          @open-folder="(folderId) => selectFolder(folderId)"
+        />
+      </section>
+
       <div
         v-if="isLoggedIn && (activeSection.kind === 'shared' || isHomeFeed)"
         :id="isHomeFeed ? 'feed-shared' : undefined"
@@ -469,7 +872,19 @@
         data-section="shared"
       >
         <div class="dash-section-head"><h2>{{ t('sharedWithMe') }}</h2></div>
-        <div class="dash-grid" data-feed-grid="shared">
+        <ExplorerTableView
+          v-if="sharedFiltered.length && explorerViewMode === 'table'"
+          :rows="sharedTableRows"
+          :selected-keys="selectedKeys"
+          :hide-albums="true"
+          :external-sort-mode="sortMode"
+          :external-sort-seq="sortSyncSeq"
+          @update:selected-keys="onWorkspaceSelectionChange"
+          @update:sort="onExplorerTableSort"
+          @open="openExplorerTableRow"
+          @contextmenu="onTableRowContextMenu"
+        />
+        <div v-else class="dash-grid" data-feed-grid="shared">
           <DashboardFeedResourceGrid
             :items="feedItems(sharedFiltered, 'shared')"
             scope="shared"
@@ -488,6 +903,7 @@
             @toggle-selected="toggleSelected"
             @toggle-menu="toggleCardMenu"
             @select-action="handleResourceAction"
+            @contextmenu="(ev, item) => onGridItemContextMenu(ev, item)"
           />
           <button v-if="!sharedFiltered.length && !hasActiveFilter" type="button" class="dashboard-add-tile" data-feed-add="shared" data-feed-empty="shared" @click.stop="openAddFromTile('shared')">
             <span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span>
@@ -521,7 +937,19 @@
         data-section="interactive-templates"
       >
         <div class="dash-section-head"><h2>{{ t('interactiveTemplate') }}</h2></div>
-        <div class="dash-grid" data-feed-grid="interactive">
+        <ExplorerTableView
+          v-if="visibleInteractiveTemplateItems.length && explorerViewMode === 'table'"
+          :rows="interactiveTableRows"
+          :selected-keys="selectedKeys"
+          :hide-albums="true"
+          :external-sort-mode="sortMode"
+          :external-sort-seq="sortSyncSeq"
+          @update:selected-keys="onWorkspaceSelectionChange"
+          @update:sort="onExplorerTableSort"
+          @open="openExplorerTableRow"
+          @contextmenu="onTableRowContextMenu"
+        />
+        <div v-else class="dash-grid" data-feed-grid="interactive">
           <DashboardInteractiveFeedGrid
             :items="feedItems(visibleInteractiveTemplateItems, 'interactive')"
             :is-logged-in="isLoggedIn"
@@ -538,6 +966,7 @@
             @toggle-selected="toggleSelected"
             @toggle-menu="toggleCardMenu"
             @select-action="handleResourceAction"
+            @contextmenu="(ev, item) => onGridItemContextMenu(ev, item)"
           />
           <button v-if="!visibleInteractiveTemplateItems.length && !hasActiveFilter" type="button" class="dashboard-add-tile" data-feed-add="interactive" data-feed-empty="interactive" @click.stop="openAddFromTile('interactive')">
             <span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span>
@@ -588,7 +1017,19 @@
             </div>
           </div>
         </div>
-        <div class="dash-grid" data-feed-grid="public">
+        <ExplorerTableView
+          v-if="publicFiltered.length && explorerViewMode === 'table'"
+          :rows="publicTableRows"
+          :selected-keys="selectedKeys"
+          :hide-albums="true"
+          :external-sort-mode="sortMode"
+          :external-sort-seq="sortSyncSeq"
+          @update:selected-keys="onWorkspaceSelectionChange"
+          @update:sort="onExplorerTableSort"
+          @open="openExplorerTableRow"
+          @contextmenu="onTableRowContextMenu"
+        />
+        <div v-else class="dash-grid" data-feed-grid="public">
           <DashboardFeedResourceGrid
             :items="feedItems(publicFiltered, 'public')"
             scope="public"
@@ -607,6 +1048,7 @@
             @toggle-selected="toggleSelected"
             @toggle-menu="toggleCardMenu"
             @select-action="handleResourceAction"
+            @contextmenu="(ev, item) => onGridItemContextMenu(ev, item)"
           />
           <button v-if="isLoggedIn && !publicFiltered.length && !hasActiveFilter" type="button" class="dashboard-add-tile" data-feed-add="public" data-public-empty data-feed-empty="public" @click.stop="openAddFromTile('public')">
             <span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span>
@@ -634,13 +1076,20 @@
     </div>
     </main>
       <button
-        v-if="isLoggedIn"
+        v-if="isLoggedIn && showFolderFab"
         type="button"
-        class="dashboard-fab"
+        class="dashboard-fab fab-create"
+        data-explorer-fab
         :aria-label="t('add')"
         :title="t('add')"
-        @click.stop="spaceId !== null ? spaceView?.startAdd($event) : yandexPath !== null ? yandexView?.pickFiles() : openAddDialog()"
+        @click.stop="openAddDialog({ folderId: activeSection.kind === 'folder' ? activeFolder?.id : undefined })"
       ><Plus :size="24" aria-hidden="true" /></button>
+      <ExplorerMobileTabBar
+        v-if="isLoggedIn && isAndroidApp"
+        :active-activity="mobileTabActivity"
+        @select-activity="onSelectActivity"
+        @open-menu="openMobileSidebar"
+      />
       </div>
     </div>
 
@@ -650,6 +1099,7 @@
       v-if="addDialog.open"
       :folders="newItemFolderOptions"
       :initial-folder-id="addDialog.folderId"
+      :target-folder-name="addDialogTargetFolderName"
       :initial-import="addDialog.importKind"
       :busy="isBusy"
       @close="closeAddDialog"
@@ -657,14 +1107,111 @@
       @create-template="onAddCreateTemplate"
       @import-character="onAddImportCharacter"
       @create-folder="onAddCreateFolder"
+      @create-album="onAddCreateAlbum"
       @import="onAddImport"
     />
 
-    <DashboardMediaViewer
-      v-if="mediaViewer"
+    <AlbumShareDialog
+      v-if="sharingAlbum"
+      :space="sharingAlbum"
+      :me-id="currentUser?.id || ''"
+      @changed="onSharingAlbumChanged"
+      @close="onCloseSharingAlbum"
+    />
+
+    <ResourceSharePanel
+      v-if="resourceShare.open"
+      :open="resourceShare.open"
+      :title="resourceShare.title"
+      :url="resourceShareUrl"
+      :copy-link="copyResourceShareLink"
+      :slug-prefix="resourceShareSlugPrefix"
+      :slug-error="resourceShare.slugError"
+      :saving-slug="resourceShare.savingSlug"
+      :visibility="resourceShare.visibility"
+      :allow-public-edit="resourceShare.allowPublicEdit"
+      :listed-in-public="resourceShare.listedInPublic"
+      :public-hidden="resourceShare.publicHidden"
+      :permissions="resourceShare.permissions"
+      glass
+      v-model:slug="resourceShare.slug"
+      v-model:share-email="resourceShare.shareEmail"
+      v-model:share-role="resourceShare.shareRole"
+      v-model:password-access-enabled="resourceShare.passwordAccessEnabled"
+      v-model:password-access-password="resourceShare.passwordAccessPassword"
+      v-model:password-access-role="resourceShare.passwordAccessRole"
+      @close="closeResourceShareModal"
+      @update:visibility="setResourceShareVisibility"
+      @update:allow-public-edit="setResourceShareAllowPublicEdit"
+      @update:listed-in-public="setResourceShareListedInPublic"
+      @save-password="saveResourceSharePassword"
+      @save-slug="saveResourceShareSlug"
+      @invite="inviteResourceShare"
+      @revoke="revokeResourceShare"
+    />
+
+    <ExplorerContextMenu
+      :open="explorerCtxMenu.open"
+      :x="explorerCtxMenu.x"
+      :y="explorerCtxMenu.y"
+      :items="explorerCtxMenu.items"
+      :empty-area="explorerCtxMenu.emptyArea"
+      :can-share="explorerCtxMenu.canShare"
+      :can-favorite="explorerCtxMenu.canFavorite"
+      :can-move="explorerCtxMenu.canMove"
+      :can-album="contextMenuCanAlbum"
+      :can-delete="explorerCtxMenu.canDelete"
+      :can-rename="explorerCtxMenu.canRename"
+      :can-download="explorerCtxMenu.canDownload"
+      :can-properties="explorerCtxMenu.canProperties"
+      :delete-label="explorerCtxMenu.deleteLabel"
+      :is-favorite="explorerCtxMenu.isFavorite"
+      :albums="contextMenuAlbums"
+      @close="explorerCtxMenu.open = false"
+      @open="onCtxMenuOpen"
+      @share="onCtxMenuShare"
+      @add-to-album="onCtxMenuAddToAlbum"
+      @toggle-favorite="onCtxMenuToggleFavorite"
+      @move="onCtxMenuMove"
+      @rename="onCtxMenuRename"
+      @download="onCtxMenuDownload"
+      @properties="onCtxMenuProperties"
+      @delete="onCtxMenuDelete"
+      @create-folder="onCtxMenuEmptyCreateFolder"
+      @add="onCtxMenuEmptyAdd"
+      @refresh="onCtxMenuEmptyRefresh"
+    />
+
+    <DriveFileProperties
+      v-if="propertiesFile"
+      :file-id="propertiesFile.id"
+      :file-name="propertiesFile.name"
+      @close="propertiesFile = null"
+    />
+
+    <ExplorerDragBadge />
+
+    <PhotoViewer
+      v-if="mediaViewer && mediaViewerCurrent"
+      :item="mediaViewerCurrent"
       :items="mediaViewer.items"
-      :start="mediaViewer.start"
+      :index="mediaViewer.start"
+      :total="mediaViewer.items.length"
+      :has-prev="mediaViewer.start > 0"
+      :has-next="mediaViewer.start < mediaViewer.items.length - 1"
+      :can-favorite="mediaViewerCanFavorite"
+      :can-share="mediaViewerCanShare"
+      :can-delete="mediaViewerCanDelete"
+      :can-info="mediaViewerCanInfo"
       @close="mediaViewer = null"
+      @prev="onMediaViewerPrev"
+      @next="onMediaViewerNext"
+      @jump="onMediaViewerJump"
+      @toggle-favorite="onMediaViewerToggleFavorite"
+      @share="onMediaViewerShare"
+      @delete="onMediaViewerDelete"
+      @panel-changed="onMediaViewerPanelChanged"
+      @select-tag="onMediaViewerSelectTag"
     />
 
     <MarkdownDocumentViewer
@@ -695,8 +1242,8 @@
 </template>
 
 <script lang="ts">
-import { ChevronDown, ChevronUp, Cloud, Folder, Plus, UsersRound } from '@lucide/vue';
-import { defineComponent, ref, onBeforeUnmount, onMounted, computed, nextTick, watch, type Ref } from 'vue';
+import { ChevronDown, ChevronUp, File as FileIcon, Folder, Plus, SlidersHorizontal, Users, UsersRound } from '@lucide/vue';
+import { defineAsyncComponent, defineComponent, ref, reactive, onBeforeUnmount, onMounted, computed, nextTick, watch, type Ref } from 'vue';
 import { alertDialog, confirmDelete, confirmDialog, promptDialog } from '../composables/appDialog';
 import { selectAll, selectRange, selectionKey, toggleSelection } from '../dashboard/selection';
 import { buildZip, canvasFileContent, safeFileName, saveBlob, splitFileName, textDocumentFileContent, uniqueFileName, type ArchiveFile } from '../dashboard/archive';
@@ -706,21 +1253,44 @@ import { useSidebarDriveFiles } from '../composables/useSidebarDriveFiles';
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
 import { markResourceOpened } from '../composables/useRecentResource';
+import * as vueRouter from 'vue-router';
 import { useRouter } from 'vue-router';
 import { accessRequests, canvas, getCurrentUser, htmlDocuments, interactiveTemplates, isAdmin, isAuthenticated, MAX_DESCRIPTION_LENGTH, recentResources as recentResourcesApi, refreshCurrentUserRole, resourceFolders, tags, textDocuments, type InteractiveTemplate, type ResourceFolderSummary, type ResourceTag } from '../api/client';
 import { useI18n } from '../composables/useI18n';
-import { LAYOUT, matchesMedia } from '../composables/layoutMedia';
+import { LAYOUT, matchesMedia, useMediaQuery } from '../composables/layoutMedia';
 import { useBackHandler } from '../composables/useBackHandler';
 import { useDocumentTitle } from '../composables/useDocumentTitle';
-import DashboardSidebar from '../components/dashboard/DashboardSidebar.vue';
+import DashboardSidebar, { type ExplorerSidebarMode, type TreeContextMenuPayload } from '../components/dashboard/DashboardSidebar.vue';
+import ExplorerHeadroomBar, { type HeadroomViewToggleMode } from '../components/dashboard/ExplorerHeadroomBar.vue';
+import ExplorerTableView, { type ExplorerSortCol, type ExplorerSortDir, type ExplorerTableRow } from '../components/dashboard/ExplorerTableView.vue';
+import ExplorerContextMenu, { type ExplorerContextMenuItem } from '../components/dashboard/ExplorerContextMenu.vue';
+import ExplorerDragBadge from '../components/dashboard/ExplorerDragBadge.vue';
+import ExplorerMobileTabBar, { type ExplorerMobileTabId } from '../components/dashboard/ExplorerMobileTabBar.vue';
+import type {
+  InlineSearchAlbum,
+  InlineSearchFolder,
+  InlineSearchItem,
+  InlineSearchScopeMode,
+  InlineSearchTypeFilter,
+} from '../components/dashboard/ExplorerInlineSearch.vue';
+import AlbumShareDialog from '../components/dashboard/AlbumShareDialog.vue';
+const DriveFileProperties = defineAsyncComponent(() => import('../components/DriveFileProperties.vue'));
+import DashboardFilterMenu from '../components/dashboard/DashboardFilterMenu.vue';
+import DashboardSortMenu from '../components/dashboard/DashboardSortMenu.vue';
+import DrivePhotos, { type GalleryFocusTransfer } from '../components/photos/DrivePhotos.vue';
+import GallerySidebar, { type GallerySection, type GallerySidebarCounts, type GalleryStorageFolder } from '../components/photos/GallerySidebar.vue';
+import { photosApi, type FeedItem as PhotoFeedItem } from '../api/photos';
+import { createHeadroomScrollHandler, useExplorerLayoutPrefs } from '../composables/useExplorerLayoutPrefs';
+import { GROUP_DND_MIME, useExplorerGroupDnd, type GroupDragEntry, type GroupDragPayload } from '../composables/useExplorerGroupDnd';
+import { buildFolderExplorerTableRows, resourceTypeLabel } from '../composables/useExplorerWorkspaceHelpers';
 import { forgetResourceTab } from '../tabs/forget';
 import DashboardViewToggle from '../components/dashboard/DashboardViewToggle.vue';
 import DashboardResourceCard from '../components/dashboard/DashboardResourceCard.vue';
-import DashboardSelectionBar from '../components/dashboard/DashboardSelectionBar.vue';
+import ResourceIcon from '../components/ResourceIcon.vue';
+import ResourceSharePanel, { type SharePermission, type ShareRole, type ShareVisibility } from '../components/ResourceSharePanel.vue';
 import DashboardToolbarControls from '../components/dashboard/DashboardToolbarControls.vue';
 import DashboardStatusOverlays from '../components/dashboard/DashboardStatusOverlays.vue';
 import DashboardRecentResources from '../components/dashboard/DashboardRecentResources.vue';
-import DashboardFolderHeader from '../components/dashboard/DashboardFolderHeader.vue';
 import DashboardActiveSubfolders from '../components/dashboard/DashboardActiveSubfolders.vue';
 import DashboardFolderResourceGrid from '../components/dashboard/DashboardFolderResourceGrid.vue';
 import DashboardFeedResourceGrid from '../components/dashboard/DashboardFeedResourceGrid.vue';
@@ -747,10 +1317,10 @@ import { plansApi } from '../api/plans';
 import { uploadClientPreviewForItems } from '../api/clientMediaUpload';
 import DashboardYandexDisk from '../components/dashboard/DashboardYandexDisk.vue';
 import YandexFolderPicker from '../components/dashboard/YandexFolderPicker.vue';
-import DashboardMediaViewer, { type MediaViewerItem } from '../components/dashboard/DashboardMediaViewer.vue';
+import PhotoViewer, { type ViewerMediaItem } from '../components/photos/PhotoViewer.vue';
 import MarkdownDocumentViewer, { type MarkdownViewerItem } from '../components/MarkdownDocumentViewer.vue';
 import { fetchMarkdownTextFromUrl } from '../documents/markdown-viewer';
-import DashboardSpace from '../components/dashboard/DashboardSpace.vue';
+import DashboardSpace, { type SpaceMediaViewerItem } from '../components/dashboard/DashboardSpace.vue';
 import DashboardTrash from '../components/dashboard/DashboardTrash.vue';
 import { createUploadWakeLock, runUploadQueue, type UploadJob } from '../dashboard/upload-queue';
 import { nativeUploadAvailable } from '../api/native-upload';
@@ -774,13 +1344,13 @@ import {
   type YandexItem,
 } from '../api/yandexDisk';
 import { useYandexDisk } from '../composables/useYandexDisk';
+import { invalidateYandexMediaLibrary } from '../composables/useYandexMediaLibrary';
 import { importTitle, type ImportKind } from '../dashboard/import-files';
 import { marked } from 'marked';
 import type { CharacterImport } from '../dnd/importLongStoryShort';
 import {
   SIDEBAR_FOLDER_CHILD_LIMIT,
   buildSidebarNavItems,
-  readSidebarWidthState,
   writeSidebarWidthState,
   type DashboardFileNavItem,
   type DashboardFolderNavItem,
@@ -790,7 +1360,7 @@ import {
 } from '../dashboard/navigation';
 import { animateHeight, heightOfFirstChildren } from '../dashboard/motion';
 import { useSegmentThumb } from '../composables/useSegmentThumb';
-import { readRecentViewMode, writeRecentViewMode, type RecentViewMode } from '../dashboard/recent-view';
+import { writeRecentViewMode, type RecentViewMode } from '../dashboard/recent-view';
 import { descendantFolderIds, folderIdByResourceKey, folderPaths } from '../dashboard/folder-paths';
 import { childFolderCounts, folderLatestChange } from '../dashboard/folder-stats';
 import { isMarkdownFile, isPictureFile, isVideoFile } from '../dashboard/thumb-kinds';
@@ -809,6 +1379,12 @@ import { useDashboardBulkDelete } from '../composables/useDashboardBulkDelete';
 import { useDashboardActionRunner } from '../composables/useDashboardActionRunner';
 import { useDriveDropzone } from '../composables/useDriveDropzone';
 import { useActivityJournal } from '../composables/useActivityJournal';
+import {
+  clearDashboardReturnOrigin,
+  consumeDashboardReturnOrigin,
+  isResourceEditorRoute,
+  saveDashboardReturnOrigin,
+} from '../composables/useDashboardReturnOrigin';
 
 type CanvasTag = { id: string; name: string; color: string };
 type CanvasRecord = {
@@ -906,13 +1482,24 @@ export default defineComponent({
   directives: { hint: vHint },
   components: {
     DashboardSidebar,
+    ExplorerHeadroomBar,
+    ExplorerTableView,
+    ExplorerContextMenu,
+    ExplorerDragBadge,
+    ExplorerMobileTabBar,
+    AlbumShareDialog,
+    DriveFileProperties,
+    DashboardFilterMenu,
+    DashboardSortMenu,
+    DrivePhotos,
+    GallerySidebar,
     DashboardViewToggle,
     DashboardResourceCard,
-    DashboardSelectionBar,
+    ResourceIcon,
+    ResourceSharePanel,
     DashboardToolbarControls,
     DashboardStatusOverlays,
     DashboardRecentResources,
-    DashboardFolderHeader,
     DashboardActiveSubfolders,
     DashboardFolderResourceGrid,
     DashboardFeedResourceGrid,
@@ -927,7 +1514,7 @@ export default defineComponent({
     DriveUploadOverlay,
     DashboardYandexDisk,
     YandexFolderPicker,
-    DashboardMediaViewer,
+    PhotoViewer,
     MarkdownDocumentViewer,
     DashboardSpace,
     DashboardTrash,
@@ -935,9 +1522,11 @@ export default defineComponent({
     InteractiveTemplatePicker,
     ChevronDown,
     ChevronUp,
-    Cloud,
+    FileIcon,
     Folder,
     Plus,
+    SlidersHorizontal,
+    Users,
     UsersRound,
   },
   setup() {
@@ -976,7 +1565,8 @@ export default defineComponent({
     const isRefreshing = ref(false);
     const dashboardMain = ref<HTMLElement | null>(null);
     const dashboardPullDistance = ref(0);
-    const isNativeDashboard = Capacitor.isNativePlatform();
+    const isAndroidApp = computed(() => Capacitor.isNativePlatform());
+    const isNativeDashboard = isAndroidApp.value;
     let dashboardPullStartY: number | null = null;
     const searchQuery = ref('');
     /**
@@ -994,9 +1584,41 @@ export default defineComponent({
       set: (value) => { contentTypes.value = value === 'all' || value === 'mixed' ? [] : [value]; },
     });
     const sortMode = ref<'updated-desc' | 'updated-asc' | 'title-asc' | 'title-desc'>('updated-desc');
+    const sortSyncSeq = ref(0);
+    const isMobileHeadroom = useMediaQuery(LAYOUT.dashboardDrawer);
     const openMenuCanvasId = ref('');
     const openControlMenu = ref('');
     const activeSection = ref<DashboardSection>({ kind: isLoggedIn ? 'recent' : 'public' });
+    const gallerySection = ref<GallerySection | 'trash'>('library');
+    const galleryAlbumId = ref<string | null>(null);
+    const galleryFolderId = ref<string | null>(null);
+    const recordDashboardReturnOrigin = () => {
+      if (!isLoggedIn) return;
+      const mode = activeSection.value.kind === 'gallery' ? 'media' : 'files';
+      saveDashboardReturnOrigin({
+        mode,
+        section: activeSection.value,
+        ...(mode === 'media'
+          ? {
+              gallerySection: gallerySection.value,
+              galleryAlbumId: galleryAlbumId.value,
+              galleryFolderId: galleryFolderId.value,
+            }
+          : {}),
+      });
+    };
+    try {
+      const registerRouteLeave = vueRouter.onBeforeRouteLeave;
+      if (typeof registerRouteLeave === 'function') {
+        registerRouteLeave((to) => {
+          if (isResourceEditorRoute(to)) {
+            recordDashboardReturnOrigin();
+          }
+        });
+      }
+    } catch {
+      // Unit tests with partial vue-router mocks skip route-leave hooks cleanly.
+    }
     const storage = () => {
       try {
         return typeof window === 'undefined' ? null : window.localStorage;
@@ -1004,11 +1626,43 @@ export default defineComponent({
         return null;
       }
     };
-    const sidebarWidthState = ref<SidebarWidthState>(readSidebarWidthState(storage()));
-    const recentViewMode = ref<RecentViewMode>(readRecentViewMode(storage()));
+    const layoutPrefs = useExplorerLayoutPrefs();
+    const groupDnd = useExplorerGroupDnd();
+    const sidebarCollapsed = layoutPrefs.sidebarCollapsed;
+    const sidebarWidthState = computed<SidebarWidthState>(() => (
+      sidebarCollapsed.value ? 'collapsed' : 'expanded'
+    ));
+    const explorerViewMode = layoutPrefs.viewMode;
+    const setExplorerViewMode = (mode: 'grid' | 'table' | 'list') => {
+      layoutPrefs.setViewMode(mode);
+    };
+    const albumViewMode = layoutPrefs.albumView;
+    const setAlbumViewMode = (mode: 'feed' | 'table') => {
+      layoutPrefs.setAlbumView(mode);
+    };
+    const recentViewMode = computed<RecentViewMode>(() => layoutPrefs.legacyRecentViewMode.value);
     const setRecentViewMode = (mode: RecentViewMode) => {
-      recentViewMode.value = mode;
+      layoutPrefs.setViewMode(mode === 'list' ? 'table' : 'grid');
       writeRecentViewMode(storage(), mode);
+    };
+    const sidebarRef = ref<InstanceType<typeof DashboardSidebar> | null>(null);
+    const headroomBarRef = ref<InstanceType<typeof ExplorerHeadroomBar> | null>(null);
+    const headroomHidden = layoutPrefs.headroomHidden;
+    const headroomElevated = ref(false);
+    const handleHeadroomScroll = createHeadroomScrollHandler();
+    const onDashboardMainScroll = (event: Event) => {
+      const target = event.target as HTMLElement | null;
+      const top = target?.scrollTop ?? 0;
+      headroomElevated.value = top > 8;
+      handleHeadroomScroll(top);
+    };
+    const s2ScopeMode = ref<InlineSearchScopeMode>('current');
+    const s2TypeFilter = ref<InlineSearchTypeFilter>('all');
+    const devicesOnlineCount = ref(0);
+    const devicesPaired = ref(false);
+    const onSidebarCollapsedChange = (collapsed: boolean) => {
+      layoutPrefs.setSidebarCollapsed(collapsed);
+      writeSidebarWidthState(storage(), collapsed ? 'collapsed' : 'expanded');
     };
     const mobileSidebarOpen = ref(false);
     const SIDEBAR_DESKTOP_QUERY = LAYOUT.dashboardSidebarDocked;
@@ -1026,7 +1680,9 @@ export default defineComponent({
     const activeFolderFileCount = ref(0);
     /** Files each folder holds (from the Drive), added to the folder tiles' counts. */
     const folderFiles = useFolderFileCounts();
-    watch(selectedFolderId, () => { activeFolderFileCount.value = 0; });
+    watch(selectedFolderId, () => {
+      activeFolderFileCount.value = 0;
+    });
     const draggingResourceId = ref('');
     const draggingResourceType = ref<FolderItem['type']>('canvas');
     const draggingResourceFolderId = ref<string | null>(null);
@@ -1511,27 +2167,9 @@ export default defineComponent({
       });
     });
 
-    const legacyInboxSourceItems = computed<FolderItem[]>(() => [
-      ...unfiledCanvases.value,
-      ...unfiledHtmlDocuments.value,
-      ...unfiledTextDocuments.value,
-    ]);
-
-    const buildLegacyInboxFolder = (items: FolderItem[]): FolderSummary => ({
-      id: 'legacy-resource-inbox',
-      name: 'Inbox',
-      role: 'owner',
-      sortOrder: Number.MAX_SAFE_INTEGER,
-      canvasCount: unfiledCanvases.value.length,
-      htmlDocumentCount: unfiledHtmlDocuments.value.length,
-      textDocumentCount: unfiledTextDocuments.value.length,
-      interactiveTemplateCount: 0,
-      items,
-    });
-
     /**
      * The sidebar's folder tree. It is navigation, so search / type / tags
-     * leave it alone: filtering it made folders (and Inbox) blink in and out
+     * leave it alone: filtering it made folders blink in and out
      * of the sidebar as filters changed. The filters narrow what a folder
      * shows once opened, and the Folders tiles' counts on the feed.
      */
@@ -1575,28 +2213,46 @@ export default defineComponent({
         }
       }
 
-      if (legacyInboxSourceItems.value.length) {
-        folders.push(buildLegacyInboxFolder(sortFolderItems(legacyInboxSourceItems.value)));
-      }
       return buildFolderTree(folders);
     });
     const activeFolderEmpty = computed(() => Boolean(
       activeFolder.value
       && !activeFolder.value.items.length
       && !activeFolderFileCount.value
-      && (hasActiveFilter.value || !activeSubfolders.value.length),
+      && !activeSubfolders.value.length,
     ));
+    const matchesS2ItemType = (itemType: FolderItem['type']): boolean => {
+      const f = s2TypeFilter.value;
+      if (f === 'all') return true;
+      if (f === 'doc') return itemType === 'canvas' || itemType === 'html-document' || itemType === 'text-document' || itemType === 'interactive-template';
+      return false;
+    };
     const activeFolder = computed(() => {
       const folder = allFolderSummaries.value.find((item) => item.id === selectedFolderId.value);
-      if (selectedFolderId.value === 'legacy-resource-inbox' && legacyInboxSourceItems.value.length) {
-        return buildLegacyInboxFolder(
-          sortFolderItems(legacyInboxSourceItems.value.filter((item) => matchesFolderItem(item, 'Inbox'))),
-        );
-      }
       if (!folder) return null;
+      const isGlobalSearch = s2ScopeMode.value === 'global' && (Boolean(searchQuery.value.trim()) || s2TypeFilter.value !== 'all');
+      if (isGlobalSearch) {
+        const seen = new Set<string>();
+        const globalItems: FolderItem[] = [];
+        for (const summary of allFolderSummaries.value) {
+          for (const item of summary.items) {
+            const k = `${item.type}:${item.id}` as const;
+            if (seen.has(k)) continue;
+            const enriched = dashboardItemsByKey.value.get(k) || item;
+            if (matchesFolderItem(enriched, summary.name) && matchesS2ItemType(enriched.type)) {
+              seen.add(k);
+              globalItems.push(enriched);
+            }
+          }
+        }
+        return {
+          ...folder,
+          items: sortFolderItems(globalItems),
+        };
+      }
       return {
         ...folder,
-        items: sortFolderItems(folder.items.filter((item) => matchesFolderItem(item, folder.name))),
+        items: sortFolderItems(folder.items.filter((item) => matchesFolderItem(item, folder.name) && matchesS2ItemType(item.type))),
       };
     });
     const sidebarFolderRows = computed<DashboardFolderNavItem[]>(() => folderSummaries.value.map((folder) => ({
@@ -1607,12 +2263,22 @@ export default defineComponent({
       role: folder.role,
       technical: isTechnicalFolder(folder),
       expanded: isTreeExpanded(folder.id),
-      // Files count as children too: an opened folder lists them under its subfolders.
-      hasChildren: Boolean(folder.hasChildren || folder.items.length || folderFiles.counts[folder.id]),
+      // Files count as children only when showFilesInTree is enabled; otherwise only subfolders count.
+      hasChildren: layoutPrefs.showFilesInTree.value
+        ? Boolean(folder.hasChildren || folder.items.length > 0 || (folderFiles.counts[folder.id] ?? 0) > 0)
+        : Boolean(folder.hasChildren),
       draggable: canReorderFolder(folder),
       dropActive: canDropToFolder(folder) && dragTargetFolder.value === folder.id,
       reorderTarget: folderDragOverId.value === folder.id,
     })));
+    const sidebarAllFolders = computed(() =>
+      allFolderSummaries.value.map((folder) => ({
+        id: folder.id,
+        name: folder.name,
+        parentId: folder.parentId ?? null,
+        hasChildren: Boolean(folder.hasChildren),
+      })),
+    );
     /**
      * The tree as the sidebar shows it: an opened folder lists its
      * subfolders, then its documents, then its Drive files (the first few,
@@ -1621,7 +2287,9 @@ export default defineComponent({
     const sidebarDriveFiles = useSidebarDriveFiles(SIDEBAR_FOLDER_CHILD_LIMIT);
     const sidebarServerFolderIds = computed(() => {
       const known = new Set(allResourceFolders.value.map((folder) => folder.id));
-      return folderSummaries.value.map((folder) => folder.id).filter((id) => known.has(id));
+      return folderSummaries.value
+        .map((folder) => folder.id)
+        .filter((id) => known.has(id));
     });
     watch(sidebarServerFolderIds, (ids) => {
       // Counts for every folder in view (so one holding only files can open);
@@ -1630,40 +2298,108 @@ export default defineComponent({
       sidebarDriveFiles.want(ids.filter(isTreeExpanded));
     }, { immediate: true });
     watch(expandedTreeIds, (ids) => sidebarDriveFiles.want(ids.filter((id) => sidebarServerFolderIds.value.includes(id))));
+    watch(layoutPrefs.showFilesInTree, (on) => {
+      if (on) {
+        sidebarDriveFiles.want(['root', ...expandedTreeIds.value.filter((id) => sidebarServerFolderIds.value.includes(id))]);
+      }
+    }, { immediate: true });
     const sidebarFolders = computed<DashboardSidebarNavItem[]>(() => {
       const itemsById = new Map(folderSummaries.value.map((folder) => [folder.id, folder.items]));
-      return buildSidebarNavItems(
+      const mapDriveFile = (file: DriveItem) => ({
+        id: file.id,
+        title: file.name || t('untitled'),
+        type: 'drive-file' as const,
+        fileKind: file.kind === 'photo' || file.mime?.startsWith('image/') ? 'image' as const
+          : file.kind === 'video' || file.mime?.startsWith('video/') ? 'video' as const
+            : isMarkdownFile(file) ? 'markdown' as const
+              : 'file' as const,
+      });
+      const base = buildSidebarNavItems(
         sidebarFolderRows.value,
         (folderId) => [
-          ...(itemsById.get(folderId) || []),
-          ...(sidebarDriveFiles.files[folderId] || []).map((file) => ({
-            id: file.id,
-            title: file.name,
-            type: 'drive-file' as const,
-            fileKind: file.kind === 'photo' || file.mime?.startsWith('image/') ? 'image' as const
-              : file.kind === 'video' || file.mime?.startsWith('video/') ? 'video' as const
-                : isMarkdownFile(file) ? 'markdown' as const
-                  : 'file' as const,
+          ...(itemsById.get(folderId) || []).map((item) => ({
+            ...item,
+            title: ('title' in item ? item.title : '') || ('name' in item ? (item as { name?: string }).name : '') || t('untitled'),
           })),
+          ...(sidebarDriveFiles.files[folderId] || []).map(mapDriveFile),
         ],
         SIDEBAR_FOLDER_CHILD_LIMIT,
         (folderId) => (itemsById.get(folderId)?.length || 0) + (folderFiles.counts[folderId] ?? 0),
       );
+      const rootResources: FolderItem[] = [
+        ...unfiledCanvases.value,
+        ...unfiledHtmlDocuments.value,
+        ...unfiledTextDocuments.value,
+        ...unfiledInteractiveTemplateItems.value,
+      ];
+      const rootDriveList = homeRootDriveFiles.value.length
+        ? homeRootDriveFiles.value
+        : (sidebarDriveFiles.files.root || []);
+      const rootEntries: DashboardFileNavItem[] = [
+        ...rootResources.map((item) => ({
+          kind: 'file' as const,
+          key: `root/${item.type}:${item.id}`,
+          id: item.id,
+          folderId: 'root',
+          type: item.type,
+          templateType: item.type === 'interactive-template' ? item.templateType : undefined,
+          title: ('title' in item ? item.title : '') || ('name' in item ? (item as { name?: string }).name : '') || t('untitled'),
+          depth: 0,
+        })),
+        ...rootDriveList.map((file) => {
+          const mapped = mapDriveFile(file);
+          return {
+            kind: 'file' as const,
+            key: `root/drive-file:${file.id}`,
+            id: file.id,
+            folderId: 'root',
+            type: 'drive-file' as const,
+            fileKind: mapped.fileKind,
+            title: mapped.title,
+            depth: 0,
+          };
+        }),
+      ];
+      const cappedRoot = rootEntries.slice(0, SIDEBAR_FOLDER_CHILD_LIMIT);
+      const overflowRoot = Math.max(0, rootEntries.length - cappedRoot.length);
+      if (overflowRoot > 0) {
+        return [
+          ...base,
+          ...cappedRoot,
+          { kind: 'more' as const, key: 'more:root', folderId: 'root', count: overflowRoot, depth: 0 },
+        ];
+      }
+      return [...base, ...cappedRoot];
     });
     const openSidebarFile = async (file: DashboardFileNavItem) => {
       if (file.type === 'drive-file' && (file.fileKind === 'image' || file.fileKind === 'video')) {
-        // As its card in the folder does: a picture or a video opens full screen.
         mobileSidebarOpen.value = false;
-        mediaViewer.value = { items: [driveViewerItem({ id: file.id, name: file.title || t('untitled'), kind: file.fileKind })], start: 0 };
+        const pool = file.folderId === 'root'
+          ? (homeRootDriveFiles.value.length ? homeRootDriveFiles.value : (sidebarDriveFiles.files.root || []))
+          : (activeSection.value.kind === 'folder' && activeFolder.value?.id === file.folderId && folderDriveFiles.value.length
+            ? folderDriveFiles.value
+            : (sidebarDriveFiles.files[file.folderId] || []));
+        const mediaSiblings = pool.filter(isDriveMedia);
+        const matchIdx = mediaSiblings.findIndex((f) => f.id === file.id);
+        if (mediaSiblings.length && matchIdx >= 0) {
+          openDriveMediaList(mediaSiblings, matchIdx);
+        } else {
+          const fallbackItem = driveViewerItem({
+            id: file.id,
+            name: file.title || t('untitled'),
+            kind: file.fileKind === 'video' ? 'video' : 'photo',
+            folderId: file.folderId === 'root' ? null : file.folderId,
+          });
+          mediaViewer.value = { items: [fallbackItem], start: 0, source: 'drive' };
+        }
         return;
       }
       if (file.type === 'drive-file' && (file.fileKind === 'markdown' || isMarkdownFile({ name: file.title }))) {
         mobileSidebarOpen.value = false;
-        openDriveMarkdown({ id: file.id, name: file.title || t('untitled'), folderId: file.folderId });
+        openDriveMarkdown({ id: file.id, name: file.title || t('untitled'), folderId: file.folderId === 'root' ? null : file.folderId });
         return;
       }
       if (file.type === 'drive-file') {
-        // As its card in the folder does: a Drive file downloads.
         try {
           await downloadDriveFile(file.id, file.title);
         } catch (error) {
@@ -1674,9 +2410,16 @@ export default defineComponent({
         }
         return;
       }
-      const item = folderSummaries.value
-        .find((folder) => folder.id === file.folderId)?.items
-        .find((candidate) => candidate.type === file.type && candidate.id === file.id);
+      const item = file.folderId === 'root'
+        ? [
+            ...unfiledCanvases.value,
+            ...unfiledHtmlDocuments.value,
+            ...unfiledTextDocuments.value,
+            ...unfiledInteractiveTemplateItems.value,
+          ].find((candidate) => candidate.type === file.type && candidate.id === file.id)
+        : folderSummaries.value
+            .find((folder) => folder.id === file.folderId)?.items
+            .find((candidate) => candidate.type === file.type && candidate.id === file.id);
       const routeId = (item && 'slug' in item && item.slug) || file.id;
       mobileSidebarOpen.value = false;
       if (file.type === 'canvas') openCanvas(routeId);
@@ -1797,21 +2540,37 @@ export default defineComponent({
     useDashboardFramePinning();
     const feedColumns = ref(FEED_FALLBACK_COLUMNS);
     let feedResizeObserver: ResizeObserver | null = null;
+    let feedResizeRaf: number | null = null;
     let feedPhoneMedia: MediaQueryList | null = null;
     const measureFeedColumns = () => {
       feedColumns.value = feedColumnCount(dashboardShell.value?.clientWidth ?? 0, !!feedPhoneMedia?.matches);
+    };
+    const scheduleMeasureFeedColumns = () => {
+      if (typeof requestAnimationFrame !== 'function') {
+        measureFeedColumns();
+        return;
+      }
+      if (feedResizeRaf !== null) cancelAnimationFrame(feedResizeRaf);
+      feedResizeRaf = requestAnimationFrame(() => {
+        feedResizeRaf = null;
+        measureFeedColumns();
+      });
     };
     onMounted(() => {
       feedPhoneMedia = typeof window.matchMedia === 'function' ? window.matchMedia(FEED_PHONE_QUERY) : null;
       feedPhoneMedia?.addEventListener?.('change', measureFeedColumns);
       if (typeof ResizeObserver !== 'undefined' && dashboardShell.value) {
-        feedResizeObserver = new ResizeObserver(measureFeedColumns);
+        feedResizeObserver = new ResizeObserver(() => scheduleMeasureFeedColumns());
         feedResizeObserver.observe(dashboardShell.value);
       }
       measureFeedColumns();
     });
     onBeforeUnmount(() => {
       feedResizeObserver?.disconnect();
+      if (feedResizeRaf !== null && typeof cancelAnimationFrame === 'function') {
+        cancelAnimationFrame(feedResizeRaf);
+        feedResizeRaf = null;
+      }
       feedPhoneMedia?.removeEventListener?.('change', measureFeedColumns);
     });
     const feedLimit = (section: FeedRowSection) => feedSectionLimit(section, feedColumns.value);
@@ -1884,7 +2643,7 @@ export default defineComponent({
       if (!isHomeFeed.value) return [];
       const sections: FeedSection[] = ['recent'];
       if (recentFolderTiles.value.length) sections.push('folders');
-      if (showYandexSpaceTile.value || spaceTiles.value.length) sections.push('spaces');
+      if (spaceTiles.value.length) sections.push('spaces');
       sections.push('shared', 'interactive', 'public');
       return sections;
     });
@@ -2047,21 +2806,30 @@ export default defineComponent({
       recentResourceHistory.value = [recent, ...recentResourceHistory.value.filter((entry) => !(entry.type === type && entry.id === record.id))].slice(0, RECENT_RESOURCES_LIMIT);
       markResourceOpened(type, record.id);
     };
-    const rememberRecentResource = (type: RecentResourceType, routeId: string) => {
+    const rememberRecentResource = (
+      type: RecentResourceType,
+      routeId: string,
+      options?: { skipServerMark?: boolean },
+    ) => {
+      recordDashboardReturnOrigin();
       const item = allRecentResourceItems.value.find((resource) => resource.type === type && (resource.id === routeId || ('slug' in resource && resource.slug === routeId)));
       if (!item) return;
       const recent: RecentHistoryEntry = { id: item.id, routeId: ('slug' in item && item.slug) || item.id, type, title: item.title || '', openedAt: Date.now() };
       recentResourceHistory.value = [recent, ...recentResourceHistory.value.filter((entry) => !(entry.type === recent.type && entry.id === recent.id))].slice(0, RECENT_RESOURCES_LIMIT);
-      markResourceOpened(type, item.id);
+      if (!options?.skipServerMark) {
+        markResourceOpened(type, item.id);
+      }
     };
 
     const openCanvas = (id: string) => {
       rememberRecentResource('canvas', id);
+      recordDashboardReturnOrigin();
       router.push(`/canvas/${id}`);
     };
 
     const openInteractiveTemplate = (id: string) => {
       rememberRecentResource('interactive-template', id);
+      recordDashboardReturnOrigin();
       router.push({ name: 'interactive-template', params: { id } });
     };
 
@@ -2075,6 +2843,7 @@ export default defineComponent({
 
     const openHtmlDocument = (id: string) => {
       rememberRecentResource('html-document', id);
+      recordDashboardReturnOrigin();
       router.push(`/edit/html/${id}`);
     };
 
@@ -2088,6 +2857,7 @@ export default defineComponent({
 
     const openTextDocument = (id: string) => {
       rememberRecentResource('text-document', id);
+      recordDashboardReturnOrigin();
       router.push({ name: 'text-document', params: { id } });
     };
 
@@ -2133,37 +2903,42 @@ export default defineComponent({
     };
 
     // `folderId` is optional; a click handler may pass its event instead.
-    const createCanvas = async (folderId?: unknown, title = 'Untitled') => {
+    const createCanvas = async (folderId?: unknown, title?: string) => {
       openControlMenu.value = '';
+      const resolvedTitle = title ?? t('untitled');
       const targetFolderId = await resolveCreateFolderId(folderId);
-      const c = await runAction('create-canvas', () => canvas.create(title, undefined, targetFolderId), 'Canvas created');
+      const c = await runAction('create-canvas', () => canvas.create(resolvedTitle, undefined, targetFolderId), t('canvasCreated'));
       if (!c) return;
       rememberCreatedResource('canvas', c);
+      recordDashboardReturnOrigin();
       router.push(`/canvas/${c.id}`);
     };
 
-    const createHtmlDocument = async (folderId?: unknown, title = 'Untitled HTML') => {
+    const createHtmlDocument = async (folderId?: unknown, title?: string) => {
       openControlMenu.value = '';
+      const resolvedTitle = title ?? t('untitledHtml');
       const targetFolderId = await resolveCreateFolderId(folderId);
       // The page starts with its name as the heading.
-      const heading = title.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const heading = resolvedTitle.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
       const doc = await runAction(
         'create-html-document',
-        () => htmlDocuments.create({ title, html: `<main><h1>${heading}</h1></main>`, folderId: targetFolderId }),
-        'HTML document created',
+        () => htmlDocuments.create({ title: resolvedTitle, html: `<main><h1>${heading}</h1></main>`, folderId: targetFolderId }),
+        t('htmlDocumentCreated'),
       );
       if (!doc) return;
       rememberCreatedResource('html-document', doc);
+      recordDashboardReturnOrigin();
       router.push(`/edit/html/${doc.id}`);
     };
 
-    const createTextDocument = async (folderId?: unknown, title = 'Untitled document') => {
+    const createTextDocument = async (folderId?: unknown, title?: string) => {
       openControlMenu.value = '';
+      const resolvedTitle = title ?? t('untitledDocument');
       const targetFolderId = await resolveCreateFolderId(folderId);
       const doc = await runAction(
         'create-text-document',
-        () => textDocuments.create({ title, folderId: targetFolderId }),
-        'Document created',
+        () => textDocuments.create({ title: resolvedTitle, folderId: targetFolderId }),
+        t('documentCreated'),
       );
       if (!doc) return;
       rememberCreatedResource('text-document', doc);
@@ -2296,7 +3071,7 @@ export default defineComponent({
       const normalizedName = name.trim() || 'Unsorted';
       const existing = ownResourceFolders.value.find((folder) => folder.name.toLowerCase() === normalizedName.toLowerCase());
       if (existing) return existing;
-      return runAction('create-folder', () => resourceFolders.create(normalizedName), `Folder ${normalizedName} created`);
+      return runAction('create-folder', () => resourceFolders.create(normalizedName), t('folderCreatedNamed').replace('{name}', normalizedName));
     };
 
     const runBulkMoveWithJournal = async (targetFolderName: string, ops: Array<() => Promise<unknown>>) => {
@@ -2410,10 +3185,12 @@ export default defineComponent({
       await runAction(
         'move-folder',
         () => resourceFolders.move(targetFolder.id, folderModal.value.resourceType, folderModal.value.resourceId),
-        `Moved to ${targetFolder.name}`,
+        t('movedToFolderNamed').replace('{folder}', targetFolder.name),
       );
       closeFolderModal();
       await load();
+      galleryViewRef.value?.refresh?.({ clearSelection: false, invalidateFolders: true });
+      gallerySidebarRef.value?.invalidateFolderFilesCache?.();
     };
 
     const moveResourceLocally = (resourceId: string, resourceType: FolderItem['type'], targetFolder: FolderSummary) => {
@@ -2565,7 +3342,7 @@ export default defineComponent({
       const previousOwn = own.value.map((item) => ({ ...item }));
       moveResourceLocally(resourceId, resourceType, folder);
       try {
-        await runAction('move-folder', () => resourceFolders.move(folder.id, resourceType, resourceId), `Moved to ${folder.name}`);
+        await runAction('move-folder', () => resourceFolders.move(folder.id, resourceType, resourceId), t('movedToFolderNamed').replace('{folder}', folder.name));
       } catch (error) {
         ownResourceFolders.value = previousOwnFolders;
         sharedResourceFolders.value = previousSharedFolders;
@@ -2601,6 +3378,18 @@ export default defineComponent({
       },
       dropResourceToFolder,
       reorderFoldersApi: async (ids) => { await resourceFolders.reorder(ids); },
+      canMoveFolderInto: (sourceId, targetId) => (
+        !isFolderAncestorOrSelf(sourceId, targetId)
+        && ownResourceFolders.value.some((f) => f.id === targetId && f.role === 'owner')
+      ),
+      moveFolderApi: async (sourceId, targetId) => {
+        await onDropGroupToFolder(targetId, {
+          source: 'tree',
+          items: [{ key: `folder:${sourceId}`, id: sourceId, kind: 'folder', folderId: sourceId }],
+          keys: [`folder:${sourceId}`],
+          count: 1,
+        });
+      },
       setFeedback,
     });
 
@@ -2643,10 +3432,12 @@ export default defineComponent({
       await runAction(
         'rename-folder',
         () => resourceFolders.rename(renameFolderModal.value.folderId, nextFolder),
-        `Folder renamed to ${nextFolder}`,
+        t('folderRenamedTo').replace('{name}', nextFolder),
       );
       closeRenameFolderModal();
       await load();
+      galleryViewRef.value?.refresh?.({ clearSelection: false, invalidateFolders: true });
+      gallerySidebarRef.value?.invalidateFolderFilesCache?.();
     };
 
     const deleteFolder = async (folder: FolderSummary) => {
@@ -2656,9 +3447,11 @@ export default defineComponent({
       await runAction(
         'delete-folder',
         () => resourceFolders.delete(folder.id),
-        `Folder ${folder.name} removed`,
+        t('folderRemovedNamed').replace('{name}', folder.name),
       );
       await load();
+      galleryViewRef.value?.refresh?.({ clearSelection: false, invalidateFolders: true });
+      gallerySidebarRef.value?.invalidateFolderFilesCache?.();
     };
 
     const loadFolderPermissions = async () => {
@@ -2698,7 +3491,7 @@ export default defineComponent({
       await runAction(
         'share-folder',
         () => resourceFolders.share(folderShareModal.value.folderId, email, folderShareModal.value.role),
-        `Shared folder with ${email}`,
+        t('folderSharedWith').replace('{email}', email),
       );
       folderShareModal.value.email = '';
       await loadFolderPermissions();
@@ -2709,7 +3502,7 @@ export default defineComponent({
       await runAction(
         'revoke-folder',
         () => resourceFolders.revoke(folderShareModal.value.folderId, userId),
-        'Folder access revoked',
+        t('folderAccessRevoked'),
       );
       await loadFolderPermissions();
     };
@@ -2751,7 +3544,7 @@ export default defineComponent({
         : tagsModal.value.resourceType === 'html-document'
           ? () => htmlDocuments.update(tagsModal.value.resourceId, { tags })
           : () => textDocuments.update(tagsModal.value.resourceId, { tags });
-      await runAction('save-tags', save, 'Tags saved');
+      await runAction('save-tags', save, t('tagsSaved'));
       closeTagsModal();
       await load();
     };
@@ -2773,56 +3566,56 @@ export default defineComponent({
         : transferModal.value.resourceType === 'html-document'
           ? () => htmlDocuments.transferOwnership(transferModal.value.resourceId, email)
           : () => textDocuments.transferOwnership(transferModal.value.resourceId, email);
-      await runAction('transfer-ownership', transfer, 'Ownership transferred');
+      await runAction('transfer-ownership', transfer, t('ownershipTransferred'));
       closeTransferModal();
       await load();
     };
 
     const duplicateCanvas = async (canvasRecord: CanvasRecord) => {
       closeCardMenu();
-      const title = canvasRecord.title?.trim() || 'Untitled';
-      await runAction('duplicate-canvas', () => canvas.duplicate(canvasRecord.id), `Duplicated "${title}"`);
+      const title = canvasRecord.title?.trim() || t('untitled');
+      await runAction('duplicate-canvas', () => canvas.duplicate(canvasRecord.id), t('duplicatedNamed').replace('{title}', title));
       await load();
     };
 
     const duplicateHtmlDocument = async (doc: HtmlDocumentRecord) => {
       closeCardMenu();
-      const title = doc.title?.trim() || 'Untitled HTML';
-      await runAction('duplicate-html-document', () => htmlDocuments.duplicate(doc.id), `Duplicated "${title}"`);
+      const title = doc.title?.trim() || t('untitledHtml');
+      await runAction('duplicate-html-document', () => htmlDocuments.duplicate(doc.id), t('duplicatedNamed').replace('{title}', title));
       await load();
     };
 
     const duplicateTextDocument = async (doc: TextDocumentRecord) => {
       closeCardMenu();
-      const title = doc.title?.trim() || 'Untitled document';
-      await runAction('duplicate-text-document', () => textDocuments.duplicate(doc.id), `Duplicated "${title}"`);
+      const title = doc.title?.trim() || t('untitledDocument');
+      await runAction('duplicate-text-document', () => textDocuments.duplicate(doc.id), t('duplicatedNamed').replace('{title}', title));
       await load();
     };
 
     const deleteCanvas = async (canvasRecord: CanvasRecord) => {
-      const title = canvasRecord.title?.trim() || 'Untitled';
+      const title = canvasRecord.title?.trim() || t('untitled');
       const confirmed = await confirmDelete('deleteCanvasTitle', title);
       if (!confirmed) return;
-      await runAction('delete-canvas', () => canvas.delete(canvasRecord.id), `Deleted ${title}`);
+      await runAction('delete-canvas', () => canvas.delete(canvasRecord.id), t('deletedNamed').replace('{title}', title));
       forgetResourceTab('canvas', canvasRecord.id);
       own.value = own.value.filter((c) => c.id !== canvasRecord.id);
       await load();
     };
 
     const deleteHtmlDocument = async (doc: HtmlDocumentRecord) => {
-      const title = doc.title?.trim() || 'Untitled HTML';
+      const title = doc.title?.trim() || t('untitledHtml');
       const confirmed = await confirmDelete('deleteHtmlDocumentTitle', title);
       if (!confirmed) return;
-      await runAction('delete-html-document', () => htmlDocuments.delete(doc.id), `Deleted ${title}`);
+      await runAction('delete-html-document', () => htmlDocuments.delete(doc.id), t('deletedNamed').replace('{title}', title));
       forgetResourceTab('html', doc.id);
       await load();
     };
 
     const deleteTextDocument = async (doc: TextDocumentRecord) => {
-      const title = doc.title?.trim() || 'Untitled document';
+      const title = doc.title?.trim() || t('untitledDocument');
       const confirmed = await confirmDelete('deleteDocumentTitle', title);
       if (!confirmed) return;
-      await runAction('delete-text-document', () => textDocuments.delete(doc.id), `Deleted ${title}`);
+      await runAction('delete-text-document', () => textDocuments.delete(doc.id), t('deletedNamed').replace('{title}', title));
       forgetResourceTab('doc', doc.id);
       await load();
     };
@@ -2886,7 +3679,12 @@ export default defineComponent({
      * trash) - one way to handle every kind of file.
      */
     const folderDriveFiles = ref<DriveItem[]>([]);
-    const driveFilesByKey = computed<ReadonlyMap<string, DriveItem>>(() => new Map(folderDriveFiles.value.map((file) => [`drive-file:${file.id}`, file])));
+    const homeRootDriveFiles = ref<DriveItem[]>([]);
+    const homeRootFileCount = ref(0);
+    const activeDriveFiles = computed(() => (
+      activeSection.value.kind === 'home' ? homeRootDriveFiles.value : folderDriveFiles.value
+    ));
+    const driveFilesByKey = computed<ReadonlyMap<string, DriveItem>>(() => new Map(activeDriveFiles.value.map((file) => [`drive-file:${file.id}`, file])));
     const selectedDriveFilesOf = (keys: readonly string[]) => keys
       .map((key) => driveFilesByKey.value.get(key))
       .filter((file): file is DriveItem => Boolean(file));
@@ -2899,7 +3697,9 @@ export default defineComponent({
           name: item.name,
         }) as DriveItem);
       }
-      return activeSection.value.kind === 'folder' && activeFolder.value?.role === 'owner' ? selectedDriveFiles.value : [];
+      return (activeSection.value.kind === 'folder' && activeFolder.value?.role === 'owner') || activeSection.value.kind === 'home'
+        ? selectedDriveFiles.value
+        : [];
     });
     /**
      * Files of the open Yandex Disk folder tick the same way (`yandex:<path>`):
@@ -2923,10 +3723,24 @@ export default defineComponent({
       + selectedYandexFiles.value.reduce((sum, file) => sum + (file.size ?? 0), 0)
       + selectedSpaceItems.value.reduce((sum, item) => sum + (item.size ?? 0), 0)
     ));
-    /** Cards on screen that can be ticked, in screen order. */
-    const selectableOnScreen = () => Array.from(
-      dashboardShell.value?.querySelectorAll<HTMLElement>('[data-select-key]') || [],
-    ).map((card) => card.dataset.selectKey!).filter(Boolean);
+    /** Cards and subfolders on screen that can be ticked, in visual DOM order. */
+    const selectableOnScreen = () => {
+      const root = dashboardShell.value;
+      if (!root) return [];
+      const selector = explorerViewMode.value === 'table'
+        ? '[data-explorer-table] [data-select-key]'
+        : '[data-select-key], .subfolder-card[data-select-key]';
+      const seen = new Set<string>();
+      const keys: string[] = [];
+      for (const el of root.querySelectorAll<HTMLElement>(selector)) {
+        if (explorerViewMode.value !== 'table' && el.closest('[data-explorer-table]')) continue;
+        const key = el.dataset.selectKey;
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        keys.push(key);
+      }
+      return keys;
+    };
     const allOnScreenSelected = ref(false);
     watch([selectedKeys, spaceFeedItems], () => {
       void nextTick(() => {
@@ -2934,34 +3748,98 @@ export default defineComponent({
         allOnScreenSelected.value = onScreen.length > 0 && onScreen.every((key) => selectedKeys.value.includes(key));
       });
     });
+    const galleryFocusedPhoto = ref<PhotoFeedItem | null>(null);
+    const pendingExplorerSelectionKeys = ref<string[] | null>(null);
+    const transferredExplorerKeys = ref<Set<string> | null>(null);
+    const pendingScrollToSelectKey = ref<string | null>(null);
     const clearSelection = () => {
       selectedKeys.value = [];
       selectionAnchor = '';
+      transferredExplorerKeys.value = null;
+      pendingScrollToSelectKey.value = null;
     };
     const toggleSelected = (key: string) => {
       selectedKeys.value = toggleSelection(selectedKeys.value, key);
       selectionAnchor = key;
+    };
+    const onWorkspaceSelectionChange = (keys: string[]) => {
+      selectedKeys.value = keys;
+      selectionAnchor = keys.length ? keys[keys.length - 1]! : '';
+      if (keys.length) {
+        sidebarRef.value?.clearTreeSelection?.();
+      }
     };
     const selectAllOnScreen = () => {
       selectedKeys.value = selectAll(selectedKeys.value, selectableOnScreen());
     };
     // Another section, another folder: the selection was of what is gone.
     watch(activeSection, (next) => {
-      clearSelection();
+      if (pendingExplorerSelectionKeys.value && next.kind !== 'gallery') {
+        selectedKeys.value = pendingExplorerSelectionKeys.value;
+        selectionAnchor = pendingExplorerSelectionKeys.value[0] ?? '';
+        pendingExplorerSelectionKeys.value = null;
+      } else {
+        clearSelection();
+      }
+      if (next.kind === 'gallery') {
+        galleryFocusedPhoto.value = null;
+      }
+      layoutPrefs.setHeadroomHidden(false);
+      headroomElevated.value = false;
       if (next.kind !== 'space') {
         spaceFeedItems.value = [];
         activeSpace.value = null;
       }
     });
     // After a reload, whatever no longer exists drops out.
-    watch([itemsBySelectionKey, driveFilesByKey, yandexFilesByKey, spaceItemsByKey], ([items, files, yandex, spaceItems]) => {
-      const known = (key: string) => items.has(key) || files.has(key) || yandex.has(key) || spaceItems.has(key);
+    watch([itemsBySelectionKey, driveFilesByKey, yandexFilesByKey, spaceItemsByKey, allFolderSummaries, allSpaces, transferredExplorerKeys], ([items, files, yandex, spaceItems, folders, spaces]) => {
+      const folderIds = new Set(folders.map((f) => f.id));
+      const spaceIds = new Set(spaces.map((s) => s.id));
+      const known = (key: string) =>
+        items.has(key)
+        || files.has(key)
+        || yandex.has(key)
+        || spaceItems.has(key)
+        || (key.startsWith('folder:') && folderIds.has(key.slice('folder:'.length)))
+        || (key.startsWith('space:') && spaceIds.has(key.slice('space:'.length)))
+        || (key.startsWith('album:') && spaceIds.has(key.slice('album:'.length)))
+        || (activeSection.value.kind === 'yandex' && key.startsWith('yandex:'))
+        || (activeSection.value.kind === 'space' && (key.startsWith('folder:') || key.startsWith('src-q:') || key.startsWith('src-y:') || key.startsWith('y-dir:')))
+        || Boolean(pendingExplorerSelectionKeys.value?.includes(key))
+        || Boolean(transferredExplorerKeys.value?.has(key));
       if (selectedKeys.value.some((key) => !known(key))) {
         selectedKeys.value = selectedKeys.value.filter(known);
       }
     });
+    watch([folderDriveFiles, homeRootDriveFiles, activeSection], () => {
+      const key = pendingScrollToSelectKey.value;
+      if (!key || activeSection.value.kind === 'gallery') return;
+      void nextTick(() => {
+        if (pendingScrollToSelectKey.value !== key) return;
+        const safeKey = key.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+        const selector = explorerViewMode.value === 'table'
+          ? `[data-explorer-table] [data-select-key="${safeKey}"]`
+          : `[data-select-key="${safeKey}"]`;
+        const el = dashboardMain.value?.querySelector<HTMLElement>(selector);
+        if (el) {
+          el.scrollIntoView?.({ block: 'nearest' });
+          if (explorerViewMode.value === 'table') {
+            const tableShell = el.closest<HTMLElement>('[data-explorer-table]');
+            tableShell?.focus?.({ preventScroll: true });
+          } else {
+            el.focus?.({ preventScroll: true });
+          }
+          pendingScrollToSelectKey.value = null;
+          transferredExplorerKeys.value = null;
+        }
+      });
+    });
 
     const { marquee, startMarquee } = useDashboardMarquee({ enabled: isLoggedIn, dashboardShell, selectedKeys });
+    const onDashboardMainPointerDown = (event: PointerEvent) => {
+      if (activeSection.value.kind === 'gallery') return;
+      startMarquee(event);
+    };
     const { cancelLongPress, onSelectionPointerDown, onSelectionPointerMove, onSelectionContextMenu, consumeSwallowNextClick } = useDashboardLongPress({
       enabled: isLoggedIn,
       toggleSelected,
@@ -2975,31 +3853,29 @@ export default defineComponent({
       }
       if (!isLoggedIn) return;
       const target = event.target as HTMLElement | null;
+      // ExplorerTableView, DashboardSpace, and DashboardYandexDisk own their own Click / Ctrl+Click / Shift+Click / double-click semantics.
+      if (target?.closest('[data-explorer-table], [data-space-view], [data-yandex-view]')) return;
       const card = target?.closest<HTMLElement>('[data-select-key]');
       if (!card) return;
       const onBox = Boolean(target?.closest('[data-select-box]'));
-      const withModifier = event.metaKey || event.ctrlKey || event.shiftKey;
-      if (!onBox && !withModifier && !selectedKeys.value.length) return;
-      // The card's own menu and rename field keep working.
-      if (!onBox && target?.closest('.card-manage, .card-menu, .card-title-input')) return;
+      // The card's own menu, pin, share button, and rename field keep working.
+      if (!onBox && target?.closest('.card-manage, .card-menu, .card-pin, .card-title-input, .space-overview-share-btn')) return;
       event.preventDefault();
       event.stopPropagation();
       const key = card.dataset.selectKey!;
-      if (event.shiftKey && selectionAnchor) {
-        selectedKeys.value = selectRange(selectedKeys.value, selectableOnScreen(), selectionAnchor, key);
-      } else {
+      if (event.shiftKey) {
+        const onScreen = selectableOnScreen();
+        const anchor = selectionAnchor && onScreen.includes(selectionAnchor) ? selectionAnchor : onScreen[0] || key;
+        selectionAnchor = anchor;
+        selectedKeys.value = selectRange(selectedKeys.value, onScreen, anchor, key);
+      } else if (onBox || event.metaKey || event.ctrlKey) {
         toggleSelected(key);
+      } else {
+        selectedKeys.value = [key];
+        selectionAnchor = key;
+        sidebarRef.value?.clearTreeSelection?.();
       }
     };
-    const onSelectionKeydown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || !selectedKeys.value.length) return;
-      if (folderModal.value.open || openControlMenu.value || openMenuCanvasId.value) return;
-      clearSelection();
-    };
-    onMounted(() => window.addEventListener('keydown', onSelectionKeydown));
-    onBeforeUnmount(() => {
-      window.removeEventListener('keydown', onSelectionKeydown);
-    });
     // Android's Back clears the selection before it leaves the folder.
     useBackHandler(() => {
       if (!selectedKeys.value.length) return false;
@@ -3077,7 +3953,7 @@ export default defineComponent({
     };
     const archiveSpaceItem = async (item: SpaceFeedItem, taken: Set<string>, signal?: AbortSignal): Promise<ArchiveFile> => {
       if (item.origin === 'yandex') {
-        if (!spaceId.value || !item.path) throw new Error('Missing Yandex item path');
+        if (!spaceId.value || !item.path || !item.sourceId) throw new Error('Missing Yandex item path');
         const { href } = await spacesApi.yandexDownload(spaceId.value, item.sourceId, item.path);
         const response = await fetch(href, signal ? { signal } : undefined);
         if (!response.ok) throw new Error(`${response.status}`);
@@ -3138,6 +4014,10 @@ export default defineComponent({
     const openYandexPath = (path: string) => {
       selectDashboardSection({ kind: 'yandex', path });
     };
+    const onYandexDiskChanged = () => {
+      yandexRefreshKey.value += 1;
+      invalidateYandexMediaLibrary();
+    };
     const openYandexMove = (sources: string[]) => {
       closeCardMenu();
       const first = sources[0];
@@ -3166,6 +4046,7 @@ export default defineComponent({
       if (!moved) return;
       clearSelection();
       yandexRefreshKey.value += 1;
+      invalidateYandexMediaLibrary();
       // The open folder itself moved: follow it.
       const open = yandexPath.value;
       const followed = open && move.sources.find((source) => open === source || open.startsWith(`${source}/`));
@@ -3174,11 +4055,47 @@ export default defineComponent({
     // ----- shared spaces: a section of their own
     const spaceView = ref<InstanceType<typeof DashboardSpace> | null>(null);
     const spaceId = computed(() => (activeSection.value.kind === 'space' ? activeSection.value.spaceId : null));
+    const activeSpaceFolderId = computed(() => (
+      activeSection.value.kind === 'space' ? (activeSection.value.folderId ?? null) : null
+    ));
+    const activeSpaceYandexSourceId = computed(() => (
+      activeSection.value.kind === 'space' ? (activeSection.value.yandexSourceId ?? null) : null
+    ));
+    const activeSpaceYandexSubpath = computed(() => (
+      activeSection.value.kind === 'space' ? (activeSection.value.yandexSubpath ?? null) : null
+    ));
+    const onNavigateSpaceFolder = (payload: {
+      folderId?: string | null;
+      yandexSourceId?: string | null;
+      yandexSubpath?: string | null;
+    }) => {
+      if (activeSection.value.kind !== 'space') return;
+      const next: DashboardSection = {
+        kind: 'space',
+        spaceId: activeSection.value.spaceId,
+        ...(payload.folderId ? { folderId: payload.folderId } : {}),
+        ...(payload.yandexSourceId
+          ? { yandexSourceId: payload.yandexSourceId, yandexSubpath: payload.yandexSubpath ?? '' }
+          : {}),
+      };
+      clearSelection();
+      selectDashboardSection(next);
+    };
     const { load: loadSpaces } = useSpaces();
     onMounted(() => {
       if (isLoggedIn) {
         void loadSpaces();
         void loadYandexStatus();
+        if (typeof driveApi.listDevices === 'function') {
+          void driveApi.listDevices().then((list) => {
+            devicesPaired.value = Array.isArray(list) && list.length > 0;
+            devicesOnlineCount.value = Array.isArray(list)
+              ? list.filter((d) => Boolean((d as { online?: boolean; status?: string }).online || (d as { status?: string }).status === 'online')).length
+              : 0;
+          }).catch(() => {
+            // Device status indicator stays quiet if endpoint is unavailable.
+          });
+        }
       }
     });
     const createSpace = async () => {
@@ -3215,16 +4132,26 @@ export default defineComponent({
      * `?folder=<id>` a folder - the old Q Space pages (/drive/trash,
      * /drive/<folder>) land here. Read once, then dropped from the address.
      */
-    const takeAddressSection = () => {
-      if (!isLoggedIn) return;
+    const takeAddressSection = (): boolean => {
+      if (!isLoggedIn) return false;
       const query = router.currentRoute?.value?.query ?? {};
       const section = typeof query.section === 'string' ? query.section : '';
+      const activity = typeof query.activity === 'string' ? query.activity : '';
       const folder = typeof query.folder === 'string' ? query.folder : '';
-      if (!section && !folder) return;
+      const querySpaceId = typeof query.spaceId === 'string' ? query.spaceId : '';
+      if (!section && !activity && !folder && !querySpaceId) return false;
       if (section === 'trash') selectDashboardSection({ kind: 'trash' });
-      else if (folder) selectFolder(folder);
-      const { section: _section, folder: _folder, ...rest } = query;
+      else if (section === 'gallery' || activity === 'gallery') selectDashboardSection({ kind: 'gallery' });
+      else if (querySpaceId) {
+        selectDashboardSection({
+          kind: 'space',
+          spaceId: querySpaceId,
+          ...(folder ? { folderId: folder } : {}),
+        });
+      } else if (folder) selectFolder(folder);
+      const { section: _section, activity: _activity, folder: _folder, spaceId: _spaceId, ...rest } = query;
       void router.replace({ query: rest });
+      return true;
     };
 
     /**
@@ -3270,55 +4197,290 @@ export default defineComponent({
       selectDashboardSection({ kind: 'recent' });
     };
 
-    // ----- pictures and videos full screen: the folder's, from the one clicked
-    const mediaViewer = ref<{ items: MediaViewerItem[]; start: number } | null>(null);
-    const yandexViewerItem = (file: YandexItem): MediaViewerItem => ({
-      key: `yandex:${file.path}`,
+    // ----- pictures and videos full screen: unified onto PhotoViewer.vue
+    const mediaViewer = ref<{ items: ViewerMediaItem[]; start: number; source: 'drive' | 'yandex' | 'space' } | null>(null);
+    const mediaViewerCurrent = computed<ViewerMediaItem | null>(() => {
+      const state = mediaViewer.value;
+      if (!state || !state.items.length) return null;
+      return state.items[Math.max(0, Math.min(state.start, state.items.length - 1))] ?? null;
+    });
+    const mediaViewerIsQspaceFile = computed(() => {
+      const state = mediaViewer.value;
+      const cur = mediaViewerCurrent.value;
+      if (!state || !cur) return false;
+      if (state.source === 'yandex' || cur.noReferrer) return false;
+      return Boolean(cur.fileId && !cur.fileId.startsWith('y:') && !cur.fileId.startsWith('/'));
+    });
+    const mediaViewerIsYandexFile = computed(() => {
+      const cur = mediaViewerCurrent.value;
+      if (!cur) return false;
+      return Boolean(cur.fileId && (cur.fileId.startsWith('yandex:') || cur.noReferrer));
+    });
+    const mediaViewerCanFavorite = computed(() => mediaViewerIsQspaceFile.value || mediaViewerIsYandexFile.value);
+    const mediaViewerCanShare = computed(() => mediaViewerIsQspaceFile.value);
+    const mediaViewerCanDelete = computed(() => mediaViewerIsQspaceFile.value);
+    const mediaViewerCanInfo = computed(() => mediaViewerIsQspaceFile.value);
+    const yandexViewerItem = (file: YandexItem): ViewerMediaItem => ({
+      fileId: `yandex:${file.path}`,
+      hash: '',
       name: file.name,
-      kind: file.mediaType === 'video' ? 'video' : 'image',
-      date: file.modifiedAt,
-      preview: yandexPreviewUrl(file),
-      loadFull: async () => (await yandexDisk.downloadLink(file.path)).href,
-      download: () => downloadYandexFile(file),
+      mime: file.mime || (file.mediaType === 'video' ? 'video/*' : 'image/*'),
+      kind: file.mediaType === 'video' ? 'video' : 'photo',
+      processed: false,
+      takenAt: file.modifiedAt ?? null,
+      localTakenAt: file.modifiedAt ?? null,
+      width: null,
+      height: null,
+      durationSec: null,
+      bytes: file.size ?? 0,
+      folderId: null,
+      favorite: layoutPrefs.isFavorite(`yandex:${file.path}`),
+      albumIds: [],
+      thumbhash: null,
+      share: null,
+      previewSrc: yandexPreviewUrl(file),
+      resolveOriginalUrl: async () => (await yandexDisk.downloadLink(file.path)).href,
+      downloadAction: () => downloadYandexFile(file),
+      noReferrer: true,
+      sizeBytes: file.size ?? undefined,
+      mimeType: file.mime ?? undefined,
     });
     /** Card pictures the folder's files found (hub-made for HEIC, RAW, videos): the viewer starts on them. */
     const folderDrivePreviews = ref<Readonly<Record<string, string>>>({});
-    const driveViewerItem = (file: { id: string; name: string; updatedAt?: string | null; kind?: 'image' | 'video' }): MediaViewerItem => ({
-      key: `drive-file:${file.id}`,
-      name: file.name,
-      kind: file.kind ?? 'image',
-      date: file.updatedAt ?? null,
-      preview: folderDrivePreviews.value[file.id] ?? null,
-      loadFull: async () => resolveDownloadUrl((await driveApi.getDownloadLink(file.id)).url),
-      download: async () => {
-        try {
-          await downloadDriveFile(file.id, file.name);
-        } catch (error) {
-          setFeedback('error', error instanceof Error && error.message ? error.message : t('driveDownloadLinkFailed'));
-        }
-      },
-    });
+    const driveViewerItem = (
+      file: Partial<DriveItem> & { id: string; name: string; updatedAt?: string | null; kind?: DriveItem['kind'] | 'image' | 'video' },
+    ): ViewerMediaItem => {
+      const kindStr = String(file.kind ?? '');
+      const isVid = kindStr === 'video' || (kindStr !== 'image' && kindStr !== 'photo' && isVideoFile(file as DriveItem));
+      const hash = file.hash || (file as { sha256?: string }).sha256 || '';
+      const takenAt = (file as { takenAt?: string | null }).takenAt ?? file.updatedAt ?? file.sortDate ?? null;
+      return {
+        fileId: file.id,
+        hash,
+        name: file.name,
+        mime: file.mime || (isVid ? 'video/*' : 'image/*'),
+        kind: isVid ? 'video' : 'photo',
+        processed: Boolean(hash),
+        takenAt,
+        localTakenAt: takenAt,
+        width: (file as { width?: number | null }).width ?? null,
+        height: (file as { height?: number | null }).height ?? null,
+        durationSec: (file as { durationSec?: number | null }).durationSec ?? null,
+        bytes: file.sizeBytes ?? 0,
+        folderId: file.folderId ?? file.parentId ?? null,
+        favorite: layoutPrefs.isFavorite(`drive-file:${file.id}`),
+        albumIds: [],
+        thumbhash: null,
+        share: null,
+        previewSrc: folderDrivePreviews.value[file.id] ?? null,
+        resolveOriginalUrl: async () => resolveDownloadUrl((await driveApi.getDownloadLink(file.id)).url),
+        downloadAction: async () => {
+          try {
+            await downloadDriveFile(file.id, file.name);
+          } catch (error) {
+            setFeedback('error', error instanceof Error && error.message ? error.message : t('driveDownloadLinkFailed'));
+          }
+        },
+        sizeBytes: file.sizeBytes ?? undefined,
+        mimeType: file.mime ?? undefined,
+      };
+    };
     const isDriveMedia = (file: DriveItem) => isPictureFile(file) || isVideoFile(file);
     const isYandexMedia = (item: YandexItem) => item.mediaType === 'image' || item.mediaType === 'video';
     /** A picture or a video of a Yandex folder: the folder's pictures and videos, from it. */
     const openYandexImage = (file: YandexItem) => {
       const media = yandexFiles.value.filter(isYandexMedia);
       const list = media.some((item) => item.path === file.path) ? media : [file];
-      mediaViewer.value = { items: list.map(yandexViewerItem), start: list.findIndex((item) => item.path === file.path) };
+      mediaViewer.value = {
+        items: list.map(yandexViewerItem),
+        start: Math.max(0, list.findIndex((item) => item.path === file.path)),
+        source: 'yandex',
+      };
+    };
+    const openDriveMediaList = (list: DriveItem[], startIndex: number) => {
+      if (!list.length) return;
+      mediaViewer.value = {
+        items: list.map((item) => driveViewerItem(item)),
+        start: Math.max(0, Math.min(startIndex, list.length - 1)),
+        source: 'drive',
+      };
     };
     /** A picture or a video of a QCanva folder: the folder's pictures and videos, from it. */
     const openDriveImage = (file: DriveItem) => {
-      const media = folderDriveFiles.value.filter(isDriveMedia);
+      const media = activeDriveFiles.value.filter(isDriveMedia);
       const list = media.some((item) => item.id === file.id) ? media : [file];
+      openDriveMediaList(list, list.findIndex((item) => item.id === file.id));
+    };
+    const openSpaceMedia = (items: SpaceMediaViewerItem[], start: number) => {
+      if (!items.length) return;
+      const mapped: ViewerMediaItem[] = items.map((item) => {
+        const isYandex = Boolean(item.noReferrer || item.origin === 'yandex' || item.key.startsWith('y:'));
+        const fileId = item.fileId || (isYandex ? item.key : item.key.replace(/^q:file:/, ''));
+        return {
+          fileId,
+          hash: '',
+          name: item.name,
+          mime: item.mimeType || (item.kind === 'video' ? 'video/*' : 'image/*'),
+          kind: item.kind === 'video' ? 'video' : 'photo',
+          processed: false,
+          takenAt: item.date ?? null,
+          localTakenAt: item.date ?? null,
+          width: null,
+          height: null,
+          durationSec: null,
+          bytes: item.sizeBytes ?? 0,
+          folderId: null,
+          favorite: isYandex
+            ? Boolean(fileId && layoutPrefs.isFavorite(fileId.startsWith('yandex:') ? fileId : `yandex:${fileId}`))
+            : (Boolean(fileId) && layoutPrefs.isFavorite(`drive-file:${fileId}`)),
+          albumIds: spaceId.value ? [spaceId.value] : [],
+          thumbhash: null,
+          share: null,
+          previewSrc: item.preview ?? null,
+          resolveOriginalUrl: async () => (await item.loadFull()) ?? '',
+          downloadAction: item.download,
+          noReferrer: isYandex,
+          sizeBytes: item.sizeBytes ?? undefined,
+          mimeType: item.mimeType ?? undefined,
+        };
+      });
       mediaViewer.value = {
-        items: list.map((item) => driveViewerItem({ ...item, kind: isVideoFile(item) ? 'video' : 'image' })),
-        start: list.findIndex((item) => item.id === file.id),
+        items: mapped,
+        start: Math.max(0, Math.min(start, mapped.length - 1)),
+        source: 'space',
       };
+    };
+    const onMediaViewerPrev = () => {
+      if (mediaViewer.value && mediaViewer.value.start > 0) {
+        mediaViewer.value.start -= 1;
+      }
+    };
+    const onMediaViewerNext = () => {
+      if (mediaViewer.value && mediaViewer.value.start < mediaViewer.value.items.length - 1) {
+        mediaViewer.value.start += 1;
+      }
+    };
+    const onMediaViewerJump = (index: number) => {
+      if (!mediaViewer.value) return;
+      if (index >= 0 && index < mediaViewer.value.items.length) {
+        mediaViewer.value.start = index;
+      }
+    };
+    const onMediaViewerToggleFavorite = async () => {
+      const state = mediaViewer.value;
+      const cur = mediaViewerCurrent.value;
+      if (!state || !cur) return;
+      if (mediaViewerIsYandexFile.value) {
+        const favKey = cur.fileId.startsWith('yandex:') ? cur.fileId : `yandex:${cur.fileId}`;
+        const nextFav = !cur.favorite;
+        if (layoutPrefs.isFavorite(favKey) !== nextFav) {
+          layoutPrefs.toggleFavorite(favKey);
+        }
+        state.items[state.start] = { ...cur, favorite: nextFav };
+        return;
+      }
+      if (!mediaViewerIsQspaceFile.value) return;
+      const nextFav = !cur.favorite;
+      const key = `drive-file:${cur.fileId}`;
+      rememberedFavoriteMeta[key] = { id: cur.fileId, name: cur.name, kind: 'drive-file' };
+      if (layoutPrefs.isFavorite(key) !== nextFav) {
+        layoutPrefs.toggleFavorite(key);
+      }
+      state.items[state.start] = { ...cur, favorite: nextFav };
+      try {
+        await photosApi.edit(cur.fileId, { favorite: nextFav });
+      } catch {
+        // Non-indexed files still persist favorite state in layoutPrefs.
+      }
+    };
+    const onMediaViewerPanelChanged = (change: { fileId: string; favorite?: boolean; albumIds?: string[] }) => {
+      const state = mediaViewer.value;
+      if (!state) return;
+      const idx = state.items.findIndex((item) => item.fileId === change.fileId);
+      if (idx < 0) return;
+      const prev = state.items[idx]!;
+      const nextItem: ViewerMediaItem = {
+        ...prev,
+        ...(change.favorite !== undefined ? { favorite: change.favorite } : {}),
+        ...(change.albumIds !== undefined ? { albumIds: change.albumIds } : {}),
+      };
+      state.items[idx] = nextItem;
+      if (change.favorite !== undefined) {
+        if (prev.noReferrer || change.fileId.startsWith('yandex:')) {
+          const favKey = change.fileId.startsWith('yandex:') ? change.fileId : `yandex:${change.fileId}`;
+          if (layoutPrefs.isFavorite(favKey) !== change.favorite) {
+            layoutPrefs.toggleFavorite(favKey);
+          }
+        } else {
+          const key = `drive-file:${change.fileId}`;
+          rememberedFavoriteMeta[key] = { id: change.fileId, name: prev.name, kind: 'drive-file' };
+          if (layoutPrefs.isFavorite(key) !== change.favorite) {
+            layoutPrefs.toggleFavorite(key);
+          }
+        }
+      }
+      if (change.albumIds !== undefined) {
+        void loadSpaces(true);
+        void spaceView.value?.reload?.();
+      }
+    };
+    const onMediaViewerShare = async () => {
+      const cur = mediaViewerCurrent.value;
+      if (!cur || !mediaViewerIsQspaceFile.value) return;
+      await onGallerySharePhotos([cur.fileId]);
+    };
+    const onMediaViewerSelectTag = (tag: string) => {
+      mediaViewer.value = null;
+      onSearchSelectTag(tag);
+    };
+    const onMediaViewerDelete = async () => {
+      const state = mediaViewer.value;
+      const cur = mediaViewerCurrent.value;
+      if (!state || !cur || !mediaViewerIsQspaceFile.value) return;
+      const confirmed = await confirmDialog({
+        title: t('yandexDeleteTitle').replace('{name}', cur.name || t('untitled')),
+        confirmLabel: t('delete'),
+        cancelLabel: t('cancel'),
+        danger: true,
+      });
+      if (!confirmed) return;
+      try {
+        await driveApi.trashFile(cur.fileId);
+        const nextItems = state.items.filter((_, idx) => idx !== state.start);
+        if (!nextItems.length) {
+          mediaViewer.value = null;
+        } else {
+          mediaViewer.value = {
+            ...state,
+            items: nextItems,
+            start: Math.min(state.start, nextItems.length - 1),
+          };
+        }
+        setFeedback('success', t('deletedNamed').replace('{title}', cur.name || t('untitled')));
+        folderFilesRefreshKey.value += 1;
+        sidebarDriveFiles.forget();
+        refreshFolderFileCounts();
+        void spaceView.value?.reload?.();
+        void loadSpaces(true);
+        (galleryViewRef.value as { refresh?: (opts?: { clearSelection?: boolean; invalidateFolders?: boolean }) => void } | null)?.refresh?.({ clearSelection: true, invalidateFolders: true });
+        gallerySidebarRef.value?.invalidateFolderFilesCache?.();
+        void load({ showLoading: false });
+      } catch (error) {
+        setFeedback('error', error instanceof Error && error.message ? error.message : t('spaceActionFailed'));
+      }
     };
     /** A file of the sidebar's Yandex tree: a picture or a video opens, a Markdown file opens as a document, anything else downloads. */
     const openYandexSidebarFile = (item: YandexItem) => {
       mobileSidebarOpen.value = false;
-      if (isYandexMedia(item)) mediaViewer.value = { items: [yandexViewerItem(item)], start: 0 };
+      if (isYandexMedia(item)) {
+        const siblings = yandexFiles.value.filter(isYandexMedia);
+        const list = siblings.some((s) => s.path === item.path) ? siblings : [item];
+        mediaViewer.value = {
+          items: list.map(yandexViewerItem),
+          start: Math.max(0, list.findIndex((s) => s.path === item.path)),
+          source: 'yandex',
+        };
+      }
       else if (isMarkdownFile(item)) openYandexMarkdown(item);
       else void downloadYandexFile(item);
     };
@@ -3340,6 +4502,7 @@ export default defineComponent({
       const created = await textDocuments.create({ title, folderId });
       await textDocuments.replaceContent(created.id, { html: marked.parse(content, { async: false }) as string });
       rememberCreatedResource('text-document', created);
+      recordDashboardReturnOrigin();
       router.push(`/docs/${created.slug || created.id}`);
     };
     const openDriveMarkdown = (file: { id: string; name: string; updatedAt?: string | null; folderId?: string | null }) => {
@@ -3435,14 +4598,15 @@ export default defineComponent({
         start: () => uploadYandexFile(joinYandexPath(path, file.name), file, (percent) => setUploadProgress(id, percent)),
       })));
       yandexRefreshKey.value += 1;
+      invalidateYandexMediaLibrary();
     };
     /** Back from Yandex's consent page: `?space=yandex&yandex=connected|error`. */
-    const takeYandexReturn = () => {
-      if (typeof window === 'undefined') return;
+    const takeYandexReturn = (): boolean => {
+      if (typeof window === 'undefined') return false;
       const url = new URL(window.location.href);
       const space = url.searchParams.get('space');
       const result = url.searchParams.get('yandex');
-      if (space !== 'yandex' && !result) return;
+      if (space !== 'yandex' && !result) return false;
       if (isLoggedIn) activeSection.value = { kind: 'yandex', path: '/' };
       if (result === 'connected') setFeedback('success', t('yandexConnected'));
       else if (result === 'error') setFeedback('error', url.searchParams.get('reason') === 'denied' ? t('yandexConnectDenied') : t('yandexConnectFailed'));
@@ -3451,6 +4615,7 @@ export default defineComponent({
       const query = Object.fromEntries(url.searchParams.entries());
       if (typeof router?.replace === 'function') void router.replace({ query });
       else window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+      return true;
     };
 
     /**
@@ -3551,7 +4716,7 @@ export default defineComponent({
       if (!files.length) return;
       const folderId = await resolveCreateFolderId(explicitFolderId);
       if (!folderId) return;
-      if (!ownResourceFolders.value.some((folder) => folder.id === folderId)) {
+      if (folderId !== 'root' && !ownResourceFolders.value.some((folder) => folder.id === folderId)) {
         await refreshFoldersQuietly();
       }
       const batch = files.map((file) => ({
@@ -3580,6 +4745,9 @@ export default defineComponent({
       })));
       folderFilesRefreshKey.value += 1;
       refreshFolderFileCounts();
+      if (activeSection.value.kind === 'gallery') {
+        refreshGalleryView();
+      }
     };
 
     const transferStatusText = computed(() => {
@@ -3649,18 +4817,18 @@ export default defineComponent({
         ? await runAction(
           `pin-canvas-${item.id}`,
           () => canvas.update(item.id, { pinned: nextPinned }),
-          nextPinned ? 'Canvas pinned' : 'Canvas unpinned',
+          nextPinned ? t('canvasPinned') : t('canvasUnpinned'),
         )
         : item.type === 'html-document'
           ? await runAction(
             `pin-html-document-${item.id}`,
             () => htmlDocuments.update(item.id, { pinned: nextPinned }),
-            nextPinned ? 'HTML pinned' : 'HTML unpinned',
+            nextPinned ? t('htmlPinned') : t('htmlUnpinned'),
           )
           : await runAction(
             `pin-text-document-${item.id}`,
             () => textDocuments.update(item.id, { pinned: nextPinned }),
-            nextPinned ? 'Document pinned' : 'Document unpinned',
+            nextPinned ? t('documentPinned') : t('documentUnpinned'),
           );
       if (!updated) return;
       if (item.type === 'canvas') {
@@ -3874,8 +5042,25 @@ export default defineComponent({
     /** A folder named in the dialog's Folder step: inside Where, or at the top. */
     const onAddCreateFolder = async (name: string, folderId: string) => {
       closeAddDialog();
-      const created = await runAction('create-folder', () => resourceFolders.create(name, folderId || null), `Folder ${name} created`);
-      if (created) await load({ showLoading: false });
+      const created = await runAction('create-folder', () => resourceFolders.create(name, folderId || null), t('folderCreatedNamed').replace('{name}', name));
+      if (created) {
+        await load({ showLoading: false });
+        galleryViewRef.value?.refresh?.({ clearSelection: false, invalidateFolders: true });
+        gallerySidebarRef.value?.invalidateFolderFilesCache?.();
+      }
+    };
+    /** An album named in the dialog's 6th Album tile: creates a unified space and opens it. */
+    const onAddCreateAlbum = async (name: string) => {
+      const trimmed = name.trim();
+      if (!trimmed) return;
+      closeAddDialog();
+      try {
+        const space = await spacesApi.create(trimmed);
+        await loadSpaces(true);
+        selectDashboardSection({ kind: 'space', spaceId: space.id });
+      } catch (error) {
+        setFeedback('error', error instanceof Error && error.message ? error.message : t('spaceActionFailed'));
+      }
     };
     /** Files the dialog checked: to the Drive, or each one a canvas / an HTML document. */
     const onAddImport = async (kind: ImportKind, files: File[], folderId: string) => {
@@ -3889,24 +5074,27 @@ export default defineComponent({
           const title = importTitle(file.name);
           const text = await file.text();
           if (kind === 'html') {
-            const doc = await runAction('import-html-document', () => htmlDocuments.create({ title, html: text, folderId: target }), `Imported ${title}`);
+            const doc = await runAction('import-html-document', () => htmlDocuments.create({ title, html: text, folderId: target }), t('importedNamed').replace('{title}', title));
             if (doc) opened.push(`/edit/html/${doc.id}`);
           } else if (kind === 'markdown') {
             const doc = await runAction('import-text-document', async () => {
               const created = await textDocuments.create({ title, folderId: target });
               await textDocuments.replaceContent(created.id, { html: marked.parse(text, { async: false }) as string });
               return created;
-            }, `Imported ${title}`);
+            }, t('importedNamed').replace('{title}', title));
             if (doc) opened.push(`/docs/${doc.slug || doc.id}`);
           } else {
-            const created = await runAction('import-canvas', () => canvas.create(title, JSON.stringify(JSON.parse(text)), target), `Imported ${title}`);
+            const created = await runAction('import-canvas', () => canvas.create(title, JSON.stringify(JSON.parse(text)), target), t('importedNamed').replace('{title}', title));
             if (created) opened.push(`/canvas/${created.id}`);
           }
         }
       } catch (error) {
         console.error('Failed to import file:', error);
       }
-      if (opened.length === 1) router.push(opened[0]!);
+      if (opened.length === 1) {
+        recordDashboardReturnOrigin();
+        router.push(opened[0]!);
+      }
       else if (opened.length) await load({ showLoading: false });
     };
 
@@ -3923,25 +5111,52 @@ export default defineComponent({
       && !templatePickerOpen.value
       && !mediaViewer.value
       && !yandexMove.value
-      && (isHomeFeed.value || canDropToActiveFolder.value),
+      && (
+        isHomeFeed.value
+        || activeSection.value.kind === 'home'
+        || (activeSection.value.kind === 'gallery' && gallerySection.value !== 'trash')
+        || canDropToActiveFolder.value
+      ),
     ));
 
-    const externalDropLabel = computed(() => (
-      canDropToActiveFolder.value && activeFolder.value
-        ? t('dashboardDropFilesIntoFolder').replace('{folder}', activeFolder.value.name)
-        : t('driveDropFilesHere')
-    ));
+    const externalDropLabel = computed(() => {
+      if (canDropToActiveFolder.value && activeFolder.value) {
+        return t('dashboardDropFilesIntoFolder').replace('{folder}', activeFolder.value.name);
+      }
+      if (activeSection.value.kind === 'gallery' && galleryFolderId.value && galleryFolderId.value !== 'root') {
+        const galleryFolder = allResourceFolders.value.find((f) => f.id === galleryFolderId.value);
+        if (galleryFolder) {
+          return t('dashboardDropFilesIntoFolder').replace('{folder}', galleryFolder.name);
+        }
+      }
+      return t('driveDropFilesHere');
+    });
 
-    const isInternalDashboardDrag = (event: DragEvent) => Boolean(
-      draggingResourceId.value
-      || folderDragId.value
-      || Array.from(event.dataTransfer?.types || []).includes('application/x-qcanva-folder'),
-    );
+    const isInternalDashboardDrag = (event: DragEvent) => {
+      const types = Array.from(event.dataTransfer?.types || []);
+      return Boolean(
+        draggingResourceId.value
+        || folderDragId.value
+        || groupDnd.activeDrag.value
+        || types.includes('application/x-qcanva-folder')
+        || types.includes(GROUP_DND_MIME)
+        || types.includes('application/x-qspace-group-drag'),
+      );
+    };
 
     const uploadDroppedFiles = async (files: File[]) => {
       if (!files.length || !canDropExternalFiles.value) return;
       if (canDropToActiveFolder.value && activeFolder.value) {
         await uploadFiles(files, activeFolder.value.id);
+        return;
+      }
+      if (activeSection.value.kind === 'home') {
+        await uploadFiles(files, 'root');
+        return;
+      }
+      if (activeSection.value.kind === 'gallery') {
+        const target = galleryFolderId.value && galleryFolderId.value !== 'root' ? galleryFolderId.value : 'root';
+        await uploadFiles(files, target);
         return;
       }
       if (isHomeFeed.value) {
@@ -3957,11 +5172,22 @@ export default defineComponent({
       onDragOver: onExternalDragOver,
       onDragLeave: onExternalDragLeave,
       onDrop: onExternalDrop,
+      reset: resetExternalDropzone,
     } = useDriveDropzone({
       enabled: canDropExternalFiles,
       ignoreEvent: isInternalDashboardDrag,
       handleFilesUpload: uploadDroppedFiles,
     });
+
+    const onDropExternalFilesToFolder = async (folderId: string | null, files: File[]) => {
+      resetExternalDropzone();
+      if (!isLoggedIn || !files.length) return;
+      if (folderId) {
+        const target = allResourceFolders.value.find((f) => f.id === folderId);
+        if (target && target.role !== 'owner') return;
+      }
+      await uploadFiles(files, folderId ?? 'root');
+    };
 
     /** "+ Add" in an empty section: a folder for Folders, the template picker for Templates, else the Add dialog. */
     const openAddFromTile = (section: 'recent' | 'folders' | 'shared' | 'interactive' | 'public' | 'folder') => {
@@ -4006,7 +5232,16 @@ export default defineComponent({
 
     const selectSortMode = (mode: typeof sortMode.value) => {
       sortMode.value = mode;
+      sortSyncSeq.value += 1;
       openControlMenu.value = '';
+    };
+
+    const onExplorerTableSort = (col: ExplorerSortCol, dir: ExplorerSortDir) => {
+      if (col === 'name') {
+        sortMode.value = dir === 'asc' ? 'title-asc' : 'title-desc';
+      } else if (col === 'updatedAt') {
+        sortMode.value = dir === 'asc' ? 'updated-asc' : 'updated-desc';
+      }
     };
 
     /**
@@ -4048,7 +5283,7 @@ export default defineComponent({
       await runAction(
         `access-request-${id}`,
         () => accessRequests.resolve(id, status),
-        status === 'approved' ? 'Access approved' : 'Access declined',
+        status === 'approved' ? t('accessApproved') : t('accessDeclined'),
       );
       await load();
     };
@@ -4066,12 +5301,16 @@ export default defineComponent({
     const subfolderCounts = computed(() => childFolderCounts(allResourceFolders.value.map(({ id, parentId }) => ({ id, parentId }))));
     const folderLatest = computed(() => folderLatestChange(allFolderSummaries.value));
 
-    /** Direct children of the folder currently open, shown ahead of its items. */
+    /** Direct children of the folder currently open (or global folders on global search), shown ahead of its items. */
     const activeSubfolders = computed(() => {
       const parentId = activeFolder.value?.id;
       if (!parentId) return [];
+      if (s2TypeFilter.value !== 'all' && s2TypeFilter.value !== 'folder') return [];
+      const needle = searchQuery.value.trim().toLocaleLowerCase();
+      const isGlobalSearch = s2ScopeMode.value === 'global' && (Boolean(needle) || s2TypeFilter.value !== 'all');
       return allResourceFolders.value
-        .filter((folder) => (folder.parentId ?? null) === parentId)
+        .filter((folder) => (isGlobalSearch ? true : (folder.parentId ?? null) === parentId))
+        .filter((folder) => !needle || folder.name.toLocaleLowerCase().includes(needle))
         .map((folder) => ({
           id: folder.id,
           name: folder.name,
@@ -4088,9 +5327,10 @@ export default defineComponent({
     });
 
     /** True once any of search/type/tags actually narrows the result set. */
-    const hasActiveFilter = computed(() => Boolean(searchQuery.value.trim() || selectedTags.value.length || contentTypes.value.length));
+    const hasActiveFilter = computed(() => Boolean(searchQuery.value.trim() || s2TypeFilter.value !== 'all' || selectedTags.value.length || contentTypes.value.length));
     const resetFilters = () => {
       searchQuery.value = '';
+      s2TypeFilter.value = 'all';
       selectedTags.value = [];
       contentTypes.value = [];
     };
@@ -4238,6 +5478,7 @@ export default defineComponent({
       closeFolderParentModal();
       if (parentId) expandTree(parentId);
       await load();
+      refreshGalleryView({ clearSelection: false, invalidateFolders: true });
     };
 
     // ---- resource descriptions ----
@@ -4334,10 +5575,7 @@ export default defineComponent({
      */
     const restoreSelectedFolder = () => {
       const isKnown = (id: string) =>
-        Boolean(id) && (
-          allResourceFolders.value.some((folder) => folder.id === id)
-          || (id === 'legacy-resource-inbox' && legacyInboxSourceItems.value.length > 0)
-        );
+        Boolean(id) && allResourceFolders.value.some((folder) => folder.id === id);
       const syncActiveFolderSection = () => {
         if (activeSection.value.kind !== 'folder') return;
         activeSection.value = selectedFolderId.value
@@ -4345,6 +5583,7 @@ export default defineComponent({
           : { kind: 'recent' };
       };
       if (isKnown(selectedFolderId.value)) {
+        expandAncestorsOf(selectedFolderId.value);
         syncActiveFolderSection();
         return;
       }
@@ -4357,7 +5596,7 @@ export default defineComponent({
         syncActiveFolderSection();
         return;
       }
-      const fallback = allFolderSummaries.value[0]?.id || (legacyInboxSourceItems.value.length ? 'legacy-resource-inbox' : '');
+      const fallback = allFolderSummaries.value[0]?.id || '';
       selectedFolderId.value = fallback;
       syncActiveFolderSection();
       // A stale pointer is cleared so it cannot keep losing the race with the
@@ -4366,22 +5605,33 @@ export default defineComponent({
     };
 
     const selectFolder = (folderId: string) => {
+      clearDashboardReturnOrigin();
       activeSection.value = { kind: 'folder', folderId };
       selectedFolderId.value = folderId;
       expandAncestorsOf(folderId);
       writeLastFolderId(folderId);
+      layoutPrefs.setLastExplorerRoute({ kind: 'folder', folderId });
       closeCardMenu();
     };
 
     const isTechnicalFolder = (folder: { id: string; name: string }) =>
-      folder.id === 'legacy-resource-inbox'
-      || folder.name === 'Unsorted'
+      folder.name === 'Unsorted'
       || folder.name.toLowerCase() === 'default';
 
     const selectDashboardSection = (section: DashboardSection) => {
+      clearDashboardReturnOrigin();
       activeSection.value = section;
-      if (section.kind === 'folder') selectFolder(section.folderId);
-      else closeCardMenu();
+      if (section.kind === 'folder') {
+        selectFolder(section.folderId);
+      } else {
+        if (section.kind === 'home') {
+          selectedFolderId.value = '';
+        }
+        if (section.kind !== 'recent' && section.kind !== 'gallery') {
+          layoutPrefs.setLastExplorerRoute(section);
+        }
+        closeCardMenu();
+      }
       mobileSidebarOpen.value = false;
     };
 
@@ -4391,17 +5641,19 @@ export default defineComponent({
      * own - the feed always shows them all, one under the other, empty or
      * not. A guest has no feed: their dashboard is Public itself.
      */
-    const FEED_SIDEBAR_SECTIONS = ['recent', 'spaces', 'shared', 'interactive', 'public'] as const;
+    const FEED_SIDEBAR_SECTIONS = ['recent', 'spaces', 'interactive'] as const;
     const onSidebarSelect = async (section: DashboardSection) => {
       if (section.kind === 'drive') {
         router.push('/drive');
         return;
       }
+      clearSelection();
       const target = section.kind as FeedSection;
       if (!isLoggedIn || !(FEED_SIDEBAR_SECTIONS as readonly string[]).includes(section.kind)) {
         selectDashboardSection(section);
         return;
       }
+      clearDashboardReturnOrigin();
       if (activeSection.value.kind !== 'recent') activeSection.value = { kind: 'recent' };
       closeCardMenu();
       mobileSidebarOpen.value = false;
@@ -4409,21 +5661,2401 @@ export default defineComponent({
       scrollToFeedSection(target);
     };
 
-    /** One level up: parent folder, or Home from a top-level folder. False when not in a folder. */
+    /** One level up: parent folder, Q Space/home from a top-level folder, parent Yandex path, or Albums from a Space. */
     const goToParentFolder = (): boolean => {
-      const folder = activeSection.value.kind === 'folder' ? activeFolder.value : null;
-      if (!folder) return false;
-      if (folder.parentId) selectFolder(folder.parentId);
-      else selectDashboardSection({ kind: 'recent' });
-      return true;
+      if (activeSection.value.kind === 'folder') {
+        const folder = activeFolder.value;
+        if (!folder) return false;
+        if (folder.parentId) selectFolder(folder.parentId);
+        else if (folder.role && folder.role !== 'owner') selectDashboardSection({ kind: 'shared' });
+        else selectDashboardSection({ kind: 'home' });
+        return true;
+      }
+      if (activeSection.value.kind === 'space') {
+        if (spaceView.value?.navigateUp?.()) return true;
+        void onSidebarSelect({ kind: 'spaces' });
+        return true;
+      }
+      if (activeSection.value.kind === 'yandex') {
+        const cur = activeSection.value.path || '/';
+        if (cur !== '/') openYandexPath(yandexParentPath(cur));
+        else selectDashboardSection({ kind: 'home' });
+        return true;
+      }
+      return false;
     };
     // Android's system Back inside a folder does the same as the folder's
     // own back arrow, rather than main.ts offering to exit the app.
     useBackHandler(goToParentFolder);
 
     const toggleSidebarWidth = () => {
-      sidebarWidthState.value = sidebarWidthState.value === 'expanded' ? 'collapsed' : 'expanded';
-      writeSidebarWidthState(storage(), sidebarWidthState.value);
+      const nextCollapsed = !sidebarCollapsed.value;
+      onSidebarCollapsedChange(nextCollapsed);
+    };
+
+    // ----- T-021 / UX v2 Sidebar Mode Switcher, Inline S2 Search, Table, Favorites, Group DnD, Context Menu & Gallery -----
+    const sidebarMode = computed<ExplorerSidebarMode>(() => (
+      activeSection.value.kind === 'gallery' ? 'media' : 'files'
+    ));
+
+    const mobileTabActivity = computed<ExplorerMobileTabId>(() => {
+      if (activeSection.value.kind === 'gallery') return 'gallery';
+      if (activeSection.value.kind === 'recent') return 'home';
+      return 'explorer';
+    });
+
+    const showSidebarExpand = computed(() => {
+      if (!isLoggedIn || isAndroidApp.value) return false;
+      if (isMobileHeadroom.value) return !mobileSidebarOpen.value;
+      return sidebarCollapsed.value;
+    });
+
+    const onExpandSidebar = () => {
+      if (isMobileHeadroom.value) {
+        openMobileSidebar();
+      } else {
+        onSidebarCollapsedChange(false);
+      }
+    };
+
+    const onSidebarCollapseButton = () => {
+      if (isMobileHeadroom.value && mobileSidebarOpen.value) {
+        closeMobileSidebar();
+      } else {
+        onSidebarCollapsedChange(true);
+      }
+    };
+
+    const showFolderFab = computed(() => (
+      !mediaViewer.value && (
+        activeSection.value.kind === 'recent'
+        || activeSection.value.kind === 'folder'
+        || activeSection.value.kind === 'home'
+      )
+    ));
+
+    const headroomSpaceMembersTotal = computed(() => (
+      activeSpace.value ? activeSpace.value.members.length + 1 : 0
+    ));
+    const headroomSpaceCountLabel = computed(() => {
+      if (!activeSpace.value) return '';
+      return t('explorerMembersCount').replace('{n}', String(headroomSpaceMembersTotal.value));
+    });
+    const headroomSpaceCountPrefix = computed(() => {
+      const label = headroomSpaceCountLabel.value;
+      const num = String(headroomSpaceMembersTotal.value);
+      return num && label.endsWith(num) ? label.slice(0, -num.length) : label;
+    });
+
+    const addDialogTargetFolderName = computed(() => {
+      if (activeSection.value.kind === 'folder' && activeFolder.value) return activeFolder.value.name;
+      const found = folderOptions.value.find((f) => f.id === addDialog.value.folderId);
+      return found?.name || t('explorerHomeFolder');
+    });
+
+    const onToggleMobileDrawer = () => {
+      if (mobileSidebarOpen.value) closeMobileSidebar();
+      else openMobileSidebar();
+    };
+
+    const onSwitchSidebarMode = (mode: ExplorerSidebarMode) => {
+      if (mode === 'media') {
+        if (activeSection.value.kind === 'yandex') {
+          galleryYandexPath.value = activeSection.value.path;
+          galleryAlbumId.value = null;
+          galleryFolderId.value = null;
+          galleryHighlightFolderId.value = null;
+          galleryHighlightFileId.value = null;
+          galleryFocusedPhoto.value = null;
+          gallerySection.value = 'library';
+        }
+        selectDashboardSection({ kind: 'gallery' });
+        return;
+      }
+      if (activeSection.value.kind === 'gallery') {
+        if (galleryYandexPath.value !== null) {
+          openYandexPath(galleryYandexPath.value);
+          mobileSidebarOpen.value = false;
+          return;
+        }
+        const view = galleryViewRef.value as { getActiveFocusTransfer?: () => GalleryFocusTransfer | null } | null;
+        const transfer: GalleryFocusTransfer | null = typeof view?.getActiveFocusTransfer === 'function'
+          ? view.getActiveFocusTransfer()
+          : (galleryFocusedPhoto.value
+            ? {
+                fileId: galleryFocusedPhoto.value.fileId,
+                folderId: galleryFocusedPhoto.value.folderId ?? null,
+                shared: Boolean(galleryFocusedPhoto.value.share),
+                selectedIds: [galleryFocusedPhoto.value.fileId],
+              }
+            : null);
+        if (transfer) {
+          const keys = transfer.selectedIds.map((id) => `drive-file:${id}`);
+          const primaryKey = `drive-file:${transfer.fileId}`;
+          pendingExplorerSelectionKeys.value = keys;
+          transferredExplorerKeys.value = new Set(keys);
+          pendingScrollToSelectKey.value = primaryKey;
+          if (transfer.folderId) {
+            selectFolder(transfer.folderId);
+          } else if (!transfer.shared) {
+            selectDashboardSection({ kind: 'home' });
+          } else {
+            selectDashboardSection({ kind: 'shared' });
+          }
+          mobileSidebarOpen.value = false;
+          return;
+        }
+      }
+      const remembered = layoutPrefs.lastExplorerRoute.value;
+      if (remembered) {
+        selectDashboardSection(remembered);
+      } else {
+        const firstOwn = ownResourceFolders.value.find((f) => !isTechnicalFolder(f)) || allFolderSummaries.value[0];
+        if (firstOwn) selectFolder(firstOwn.id);
+        else selectDashboardSection({ kind: 'recent' });
+      }
+    };
+
+    const onSelectActivity = (activity: ExplorerMobileTabId) => {
+      if (activity === 'home') {
+        selectDashboardSection({ kind: 'recent' });
+        return;
+      }
+      if (activity === 'gallery') {
+        selectDashboardSection({ kind: 'gallery' });
+        return;
+      }
+      onSwitchSidebarMode('files');
+    };
+
+    const headroomViewToggleMode = computed<HeadroomViewToggleMode>(() => {
+      if (activeSection.value.kind === 'trash') return 'none';
+      return 'explorer';
+    });
+
+    // Global shortcut: Ctrl/Cmd+K -> Unified S2 Inline Search in Files or Media
+    const onExplorerShortcutKeydown = (event: KeyboardEvent) => {
+      if (!isLoggedIn || !(event.ctrlKey || event.metaKey)) return;
+      const key = event.key.toLowerCase();
+      if (key === 'k') {
+        event.preventDefault();
+        if (activeSection.value.kind === 'gallery') {
+          (galleryViewRef.value as { focusSearch?: () => void } | null)?.focusSearch?.();
+        } else {
+          headroomBarRef.value?.focusSearch?.();
+        }
+      }
+    };
+    onMounted(() => window.addEventListener('keydown', onExplorerShortcutKeydown));
+    onBeforeUnmount(() => {
+      window.removeEventListener('keydown', onExplorerShortcutKeydown);
+    });
+
+    // Unified S2 Inline Search scope & data (real folders, albums, resources & drive files)
+    const s2ScopeLabel = computed<string | null>(() => {
+      if (activeSection.value.kind === 'folder' && activeFolder.value) return activeFolder.value.name;
+      if (activeSection.value.kind === 'home') return t('qSpace');
+      if (activeSection.value.kind === 'yandex') {
+        const p = activeSection.value.path || '/';
+        return p !== '/' ? (p.split('/').filter(Boolean).pop() || t('yandexDisk')) : t('yandexDisk');
+      }
+      if (activeSection.value.kind === 'space' && activeSpace.value) {
+        const subName = spaceView.value?.currentFolderName
+          || (activeSpaceFolderId.value
+            ? (activeSpace.value.sources.find((s) => s.folderId === activeSpaceFolderId.value)?.title
+              ?? allResourceFolders.value.find((f) => f.id === activeSpaceFolderId.value)?.name
+              ?? '')
+            : '');
+        return subName ? `${activeSpace.value.name} / ${subName}` : activeSpace.value.name;
+      }
+      return null;
+    });
+
+    watch(
+      () => activeSection.value,
+      (next) => {
+        if (next.kind === 'folder' || next.kind === 'space' || next.kind === 'home' || next.kind === 'yandex') {
+          s2ScopeMode.value = 'current';
+        } else if (!searchQuery.value.trim()) {
+          s2ScopeMode.value = 'current';
+        }
+      },
+    );
+
+    const yandexLoadedItems = computed<YandexItem[]>(() => {
+      const exposed = (yandexView.value as { items?: YandexItem[] | Ref<YandexItem[]> } | null)?.items;
+      if (Array.isArray(exposed)) return exposed;
+      if (exposed && 'value' in exposed && Array.isArray(exposed.value)) return exposed.value;
+      return yandexFiles.value;
+    });
+
+    const isYandexScopedSearch = computed(
+      () => activeSection.value.kind === 'yandex' && s2ScopeMode.value === 'current',
+    );
+
+    const activeSubtreeFolderIds = computed<Set<string> | null>(() => {
+      if (s2ScopeMode.value !== 'current') return null;
+      if (activeSection.value.kind !== 'folder' || !activeFolder.value) return null;
+      const set = new Set<string>([activeFolder.value.id]);
+      let grew = true;
+      while (grew) {
+        grew = false;
+        for (const f of allResourceFolders.value) {
+          if (f.parentId && set.has(f.parentId) && !set.has(f.id)) {
+            set.add(f.id);
+            grew = true;
+          }
+        }
+      }
+      return set;
+    });
+
+    const s2SearchFolders = computed<InlineSearchFolder[]>(() => {
+      if (isYandexScopedSearch.value) {
+        return yandexLoadedItems.value
+          .filter((item) => item.type === 'dir')
+          .map((dir) => ({
+            id: `yandex:${dir.path}`,
+            name: dir.name,
+            path: dir.path,
+          }));
+      }
+      const subtree = activeSubtreeFolderIds.value;
+      const list = subtree
+        ? allResourceFolders.value.filter((f) => subtree.has(f.id) && f.id !== activeFolder.value?.id)
+        : allResourceFolders.value;
+      return list.map((f) => ({
+        id: f.id,
+        name: f.name,
+        path: folderPathById.value.get(f.id) || f.name,
+      }));
+    });
+
+    const s2SearchAlbums = computed<InlineSearchAlbum[]>(() => {
+      if (isYandexScopedSearch.value) return [];
+      const list = s2ScopeMode.value === 'current' && activeSection.value.kind === 'space' && spaceId.value
+        ? allSpaces.value.filter((s) => s.id === spaceId.value)
+        : allSpaces.value;
+      return list.map((s) => ({
+        id: s.id,
+        name: s.name,
+        count: s.sourceCount,
+      }));
+    });
+
+    const s2SearchItems = computed<InlineSearchItem[]>(() => {
+      if (isYandexScopedSearch.value) {
+        const scopeName = s2ScopeLabel.value || t('yandexDisk');
+        return yandexLoadedItems.value
+          .filter((item) => item.type === 'file')
+          .map((file) => {
+            const lower = file.name.toLowerCase();
+            const isPdf = file.mime === 'application/pdf' || lower.endsWith('.pdf');
+            const isMedia = file.mediaType === 'image' || file.mediaType === 'video';
+            return {
+              id: `yandex:${file.path}`,
+              title: file.name,
+              type: isPdf ? 'pdf' : isMedia ? 'media' : isMarkdownFile(file) ? 'document' : 'other',
+              mimeType: file.mime ?? undefined,
+              folderName: scopeName,
+            };
+          });
+      }
+      const subtree = activeSubtreeFolderIds.value;
+      const inFolderScope = (fid?: string | null) => {
+        if (!subtree) return true;
+        return Boolean(fid && subtree.has(fid));
+      };
+      const mapTags = (raw?: CanvasTag[]) => (raw || []).map((tg) => tg.name).filter(Boolean);
+      const entries: InlineSearchItem[] = [];
+      for (const item of own.value) {
+        if (!inFolderScope(item.folderId)) continue;
+        entries.push({
+          id: `canvas:${item.id}`,
+          title: item.title || t('untitled'),
+          type: 'canvas',
+          folderId: item.folderId,
+          folderName: item.folderId ? folderPathById.value.get(item.folderId) || null : null,
+          tags: mapTags(item.tags),
+        });
+      }
+      for (const item of allHtmlDocumentsRaw.value) {
+        if (!inFolderScope(item.folderId)) continue;
+        entries.push({
+          id: `html-document:${item.id}`,
+          title: item.title || t('untitled'),
+          type: 'html',
+          folderId: item.folderId,
+          folderName: item.folderId ? folderPathById.value.get(item.folderId) || null : null,
+          tags: mapTags(item.tags),
+        });
+      }
+      for (const item of allTextDocumentsRaw.value) {
+        if (!inFolderScope(item.folderId)) continue;
+        entries.push({
+          id: `text-document:${item.id}`,
+          title: item.title || t('untitled'),
+          type: 'document',
+          folderId: item.folderId,
+          folderName: item.folderId ? folderPathById.value.get(item.folderId) || null : null,
+          tags: mapTags(item.tags),
+        });
+      }
+      for (const item of interactiveTemplateItems.value) {
+        if (!inFolderScope(item.folderId)) continue;
+        entries.push({
+          id: `interactive-template:${item.id}`,
+          title: item.title || t('untitled'),
+          type: 'document',
+          folderId: item.folderId,
+          folderName: item.folderId ? folderPathById.value.get(item.folderId) || null : null,
+        });
+      }
+      const combinedDriveFiles = [...folderDriveFiles.value, ...homeRootDriveFiles.value];
+      const seenDrive = new Set<string>();
+      for (const file of combinedDriveFiles) {
+        if (seenDrive.has(file.id)) continue;
+        seenDrive.add(file.id);
+        if (!inFolderScope(file.folderId)) continue;
+        const lower = file.name.toLowerCase();
+        const isPdf = file.mime === 'application/pdf' || lower.endsWith('.pdf');
+        const isMedia = isVideoFile(file) || isPictureFile(file);
+        entries.push({
+          id: `drive-file:${file.id}`,
+          fileId: file.id,
+          title: file.name,
+          type: isPdf ? 'pdf' : isMedia ? 'media' : isMarkdownFile(file) ? 'document' : 'other',
+          mimeType: file.mime,
+          folderId: file.folderId,
+          folderName: file.folderId ? folderPathById.value.get(file.folderId) || null : null,
+        });
+      }
+      return entries;
+    });
+
+    const onSearchSelectFolder = (folderId: string) => {
+      if (folderId.startsWith('yandex:')) {
+        openYandexPath(folderId.slice('yandex:'.length) || '/');
+        return;
+      }
+      selectFolder(folderId);
+    };
+
+    const onSearchSelectAlbum = (albumId: string) => {
+      selectDashboardSection({ kind: 'space', spaceId: albumId });
+    };
+
+    const onSearchOpenItem = (item: InlineSearchItem) => {
+      const colonIdx = item.id.indexOf(':');
+      const kind = colonIdx > 0 ? item.id.slice(0, colonIdx) : '';
+      const rawId = colonIdx > 0 ? item.id.slice(colonIdx + 1) : item.id;
+      if (kind === 'yandex') {
+        const yItem = yandexLoadedItems.value.find((y) => y.path === rawId)
+          || yandexFiles.value.find((y) => y.path === rawId);
+        if (yItem) {
+          if (yItem.type === 'dir') openYandexPath(yItem.path);
+          else if (isYandexMedia(yItem)) openYandexImage(yItem);
+          else if (isMarkdownFile(yItem)) openYandexMarkdown(yItem);
+          else void downloadYandexFile(yItem);
+        }
+        return;
+      }
+      if (kind === 'drive-file' || item.fileId) {
+        const fid = item.fileId || rawId;
+        const folderPool = item.folderId && sidebarDriveFiles.files[item.folderId]?.length
+          ? sidebarDriveFiles.files[item.folderId]!
+          : null;
+        const knownPool = folderDriveFiles.value.some((f) => f.id === fid)
+          ? folderDriveFiles.value
+          : homeRootDriveFiles.value.some((f) => f.id === fid)
+            ? homeRootDriveFiles.value
+            : folderPool;
+        const file = knownPool?.find((f) => f.id === fid)
+          || folderDriveFiles.value.find((f) => f.id === fid)
+          || homeRootDriveFiles.value.find((f) => f.id === fid);
+        if (file) {
+          if (isDriveMedia(file)) {
+            const mediaSiblings = (knownPool || [file]).filter(isDriveMedia);
+            const idx = mediaSiblings.findIndex((f) => f.id === file.id);
+            openDriveMediaList(mediaSiblings.length ? mediaSiblings : [file], idx >= 0 ? idx : 0);
+          } else if (isMarkdownFile(file)) {
+            openDriveMarkdown(file);
+          } else {
+            void downloadDriveFile(file.id, file.name);
+          }
+        } else if (item.type === 'media' || isPictureFile({ name: item.title, mime: item.mimeType }) || isVideoFile({ name: item.title, mime: item.mimeType })) {
+          const siblingSearchMedia = s2SearchItems.value.filter(
+            (candidate) => candidate.type === 'media' || isPictureFile({ name: candidate.title, mime: candidate.mimeType }) || isVideoFile({ name: candidate.title, mime: candidate.mimeType }),
+          );
+          const list = siblingSearchMedia.some((s) => (s.fileId || s.id.replace(/^drive-file:/, '')) === fid)
+            ? siblingSearchMedia
+            : [item];
+          const mapped = list.map((entry) => {
+            const entryId = entry.fileId || entry.id.replace(/^drive-file:/, '');
+            const isVid = isVideoFile({ name: entry.title, mime: entry.mimeType });
+            return driveViewerItem({
+              id: entryId,
+              name: entry.title,
+              mime: entry.mimeType,
+              kind: isVid ? 'video' : 'photo',
+              folderId: entry.folderId ?? null,
+            });
+          });
+          const startIdx = mapped.findIndex((m) => m.fileId === fid);
+          mediaViewer.value = { items: mapped, start: startIdx >= 0 ? startIdx : 0, source: 'drive' };
+        } else if (isMarkdownFile({ name: item.title })) {
+          openDriveMarkdown({ id: fid, name: item.title, folderId: item.folderId ?? null });
+        } else {
+          void downloadDriveFile(fid, item.title);
+        }
+        return;
+      }
+      openSpaceResource(kind || 'canvas', rawId);
+    };
+
+    const onSearchSelectTag = (tag: string) => {
+      searchQuery.value = tag;
+    };
+
+    // Home Favorites section (folders, albums/spaces, resources & drive files)
+    type HomeFavoriteTile = {
+      key: string;
+      kind: 'folder' | 'space' | 'canvas' | 'html-document' | 'text-document' | 'interactive-template' | 'drive-file' | 'file';
+      id: string;
+      name: string;
+      subtitle: string;
+      routeId?: string;
+    };
+    const rememberedFavoriteMeta = reactive<Record<string, { name: string; kind: string; id: string }>>({});
+    const favoriteTiles = computed<HomeFavoriteTile[]>(() => {
+      const result: HomeFavoriteTile[] = [];
+      for (const key of layoutPrefs.favorites.value) {
+        if (key.startsWith('folder:')) {
+          const id = key.slice('folder:'.length);
+          const f = allFolderSummaries.value.find((item) => item.id === id);
+          if (f) result.push({ key, kind: 'folder', id: f.id, name: f.name, subtitle: t('qSpace') });
+        } else if (key.startsWith('space:') || key.startsWith('album:')) {
+          const id = key.replace(/^(space:|album:)/, '');
+          const s = allSpaces.value.find((item) => item.id === id);
+          if (s) result.push({ key, kind: 'space', id: s.id, name: s.name, subtitle: t('spaces') });
+        } else if (key.startsWith('drive-file:') || key.startsWith('file:')) {
+          const id = key.replace(/^(drive-file:|file:)/, '');
+          const file = folderDriveFiles.value.find((f) => f.id === id)
+            || homeRootDriveFiles.value.find((f) => f.id === id);
+          const meta = rememberedFavoriteMeta[key];
+          if (file) {
+            result.push({ key, kind: 'drive-file', id: file.id, name: file.name, subtitle: resourceTypeLabel('drive-file', t) });
+          } else if (meta) {
+            result.push({ key, kind: 'drive-file', id: meta.id, name: meta.name, subtitle: resourceTypeLabel('drive-file', t) });
+          }
+        } else {
+          const item = (dashboardItemsByKey.value as ReadonlyMap<string, FolderItem>).get(key);
+          if (item) {
+            result.push({
+              key,
+              kind: item.type,
+              id: item.id,
+              routeId: ('slug' in item && item.slug) || item.id,
+              name: item.title || t('untitled'),
+              subtitle: resourceTypeLabel(item.type, t),
+            });
+          } else if (rememberedFavoriteMeta[key]) {
+            const meta = rememberedFavoriteMeta[key]!;
+            result.push({
+              key,
+              kind: (meta.kind as HomeFavoriteTile['kind']) || 'canvas',
+              id: meta.id,
+              name: meta.name,
+              subtitle: resourceTypeLabel(meta.kind, t),
+            });
+          }
+        }
+      }
+      return result;
+    });
+    const openFavoriteTile = (fav: HomeFavoriteTile) => {
+      if (fav.kind === 'space') {
+        selectDashboardSection({ kind: 'space', spaceId: fav.id });
+      } else if (fav.kind === 'folder') {
+        selectFolder(fav.id);
+      } else if (fav.kind === 'drive-file' || fav.kind === 'file') {
+        const file = activeDriveFiles.value.find((f) => f.id === fav.id)
+          || folderDriveFiles.value.find((f) => f.id === fav.id)
+          || homeRootDriveFiles.value.find((f) => f.id === fav.id);
+        if (file) {
+          if (isDriveMedia(file)) openDriveImage(file);
+          else if (isMarkdownFile(file)) openDriveMarkdown(file);
+          else void downloadDriveFile(file.id, file.name);
+        } else if (isPictureFile({ name: fav.name }) || isVideoFile({ name: fav.name })) {
+          mediaViewer.value = {
+            items: [driveViewerItem({ id: fav.id, name: fav.name, kind: isVideoFile({ name: fav.name }) ? 'video' : 'photo' })],
+            start: 0,
+            source: 'drive',
+          };
+        } else if (isMarkdownFile({ name: fav.name })) {
+          openDriveMarkdown({ id: fav.id, name: fav.name });
+        } else {
+          void downloadDriveFile(fav.id, fav.name);
+        }
+      } else {
+        openSpaceResource(fav.kind, fav.routeId || fav.id);
+      }
+    };
+
+    // Real Q Space/home root folder contents (with global search expansion when s2ScopeMode === 'global')
+    const homeRootSubfolders = computed(() => {
+      if (s2TypeFilter.value !== 'all' && s2TypeFilter.value !== 'folder') return [];
+      const ownIds = new Set(ownResourceFolders.value.map((f) => f.id));
+      const needle = searchQuery.value.trim().toLocaleLowerCase();
+      const isGlobalSearch = s2ScopeMode.value === 'global' && (Boolean(needle) || s2TypeFilter.value !== 'all');
+      return allFolderSummaries.value
+        .filter((folder) => (
+          isGlobalSearch
+            ? true
+            : folder.role === 'owner' && (folder.parentId ?? null) === null && ownIds.has(folder.id)
+        ))
+        .filter((folder) => isGlobalSearch || !isTechnicalFolder(folder) || folder.items.length > 0 || (folderFiles.counts[folder.id] ?? 0) > 0)
+        .filter((folder) => !needle || folder.name.toLocaleLowerCase().includes(needle))
+        .map((folder) => ({
+          id: folder.id,
+          name: folder.name,
+          count:
+            folder.items.length +
+            (folderFiles.counts[folder.id] ?? 0) +
+            (subfolderCounts.value.get(folder.id) ?? 0),
+          latest: folderLatest.value.get(folder.id) ?? null,
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+    });
+    const homeRootItems = computed<FolderItem[]>(() => {
+      const isGlobalSearch = s2ScopeMode.value === 'global' && (Boolean(searchQuery.value.trim()) || s2TypeFilter.value !== 'all');
+      if (isGlobalSearch) {
+        const seen = new Set<string>();
+        const globalItems: FolderItem[] = [];
+        for (const summary of allFolderSummaries.value) {
+          for (const item of summary.items) {
+            const k = `${item.type}:${item.id}` as const;
+            if (seen.has(k)) continue;
+            const enriched = dashboardItemsByKey.value.get(k) || item;
+            if (matchesFolderItem(enriched, summary.name) && matchesS2ItemType(enriched.type)) {
+              seen.add(k);
+              globalItems.push(enriched);
+            }
+          }
+        }
+        return sortFolderItems(globalItems);
+      }
+      return sortFolderItems(
+        [
+          ...unfiledCanvases.value,
+          ...unfiledHtmlDocuments.value,
+          ...unfiledTextDocuments.value,
+          ...unfiledInteractiveTemplateItems.value,
+        ].filter((item) => matchesFolderItem(item, t('explorerHomeFolder')) && matchesS2ItemType(item.type)),
+      );
+    });
+    const homeRootEmpty = computed(() => Boolean(
+      !homeRootSubfolders.value.length
+      && !homeRootItems.value.length
+      && !homeRootFileCount.value,
+    ));
+    const showScopedSearchEverywhereCta = computed(() => {
+      if (s2ScopeMode.value !== 'current' || !s2ScopeLabel.value) return false;
+      if (!searchQuery.value.trim() && s2TypeFilter.value === 'all') return false;
+      if (activeSection.value.kind === 'home') return homeRootEmpty.value;
+      if (activeSection.value.kind === 'folder') return activeFolderEmpty.value;
+      if (activeSection.value.kind === 'yandex') {
+        const needle = searchQuery.value.trim().toLocaleLowerCase();
+        if (!needle) return false;
+        const list = yandexLoadedItems.value;
+        return list.length > 0 && !list.some((item) => item.name.toLocaleLowerCase().includes(needle));
+      }
+      return false;
+    });
+    const homeRootTableRows = computed<ExplorerTableRow[]>(() =>
+      buildFolderExplorerTableRows(
+        homeRootSubfolders.value,
+        homeRootItems.value,
+        homeRootDriveFiles.value,
+        { sourceLabel: `${t('qSpace')}/${t('explorerHomeFolder')}`, t, selectionKey },
+      ),
+    );
+
+    // Windows Explorer table rows for active folder & Home Recents
+    const activeFolderTableRows = computed<ExplorerTableRow[]>(() => {
+      if (!activeFolder.value) return [];
+      return buildFolderExplorerTableRows(
+        activeSubfolders.value,
+        activeFolder.value.items,
+        folderDriveFiles.value,
+        { sourceLabel: t('qSpace'), t, selectionKey },
+      );
+    });
+    const recentTableRows = computed<ExplorerTableRow[]>(() =>
+      buildFolderExplorerTableRows(
+        [],
+        visibleRecent.value.map((r) => ({
+          type: r.type,
+          id: r.id,
+          title: r.title,
+          openedAt: r.openedAt,
+          folderId: null,
+        })),
+        [],
+        { sourceLabel: t('qSpace'), t, selectionKey },
+      ),
+    );
+    const sharedTableRows = computed<ExplorerTableRow[]>(() =>
+      buildFolderExplorerTableRows(
+        [],
+        feedItems(sharedFiltered.value, 'shared'),
+        [],
+        { sourceLabel: `${t('qSpace')}/${t('sharedWithMe')}`, t, selectionKey },
+      ),
+    );
+    const interactiveTableRows = computed<ExplorerTableRow[]>(() =>
+      buildFolderExplorerTableRows(
+        [],
+        feedItems(visibleInteractiveTemplateItems.value, 'interactive'),
+        [],
+        { sourceLabel: t('qSpace'), t, selectionKey },
+      ),
+    );
+    const publicTableRows = computed<ExplorerTableRow[]>(() =>
+      buildFolderExplorerTableRows(
+        [],
+        feedItems(publicFiltered.value, 'public'),
+        [],
+        { sourceLabel: `${t('qSpace')}/${t('public')}`, t, selectionKey },
+      ),
+    );
+    const openExplorerTableRow = (row: ExplorerTableRow) => {
+      if (row.isFolder || row.kind === 'folder') {
+        selectFolder(row.id);
+        return;
+      }
+      if (row.kind === 'file' || row.kind === 'drive-file') {
+        const file = activeDriveFiles.value.find((f) => f.id === row.id);
+        if (file) {
+          if (isDriveMedia(file)) openDriveImage(file);
+          else if (isMarkdownFile(file)) openDriveMarkdown(file);
+          else void downloadDriveFile(file.id, file.name);
+        }
+        return;
+      }
+      openSpaceResource(row.kind, row.id);
+    };
+
+    // Album Share Modal (unified space entity)
+    const sharingAlbum = ref<SpaceDetails | null>(null);
+    const openAlbumShareById = async (targetId: string) => {
+      try {
+        sharingAlbum.value = await spacesApi.get(targetId);
+      } catch (err) {
+        setFeedback('error', err instanceof Error && err.message ? err.message : t('spaceLoadFailed'));
+      }
+    };
+    const onSharingAlbumChanged = (next: SpaceDetails | null) => {
+      const prevId = sharingAlbum.value?.id;
+      const wasUnlisted = Boolean(sharingAlbum.value?.unlisted || next?.unlisted);
+      sharingAlbum.value = next && wasUnlisted ? { ...next, unlisted: true } : next;
+      if (next && activeSpace.value?.id === next.id) {
+        activeSpace.value = next;
+      } else if (!next && !wasUnlisted && prevId && spaceId.value === prevId) {
+        leaveSpaceSection();
+        return;
+      }
+      if (!wasUnlisted) {
+        void loadSpaces(true);
+      }
+    };
+    const onCloseSharingAlbum = () => {
+      const current = sharingAlbum.value;
+      sharingAlbum.value = null;
+      if (current?.unlisted && current.members.length === 0) {
+        void spacesApi.remove(current.id).catch(() => {});
+      }
+    };
+
+    // Resource Share Panel (canvas / html-document / text-document / interactive-template)
+    type ResourceShareKind = 'canvas' | 'html-document' | 'text-document' | 'interactive-template';
+    const resourceShare = reactive<{
+      open: boolean;
+      kind: ResourceShareKind;
+      id: string;
+      title: string;
+      slug: string;
+      slugError: string;
+      savingSlug: boolean;
+      visibility: ShareVisibility;
+      allowPublicEdit: boolean;
+      listedInPublic: boolean;
+      publicHidden: boolean;
+      permissions: SharePermission[];
+      shareEmail: string;
+      shareRole: ShareRole;
+      passwordAccessEnabled: boolean;
+      passwordAccessPassword: string;
+      passwordAccessRole: ShareRole;
+    }>({
+      open: false,
+      kind: 'canvas',
+      id: '',
+      title: '',
+      slug: '',
+      slugError: '',
+      savingSlug: false,
+      visibility: 'private',
+      allowPublicEdit: false,
+      listedInPublic: false,
+      publicHidden: false,
+      permissions: [],
+      shareEmail: '',
+      shareRole: 'read',
+      passwordAccessEnabled: false,
+      passwordAccessPassword: '',
+      passwordAccessRole: 'read',
+    });
+
+    const resourceShareSlugPrefix = computed(() => {
+      if (resourceShare.kind === 'html-document') return '/html/';
+      if (resourceShare.kind === 'text-document') return '/docs/';
+      if (resourceShare.kind === 'interactive-template') return '/templates/';
+      return '/canvas/';
+    });
+    const resourceShareUrl = computed(() => {
+      const origin = typeof window !== 'undefined' ? window.location.origin : '';
+      return `${origin}${resourceShareSlugPrefix.value}${resourceShare.slug || resourceShare.id}`;
+    });
+
+    const resourceShareApiOf = (kind: ResourceShareKind) => {
+      if (kind === 'html-document') return htmlDocuments;
+      if (kind === 'text-document') return textDocuments;
+      if (kind === 'interactive-template') return interactiveTemplates;
+      return canvas;
+    };
+
+    const loadResourceSharePermissions = async () => {
+      if (!resourceShare.id) return;
+      try {
+        resourceShare.permissions = await resourceShareApiOf(resourceShare.kind).permissions(resourceShare.id);
+      } catch {
+        resourceShare.permissions = [];
+      }
+    };
+
+    const openResourceShareModal = async (kind: ResourceShareKind, id: string) => {
+      const known = dashboardItemsByKey.value.get(`${kind}:${id}`);
+      resourceShare.open = true;
+      resourceShare.kind = kind;
+      resourceShare.id = id;
+      resourceShare.title = known?.title || t('share');
+      resourceShare.slug = (known && 'slug' in known && known.slug) || '';
+      resourceShare.slugError = '';
+      resourceShare.savingSlug = false;
+      resourceShare.visibility = (known && 'visibility' in known && known.visibility) || 'private';
+      resourceShare.allowPublicEdit = Boolean(known && 'allowPublicEdit' in known && known.allowPublicEdit);
+      resourceShare.listedInPublic = false;
+      resourceShare.publicHidden = false;
+      resourceShare.permissions = [];
+      resourceShare.shareEmail = '';
+      resourceShare.shareRole = 'read';
+      resourceShare.passwordAccessEnabled = false;
+      resourceShare.passwordAccessPassword = '';
+      resourceShare.passwordAccessRole = 'read';
+
+      try {
+        if (kind === 'canvas') {
+          const res = await canvas.get(id);
+          const rec = res?.canvas as any;
+          if (rec) {
+            resourceShare.title = rec.title || resourceShare.title;
+            resourceShare.slug = rec.slug || '';
+            resourceShare.visibility = rec.visibility || (rec.isPublic ? 'public' : 'private');
+            resourceShare.allowPublicEdit = Boolean(rec.allowPublicEdit);
+            resourceShare.listedInPublic = Boolean(rec.listedInPublic);
+            resourceShare.publicHidden = Boolean(rec.publicHidden);
+            resourceShare.passwordAccessEnabled = Boolean(rec.passwordAccessEnabled);
+            resourceShare.passwordAccessRole = rec.passwordAccessRole === 'edit' ? 'edit' : 'read';
+          }
+        } else if (kind === 'html-document') {
+          const res = await htmlDocuments.get(id);
+          const doc = res?.document as any;
+          if (doc) {
+            resourceShare.title = doc.title || resourceShare.title;
+            resourceShare.slug = doc.slug || '';
+            resourceShare.visibility = doc.visibility || (doc.shared ? 'public' : 'private');
+            resourceShare.allowPublicEdit = Boolean(doc.allowPublicEdit);
+            resourceShare.listedInPublic = Boolean(doc.listedInPublic);
+            resourceShare.publicHidden = Boolean(doc.publicHidden);
+            resourceShare.passwordAccessEnabled = Boolean(doc.passwordAccessEnabled);
+            resourceShare.passwordAccessRole = doc.passwordAccessRole === 'edit' ? 'edit' : 'read';
+          }
+        } else if (kind === 'text-document') {
+          const res = await textDocuments.get(id);
+          const doc = res?.document as any;
+          if (doc) {
+            resourceShare.title = doc.title || resourceShare.title;
+            resourceShare.slug = doc.slug || '';
+            resourceShare.visibility = doc.visibility || 'private';
+            resourceShare.allowPublicEdit = Boolean(doc.allowPublicEdit);
+            resourceShare.listedInPublic = Boolean(doc.listedInPublic);
+            resourceShare.publicHidden = Boolean(doc.publicHidden);
+            resourceShare.passwordAccessEnabled = Boolean(doc.passwordAccessEnabled);
+            resourceShare.passwordAccessRole = doc.passwordAccessRole === 'edit' ? 'edit' : 'read';
+          }
+        } else {
+          const tpl = await interactiveTemplates.get(id);
+          if (tpl) resourceShare.title = tpl.title || resourceShare.title;
+        }
+      } catch {
+        // Keep seeded item fields if fetch fails
+      }
+      await loadResourceSharePermissions();
+    };
+
+    const closeResourceShareModal = () => {
+      resourceShare.open = false;
+    };
+
+    const copyResourceShareLink = async () => {
+      try {
+        await navigator.clipboard?.writeText(resourceShareUrl.value);
+      } catch {
+        // Clipboard may be unavailable in headless tests
+      }
+    };
+
+    const updateResourceShareSettings = async (patch: Record<string, unknown>) => {
+      if (resourceShare.kind === 'interactive-template') return;
+      try {
+        await (resourceShareApiOf(resourceShare.kind) as typeof canvas).update(resourceShare.id, patch as any);
+        await load({ showLoading: false });
+      } catch (err) {
+        setFeedback('error', err instanceof Error && err.message ? err.message : t('spaceActionFailed'));
+      }
+    };
+
+    const setResourceShareVisibility = (v: ShareVisibility) => {
+      resourceShare.visibility = v;
+      if (v === 'public') resourceShare.allowPublicEdit = false;
+      void updateResourceShareSettings({ visibility: v, isPublic: v === 'public' });
+    };
+    const setResourceShareAllowPublicEdit = (v: boolean) => {
+      resourceShare.allowPublicEdit = v;
+      void updateResourceShareSettings({ allowPublicEdit: v });
+    };
+    const setResourceShareListedInPublic = (v: boolean) => {
+      resourceShare.listedInPublic = v;
+      void updateResourceShareSettings({ listedInPublic: v });
+    };
+    const saveResourceSharePassword = () => {
+      void updateResourceShareSettings({
+        passwordAccessEnabled: resourceShare.passwordAccessEnabled,
+        passwordAccessPassword: resourceShare.passwordAccessPassword || undefined,
+        passwordAccessRole: resourceShare.passwordAccessRole,
+      });
+      resourceShare.passwordAccessPassword = '';
+    };
+    const saveResourceShareSlug = async () => {
+      if (resourceShare.kind === 'interactive-template') return;
+      resourceShare.savingSlug = true;
+      resourceShare.slugError = '';
+      try {
+        await (resourceShareApiOf(resourceShare.kind) as typeof canvas).update(resourceShare.id, { slug: resourceShare.slug.trim() || null } as any);
+        await load({ showLoading: false });
+      } catch (err) {
+        resourceShare.slugError = err instanceof Error && err.message ? err.message : t('spaceActionFailed');
+      } finally {
+        resourceShare.savingSlug = false;
+      }
+    };
+    const inviteResourceShare = async () => {
+      const email = resourceShare.shareEmail.trim();
+      if (!email || !resourceShare.id) return;
+      try {
+        await resourceShareApiOf(resourceShare.kind).share(resourceShare.id, email, resourceShare.shareRole);
+        resourceShare.shareEmail = '';
+        await loadResourceSharePermissions();
+      } catch (err) {
+        setFeedback('error', err instanceof Error && err.message ? err.message : t('spaceActionFailed'));
+      }
+    };
+    const revokeResourceShare = async (userId: string) => {
+      if (!resourceShare.id || !userId) return;
+      try {
+        await resourceShareApiOf(resourceShare.kind).revoke(resourceShare.id, userId);
+        await loadResourceSharePermissions();
+      } catch (err) {
+        setFeedback('error', err instanceof Error && err.message ? err.message : t('spaceActionFailed'));
+      }
+    };
+
+    const buildGroupDragEntriesForKeys = (keys: readonly string[]): GroupDragEntry[] => {
+      const entries: GroupDragEntry[] = [];
+      const seen = new Set<string>();
+      for (const key of keys) {
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        if (key.startsWith('folder:')) {
+          const id = key.slice('folder:'.length);
+          const folder = allFolderSummaries.value.find((f) => f.id === id)
+            || allResourceFolders.value.find((f) => f.id === id);
+          if (folder) {
+            entries.push({ key, id: folder.id, kind: 'folder', name: folder.name, folderId: folder.id });
+            continue;
+          }
+        }
+        const driveId = key.startsWith('drive-file:')
+          ? key.slice('drive-file:'.length)
+          : key.startsWith('drive:')
+            ? key.slice('drive:'.length)
+            : '';
+        if (driveId) {
+          const file = driveFilesByKey.value.get(`drive-file:${driveId}`)
+            || folderDriveFiles.value.find((f) => f.id === driveId)
+            || homeRootDriveFiles.value.find((f) => f.id === driveId);
+          if (file) {
+            entries.push({
+              key: `drive-file:${file.id}`,
+              id: file.id,
+              kind: 'drive-file',
+              name: file.name,
+              folderId: file.folderId ?? null,
+            });
+            continue;
+          }
+        }
+        const normalizedItemKey = key.startsWith('doc:')
+          ? `text-document:${key.slice('doc:'.length)}`
+          : key;
+        const item = itemsBySelectionKey.value.get(normalizedItemKey);
+        if (item) {
+          entries.push({
+            key: selectionKey(item),
+            id: item.id,
+            kind: item.type,
+            name: item.title || t('untitled'),
+            folderId: item.folderId ?? null,
+          });
+          continue;
+        }
+        const tableRow = allTableRowsByKey.value.get(key);
+        if (tableRow) {
+          entries.push({
+            key: tableRow.key,
+            id: tableRow.id,
+            kind: tableRow.kind,
+            name: tableRow.name,
+            folderId: tableRow.folderId,
+            path: tableRow.path,
+          });
+          continue;
+        }
+        const spaceItem = spaceItemsByKey.value.get(key);
+        if (spaceItem && spaceItem.id) {
+          entries.push({
+            key,
+            id: spaceItem.id,
+            kind: spaceItem.kind,
+            name: spaceItem.name,
+            path: spaceItem.path,
+          });
+        }
+      }
+      return entries;
+    };
+
+    const isFolderAncestorOrSelf = (candidateAncestorId: string, targetFolderId: string | null): boolean => {
+      if (!targetFolderId) return false;
+      if (candidateAncestorId === targetFolderId) return true;
+      return descendantFolderIds(allResourceFolders.value, candidateAncestorId).has(targetFolderId);
+    };
+
+    // Group Drag-and-Drop handlers (folders & albums)
+    const recentFolderDropTargetId = ref<string | null>(null);
+    const resolveGroupDragPayloadFromEvent = (event: DragEvent): GroupDragPayload | null => {
+      const raw = groupDnd.activeDrag.value ?? groupDnd.readGroupDragFromEvent(event);
+      if (!raw) return null;
+      return {
+        source: raw.source,
+        items: raw.items.map((item) => ({ ...item })),
+        keys: [...raw.keys],
+        count: raw.count,
+      };
+    };
+    const onRecentFolderDragOver = (event: DragEvent, folderId: string) => {
+      const payload = resolveGroupDragPayloadFromEvent(event);
+      if (!payload || payload.keys.includes(`folder:${folderId}`)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+      recentFolderDropTargetId.value = folderId;
+    };
+    const onRecentFolderDragLeave = (event: DragEvent, folderId: string) => {
+      const current = event.currentTarget as HTMLElement | null;
+      const related = event.relatedTarget as Node | null;
+      if (current && related && current.contains(related)) return;
+      if (recentFolderDropTargetId.value === folderId) recentFolderDropTargetId.value = null;
+    };
+    const onRecentFolderDrop = (event: DragEvent, folderId: string) => {
+      if (recentFolderDropTargetId.value === folderId) recentFolderDropTargetId.value = null;
+      const payload = resolveGroupDragPayloadFromEvent(event);
+      if (!payload) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (!payload.keys.includes(`folder:${folderId}`)) {
+        void onDropGroupToFolder(folderId, payload);
+      }
+      groupDnd.endGroupDrag();
+    };
+
+    const onDropGroupToFolder = async (folderId: string | null, payload: GroupDragPayload) => {
+      if (!payload?.items?.length) return;
+      const target = folderId !== null ? allResourceFolders.value.find((f) => f.id === folderId) : null;
+      if (folderId !== null && !target) return;
+      if (target && target.role !== 'owner') return;
+      const targetName = folderId === null ? `${t('qSpace')}/${t('explorerHomeFolder')}` : target!.name;
+      let moved = 0;
+      let failed = 0;
+      let skippedTemplateToRoot = 0;
+      let lastError: unknown = null;
+      for (const entry of payload.items) {
+        try {
+          if (
+            entry.kind === 'drive-file'
+            || entry.kind === 'file'
+            || entry.kind === 'photo'
+            || entry.kind === 'video'
+            || entry.key.startsWith('drive-file:')
+            || entry.key.startsWith('photo:')
+          ) {
+            const fileId = entry.id || entry.key.replace(/^(drive-file:|photo:)/, '');
+            if (!fileId || entry.key.startsWith('y:')) continue;
+            await driveApi.moveFile(fileId, folderId);
+            moved += 1;
+          } else if (entry.kind === 'folder' || entry.key.startsWith('folder:')) {
+            const fId = entry.id || entry.key.replace(/^folder:/, '');
+            if (!fId || isFolderAncestorOrSelf(fId, folderId)) continue;
+            const currentFolder = allResourceFolders.value.find((f) => f.id === fId);
+            if (currentFolder && (currentFolder.parentId ?? null) === folderId) continue;
+            await resourceFolders.moveFolder(fId, folderId);
+            moved += 1;
+          } else if (entry.kind === 'canvas') {
+            await canvas.update(entry.id, { folderId });
+            moved += 1;
+          } else if (entry.kind === 'html-document') {
+            await htmlDocuments.update(entry.id, { folderId });
+            moved += 1;
+          } else if (entry.kind === 'text-document') {
+            await textDocuments.update(entry.id, { folderId });
+            moved += 1;
+          } else if (entry.kind === 'interactive-template' || entry.kind === 'board' || entry.kind === 'sheet') {
+            if (folderId !== null) {
+              await resourceFolders.move(folderId, 'interactive-template', entry.id);
+              moved += 1;
+            } else {
+              skippedTemplateToRoot += 1;
+            }
+          }
+        } catch (err) {
+          failed += 1;
+          lastError = err;
+        }
+      }
+      if (moved > 0) {
+        if (folderId) expandTree(folderId);
+        if (failed > 0) {
+          const reason = lastError instanceof Error && lastError.message ? lastError.message : t('spaceActionFailed');
+          setFeedback('error', reason);
+        } else {
+          setFeedback('success', t('bulkMovedTo').replace('{folder}', targetName).replace('{n}', String(moved)));
+        }
+        clearSelection();
+        folderFilesRefreshKey.value += 1;
+        sidebarDriveFiles.forget();
+        refreshFolderFileCounts();
+        void spaceView.value?.reload?.();
+        void loadSpaces(true);
+        refreshGalleryView({ clearSelection: true, invalidateFolders: true });
+        await load({ showLoading: false });
+      } else if (failed > 0) {
+        const reason = lastError instanceof Error && lastError.message ? lastError.message : t('spaceActionFailed');
+        setFeedback('error', reason);
+      } else if (skippedTemplateToRoot > 0) {
+        setFeedback(
+          'error',
+          locale.value === 'ru'
+            ? 'Перемещение шаблонов в корень «Домашняя» не поддерживается — выберите папку'
+            : 'Moving templates to Home root is not supported — drop onto a folder',
+        );
+      }
+    };
+
+    const normalizeYandexAlbumPath = (raw: string): string => {
+      const stripped = raw.replace(/^disk:/, '').trim();
+      if (!stripped || stripped === '/') return '/';
+      const withSlash = stripped.startsWith('/') ? stripped : `/${stripped}`;
+      return withSlash.replace(/\/+$/, '') || '/';
+    };
+
+    const onDropGroupToAlbum = async (targetSpaceId: string, payload: GroupDragPayload) => {
+      if (!targetSpaceId || !payload.items.length) return;
+      let added = 0;
+      const folderIds = new Set<string>();
+      const yandexPaths = new Set<string>();
+      const fileIds: string[] = [];
+      for (const entry of payload.items) {
+        if (
+          entry.kind === 'yandex-folder'
+          || entry.kind === 'yandex-dir'
+          || entry.kind === 'yandex-root'
+          || entry.key.startsWith('yandex-folder:')
+        ) {
+          const rawPath = entry.path || entry.id || entry.key.replace(/^yandex-folder:/, '');
+          if (rawPath) yandexPaths.add(normalizeYandexAlbumPath(rawPath));
+        } else if (entry.kind === 'folder' || entry.key.startsWith('folder:')) {
+          const fId = entry.id || entry.key.replace(/^folder:/, '');
+          if (fId) folderIds.add(fId);
+        } else if (
+          entry.kind === 'drive-file'
+          || entry.kind === 'file'
+          || entry.kind === 'photo'
+          || entry.kind === 'video'
+          || entry.key.startsWith('drive-file:')
+          || entry.key.startsWith('photo:')
+        ) {
+          const fileId = entry.id || entry.key.replace(/^(drive-file:|photo:)/, '');
+          if (fileId && !entry.key.startsWith('y:')) fileIds.push(fileId);
+        }
+      }
+      if (!fileIds.length && !folderIds.size && !yandexPaths.size) {
+        setFeedback('error', t('albumOnlyFilesAndFolders'));
+        return;
+      }
+      if (fileIds.length) {
+        try {
+          await spacesApi.addItems(targetSpaceId, fileIds);
+          added += fileIds.length;
+        } catch {
+          // Ignore individual failures
+        }
+      }
+      for (const fId of folderIds) {
+        try {
+          await spacesApi.addQspaceFolder(targetSpaceId, fId);
+          added += 1;
+        } catch {
+          // Folder may already be attached or non-owned
+        }
+      }
+      for (const yPath of yandexPaths) {
+        try {
+          await spacesApi.addYandexFolder(targetSpaceId, yPath);
+          added += 1;
+        } catch {
+          // Folder may already be attached
+        }
+      }
+      if (added > 0) {
+        setFeedback('success', t('explorerAddToAlbum'));
+        await loadSpaces(true);
+        if (spaceId.value === targetSpaceId) {
+          void spaceView.value?.reload?.();
+        }
+        if (activeAlbumIdForTree.value === targetSpaceId) {
+          void refreshActiveAlbumRelatedSources(targetSpaceId);
+        }
+        refreshGalleryView({ clearSelection: false, invalidateFolders: false });
+      }
+    };
+
+    // Multi-select Right-Click Context Menu
+    const propertiesFile = ref<{ id: string; name?: string } | null>(null);
+    const explorerCtxMenu = ref<{
+      open: boolean;
+      x: number;
+      y: number;
+      items: ExplorerContextMenuItem[];
+      emptyArea: boolean;
+      canShare: boolean;
+      canFavorite: boolean;
+      canMove: boolean;
+      canDelete: boolean;
+      canRename: boolean;
+      canDownload: boolean;
+      canProperties: boolean;
+      deleteLabel: string;
+      isFavorite: boolean;
+    }>({
+      open: false,
+      x: 0,
+      y: 0,
+      items: [],
+      emptyArea: false,
+      canShare: true,
+      canFavorite: true,
+      canMove: false,
+      canDelete: false,
+      canRename: false,
+      canDownload: true,
+      canProperties: false,
+      deleteLabel: '',
+      isFavorite: false,
+    });
+
+    const isYandexFolderContextItem = (item: ExplorerContextMenuItem): boolean => (
+      item.kind === 'yandex-dir'
+      || item.kind === 'yandex-folder'
+      || item.kind === 'yandex-root'
+      || item.key.startsWith('yandex-folder:')
+      || item.key === 'clouds:yandex'
+    );
+
+    const isAlbumEligibleContextItem = (item: ExplorerContextMenuItem): boolean => {
+      if (!item || item.key.startsWith('y:')) return false;
+      if (
+        item.kind === 'space'
+        || item.kind === 'album'
+        || item.key.startsWith('space:')
+        || item.key.startsWith('album:')
+      ) {
+        return false;
+      }
+      if (isYandexFolderContextItem(item)) {
+        return Boolean(item.id || item.key.replace(/^yandex-folder:/, ''));
+      }
+      if (item.kind === 'folder' || item.key.startsWith('folder:')) {
+        return Boolean(item.id || item.key.replace(/^folder:/, ''));
+      }
+      if (item.kind === 'drive-file' || item.kind === 'file' || item.key.startsWith('drive-file:')) {
+        return Boolean(item.id || item.key.replace(/^drive-file:/, ''));
+      }
+      return false;
+    };
+
+    const contextMenuCanAlbum = computed(() =>
+      !explorerCtxMenu.value.emptyArea
+      && explorerCtxMenu.value.items.some(isAlbumEligibleContextItem),
+    );
+
+    const contextMenuAlbums = computed(() => {
+      const single = explorerCtxMenu.value.items.length === 1 ? explorerCtxMenu.value.items[0] : null;
+      const activeIds = new Set<string>(single?.albumIds ?? single?.albums ?? []);
+      return allSpaces.value
+        .filter((s) => !s.unlisted && (!s.role || s.role === 'owner' || s.role === 'editor'))
+        .map((s) => ({
+          id: s.id,
+          name: s.name,
+          active: activeIds.size > 0 ? activeIds.has(s.id) : false,
+        }));
+    });
+
+    const isSpaceContextItem = (item: ExplorerContextMenuItem): boolean => (
+      item.kind === 'space'
+      || item.kind === 'album'
+      || item.key.startsWith('space:')
+      || item.key.startsWith('album:')
+    );
+
+    const findSpaceForContextItem = (item: ExplorerContextMenuItem) => {
+      const id = item.id || item.key.replace(/^(space:|album:)/, '');
+      if (!id) return null;
+      const listed = allSpaces.value.find((s) => s.id === id);
+      if (listed) return listed;
+      if (activeSpace.value && activeSpace.value.id === id) return activeSpace.value;
+      return null;
+    };
+
+    const openContextMenuForItems = (x: number, y: number, items: ExplorerContextMenuItem[]) => {
+      if (!items.length) return;
+      const first = items[0]!;
+      const renamableKinds = new Set([
+        'folder',
+        'space',
+        'album',
+        'canvas',
+        'text-document',
+        'html-document',
+        'drive-file',
+        'file',
+        'interactive-template',
+      ]);
+      const singleIsSpace = items.length === 1 && isSpaceContextItem(first);
+      const singleSpace = singleIsSpace ? findSpaceForContextItem(first) : null;
+      const allSpacesOnly = items.every(isSpaceContextItem);
+      const allYandexFoldersOnly = items.every(isYandexFolderContextItem);
+      const canRename = allYandexFoldersOnly
+        ? false
+        : singleIsSpace
+          ? singleSpace?.role === 'owner'
+          : items.length === 1 && renamableKinds.has(first.kind || '');
+      const deleteLabel = singleIsSpace && singleSpace && singleSpace.role !== 'owner'
+        ? t('spaceLeave')
+        : '';
+      explorerCtxMenu.value = {
+        open: true,
+        x,
+        y,
+        items,
+        emptyArea: false,
+        canShare: !allYandexFoldersOnly,
+        canFavorite: !allYandexFoldersOnly,
+        canMove: !allYandexFoldersOnly && items.some((i) => !isSpaceContextItem(i)),
+        canDelete: !allYandexFoldersOnly,
+        canRename,
+        canDownload: !allSpacesOnly && !allYandexFoldersOnly,
+        canProperties: !allYandexFoldersOnly && items.length === 1 && (first.kind === 'drive-file' || first.kind === 'file') && Boolean(first.id),
+        deleteLabel,
+        isFavorite: !allYandexFoldersOnly && items.every((i) => layoutPrefs.isFavorite(i.key)),
+      };
+    };
+
+    const allTableRowsByKey = computed(() => {
+      const map = new Map<string, ExplorerTableRow>();
+      for (const list of [
+        activeFolderTableRows.value,
+        homeRootTableRows.value,
+        recentTableRows.value,
+        sharedTableRows.value,
+        interactiveTableRows.value,
+        publicTableRows.value,
+      ]) {
+        for (const row of list) map.set(row.key, row);
+      }
+      return map;
+    });
+
+    const resolveContextMenuItem = (key: string, fallback?: ExplorerContextMenuItem): ExplorerContextMenuItem | null => {
+      const row = allTableRowsByKey.value.get(key);
+      if (row) {
+        return { key: row.key, id: row.id, kind: row.kind, name: row.name };
+      }
+      if (key.startsWith('folder:')) {
+        const id = key.slice('folder:'.length);
+        const f = allFolderSummaries.value.find((item) => item.id === id);
+        if (f) return { key, id: f.id, kind: 'folder', name: f.name };
+      }
+      if (key.startsWith('space:') || key.startsWith('album:')) {
+        const id = key.replace(/^(space:|album:)/, '');
+        const s = allSpaces.value.find((item) => item.id === id);
+        if (s) return { key, id: s.id, kind: 'space', name: s.name };
+      }
+      const res = (dashboardItemsByKey.value as ReadonlyMap<string, FolderItem>).get(key);
+      if (res) {
+        return { key, id: res.id, kind: res.type, name: res.title || t('untitled') };
+      }
+      const driveFile = driveFilesByKey.value.get(key)
+        || folderDriveFiles.value.find((f) => `drive-file:${f.id}` === key)
+        || homeRootDriveFiles.value.find((f) => `drive-file:${f.id}` === key);
+      if (driveFile) {
+        return { key, id: driveFile.id, kind: 'drive-file', name: driveFile.name };
+      }
+      const spaceItem = spaceItemsByKey.value.get(key);
+      if (spaceItem) {
+        return { key, id: spaceItem.id || spaceItem.key, kind: spaceItem.kind, name: spaceItem.name };
+      }
+      if (fallback && fallback.key === key) return fallback;
+      return null;
+    };
+
+    const openContextMenuForKeys = (x: number, y: number, clickedItem: ExplorerContextMenuItem) => {
+      if (!selectedKeys.value.includes(clickedItem.key)) {
+        selectedKeys.value = [clickedItem.key];
+        selectionAnchor = clickedItem.key;
+      }
+      const keys = selectedKeys.value.length ? selectedKeys.value : [clickedItem.key];
+      const items = keys
+        .map((k) => resolveContextMenuItem(k, clickedItem))
+        .filter((item): item is ExplorerContextMenuItem => Boolean(item));
+      openContextMenuForItems(x, y, items.length ? items : [clickedItem]);
+    };
+
+    const onTableRowContextMenu = (event: MouseEvent, row: ExplorerTableRow) => {
+      openContextMenuForKeys(event.clientX, event.clientY, {
+        key: row.key,
+        id: row.id,
+        kind: row.kind,
+        name: row.name,
+      });
+    };
+
+    const onGridItemContextMenu = (event: MouseEvent, item: { type: string; id: string; title?: string | null; name?: string | null }) => {
+      const key = selectionKey(item);
+      openContextMenuForKeys(event.clientX, event.clientY, {
+        key,
+        id: item.id,
+        kind: item.type,
+        name: item.title || item.name || t('untitled'),
+      });
+    };
+
+    const onGridDriveFileContextMenu = (event: MouseEvent, file: DriveItem) => {
+      openContextMenuForKeys(event.clientX, event.clientY, {
+        key: `drive-file:${file.id}`,
+        id: file.id,
+        kind: 'drive-file',
+        name: file.name || t('untitled'),
+      });
+    };
+
+    const onGridFolderContextMenu = (event: MouseEvent, folder: { id: string; name: string }) => {
+      openContextMenuForKeys(event.clientX, event.clientY, {
+        key: `folder:${folder.id}`,
+        id: folder.id,
+        kind: 'folder',
+        name: folder.name,
+      });
+    };
+
+    const onSpaceTileContextMenu = (event: MouseEvent, space: { id: string; name: string }) => {
+      openContextMenuForKeys(event.clientX, event.clientY, {
+        key: `space:${space.id}`,
+        id: space.id,
+        kind: 'space',
+        name: space.name,
+      });
+    };
+
+    const onFavoriteTileContextMenu = (event: MouseEvent, fav: HomeFavoriteTile) => {
+      openContextMenuForKeys(event.clientX, event.clientY, {
+        key: fav.key,
+        id: fav.id,
+        kind: fav.kind,
+        name: fav.name,
+      });
+    };
+
+    const onEmptyAreaContextMenu = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('[data-select-key], .subfolder-card, .canvas-card, .exp-row, button, a, input, textarea, [data-explorer-context-menu]')) return;
+      explorerCtxMenu.value = {
+        open: true,
+        x: event.clientX,
+        y: event.clientY,
+        items: [],
+        emptyArea: true,
+        canShare: false,
+        canFavorite: false,
+        canMove: false,
+        canDelete: false,
+        canRename: false,
+        canDownload: false,
+        canProperties: false,
+        deleteLabel: '',
+        isFavorite: false,
+      };
+    };
+
+    const onDashboardMainContextMenu = (event: MouseEvent) => {
+      if (!isLoggedIn) return;
+      if (activeSection.value.kind !== 'home' && activeSection.value.kind !== 'folder') return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('[data-select-key], .subfolder-card, .canvas-card, .exp-row, button, a, input, textarea, [data-explorer-context-menu]')) return;
+      event.preventDefault();
+      onEmptyAreaContextMenu(event);
+    };
+
+    const onCtxMenuEmptyCreateFolder = () => {
+      if (activeSection.value.kind === 'folder' && activeFolder.value) {
+        openSubfolderModal(activeFolder.value);
+      } else {
+        openCreateGroupModal();
+      }
+    };
+
+    const onCtxMenuEmptyAdd = () => {
+      openAddDialog({ folderId: activeSection.value.kind === 'folder' ? activeFolder.value?.id : undefined });
+    };
+
+    const onCtxMenuEmptyRefresh = () => {
+      void load({ showLoading: false });
+      folderFilesRefreshKey.value += 1;
+      refreshFolderFileCounts();
+    };
+
+    const onTreeContextMenu = (payload: TreeContextMenuPayload) => {
+      const keys = payload.selectedKeys.length ? payload.selectedKeys : [payload.nodeKey];
+      const items: ExplorerContextMenuItem[] = keys.map((key) => {
+        const treeFileMatch = key.match(/^file:[^/]+\/([^:]+):(.+)$/);
+        if (treeFileMatch) {
+          const fileType = treeFileMatch[1]!;
+          const fileId = treeFileMatch[2]!;
+          const canonicalKey = `${fileType}:${fileId}`;
+          const resolved = resolveContextMenuItem(canonicalKey);
+          return resolved || {
+            key: canonicalKey,
+            id: fileId,
+            kind: fileType,
+            name: (dashboardItemsByKey.value as ReadonlyMap<string, FolderItem>).get(canonicalKey)?.title || fileId,
+          };
+        }
+        if (
+          key === 'clouds:yandex'
+          || key.startsWith('yandex:/')
+          || key.startsWith('yandex-folder:')
+          || payload.kind === 'yandex-root'
+          || payload.kind === 'yandex-dir'
+        ) {
+          const rawPath = key === 'clouds:yandex'
+            ? '/'
+            : key.startsWith('yandex-folder:')
+              ? key.slice('yandex-folder:'.length)
+              : key.startsWith('yandex:')
+                ? key.slice('yandex:'.length)
+                : payload.targetId;
+          const yPath = normalizeYandexAlbumPath(rawPath || '/');
+          const yName = yPath === '/'
+            ? t('yandexDisk')
+            : (yPath.split('/').filter(Boolean).pop() || t('yandexDisk'));
+          return {
+            key: `yandex-folder:${yPath}`,
+            id: yPath,
+            kind: 'yandex-dir',
+            name: yName,
+          };
+        }
+        const isSpace = key.startsWith('album:') || payload.kind === 'album';
+        const isFolder = key.startsWith('folder:') || payload.kind === 'folder';
+        const id = key === payload.nodeKey
+          ? payload.targetId
+          : key.replace(/^(folder:|album:|file:)/, '');
+        return {
+          key,
+          id,
+          kind: isSpace ? 'space' : isFolder ? 'folder' : payload.kind,
+          name: allFolderSummaries.value.find((f) => f.id === id)?.name
+            || allSpaces.value.find((s) => s.id === id)?.name
+            || id,
+        };
+      });
+      openContextMenuForItems(payload.event.clientX, payload.event.clientY, items);
+    };
+
+    const onCtxMenuOpen = (item: ExplorerContextMenuItem) => {
+      if (isYandexFolderContextItem(item)) {
+        const yPath = normalizeYandexAlbumPath(item.id || item.key.replace(/^yandex-folder:/, '') || '/');
+        if (activeSection.value.kind === 'gallery') {
+          onGallerySelectYandex(yPath);
+        } else {
+          openYandexPath(yPath);
+        }
+      } else if (item.kind === 'folder' && item.id) {
+        selectFolder(item.id);
+      } else if ((item.kind === 'space' || item.kind === 'album') && item.id) {
+        selectDashboardSection({ kind: 'space', spaceId: item.id });
+      } else if ((item.kind === 'drive-file' || item.kind === 'file') && item.id) {
+        let matchedPool: DriveItem[] | null = null;
+        let file = activeDriveFiles.value.find((f) => f.id === item.id)
+          || folderDriveFiles.value.find((f) => f.id === item.id)
+          || homeRootDriveFiles.value.find((f) => f.id === item.id);
+        if (!file) {
+          for (const list of Object.values(sidebarDriveFiles.files)) {
+            const found = list.find((f) => f.id === item.id);
+            if (found) {
+              file = found;
+              matchedPool = list;
+              break;
+            }
+          }
+        }
+        if (file) {
+          if (isDriveMedia(file)) {
+            if (matchedPool) {
+              const siblings = matchedPool.filter(isDriveMedia);
+              const idx = siblings.findIndex((f) => f.id === file!.id);
+              openDriveMediaList(siblings.length ? siblings : [file], idx >= 0 ? idx : 0);
+            } else {
+              openDriveImage(file);
+            }
+          } else if (isMarkdownFile(file)) {
+            openDriveMarkdown(file);
+          } else {
+            void downloadDriveFile(file.id, file.name);
+          }
+        } else if (isPictureFile({ name: item.name || '' }) || isVideoFile({ name: item.name || '' })) {
+          const itemName = item.name || t('untitled');
+          mediaViewer.value = {
+            items: [driveViewerItem({ id: item.id, name: itemName, kind: isVideoFile({ name: item.name || '' }) ? 'video' : 'photo' })],
+            start: 0,
+            source: 'drive',
+          };
+        } else if (isMarkdownFile({ name: item.name || '' })) {
+          openDriveMarkdown({ id: item.id, name: item.name || t('untitled') });
+        } else {
+          void downloadDriveFile(item.id, item.name);
+        }
+      } else if (item.id && item.kind) {
+        openSpaceResource(item.kind, item.id);
+      }
+    };
+
+    const onCtxMenuShare = (items: readonly ExplorerContextMenuItem[]) => {
+      const first = items[0];
+      if (!first) return;
+      if ((first.kind === 'space' || first.kind === 'album') && first.id) {
+        void openAlbumShareById(first.id);
+      } else if (first.kind === 'folder' && first.id) {
+        const f = allFolderSummaries.value.find((x) => x.id === first.id);
+        if (f) void openFolderShareModal(f);
+      } else if ((first.kind === 'drive-file' || first.kind === 'file') && first.id) {
+        const file = activeDriveFiles.value.find((f) => f.id === first.id);
+        const folderId = file?.folderId || (activeSection.value.kind === 'folder' ? activeFolder.value?.id : undefined);
+        const folder = folderId ? allFolderSummaries.value.find((x) => x.id === folderId) : null;
+        if (folder) {
+          void openFolderShareModal(folder);
+        } else if (spaceId.value) {
+          void openAlbumShareById(spaceId.value);
+        }
+      } else if (first.id && (
+        first.kind === 'canvas'
+        || first.kind === 'html-document'
+        || first.kind === 'text-document'
+        || first.kind === 'interactive-template'
+      )) {
+        void openResourceShareModal(first.kind, first.id);
+      }
+    };
+
+    const onCtxMenuAddToAlbum = async (albumId: string | undefined, items: readonly ExplorerContextMenuItem[]) => {
+      const eligible = items.filter(isAlbumEligibleContextItem);
+      if (!eligible.length) return;
+      let targetAlbumId = albumId;
+      if (!targetAlbumId) {
+        const allowed = await plansApi.mine().then((info) => info.plan?.canCreateSpaces !== false).catch(() => true);
+        if (!allowed) {
+          setFeedback('error', t('planErrorSpaces'));
+          return;
+        }
+        const name = (await promptDialog({
+          title: t('spaceNew'),
+          placeholder: t('spaceNamePlaceholder'),
+          confirmLabel: t('create'),
+          cancelLabel: t('cancel'),
+        }))?.trim();
+        if (!name) return;
+        try {
+          const space = await spacesApi.create(name);
+          targetAlbumId = space.id;
+          await loadSpaces(true);
+        } catch (error) {
+          setFeedback('error', error instanceof Error && error.message ? error.message : t('spaceActionFailed'));
+          return;
+        }
+      }
+      await onDropGroupToAlbum(targetAlbumId, {
+        source: 'explorer',
+        items: eligible.map((i) => {
+          if (isYandexFolderContextItem(i)) {
+            const yPath = normalizeYandexAlbumPath(i.id || i.key.replace(/^yandex-folder:/, '') || '/');
+            return {
+              key: `yandex-folder:${yPath}`,
+              id: yPath,
+              kind: 'yandex-folder',
+              name: i.name,
+              path: yPath,
+            };
+          }
+          return {
+            key: i.key,
+            id: i.id || '',
+            kind: i.kind || 'file',
+            folderId: (i.kind === 'folder' || i.key.startsWith('folder:'))
+              ? (i.id || i.key.replace(/^folder:/, ''))
+              : null,
+          };
+        }),
+        keys: eligible.map((i) => i.key),
+        count: eligible.length,
+      });
+    };
+
+    const onCtxMenuToggleFavorite = (items: readonly ExplorerContextMenuItem[]) => {
+      for (const item of items) {
+        if (item.id && item.name && item.kind) {
+          rememberedFavoriteMeta[item.key] = { id: item.id, name: item.name, kind: item.kind };
+        }
+        layoutPrefs.toggleFavorite(item.key);
+      }
+    };
+
+    const onCtxMenuMove = (items: readonly ExplorerContextMenuItem[]) => {
+      const keys = items.map((i) => i.key).filter((k) => !k.startsWith('folder:') && !k.startsWith('space:') && !k.startsWith('album:'));
+      if (keys.length) {
+        selectedKeys.value = keys;
+        openBulkMoveModal();
+      } else if (items[0]?.kind === 'folder' && items[0].id) {
+        const f = allFolderSummaries.value.find((x) => x.id === items[0]!.id);
+        if (f) openFolderParentModal(f);
+      }
+    };
+
+    const onCtxMenuRename = async (item: ExplorerContextMenuItem) => {
+      if (!item.id) return;
+      if (item.kind === 'folder') {
+        const f = allFolderSummaries.value.find((x) => x.id === item.id);
+        if (f) openRenameFolderModal(f);
+        return;
+      }
+      const currentName = item.name || '';
+      const nextName = (await promptDialog({
+        title: t('rename'),
+        value: currentName,
+        confirmLabel: t('save'),
+        cancelLabel: t('cancel'),
+      }))?.trim();
+      if (!nextName || nextName === currentName) return;
+
+      if (item.kind === 'space' || item.kind === 'album') {
+        try {
+          const updated = await spacesApi.rename(item.id, nextName);
+          if (updated && activeSpace.value?.id === item.id) {
+            activeSpace.value = updated;
+          }
+          await loadSpaces(true);
+        } catch (err) {
+          setFeedback('error', err instanceof Error && err.message ? err.message : t('spaceActionFailed'));
+        }
+        return;
+      }
+      if (item.kind === 'canvas') {
+        const updated = await runAction('rename-canvas', () => canvas.update(item.id!, { title: nextName }), t('canvasRenamed'));
+        if (updated) applyCanvasUpdate(updated);
+        return;
+      }
+      if (item.kind === 'text-document') {
+        await runAction('rename-text-document', () => textDocuments.update(item.id!, { title: nextName }), t('save'));
+        await load({ showLoading: false });
+        return;
+      }
+      if (item.kind === 'html-document') {
+        await runAction('rename-html-document', () => htmlDocuments.update(item.id!, { title: nextName }), t('save'));
+        await load({ showLoading: false });
+        return;
+      }
+      if (item.kind === 'drive-file' || item.kind === 'file') {
+        await runAction('rename-drive-file', () => driveApi.renameFile(item.id!, nextName), t('save'));
+        folderFilesRefreshKey.value += 1;
+        return;
+      }
+      if (item.kind === 'interactive-template') {
+        await runAction('rename-interactive-template', () => interactiveTemplates.update(item.id!, { title: nextName }), t('save'));
+        await load({ showLoading: false });
+      }
+    };
+
+    const onCtxMenuDownload = (items: readonly ExplorerContextMenuItem[]) => {
+      selectedKeys.value = items.map((i) => i.key);
+      void bulkDownload();
+    };
+
+    const onCtxMenuProperties = (item: ExplorerContextMenuItem) => {
+      if ((item.kind === 'drive-file' || item.kind === 'file') && item.id) {
+        propertiesFile.value = { id: item.id, name: item.name };
+      }
+    };
+
+    const onCtxMenuDelete = async (items: readonly ExplorerContextMenuItem[]) => {
+      if (items.length === 1 && items[0]!.kind === 'folder' && items[0]!.id) {
+        const f = allFolderSummaries.value.find((x) => x.id === items[0]!.id);
+        if (f) void deleteFolder(f);
+        return;
+      }
+      if (items.length === 1 && isSpaceContextItem(items[0]!)) {
+        const targetId = items[0]!.id || items[0]!.key.replace(/^(space:|album:)/, '');
+        if (!targetId) return;
+        const space = findSpaceForContextItem(items[0]!);
+        const spaceName = space?.name || items[0]!.name || '';
+        const isOwner = !space || space.role === 'owner';
+        if (isOwner) {
+          const confirmed = await confirmDialog({
+            title: t('spaceDeleteTitle').replace('{name}', spaceName),
+            confirmLabel: t('delete'),
+            cancelLabel: t('cancel'),
+            danger: true,
+          });
+          if (!confirmed) return;
+          try {
+            await spacesApi.remove(targetId);
+            await loadSpaces(true);
+            if (spaceId.value === targetId) selectDashboardSection({ kind: 'recent' });
+          } catch (err) {
+            setFeedback('error', err instanceof Error && err.message ? err.message : t('spaceActionFailed'));
+          }
+        } else {
+          const meId = currentUser.value?.id;
+          if (!meId) return;
+          const confirmed = await confirmDialog({
+            title: t('spaceLeaveTitle').replace('{name}', spaceName),
+            confirmLabel: t('spaceLeave'),
+            cancelLabel: t('cancel'),
+            danger: true,
+          });
+          if (!confirmed) return;
+          try {
+            await spacesApi.removeMember(targetId, meId);
+            await loadSpaces(true);
+            if (spaceId.value === targetId) selectDashboardSection({ kind: 'recent' });
+          } catch (err) {
+            setFeedback('error', err instanceof Error && err.message ? err.message : t('spaceActionFailed'));
+          }
+        }
+        return;
+      }
+      selectedKeys.value = items.map((i) => i.key);
+      void bulkDelete();
+    };
+
+    const shareSelectedGroup = () => {
+      if (spaceId.value) {
+        void openAlbumShareById(spaceId.value);
+      } else if (activeFolder.value && selectedKeys.value.length > 0) {
+        openFolderShareModal(activeFolder.value);
+      }
+    };
+
+    const openAddSelectionToAlbum = () => {
+      const firstAlbum = allSpaces.value[0];
+      if (!firstAlbum) return;
+      if (activeFolder.value) {
+        void onDropGroupToAlbum(firstAlbum.id, {
+          source: 'explorer',
+          items: [{ key: `folder:${activeFolder.value.id}`, id: activeFolder.value.id, kind: 'folder', folderId: activeFolder.value.id }],
+          keys: [`folder:${activeFolder.value.id}`],
+          count: 1,
+        });
+      }
+    };
+
+    // Global Escape hierarchy in Files mode (DrivePhotos owns Gallery Escape)
+    const onExplorerEscapeKeydown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented) return;
+      if (activeSection.value.kind === 'gallery') return;
+      if (folderModal.value.open) {
+        closeFolderModal();
+        event.preventDefault();
+        return;
+      }
+      if (subfolderModal.value.open) {
+        closeSubfolderModal();
+        event.preventDefault();
+        return;
+      }
+      if (explorerCtxMenu.value.open) return;
+      if (
+        mediaViewer.value
+        || markdownViewer.value
+        || yandexMove.value
+        || propertiesFile.value
+        || templatePickerOpen.value
+        || addDialog.value.open
+        || sharingAlbum.value
+        || renameFolderModal.value.open
+        || folderParentModal.value.open
+        || descriptionModal.value.open
+        || folderShareModal.value.open
+        || tagsModal.value.open
+        || transferModal.value.open
+        || tagSheetOpen.value
+        || resourceShare.open
+        || (typeof document !== 'undefined' && Boolean(document.querySelector('[role="dialog"], .modal-backdrop, .drive-properties-backdrop, [data-explorer-context-menu]')))
+      ) {
+        return;
+      }
+      if (openControlMenu.value) {
+        openControlMenu.value = '';
+        event.preventDefault();
+        return;
+      }
+      if (openMenuCanvasId.value) {
+        openMenuCanvasId.value = '';
+        event.preventDefault();
+        return;
+      }
+      if (
+        typeof document !== 'undefined'
+        && Boolean(document.querySelector('.card-menu, [data-space-add-menu], [data-yandex-add-menu], [data-yandex-space-menu]'))
+      ) {
+        return;
+      }
+      if (headroomBarRef.value?.handleSearchEscape?.()) {
+        event.preventDefault();
+        return;
+      }
+      if (searchQuery.value.trim() !== '' || s2TypeFilter.value !== 'all') {
+        searchQuery.value = '';
+        s2TypeFilter.value = 'all';
+        event.preventDefault();
+        return;
+      }
+      if (selectedKeys.value.length > 0 || sidebarRef.value?.hasTreeSelection?.()) {
+        clearSelection();
+        sidebarRef.value?.clearTreeSelection?.();
+        event.preventDefault();
+      }
+    };
+    const openSingleSelectedKey = (key: string): boolean => {
+      if (!key) return false;
+      if (key.startsWith('folder:')) {
+        selectFolder(key.slice('folder:'.length));
+        return true;
+      }
+      if (key.startsWith('space:') || key.startsWith('album:')) {
+        selectDashboardSection({ kind: 'space', spaceId: key.replace(/^(space:|album:)/, '') });
+        return true;
+      }
+      if (key.startsWith('drive-file:')) {
+        const fid = key.slice('drive-file:'.length);
+        const file = activeDriveFiles.value.find((f) => f.id === fid)
+          || folderDriveFiles.value.find((f) => f.id === fid)
+          || homeRootDriveFiles.value.find((f) => f.id === fid);
+        if (file) {
+          if (isDriveMedia(file)) openDriveImage(file);
+          else if (isMarkdownFile(file)) openDriveMarkdown(file);
+          else void downloadDriveFile(file.id, file.name);
+          return true;
+        }
+        // Fallback for transferred shared photo not mounted in Drive files list
+        mediaViewer.value = {
+          items: [driveViewerItem({ id: fid, name: t('untitled'), kind: 'photo' })],
+          start: 0,
+          source: 'drive',
+        };
+        return true;
+      }
+      const res = (dashboardItemsByKey.value as ReadonlyMap<string, FolderItem>).get(key);
+      if (res) {
+        const routeId = ('slug' in res && res.slug) || res.id;
+        openSpaceResource(res.type, routeId);
+        return true;
+      }
+      const spaceItem = spaceItemsByKey.value.get(key);
+      if (spaceItem) {
+        if (spaceItem.kind === 'file' && spaceItem.id) {
+          const media = spaceFeedItems.value.filter((other) => other.kind === 'file' && (isPictureFile({ name: other.name, mime: other.mime }) || isVideoFile({ name: other.name, mime: other.mime })));
+          if (media.some((m) => m.key === spaceItem.key)) {
+            openSpaceMedia(
+              media.map((m) => ({
+                key: m.key,
+                name: m.name,
+                kind: isVideoFile({ name: m.name, mime: m.mime }) ? 'video' : 'image',
+                date: m.updatedAt,
+                preview: null,
+                loadFull: async () => (m.origin === 'yandex' && spaceId.value && m.sourceId && m.path
+                  ? (await spacesApi.yandexDownload(spaceId.value, m.sourceId, m.path)).href
+                  : resolveDownloadUrl((await driveApi.getDownloadLink(m.id!)).url)),
+                download: async () => { await downloadDriveFile(m.id!, m.name); },
+                fileId: m.origin === 'qspace' ? m.id : null,
+                noReferrer: m.origin === 'yandex',
+                sizeBytes: m.size ?? null,
+                mimeType: m.mime ?? null,
+                origin: m.origin,
+              })),
+              Math.max(0, media.findIndex((m) => m.key === spaceItem.key)),
+            );
+            return true;
+          }
+        } else if (spaceItem.id) {
+          openSpaceResource(spaceItem.kind, spaceItem.id);
+          return true;
+        }
+      }
+      return false;
+    };
+
+    const onExplorerEnterKeydown = (event: KeyboardEvent) => {
+      if (event.key !== 'Enter' || event.defaultPrevented) return;
+      if (
+        !isLoggedIn
+        || activeSection.value.kind === 'gallery'
+        || activeSection.value.kind === 'space'
+        || activeSection.value.kind === 'yandex'
+        || mediaViewer.value
+      ) {
+        return;
+      }
+      if (selectedKeys.value.length !== 1) return;
+      if (explorerCtxMenu.value.open || addDialog.value.open || folderModal.value.open || renameFolderModal.value.open || subfolderModal.value.open || folderParentModal.value.open) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest('input, textarea, select, [contenteditable="true"], [role="dialog"], [data-explorer-context-menu], [data-explorer-table], [data-folder-file], .canvas-card, .subfolder-card, button, a')) {
+        return;
+      }
+      if (openSingleSelectedKey(selectedKeys.value[0]!)) {
+        event.preventDefault();
+      }
+    };
+    onMounted(() => {
+      window.addEventListener('keydown', onExplorerEscapeKeydown);
+      window.addEventListener('keydown', onExplorerEnterKeydown);
+    });
+    onBeforeUnmount(() => {
+      window.removeEventListener('keydown', onExplorerEscapeKeydown);
+      window.removeEventListener('keydown', onExplorerEnterKeydown);
+    });
+
+    // Gallery mode state & handlers
+    const galleryViewRef = ref<InstanceType<typeof DrivePhotos> | null>(null);
+    const gallerySidebarRef = ref<{ invalidateFolderFilesCache?: () => void } | null>(null);
+    const galleryRefreshKey = ref(0);
+    const refreshGalleryView = (opts?: { clearSelection?: boolean; invalidateFolders?: boolean }) => {
+      const view = galleryViewRef.value as { refresh?: (options?: { clearSelection?: boolean; invalidateFolders?: boolean }) => void } | null;
+      if (typeof view?.refresh === 'function') {
+        view.refresh(opts);
+      } else {
+        if (activeSection.value.kind === 'gallery') {
+          galleryRefreshKey.value += 1;
+        }
+        if (opts?.invalidateFolders !== false) {
+          gallerySidebarRef.value?.invalidateFolderFilesCache?.();
+        }
+      }
+    };
+    const galleryHighlightFolderId = ref<string | null>(null);
+    const galleryHighlightFileId = ref<string | null>(null);
+    const galleryYandexPath = ref<string | null>(null);
+    const gallerySidebarCounts = ref<GallerySidebarCounts>({});
+    const activeAlbumRelatedFolderIds = ref<Set<string>>(new Set());
+    const activeAlbumRelatedYandexPaths = ref<Set<string>>(new Set());
+
+    const activeAlbumIdForTree = computed<string | null>(() => {
+      if (activeSection.value.kind === 'gallery') return galleryAlbumId.value;
+      if (activeSection.value.kind === 'space') return activeSection.value.spaceId;
+      return null;
+    });
+
+    const computeFolderAncestorsForTree = (folderIds: ReadonlySet<string>): string[] => {
+      if (!folderIds.size) return [];
+      const parentById = new Map<string, string | null>();
+      for (const f of allFolderSummaries.value) parentById.set(f.id, f.parentId ?? null);
+      for (const f of allResourceFolders.value) {
+        if (!parentById.has(f.id)) parentById.set(f.id, f.parentId ?? null);
+      }
+      const ancestors = new Set<string>();
+      for (const fid of folderIds) {
+        const visited = new Set<string>([fid]);
+        let parentId = parentById.get(fid) ?? null;
+        while (parentId && !visited.has(parentId)) {
+          visited.add(parentId);
+          ancestors.add(parentId);
+          parentId = parentById.get(parentId) ?? null;
+        }
+      }
+      return [...ancestors];
+    };
+
+    let albumRelatedFoldersSeq = 0;
+    const refreshActiveAlbumRelatedSources = async (albumId: string | null) => {
+      const seq = ++albumRelatedFoldersSeq;
+      activeAlbumRelatedFolderIds.value = new Set();
+      activeAlbumRelatedYandexPaths.value = new Set();
+      if (!albumId) {
+        return;
+      }
+      const ids = new Set<string>();
+      const yPaths = new Set<string>();
+      let hasItemFolderIds = false;
+      try {
+        if (typeof spacesApi.get === 'function') {
+          const details = await spacesApi.get(albumId);
+          if (seq !== albumRelatedFoldersSeq) return;
+          for (const src of details?.sources ?? []) {
+            if (src.kind === 'qspace' && src.folderId) {
+              ids.add(src.folderId);
+            } else if (src.kind === 'yandex' && src.yandexPath) {
+              yPaths.add(normalizeYandexAlbumPath(src.yandexPath));
+            }
+          }
+          if (Array.isArray(details?.itemFolderIds)) {
+            hasItemFolderIds = true;
+            for (const fid of details.itemFolderIds) {
+              if (fid) ids.add(fid);
+            }
+          }
+        }
+      } catch {
+        // Non-fatal: fall through to photosApi.summary discovery if available.
+      }
+      if (!hasItemFolderIds && typeof photosApi?.summary === 'function') {
+        try {
+          const summary = await photosApi.summary({
+            sort: [{ key: 'folder', desc: false, sub: 'name' }],
+            levels: ['folder'],
+            period: 'month',
+            filter: 'all',
+            shared: true,
+            albumId,
+          });
+          if (seq !== albumRelatedFoldersSeq) return;
+          for (const group of summary?.groups ?? []) {
+            if (group.key && group.key !== 'none' && group.key !== 'root') {
+              ids.add(group.key);
+            }
+          }
+        } catch {
+          // Non-fatal: keep whatever sources gave us.
+        }
+      }
+      if (seq !== albumRelatedFoldersSeq) return;
+      activeAlbumRelatedFolderIds.value = ids;
+      activeAlbumRelatedYandexPaths.value = yPaths;
+      if (activeSection.value.kind === 'space' && activeSection.value.spaceId === albumId) {
+        expandedTreeIds.value = computeFolderAncestorsForTree(ids);
+      }
+    };
+
+    watch(activeAlbumIdForTree, (albumId) => {
+      void refreshActiveAlbumRelatedSources(albumId);
+    }, { immediate: true });
+
+    const galleryAlbumMembersCount = computed<number | null>(() => {
+      if (!galleryAlbumId.value) return null;
+      const found = allSpaces.value.find((s) => s.id === galleryAlbumId.value);
+      return found ? found.memberCount + 1 : null;
+    });
+
+    const galleryStorageFolders = computed<GalleryStorageFolder[]>(() =>
+      allResourceFolders.value.map((f) => ({
+        id: f.id,
+        name: f.name,
+        parentId: f.parentId ?? null,
+        role: f.role,
+      })),
+    );
+
+    const onGallerySelectSection = (section: GallerySection | 'trash') => {
+      gallerySection.value = section;
+      galleryAlbumId.value = null;
+      galleryFolderId.value = null;
+      galleryYandexPath.value = null;
+      galleryHighlightFolderId.value = null;
+      galleryHighlightFileId.value = null;
+      galleryFocusedPhoto.value = null;
+    };
+
+    const onGalleryOpenTrash = () => {
+      gallerySection.value = 'trash';
+      galleryAlbumId.value = null;
+      galleryFolderId.value = null;
+      galleryYandexPath.value = null;
+      galleryHighlightFolderId.value = null;
+      galleryHighlightFileId.value = null;
+      galleryFocusedPhoto.value = null;
+    };
+
+    const onGallerySelectAlbum = (albumId: string) => {
+      galleryAlbumId.value = albumId;
+      galleryFolderId.value = null;
+      galleryYandexPath.value = null;
+      galleryHighlightFolderId.value = null;
+      galleryHighlightFileId.value = null;
+      gallerySection.value = 'library';
+      galleryFocusedPhoto.value = null;
+    };
+
+    const onGalleryClearAlbum = () => {
+      galleryAlbumId.value = null;
+    };
+
+    const onGallerySelectYandex = (path: string) => {
+      galleryYandexPath.value = path;
+      galleryAlbumId.value = null;
+      galleryFolderId.value = null;
+      galleryHighlightFolderId.value = null;
+      galleryHighlightFileId.value = null;
+      gallerySection.value = 'library';
+      galleryFocusedPhoto.value = null;
+    };
+
+    const onGallerySelectYandexPath = (path: string | null) => {
+      galleryYandexPath.value = path;
+      if (path !== null) {
+        galleryAlbumId.value = null;
+        galleryFolderId.value = null;
+        galleryHighlightFolderId.value = null;
+        galleryHighlightFileId.value = null;
+      }
+    };
+
+    const onGallerySharePhotos = async (fileIds: string[]) => {
+      if (!fileIds.length) return;
+      try {
+        const dateLabel = new Date().toLocaleDateString(locale.value === 'ru' ? 'ru-RU' : 'en-US', {
+          day: 'numeric',
+          month: 'short',
+        });
+        const prefix = locale.value === 'ru' ? 'Общие фото' : 'Shared photos';
+        const created = await spacesApi.create(`${prefix} (${dateLabel})`, { unlisted: true });
+        await spacesApi.addItems(created.id, fileIds);
+        const details = await spacesApi.get(created.id).catch(() => created);
+        sharingAlbum.value = { ...details, unlisted: true };
+      } catch (err) {
+        setFeedback('error', err instanceof Error && err.message ? err.message : t('spaceActionFailed'));
+      }
+    };
+
+    const onGallerySelectFolder = (folderId: string) => {
+      galleryFolderId.value = folderId;
+      galleryAlbumId.value = null;
+      galleryYandexPath.value = null;
+      galleryHighlightFolderId.value = null;
+      galleryHighlightFileId.value = null;
+      gallerySection.value = 'library';
+      galleryFocusedPhoto.value = null;
+    };
+
+    const onGalleryShowFolder = (folderId: string, fileId: string) => {
+      gallerySection.value = 'library';
+      galleryAlbumId.value = null;
+      galleryYandexPath.value = null;
+      galleryFolderId.value = folderId;
+      galleryHighlightFolderId.value = folderId === 'root' ? null : folderId;
+      galleryHighlightFileId.value = fileId || null;
+      if (fileId) {
+        void nextTick(() => {
+          (galleryViewRef.value as { focusFile?: (id: string) => void } | null)?.focusFile?.(fileId);
+        });
+      }
+    };
+
+    const onGallerySelectFile = (fileId: string, folderId: string | null) => {
+      galleryAlbumId.value = null;
+      if (fileId.startsWith('yandex:')) {
+        galleryFolderId.value = null;
+        galleryHighlightFolderId.value = null;
+        galleryYandexPath.value = folderId || '/';
+        galleryHighlightFileId.value = fileId;
+      } else {
+        galleryYandexPath.value = null;
+        if (folderId) galleryFolderId.value = folderId;
+        galleryHighlightFolderId.value = folderId;
+        galleryHighlightFileId.value = fileId;
+      }
+      void nextTick(() => {
+        (galleryViewRef.value as { focusFile?: (id: string) => void } | null)?.focusFile?.(fileId);
+      });
+    };
+
+    const onGalleryFocusPhoto = (item: PhotoFeedItem) => {
+      galleryFocusedPhoto.value = item;
+      if (!galleryAlbumId.value) {
+        galleryHighlightFolderId.value = item.folderId ?? null;
+      } else {
+        galleryHighlightFolderId.value = null;
+      }
+      galleryHighlightFileId.value = item.fileId;
+    };
+
+    const onGalleryFolderContextMenu = (payload: { event: MouseEvent; folderId: string }) => {
+      const folder = allFolderSummaries.value.find((f) => f.id === payload.folderId)
+        || allResourceFolders.value.find((f) => f.id === payload.folderId);
+      if (!folder) return;
+      openContextMenuForItems(payload.event.clientX, payload.event.clientY, [{
+        key: `folder:${folder.id}`,
+        id: folder.id,
+        kind: 'folder',
+        name: folder.name,
+      }]);
+    };
+
+    const onGalleryYandexContextMenu = (payload: { event: MouseEvent; path: string; name: string }) => {
+      const yPath = normalizeYandexAlbumPath(payload.path || '/');
+      const yName = payload.name || (yPath === '/' ? t('yandexDisk') : yPath.split('/').filter(Boolean).pop() || t('yandexDisk'));
+      openContextMenuForItems(payload.event.clientX, payload.event.clientY, [{
+        key: `yandex-folder:${yPath}`,
+        id: yPath,
+        kind: 'yandex-folder',
+        name: yName,
+      }]);
+    };
+
+    const onGalleryAlbumSourcesChanged = async (albumId: string) => {
+      await loadSpaces(true);
+      if (spaceId.value === albumId) {
+        void spaceView.value?.reload?.();
+      }
+      if (activeAlbumIdForTree.value === albumId) {
+        void refreshActiveAlbumRelatedSources(albumId);
+      }
+      refreshGalleryView({ clearSelection: false, invalidateFolders: false });
+    };
+
+    const onGalleryDropFavorites = async (fileIds: string[]) => {
+      for (const fileId of fileIds) {
+        try { await photosApi.edit(fileId, { favorite: true }); } catch { /* continue */ }
+      }
+      if (fileIds.length) {
+        setFeedback('success', `${t('explorerAddToFavorites')} (${fileIds.length})`);
+        refreshGalleryView({ clearSelection: true, invalidateFolders: false });
+      }
+    };
+
+    const onGalleryDropAlbum = async (albumId: string, fileIds: string[], folderIds: string[] = []) => {
+      if (!fileIds.length && !folderIds.length) return;
+      let added = 0;
+      let lastErr: unknown = null;
+      if (fileIds.length) {
+        try {
+          await spacesApi.addItems(albumId, fileIds);
+          added += fileIds.length;
+        } catch (err) {
+          lastErr = err;
+        }
+      }
+      for (const fId of folderIds) {
+        try {
+          await spacesApi.addQspaceFolder(albumId, fId);
+          added += 1;
+        } catch (err) {
+          lastErr = err;
+        }
+      }
+      if (added > 0) {
+        setFeedback('success', `${t('explorerAddToAlbum')} (${added})`);
+        await loadSpaces(true);
+        refreshGalleryView({ clearSelection: true, invalidateFolders: false });
+      } else if (lastErr) {
+        setFeedback('error', lastErr instanceof Error && lastErr.message ? lastErr.message : t('spaceActionFailed'));
+      }
+    };
+
+    const onGalleryDropFolder = async (folderId: string | null, fileIds: string[], folderIds: string[] = []) => {
+      if (!fileIds.length && !folderIds.length) return;
+      const targetName = folderId === null
+        ? t('explorerHomeFolder')
+        : (allFolderSummaries.value.find((f) => f.id === folderId)?.name
+          || allResourceFolders.value.find((f) => f.id === folderId)?.name
+          || t('explorerHomeFolder'));
+      let moved = 0;
+      let lastErr: unknown = null;
+      for (const fileId of fileIds) {
+        try {
+          await driveApi.moveFile(fileId, folderId);
+          moved += 1;
+        } catch (err) {
+          lastErr = err;
+        }
+      }
+      for (const fId of folderIds) {
+        if (!fId || isFolderAncestorOrSelf(fId, folderId)) continue;
+        const currentFolder = allResourceFolders.value.find((f) => f.id === fId);
+        if (currentFolder && (currentFolder.parentId ?? null) === folderId) continue;
+        try {
+          await resourceFolders.moveFolder(fId, folderId);
+          moved += 1;
+        } catch (err) {
+          lastErr = err;
+        }
+      }
+      if (moved > 0) {
+        setFeedback('success', t('bulkMovedTo').replace('{folder}', targetName).replace('{n}', String(moved)));
+        refreshGalleryView({ clearSelection: true, invalidateFolders: true });
+        sidebarDriveFiles.forget();
+        folderFilesRefreshKey.value += 1;
+        await Promise.all([load({ showLoading: false }), refreshFolderFileCounts()]);
+        void loadSpaces(true);
+      } else if (lastErr) {
+        setFeedback('error', lastErr instanceof Error && lastErr.message ? lastErr.message : t('spaceActionFailed'));
+      }
     };
 
     const onAppClickCapture = (event: MouseEvent) => {
@@ -4448,10 +8080,33 @@ export default defineComponent({
 
 
     const folderSearchPlaceholder = computed(() => {
-      if (activeSection.value.kind === 'folder' && activeFolder.value) {
+      const kind = activeSection.value.kind;
+      if (kind === 'folder' && activeFolder.value) {
         return `${t('searchInFolder')} ${activeFolder.value.name}…`;
       }
-      return t('search');
+      if (kind === 'home') {
+        return `${t('searchInFolder')} ${t('explorerHomeFolder')}…`;
+      }
+      if (kind === 'space' && activeSpace.value) {
+        return `${t('searchInFolder')} ${activeSpace.value.name}…`;
+      }
+      if (kind === 'yandex') {
+        const path = activeSection.value.path || '/';
+        const scope = path !== '/'
+          ? (path.split('/').filter(Boolean).pop() || t('yandexDisk'))
+          : (locale.value === 'ru' ? 'Яндекс Диске' : 'Yandex Disk');
+        return `${t('searchInFolder')} ${scope}…`;
+      }
+      if (kind === 'shared') {
+        return `${t('searchInFolder')} ${t('sharedWithMe')}…`;
+      }
+      if (kind === 'public') {
+        return `${t('searchInFolder')} ${t('public')}…`;
+      }
+      if (kind === 'recent') {
+        return locale.value === 'ru' ? 'Поиск на Главной…' : 'Search Home…';
+      }
+      return locale.value === 'ru' ? 'Поиск…' : 'Search…';
     });
 
     const renamingId = ref('');
@@ -4464,7 +8119,7 @@ export default defineComponent({
       const newTitle = (e.target as HTMLInputElement).value.trim();
       renamingId.value = '';
       if (newTitle && newTitle !== c.title) {
-        const updated = await runAction('rename-canvas', () => canvas.update(c.id, { title: newTitle }), 'Canvas renamed');
+        const updated = await runAction('rename-canvas', () => canvas.update(c.id, { title: newTitle }), t('canvasRenamed'));
         if (!updated) return;
         applyCanvasUpdate(updated);
       }
@@ -4481,6 +8136,22 @@ export default defineComponent({
     };
     let appStateListener: PluginListenerHandle | null = null;
     let dashboardUnmounted = false;
+
+    const restoreDashboardReturnOrigin = () => {
+      if (!isLoggedIn) return;
+      const origin = consumeDashboardReturnOrigin();
+      if (!origin) return;
+      if (origin.mode === 'media' || origin.section.kind === 'gallery') {
+        if (origin.gallerySection) {
+          gallerySection.value = origin.gallerySection as GallerySection | 'trash';
+        }
+        galleryAlbumId.value = origin.galleryAlbumId ?? null;
+        galleryFolderId.value = origin.galleryFolderId ?? null;
+        selectDashboardSection({ kind: 'gallery' });
+        return;
+      }
+      selectDashboardSection(origin.section);
+    };
 
     onMounted(() => {
       void loadRecentResources();
@@ -4499,8 +8170,13 @@ export default defineComponent({
       // Even a fresh native snapshot is refreshed quietly, so moving a
       // document between a dashboard visit and a return can never hide it.
       void load({ showLoading: !cached.found });
-      takeYandexReturn();
-      takeAddressSection();
+      const handledYandexReturn = takeYandexReturn();
+      const handledAddressSection = takeAddressSection();
+      if (handledYandexReturn || handledAddressSection) {
+        clearDashboardReturnOrigin();
+      } else {
+        restoreDashboardReturnOrigin();
+      }
       window.addEventListener('resize', refreshOverflowIndicators);
       refreshOverflowIndicators();
     });
@@ -4617,6 +8293,7 @@ export default defineComponent({
       activeFolderBody,
       hasTagOverflow,
       dashboardMain,
+      isAndroidApp,
       isNativeDashboard,
       dashboardPullDistance,
       DASHBOARD_PULL_THRESHOLD,
@@ -4652,6 +8329,7 @@ export default defineComponent({
       applyTagSheet,
       toggleMobileSortMenu,
       selectSortMode,
+      onExplorerTableSort,
       folderSearchPlaceholder,
       formatCardDateMobile,
       folderOptions,
@@ -4664,6 +8342,8 @@ export default defineComponent({
       toggleToolbarMenu,
       clearTypeAndTagFilters,
       sortMode,
+      sortSyncSeq,
+      isMobileHeadroom,
       feedback,
       isBusy,
       canSaveFolderModal,
@@ -4672,9 +8352,167 @@ export default defineComponent({
       openControlMenu,
       closeControlMenusForAccount,
       activeSection,
+      locale,
       sidebarWidthState,
+      sidebarCollapsed,
+      sidebarMode,
+      mobileTabActivity,
+      showSidebarExpand,
+      onExpandSidebar,
+      onSidebarCollapseButton,
+      onSwitchSidebarMode,
+      devicesOnlineCount,
+      devicesPaired,
+      s2ScopeMode,
+      s2TypeFilter,
+      s2ScopeLabel,
+      s2SearchFolders,
+      s2SearchAlbums,
+      s2SearchItems,
+      onSearchSelectFolder,
+      onSearchSelectAlbum,
+      onSearchOpenItem,
+      onSearchSelectTag,
+      showScopedSearchEverywhereCta,
+      showFolderFab,
+      addDialogTargetFolderName,
+      explorerViewMode,
+      setExplorerViewMode,
+      albumViewMode,
+      setAlbumViewMode,
+      sidebarRef,
+      headroomBarRef,
+      headroomHidden,
+      headroomElevated,
+      onDashboardMainScroll,
+      headroomViewToggleMode,
+      headroomSpaceMembersTotal,
+      headroomSpaceCountLabel,
+      headroomSpaceCountPrefix,
+      activeSpaceFolderId,
+      activeSpaceYandexSourceId,
+      activeSpaceYandexSubpath,
+      onNavigateSpaceFolder,
+      onSelectActivity,
+      onToggleMobileDrawer,
+      onSidebarCollapsedChange,
+      favoriteTiles,
+      openFavoriteTile,
+      homeRootSubfolders,
+      homeRootItems,
+      homeRootDriveFiles,
+      homeRootFileCount,
+      homeRootEmpty,
+      homeRootTableRows,
+      activeFolderTableRows,
+      recentTableRows,
+      sharedTableRows,
+      interactiveTableRows,
+      publicTableRows,
+      openExplorerTableRow,
+      sharingAlbum,
+      openAlbumShareById,
+      onSharingAlbumChanged,
+      onCloseSharingAlbum,
+      resourceShare,
+      resourceShareSlugPrefix,
+      resourceShareUrl,
+      openResourceShareModal,
+      closeResourceShareModal,
+      copyResourceShareLink,
+      setResourceShareVisibility,
+      setResourceShareAllowPublicEdit,
+      setResourceShareListedInPublic,
+      saveResourceSharePassword,
+      saveResourceShareSlug,
+      inviteResourceShare,
+      revokeResourceShare,
+      onDropGroupToFolder,
+      onDropGroupToAlbum,
+      onDropExternalFilesToFolder,
+      recentFolderDropTargetId,
+      onRecentFolderDragOver,
+      onRecentFolderDragLeave,
+      onRecentFolderDrop,
+      buildGroupDragEntriesForKeys,
+      propertiesFile,
+      explorerCtxMenu,
+      contextMenuAlbums,
+      contextMenuCanAlbum,
+      onTableRowContextMenu,
+      onGridItemContextMenu,
+      onGridDriveFileContextMenu,
+      onGridFolderContextMenu,
+      onSpaceTileContextMenu,
+      onFavoriteTileContextMenu,
+      onEmptyAreaContextMenu,
+      onDashboardMainContextMenu,
+      onCtxMenuEmptyCreateFolder,
+      onCtxMenuEmptyAdd,
+      onCtxMenuEmptyRefresh,
+      onTreeContextMenu,
+      onCtxMenuOpen,
+      onCtxMenuShare,
+      onCtxMenuAddToAlbum,
+      onCtxMenuToggleFavorite,
+      onCtxMenuMove,
+      onCtxMenuRename,
+      onCtxMenuDownload,
+      onCtxMenuProperties,
+      onCtxMenuDelete,
+      shareSelectedGroup,
+      openAddSelectionToAlbum,
+      galleryViewRef,
+      gallerySidebarRef,
+      galleryRefreshKey,
+      gallerySection,
+      galleryAlbumId,
+      galleryAlbumMembersCount,
+      gallerySidebarCounts,
+      galleryFolderId,
+      galleryYandexPath,
+      activeAlbumRelatedFolderIds,
+      activeAlbumRelatedYandexPaths,
+      galleryHighlightFolderId,
+      galleryHighlightFileId,
+      galleryStorageFolders,
+      onGallerySelectSection,
+      onGalleryOpenTrash,
+      onGallerySelectAlbum,
+      onGalleryClearAlbum,
+      onGallerySelectYandex,
+      onGallerySelectYandexPath,
+      onGallerySharePhotos,
+      onGallerySelectFolder,
+      onGalleryShowFolder,
+      onGallerySelectFile,
+      onGalleryFocusPhoto,
+      onGalleryFolderContextMenu,
+      onGalleryYandexContextMenu,
+      onGalleryAlbumSourcesChanged,
+      onWorkspaceSelectionChange,
+      onYandexDiskChanged,
+      onGalleryDropFavorites,
+      onGalleryDropAlbum,
+      onGalleryDropFolder,
+      mediaViewerCurrent,
+      mediaViewerCanFavorite,
+      mediaViewerCanShare,
+      mediaViewerCanDelete,
+      mediaViewerCanInfo,
+      openSpaceMedia,
+      onMediaViewerPrev,
+      onMediaViewerNext,
+      onMediaViewerJump,
+      onMediaViewerToggleFavorite,
+      onMediaViewerPanelChanged,
+      onMediaViewerShare,
+      onMediaViewerSelectTag,
+      onMediaViewerDelete,
+      onDashboardMainPointerDown,
       mobileSidebarOpen,
       sidebarFolders,
+      sidebarAllFolders,
       selectDashboardSection,
       onSidebarSelect,
       toggleSidebarWidth,
@@ -4686,6 +8524,7 @@ export default defineComponent({
       draggingResourceType,
       dragTargetFolder,
       draggingResourceFolderId,
+      folderDragId,
       folderDragOverId,
       tagColors,
       tagSuggestions,
@@ -4742,6 +8581,7 @@ export default defineComponent({
       onAddCreateTemplate,
       onAddImportCharacter,
       onAddCreateFolder,
+      onAddCreateAlbum,
       onAddImport,
       folderFilesRefreshKey,
       journalActive,
@@ -4778,6 +8618,7 @@ export default defineComponent({
       resetFilters,
       hasActiveFilter,
       feedNavSections,
+      allSpaces,
       spaceTiles,
       yandexStatus,
       yandexRootCount,
@@ -4886,4 +8727,101 @@ export default defineComponent({
 </script>
 
 <style scoped>
+.explorer-sel-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 9px;
+  border-radius: 999px;
+  border: 1px solid var(--ui-glass-accent-border);
+  background: var(--ui-glass-accent-bg);
+  color: var(--ui-glass-accent-text);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+  flex: none;
+}
+
+.headroom-space-filter-btn {
+  position: relative;
+}
+.headroom-space-filter-btn.active {
+  border-color: var(--ui-glass-accent-border);
+  background: var(--ui-glass-accent-bg);
+  color: var(--ui-glass-accent-text);
+}
+
+.headroom-members-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--ui-glass-border, var(--ui-border));
+  background: var(--ui-glass-btn-bg, var(--ui-surface-subtle));
+  color: var(--ui-text-secondary, var(--ui-text));
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  flex: none;
+  transition: background-color 0.14s ease, border-color 0.14s ease, color 0.14s ease;
+}
+.headroom-members-pill:hover,
+.headroom-members-pill:focus-visible {
+  background: var(--ui-glass-btn-hover, var(--ui-surface-subtle));
+  border-color: var(--ui-glass-accent-border, var(--color-brands));
+  color: var(--ui-glass-accent-text, var(--color-brands));
+  outline: none;
+}
+
+.headroom-share-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--ui-glass-accent-border);
+  background: var(--ui-glass-accent-bg);
+  color: var(--ui-glass-accent-text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  flex: none;
+}
+
+.headroom-actions-trigger {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.headroom-action-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  min-width: 196px;
+}
+
+@media (max-width: 960px) {
+  .headroom-members-pill {
+    padding: 0 8px;
+  }
+  .headroom-members-pill .headroom-members-prefix {
+    display: none;
+  }
+}
+
+@media (max-width: 768px) {
+  .headroom-share-btn span {
+    display: none;
+  }
+}
 </style>

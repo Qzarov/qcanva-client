@@ -45,6 +45,10 @@
         <span>{{ t('theme') }}</span>
         <ThemeSelector ref="selectorRef" />
       </div>
+      <div class="account-menu-language" data-account-menu-language>
+        <span>{{ t('language') }}</span>
+        <LanguageToggle />
+      </div>
       <!-- What the open page adds to the menu (the character sheet: its canvas connection). -->
       <div v-if="$slots.page" class="account-menu-page">
         <slot name="page" :close="close" />
@@ -55,6 +59,15 @@
         </router-link>
         <router-link to="/downloads" class="account-menu-item" data-account-menu-downloads @click="close(false)">
           <Download :size="17" aria-hidden="true" />{{ t('downloadsNavLabel') }}
+        </router-link>
+        <router-link
+          v-if="resolvedShowAdmin"
+          to="/admin"
+          class="account-menu-item"
+          data-account-admin
+          @click="close(false)"
+        >
+          <Shield :size="17" aria-hidden="true" />{{ locale === 'ru' ? 'Админ-панель' : t('admin') }}
         </router-link>
         <router-link to="/settings" class="account-menu-item" data-account-menu-settings @click="close(false)">
           <Settings :size="17" aria-hidden="true" />{{ t('settings') }}
@@ -69,12 +82,13 @@
 
 <script setup lang="ts">
 import { useViewActivity } from '../composables/useViewActivity';
-import { Download, LogOut, Puzzle, Settings } from '@lucide/vue';
+import { Download, LogOut, Puzzle, Settings, Shield } from '@lucide/vue';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import { clearToken, getCurrentUser } from '../api/client';
+import * as clientApi from '../api/client';
 import { useI18n } from '../composables/useI18n';
 import { usePlugins } from '../composables/usePlugins';
+import LanguageToggle from './LanguageToggle.vue';
 import ThemeSelector from './ThemeSelector.vue';
 
 const emit = defineEmits<{ opened: [] }>();
@@ -84,6 +98,7 @@ const props = withDefaults(defineProps<{
   placement?: 'header' | 'sidebar';
   /** Plugins only exist for canvases so far: off where they'd lead nowhere useful. */
   showPlugins?: boolean;
+  showAdmin?: boolean;
   /**
    * The Liquid Glass look of the menu. Opt-in while it is rolled out page by
    * page (the character sheet first); once every page has it, this becomes
@@ -94,17 +109,27 @@ const props = withDefaults(defineProps<{
   compact: false,
   placement: 'header',
   showPlugins: true,
+  showAdmin: undefined,
   glass: false,
 });
 
 const router = useRouter();
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const { reset: resetPlugins } = usePlugins();
 const open = ref(false);
-const currentUser = getCurrentUser();
-const userLabel = computed(() => currentUser?.name || currentUser?.email || 'User');
+const currentUser = clientApi.getCurrentUser();
+const resolvedShowAdmin = computed(() => {
+  if (props.showAdmin !== undefined) return props.showAdmin;
+  try {
+    const checkAdmin = (clientApi as { isAdmin?: unknown }).isAdmin;
+    return typeof checkAdmin === 'function' ? Boolean((checkAdmin as () => boolean)()) : false;
+  } catch {
+    return false;
+  }
+});
+const userLabel = computed(() => currentUser?.name || currentUser?.email || (locale.value === 'ru' ? 'Пользователь' : 'User'));
 const userTitle = computed(() => currentUser?.email || currentUser?.name || userLabel.value);
-const avatarLabel = computed(() => userLabel.value.trim().slice(0, 1).toUpperCase() || 'U');
+const avatarLabel = computed(() => userLabel.value.trim().slice(0, 1).toUpperCase() || (locale.value === 'ru' ? 'П' : 'U'));
 const compact = computed(() => props.compact);
 const placement = computed(() => props.placement);
 const showPlugins = computed(() => props.showPlugins);
@@ -170,7 +195,7 @@ const openFromKeyboard = () => {
 const signOut = () => {
   close(false);
   resetPlugins();
-  clearToken();
+  clientApi.clearToken();
   void router.push({ name: 'landing' });
 };
 
@@ -233,7 +258,8 @@ defineExpose({ close });
   font-size: 13px;
 }
 .account-menu-identity span,
-.account-menu-theme > span {
+.account-menu-theme > span,
+.account-menu-language > span {
   color: var(--ui-text-secondary);
   font-size: 11px;
 }
@@ -241,6 +267,14 @@ defineExpose({ close });
   display: grid;
   gap: 7px;
   padding: 10px;
+  border-bottom: 1px solid var(--ui-border);
+}
+.account-menu-language {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
   border-bottom: 1px solid var(--ui-border);
 }
 .account-menu-page {
@@ -307,17 +341,20 @@ defineExpose({ close });
   -webkit-backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
 }
 .account-menu--glass .account-menu-identity,
-.account-menu--glass .account-menu-theme {
+.account-menu--glass .account-menu-theme,
+.account-menu--glass .account-menu-language {
   border-bottom-color: var(--ui-glass-border);
 }
 .account-menu--glass .account-menu-identity strong {
   font-size: 14px;
 }
 .account-menu--glass .account-menu-identity span,
-.account-menu--glass .account-menu-theme > span {
+.account-menu--glass .account-menu-theme > span,
+.account-menu--glass .account-menu-language > span {
   font-size: 12px;
 }
-.account-menu--glass .account-menu-theme > span {
+.account-menu--glass .account-menu-theme > span,
+.account-menu--glass .account-menu-language > span {
   letter-spacing: .04em;
   text-transform: uppercase;
   font-size: 10px;

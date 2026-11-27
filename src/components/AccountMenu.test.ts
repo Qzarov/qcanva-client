@@ -3,6 +3,7 @@ import { mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearToken } from '../api/client';
 import AccountMenu from './AccountMenu.vue';
+import { useI18n } from '../composables/useI18n';
 
 const push = vi.fn();
 const resetPlugins = vi.hoisted(() => vi.fn());
@@ -17,6 +18,7 @@ vi.mock('../composables/usePlugins', () => ({
 
 describe('AccountMenu', () => {
   beforeEach(() => {
+    useI18n().setLocale('en');
     localStorage.clear();
     document.documentElement.removeAttribute('data-theme');
     document.body.innerHTML = '';
@@ -101,5 +103,20 @@ describe('AccountMenu', () => {
 
     expect(wrapper.find('[data-account-menu]').exists()).toBe(false);
     expect(document.activeElement).toBe(trigger.element);
+  });
+
+  it('includes LanguageToggle inside the AccountMenu popover and switches locale', async () => {
+    const { useI18n } = await import('../composables/useI18n');
+    useI18n().setLocale('en');
+    const wrapper = mount(AccountMenu, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    });
+    await wrapper.get('[data-account-menu-trigger]').trigger('click');
+    const langSection = wrapper.get('[data-account-menu-language]');
+    const toggleBtn = langSection.get('.language-toggle');
+    expect(toggleBtn.text()).toBe('РУ');
+    await toggleBtn.trigger('click');
+    expect(useI18n().locale.value).toBe('ru');
+    useI18n().setLocale('en');
   });
 });

@@ -3,9 +3,11 @@ import { mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it } from 'vitest';
 import ThemeMenu from './ThemeMenu.vue';
 import { useTheme } from '../composables/useTheme';
+import { useI18n } from '../composables/useI18n';
 
 describe('ThemeMenu', () => {
   beforeEach(() => {
+    useI18n().setLocale('en');
     localStorage.clear();
     document.documentElement.removeAttribute('data-theme');
     document.body.innerHTML = '';

@@ -19,6 +19,7 @@ vi.mock('vue-router', () => ({
 }));
 
 vi.mock('../api/client', () => ({
+  onAuthCleared: vi.fn(),
   accessRequests: { incoming: vi.fn().mockResolvedValue([]) },
   canvas: {
     create: vi.fn(),
@@ -144,10 +145,8 @@ function makeSpace(role: SpaceRole): SpaceDetails {
     role,
     owner: { id: role === 'owner' ? 'user-1' : 'user-9', name: 'Owner', email: 'owner@example.com' },
     members: [{ id: 'user-2', name: 'Anya', email: 'anya@example.com', role: 'editor' }],
-    sources: [
-      { id: 'src-q', kind: 'qspace', title: 'Work', folderId: 'folder-a', yandexPath: null, addedBy: { id: 'user-1', name: 'Me' }, syncedAt: null, syncError: null, itemCount: 3 },
-      { id: 'src-y', kind: 'yandex', title: 'Photos', folderId: null, yandexPath: '/Photos', addedBy: { id: 'user-2', name: 'Anya' }, syncedAt: '2026-11-07T10:00:00Z', syncError: null, itemCount: 1 },
-    ],
+    // Direct-at-root bulk selection tests; attached folder drill-down is covered by B-020 regression tests.
+    sources: [],
     createdAt: '2026-11-01T10:00:00Z',
     updatedAt: '2026-11-07T10:00:00Z',
   };
@@ -263,42 +262,53 @@ describe('DashboardView Spaces multi-selection and bulk move', () => {
     resetSpaces();
   });
 
-  it('supports checkbox, Ctrl-click, Shift-range, Select all, and Escape inside a Space', async () => {
+  it('supports Ctrl-click, Shift-range, Select all, and Escape inside a Space with single Headroom header and (N ✕) chip', async () => {
     const wrapper = await openSpace('owner');
 
-    await wrapper.get('[data-space-item="q:text-document:doc-1"] [data-select-box]').trigger('click');
+    // Single 46px Headroom header (no duplicate .folder-manager-top inside DashboardSpace, no ⋯ menu)
+    expect(wrapper.find('.folder-manager-top').exists()).toBe(false);
+    expect(wrapper.find('[data-headroom-space-members]').exists()).toBe(true);
+    expect(wrapper.get('[data-headroom-space-members]').text().trim()).toBe('Участников: 2');
+    expect(wrapper.find('[data-headroom-space-share]').exists()).toBe(false);
+    expect(wrapper.find('[data-headroom-space-menu]').exists()).toBe(false);
+    expect(wrapper.find('[data-select-box]').exists()).toBe(false);
+
+    await wrapper.get('[data-space-item="q:text-document:doc-1"]').trigger('click', { ctrlKey: true });
     await nextTick();
-    expect(wrapper.get('[data-selection-bar] [data-selection-count]').text()).toBe('(1)');
+    expect(wrapper.find('[data-selection-bar]').exists()).toBe(false);
+    expect(wrapper.get('[data-explorer-sel-badge]').text()).toContain('1');
     expect(wrapper.get('[data-space-item="q:text-document:doc-1"]').attributes('data-selected')).toBe('true');
 
     // Shift-click third card selects range 0..2
     await wrapper.get('[data-space-item="q:file:f-1"]').trigger('click', { shiftKey: true });
     await nextTick();
-    expect(wrapper.get('[data-selection-bar] [data-selection-count]').text()).toBe('(3)');
-    expect(wrapper.get('[data-selection-bar] [data-selection-size]').text()).toBe('2 KB');
+    expect(wrapper.get('[data-explorer-sel-badge]').text()).toContain('3');
+    expect((wrapper.vm as any).selectedSize).toBe(2048);
 
     // Select all picks remaining cards on screen (5 total)
-    await wrapper.get('[data-selection-select-all]').trigger('click');
+    (wrapper.vm as any).selectAllOnScreen();
     await nextTick();
-    expect(wrapper.get('[data-selection-bar] [data-selection-count]').text()).toBe('(5)');
-    expect(wrapper.find('[data-selection-select-all]').exists()).toBe(false);
+    await nextTick();
+    expect(wrapper.get('[data-explorer-sel-badge]').text()).toContain('5');
+    expect((wrapper.vm as any).allOnScreenSelected).toBe(true);
 
     // Escape clears selection
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     await nextTick();
-    expect(wrapper.find('[data-selection-bar]').exists()).toBe(false);
+    expect(wrapper.find('[data-explorer-sel-badge]').exists()).toBe(false);
     expect(wrapper.findAll('[data-selected]').length).toBe(0);
   });
 
   it('bulk moves own QCanva document, interactive board, and Drive file as space owner', async () => {
     const wrapper = await openSpace('owner');
 
-    await wrapper.get('[data-space-item="q:text-document:doc-1"] [data-select-box]').trigger('click');
+    await wrapper.get('[data-space-item="q:text-document:doc-1"]').trigger('click', { ctrlKey: true });
     await wrapper.get('[data-space-item="q:board:board-1"]').trigger('click', { ctrlKey: true });
     await wrapper.get('[data-space-item="q:file:f-1"]').trigger('click', { ctrlKey: true });
     await nextTick();
 
-    await wrapper.get('[data-selection-move]').trigger('click');
+    expect((wrapper.vm as any).canBulkMove).toBe(true);
+    (wrapper.vm as any).openBulkMoveModal();
     await nextTick();
 
     expect(wrapper.find('[data-bulk-move-skipped]').exists()).toBe(false);
@@ -311,17 +321,18 @@ describe('DashboardView Spaces multi-selection and bulk move', () => {
     expect(resourceFolders.move).toHaveBeenNthCalledWith(2, 'folder-b', 'interactive-template', 'board-1');
     expect(driveApi.moveFile).toHaveBeenCalledTimes(1);
     expect(driveApi.moveFile).toHaveBeenCalledWith('f-1', 'folder-b');
-    expect(wrapper.find('[data-selection-bar]').exists()).toBe(false);
+    expect(wrapper.find('[data-explorer-sel-badge]').exists()).toBe(false);
   });
 
   it('allows an editor to bulk move their own QCanva items', async () => {
     const wrapper = await openSpace('editor');
 
-    await wrapper.get('[data-space-item="q:text-document:doc-1"] [data-select-box]').trigger('click');
+    await wrapper.get('[data-space-item="q:text-document:doc-1"]').trigger('click', { ctrlKey: true });
     await nextTick();
-    expect(wrapper.find('[data-selection-move]').exists()).toBe(true);
+    expect((wrapper.vm as any).canBulkMove).toBe(true);
 
-    await wrapper.get('[data-selection-move]').trigger('click');
+    (wrapper.vm as any).openBulkMoveModal();
+    await nextTick();
     await wrapper.findAll('.folder-destination').find((el) => el.text().includes('Archive'))!.trigger('click');
     await wrapper.get('[data-folder-modal-actions] .btn-primary').trigger('click');
     await flushPromises();
@@ -332,13 +343,13 @@ describe('DashboardView Spaces multi-selection and bulk move', () => {
   it('skips non-movable items in mixed selection and displays a skipped note in the move dialog', async () => {
     const wrapper = await openSpace('owner');
 
-    await wrapper.get('[data-space-item="q:text-document:doc-1"] [data-select-box]').trigger('click');
+    await wrapper.get('[data-space-item="q:text-document:doc-1"]').trigger('click', { ctrlKey: true });
     await wrapper.get('[data-space-item="q:canvas:c-other"]').trigger('click', { ctrlKey: true });
     await wrapper.get('[data-space-item="y:src-y:/Photos/sea.jpg"]').trigger('click', { ctrlKey: true });
     await nextTick();
 
-    expect(wrapper.find('[data-selection-move]').exists()).toBe(true);
-    await wrapper.get('[data-selection-move]').trigger('click');
+    expect((wrapper.vm as any).canBulkMove).toBe(true);
+    (wrapper.vm as any).openBulkMoveModal();
     await nextTick();
 
     expect(wrapper.find('[data-bulk-move-skipped]').exists()).toBe(true);
@@ -353,46 +364,45 @@ describe('DashboardView Spaces multi-selection and bulk move', () => {
     expect(driveApi.moveFile).not.toHaveBeenCalled();
   });
 
-  it('hides Move when only read-only or Yandex items are selected, and hides Move and Delete for a viewer', async () => {
+  it('disables bulk Move when only read-only or Yandex items are selected, and disables Move and Delete for a viewer', async () => {
     const ownerWrapper = await openSpace('owner');
-    await ownerWrapper.get('[data-space-item="q:canvas:c-other"] [data-select-box]').trigger('click');
+    await ownerWrapper.get('[data-space-item="q:canvas:c-other"]').trigger('click', { ctrlKey: true });
     await ownerWrapper.get('[data-space-item="y:src-y:/Photos/sea.jpg"]').trigger('click', { ctrlKey: true });
     await nextTick();
 
-    expect(ownerWrapper.find('[data-selection-bar]').exists()).toBe(true);
-    expect(ownerWrapper.find('[data-selection-move]').exists()).toBe(false);
-    expect(ownerWrapper.find('[data-selection-delete]').exists()).toBe(false);
-    expect(ownerWrapper.find('[data-selection-download]').exists()).toBe(true);
+    expect(ownerWrapper.find('[data-explorer-sel-badge]').exists()).toBe(true);
+    expect((ownerWrapper.vm as any).canBulkMove).toBe(false);
+    expect((ownerWrapper.vm as any).bulkDeleteCount).toBe(0);
 
     const viewerWrapper = await openSpace('viewer');
-    await viewerWrapper.get('[data-space-item="q:text-document:doc-1"] [data-select-box]').trigger('click');
+    await viewerWrapper.get('[data-space-item="q:text-document:doc-1"]').trigger('click', { ctrlKey: true });
     await nextTick();
 
-    expect(viewerWrapper.find('[data-selection-bar]').exists()).toBe(true);
-    expect(viewerWrapper.find('[data-selection-move]').exists()).toBe(false);
-    expect(viewerWrapper.find('[data-selection-delete]').exists()).toBe(false);
-    expect(viewerWrapper.find('[data-selection-download]').exists()).toBe(true);
+    expect(viewerWrapper.find('[data-explorer-sel-badge]').exists()).toBe(true);
+    expect((viewerWrapper.vm as any).canBulkMove).toBe(false);
+    expect((viewerWrapper.vm as any).bulkDeleteCount).toBe(0);
   });
 
   it('bulk deletes only own QCanva items in a Space and reloads the Space', async () => {
     const wrapper = await openSpace('owner');
-    await wrapper.get('[data-space-item="q:text-document:doc-1"] [data-select-box]').trigger('click');
+    await wrapper.get('[data-space-item="q:text-document:doc-1"]').trigger('click', { ctrlKey: true });
     await wrapper.get('[data-space-item="q:file:f-1"]').trigger('click', { ctrlKey: true });
     await wrapper.get('[data-space-item="q:canvas:c-other"]').trigger('click', { ctrlKey: true });
     await nextTick();
 
-    await wrapper.get('[data-selection-delete]').trigger('click');
+    const p = (wrapper.vm as any).bulkDelete();
     await nextTick();
     expect(currentAppDialog.value).toMatchObject({ kind: 'confirm', danger: true });
     expect(currentAppDialog.value?.message).toContain('1');
     currentAppDialog.value!.settle(true);
+    await p;
     await flushPromises();
 
     expect(textDocuments.delete).toHaveBeenCalledWith('doc-1');
     expect(driveApi.trashFile).toHaveBeenCalledWith('f-1');
     expect(canvas.delete).not.toHaveBeenCalled();
     expect(interactiveTemplates.delete).not.toHaveBeenCalled();
-    expect(wrapper.find('[data-selection-bar]').exists()).toBe(false);
+    expect(wrapper.find('[data-explorer-sel-badge]').exists()).toBe(false);
   });
 
   it('bulk downloads selected Space items (QCanva doc, Drive file, and Yandex file) as a zip', async () => {
@@ -407,12 +417,12 @@ describe('DashboardView Spaces multi-selection and bulk move', () => {
 
     try {
       const wrapper = await openSpace('viewer');
-      await wrapper.get('[data-space-item="q:text-document:doc-1"] [data-select-box]').trigger('click');
+      await wrapper.get('[data-space-item="q:text-document:doc-1"]').trigger('click', { ctrlKey: true });
       await wrapper.get('[data-space-item="q:file:f-1"]').trigger('click', { ctrlKey: true });
       await wrapper.get('[data-space-item="y:src-y:/Photos/sea.jpg"]').trigger('click', { ctrlKey: true });
       await nextTick();
 
-      await wrapper.get('[data-selection-download]').trigger('click');
+      await (wrapper.vm as any).bulkDownload();
       await flushPromises();
 
       expect(textDocuments.get).toHaveBeenCalledWith('doc-1');
@@ -420,7 +430,7 @@ describe('DashboardView Spaces multi-selection and bulk move', () => {
       expect(spacesApi.yandexDownload).toHaveBeenCalledWith('space-1', 'src-y', '/Photos/sea.jpg');
       expect(createObjectURL).toHaveBeenCalledTimes(1);
       expect(clickSpy).toHaveBeenCalledTimes(1);
-      expect(wrapper.find('[data-selection-bar]').exists()).toBe(false);
+      expect(wrapper.find('[data-explorer-sel-badge]').exists()).toBe(false);
     } finally {
       fetchSpy.mockRestore();
       clickSpy.mockRestore();

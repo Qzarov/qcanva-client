@@ -26,6 +26,7 @@ export async function uploadClientThumbnail(hash: string, thumbnail: Blob): Prom
   if (!res.ok) {
     throw new ApiError(res.status, `HTTP ${res.status}`);
   }
+  await Promise.resolve(res.text?.()).catch(() => {});
 }
 
 /** Uploads client-extracted basic metadata with source='client'. */
@@ -43,6 +44,7 @@ export async function uploadClientMediaMeta(hash: string, meta: ClientMediaMeta)
   if (!res.ok) {
     throw new ApiError(res.status, `HTTP ${res.status}`);
   }
+  await Promise.resolve(res.text?.()).catch(() => {});
 }
 
 /**

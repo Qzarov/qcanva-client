@@ -1,14 +1,21 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, shallowReactive, watch } from 'vue';
 import { renditionUrl, type FeedItem } from '../../api/photos';
+import { formatDragCountLabel, useExplorerGroupDnd } from '../../composables/useExplorerGroupDnd';
 import { useI18n } from '../../composables/useI18n';
 import { formatDuration } from './groupTitle';
 
-/** Search results: a flat grid in relevance order. No groups, no scrubber, no selection. */
+type SearchGridItem = FeedItem & {
+  previewSrc?: string | null;
+  noReferrer?: boolean;
+};
+
+/** Search results: a flat grid in relevance order. No groups, no scrubber. */
 const props = defineProps<{
-  items: FeedItem[];
+  items: SearchGridItem[];
   tile: 's' | 'm' | 'l';
   current: string | null;
+  selected?: ReadonlySet<string>;
   /** More pages exist and none is loading: reaching the end asks for the next one. */
   hasMore: boolean;
 }>();
@@ -16,10 +23,13 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'open', item: FeedItem): void;
   (e: 'activate', item: FeedItem): void;
+  (e: 'contextmenu', event: MouseEvent, item: FeedItem): void;
   (e: 'more'): void;
 }>();
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
+const dnd = useExplorerGroupDnd();
+let dragGhostEl: HTMLElement | null = null;
 
 const TILE_MIN = { s: 110, m: 170, l: 250 } as const;
 const END_MARGIN = 400;
@@ -27,11 +37,27 @@ const FILL_MARGIN = 8;
 
 const root = ref<HTMLElement | null>(null);
 const thumbs = shallowReactive(new Map<string, string | null>());
+const failedExternalThumbs = shallowReactive(new Set<string>());
 const requested = new Set<string>();
 let alive = true;
 
-function requestThumb(item: FeedItem): void {
-  if (!item.processed || requested.has(item.hash)) return;
+function thumbSrcFor(item: SearchGridItem): string | null {
+  if (item.previewSrc && !failedExternalThumbs.has(item.fileId)) {
+    return item.previewSrc;
+  }
+  return thumbs.get(item.hash) ?? null;
+}
+
+function onImgError(item: SearchGridItem): void {
+  if (item.previewSrc && !failedExternalThumbs.has(item.fileId)) {
+    failedExternalThumbs.add(item.fileId);
+    return;
+  }
+  thumbs.set(item.hash, null);
+}
+
+function requestThumb(item: SearchGridItem): void {
+  if (item.previewSrc || !item.processed || requested.has(item.hash)) return;
   requested.add(item.hash);
   renditionUrl(item.hash, 'thumbnail')
     .then((u) => {
@@ -63,9 +89,23 @@ function fillCheck(): void {
 }
 
 let ro: ResizeObserver | null = null;
+let roRaf = 0;
+
+function scheduleFillCheck(): void {
+  if (typeof requestAnimationFrame !== 'function') {
+    fillCheck();
+    return;
+  }
+  if (roRaf) cancelAnimationFrame(roRaf);
+  roRaf = requestAnimationFrame(() => {
+    roRaf = 0;
+    fillCheck();
+  });
+}
+
 onMounted(() => {
   if (typeof ResizeObserver !== 'undefined' && root.value) {
-    ro = new ResizeObserver(() => fillCheck());
+    ro = new ResizeObserver(scheduleFillCheck);
     ro.observe(root.value);
   }
   void nextTick(fillCheck);
@@ -81,8 +121,58 @@ function label(item: FeedItem): string {
   return item.name;
 }
 
+function onTileDragStart(e: DragEvent, item: FeedItem): void {
+  const byId = new Map(props.items.map((i) => [i.fileId, i]));
+  const sel = props.selected;
+  const ids = sel && sel.has(item.fileId) && sel.size >= 2 ? [...sel] : [item.fileId];
+  const entries = ids
+    .map((id) => byId.get(id) ?? (id === item.fileId ? item : null))
+    .filter((x): x is FeedItem => Boolean(x))
+    .map((x) => ({
+      key: `photo:${x.fileId}`,
+      id: x.fileId,
+      kind: x.kind,
+      name: x.name,
+      folderId: x.folderId,
+    }));
+  if (entries.length === 0) return;
+
+  dnd.startGroupDrag({ source: 'gallery', items: entries }, e);
+
+  if (e.dataTransfer?.setDragImage && typeof document !== 'undefined') {
+    const pill = document.createElement('div');
+    pill.className = 'sg-drag-ghost';
+    pill.textContent = formatDragCountLabel(entries.length, locale.value);
+    pill.style.cssText =
+      'position:fixed;top:-1000px;left:-1000px;padding:6px 12px;border-radius:999px;background:rgba(14,24,17,0.94);border:1.5px solid #44cf6e;color:#ebffeb;font:600 12px/1.2 sans-serif;pointer-events:none;z-index:9999;';
+    document.body.appendChild(pill);
+    dragGhostEl = pill;
+    try {
+      e.dataTransfer.setDragImage(pill, 12, 12);
+    } catch {
+      // Ignore dragImage errors in jsdom
+    }
+  }
+}
+
+function onTileDragEnd(): void {
+  dnd.endGroupDrag();
+  if (dragGhostEl) {
+    dragGhostEl.remove();
+    dragGhostEl = null;
+  }
+}
+
 onBeforeUnmount(() => {
   alive = false;
+  if (roRaf && typeof cancelAnimationFrame === 'function') {
+    cancelAnimationFrame(roRaf);
+    roRaf = 0;
+  }
+  if (dragGhostEl) {
+    dragGhostEl.remove();
+    dragGhostEl = null;
+  }
   ro?.disconnect();
   ro = null;
 });
@@ -98,18 +188,23 @@ onBeforeUnmount(() => {
           :class="{ cur: current === item.fileId }"
           :data-file-id="item.fileId"
           :aria-label="label(item)"
+          draggable="true"
           @click="emit('open', item)"
           @dblclick="emit('activate', item)"
+          @contextmenu.prevent.stop="emit('contextmenu', $event, item)"
+          @dragstart="onTileDragStart($event, item)"
+          @dragend="onTileDragEnd"
         >
           <img
-            v-if="thumbs.get(item.hash)"
+            v-if="thumbSrcFor(item)"
             class="sg-img"
-            :src="thumbs.get(item.hash)!"
+            :src="thumbSrcFor(item)!"
+            :referrerpolicy="item.noReferrer ? 'no-referrer' : undefined"
             alt=""
             draggable="false"
             decoding="async"
             loading="lazy"
-            @error="thumbs.set(item.hash, null)"
+            @error="onImgError(item)"
           />
           <span v-else class="sg-nothumb" :title="t('photosThumbUnavailable')"></span>
           <span v-if="item.favorite" class="sg-fav" :title="t('photosFavorite')">♥</span>

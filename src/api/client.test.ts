@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { canvas, getCurrentUser, htmlDocuments, interactiveTemplates, isAdmin, refreshCurrentUserRole, request, resourceFolders, setToken, textDocuments } from './client';
+import { canvas, getCurrentUser, htmlDocuments, interactiveTemplates, isAdmin, recentResources, refreshCurrentUserRole, request, resourceFolders, setToken, textDocuments } from './client';
 
 function jsonBody(call: [RequestInfo | URL, RequestInit?]) {
   return JSON.parse((call[1] as RequestInit).body as string);
@@ -408,5 +408,20 @@ describe('request() without a body', () => {
       new Response(JSON.stringify({ ok: 1 }), { status: 200, headers: { 'content-type': 'application/json' } }),
     );
     await expect(request<{ ok: number }>('/x')).resolves.toEqual({ ok: 1 });
+  });
+
+  it('forwards keepalive: true for recentResources.markOpened across native navigations', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'content-type': 'application/json' } }),
+    );
+    await recentResources.markOpened('text-document', 'doc-1');
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:3001/api/recent-resources',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ resourceType: 'text-document', resourceId: 'doc-1' }),
+        keepalive: true,
+      }),
+    );
   });
 });

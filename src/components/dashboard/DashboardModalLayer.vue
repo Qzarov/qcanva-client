@@ -34,14 +34,15 @@
     </div>
 </UiModal>
 
-<UiModal v-if="folderModal.open" class="dashboard-modal" backdrop-class="dashboard-modal-backdrop" :label="t('moveToGroupTitle')" @close="closeFolderModal">
+<UiModal v-if="folderModal.open" class="dashboard-modal" backdrop-class="dashboard-modal-backdrop" :label="folderModalTitle" @close="closeFolderModal">
 
     <div class="dashboard-modal-head">
-      <h3>{{ folderModal.bulk?.length ? t('moveSelectedTitle').replace('{n}', String(folderModal.bulk.length)) : folderModal.resourceId ? t('moveToGroupTitle') : t('createGroup') }}</h3>
+      <h3>{{ folderModalTitle }}</h3>
       <UiIconButton class="dashboard-modal-close" :label="t('close')" variant="clear" @click="closeFolderModal">x</UiIconButton>
     </div>
     <input
       v-if="!folderModalMoves"
+      ref="folderModalInput"
       v-model.trim="folderModal.value"
       class="dashboard-modal-input"
       :placeholder="t('groupNameTitle')"
@@ -83,6 +84,7 @@
       <UiIconButton class="dashboard-modal-close" :label="t('close')" variant="clear" @click="closeSubfolderModal">x</UiIconButton>
     </div>
     <input
+      ref="subfolderModalInput"
       v-model.trim="subfolderModal.value"
       class="dashboard-modal-input"
       :placeholder="t('folderName')"
@@ -286,7 +288,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, isRef } from 'vue';
+import { computed, isRef, nextTick, ref, watch } from 'vue';
 import { Check, X } from '@lucide/vue';
 import ContactEmailInput from '../ContactEmailInput.vue';
 import UiButton from '../ui/UiButton.vue';
@@ -313,12 +315,41 @@ const applyTagSheet = read('applyTagSheet');
 const folderModal = read('folderModal');
 const closeFolderModal = read('closeFolderModal');
 const folderModalMoves = read('folderModalMoves');
+const folderModalTitle = computed(() => (
+  folderModal.value?.bulk?.length
+    ? t.value('moveSelectedTitle').replace('{n}', String(folderModal.value.bulk.length))
+    : folderModal.value?.resourceId
+      ? t.value('moveToGroupTitle')
+      : t.value('createGroup')
+));
+const folderModalInput = ref<HTMLInputElement | null>(null);
+const subfolderModalInput = ref<HTMLInputElement | null>(null);
 const folderOptions = read('folderOptions');
 const canSaveFolderModal = read('canSaveFolderModal');
 const saveFolderModal = read('saveFolderModal');
 const subfolderModal = read('subfolderModal');
 const closeSubfolderModal = read('closeSubfolderModal');
 const saveSubfolderModal = read('saveSubfolderModal');
+
+watch(
+  () => [Boolean(folderModal.value?.open), Boolean(folderModalMoves.value)] as const,
+  ([open, moves]) => {
+    if (open && !moves) {
+      void nextTick(() => folderModalInput.value?.focus());
+    }
+  },
+  { immediate: true },
+);
+
+watch(
+  () => Boolean(subfolderModal.value?.open),
+  (open) => {
+    if (open) {
+      void nextTick(() => subfolderModalInput.value?.focus());
+    }
+  },
+  { immediate: true },
+);
 const folderParentModal = read('folderParentModal');
 const folderParentOptions = read('folderParentOptions');
 const closeFolderParentModal = read('closeFolderParentModal');

@@ -29,6 +29,9 @@ export type LayoutInput = {
   rowHeight: number;
   gap?: number /* default GAP */;
   collapsedShares: Set<string>;
+  aspectMode?: 'square' | 'ratio';
+  /** When true, h1 headers float over the first photo row with zero vertical block-row gap. */
+  overlayH1?: boolean;
 };
 
 export type RowKind = 'h1' | 'h2' | 'share' | 'tiles' | 'placeholder';
@@ -67,8 +70,9 @@ export function shareKey(
 }
 
 function getItemRatio(item: FeedItem): number {
+  const hasExternalPreview = 'previewSrc' in (item as FeedItem & { previewSrc?: unknown });
   if (
-    item.processed &&
+    (item.processed || hasExternalPreview) &&
     typeof item.width === 'number' &&
     typeof item.height === 'number' &&
     Number.isFinite(item.width) &&
@@ -89,6 +93,7 @@ export function computeLayout(input: LayoutInput): Layout {
   }
   const rowHeight = input.rowHeight;
   const collapsedShares = input.collapsedShares;
+  const aspectMode = input.aspectMode ?? 'ratio';
 
   const rows: Row[] = [];
   const groupTops = new Map<string, number>();
@@ -108,6 +113,29 @@ export function computeLayout(input: LayoutInput): Layout {
 
   function layoutTileRun(runItems: FeedItem[], groupKey: string, subKey?: string) {
     if (runItems.length === 0) return;
+
+    if (aspectMode === 'square') {
+      const cols = Math.max(1, Math.floor((width + gap) / (rowHeight + gap)));
+      const tileSize = Math.max(1, (width - gap * (cols - 1)) / cols);
+      for (let i = 0; i < runItems.length; i += cols) {
+        const tiles: Array<{ item: FeedItem; left: number; width: number }> = [];
+        const end = Math.min(runItems.length, i + cols);
+        for (let j = i; j < end; j++) {
+          const item = runItems[j];
+          if (!item) continue;
+          tiles.push({ item, left: (j - i) * (tileSize + gap), width: tileSize });
+        }
+        addRow({
+          kind: 'tiles',
+          top: nextTop(),
+          height: tileSize,
+          groupKey,
+          ...(subKey !== undefined ? { subKey } : {}),
+          tiles,
+        });
+      }
+      return;
+    }
 
     const bases = runItems.map((item) => rowHeight * getItemRatio(item));
 
@@ -238,14 +266,19 @@ export function computeLayout(input: LayoutInput): Layout {
   for (const group of input.groups) {
     const h1Top = nextTop();
     groupTops.set(group.key, h1Top);
-    addRow({
+    const h1Row: Row = {
       kind: 'h1',
       top: h1Top,
       height: H1_HEIGHT,
       groupKey: group.key,
       title: group.title,
       count: group.count,
-    });
+    };
+    if (input.overlayH1) {
+      rows.push(h1Row);
+    } else {
+      addRow(h1Row);
+    }
 
     if (group.subs && group.subs.length > 0) {
       for (const sub of group.subs) {

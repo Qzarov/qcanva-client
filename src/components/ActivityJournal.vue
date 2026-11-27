@@ -1,8 +1,16 @@
 <template>
   <aside
     v-if="visible"
+    ref="asideRef"
     class="activity-journal"
-    :class="{ 'is-expanded': expanded, 'is-running': summary.running > 0, 'is-error': summary.running === 0 && summary.error > 0 }"
+    :class="{
+      'is-expanded': expanded,
+      'is-running': summary.running > 0,
+      'is-error': summary.running === 0 && summary.error > 0,
+      'is-dragging': isDragging,
+      'is-android-app': isAndroidApp,
+    }"
+    :style="asideStyle"
     data-activity-journal
     :aria-label="t('activityJournalAria')"
   >
@@ -14,7 +22,8 @@
           data-activity-pill
           :aria-label="pillAriaLabel"
           aria-expanded="false"
-          @click="setExpanded(true)"
+          @pointerdown="onDragPointerDown"
+          @click="onPillClick"
         >
           <span class="activity-journal-ring" :class="{ 'is-indeterminate': summary.running > 0 && summary.percent === null }" aria-hidden="true">
             <svg class="activity-journal-ring-svg" viewBox="0 0 36 36">
@@ -51,7 +60,11 @@
       </div>
 
       <section v-else key="drawer" class="activity-journal-drawer" data-activity-drawer>
-        <header class="activity-journal-head">
+        <header
+          class="activity-journal-head"
+          data-activity-head
+          @pointerdown="onDragPointerDown"
+        >
           <div class="activity-journal-head-title" :data-activity-state="headerState">
             <LoaderCircle v-if="summary.running > 0" class="activity-journal-spinner" :size="16" aria-hidden="true" />
             <CircleAlert v-else-if="summary.error > 0" :size="16" aria-hidden="true" />
@@ -142,7 +155,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { Capacitor } from '@capacitor/core';
 import {
   Check,
   ChevronDown,
@@ -162,14 +176,152 @@ import {
   type ActivityKind,
   type ActivityStatus,
 } from '../composables/useActivityJournal';
+import { useExplorerLayoutPrefs } from '../composables/useExplorerLayoutPrefs';
 import { useI18n } from '../composables/useI18n';
 
 const RING_RADIUS = 15.5;
 const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
+const DRAG_THRESHOLD_PX = 5;
+const VIEWPORT_PADDING_PX = 8;
 
 useActivityJournalHost();
 const { t } = useI18n();
+const isAndroidApp = computed(() => Capacitor.isNativePlatform());
 const { tasks, expanded, visible, summary, cancelTask, clearCompleted, dismiss, setExpanded } = useActivityJournal();
+const { activityJournalPos, setActivityJournalPos } = useExplorerLayoutPrefs();
+
+const asideRef = ref<HTMLElement | null>(null);
+const isDragging = ref(false);
+const dragPos = ref<{ x: number; y: number } | null>(null);
+const viewportSize = ref({
+  w: typeof window !== 'undefined' ? window.innerWidth : 1280,
+  h: typeof window !== 'undefined' ? window.innerHeight : 720,
+});
+
+interface DragState {
+  startX: number;
+  startY: number;
+  startLeft: number;
+  startTop: number;
+  moved: boolean;
+}
+
+let dragState: DragState | null = null;
+let suppressNextClick = false;
+
+function clampPos(rawX: number, rawY: number): { x: number; y: number } {
+  const el = asideRef.value;
+  const rect = el?.getBoundingClientRect();
+  const w = (rect && rect.width > 0 ? rect.width : el?.offsetWidth) || (expanded.value ? 340 : 180);
+  const h = (rect && rect.height > 0 ? rect.height : el?.offsetHeight) || (expanded.value ? 220 : 42);
+  const vw = viewportSize.value.w || 1280;
+  const vh = viewportSize.value.h || 720;
+  const maxX = Math.max(VIEWPORT_PADDING_PX, vw - w - VIEWPORT_PADDING_PX);
+  const maxY = Math.max(VIEWPORT_PADDING_PX, vh - h - VIEWPORT_PADDING_PX);
+  return {
+    x: Math.round(Math.max(VIEWPORT_PADDING_PX, Math.min(maxX, rawX))),
+    y: Math.round(Math.max(VIEWPORT_PADDING_PX, Math.min(maxY, rawY))),
+  };
+}
+
+const activePos = computed(() => {
+  const pos = dragPos.value ?? activityJournalPos.value;
+  if (!pos) return null;
+  return clampPos(pos.x, pos.y);
+});
+
+const asideStyle = computed(() => {
+  if (!activePos.value) return undefined;
+  return {
+    left: `${activePos.value.x}px`,
+    top: `${activePos.value.y}px`,
+    right: 'auto',
+    bottom: 'auto',
+  };
+});
+
+function onWindowPointerMove(event: PointerEvent) {
+  if (!dragState) return;
+  const dx = event.clientX - dragState.startX;
+  const dy = event.clientY - dragState.startY;
+  if (!dragState.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;
+  dragState.moved = true;
+  isDragging.value = true;
+  dragPos.value = clampPos(dragState.startLeft + dx, dragState.startTop + dy);
+}
+
+function stopDragListeners() {
+  window.removeEventListener('pointermove', onWindowPointerMove);
+  window.removeEventListener('pointerup', onWindowPointerUp);
+  window.removeEventListener('pointercancel', onWindowPointerUp);
+}
+
+function onWindowPointerUp(event: PointerEvent) {
+  if (!dragState) return;
+  stopDragListeners();
+  if (dragState.moved) {
+    const dx = event.clientX - dragState.startX;
+    const dy = event.clientY - dragState.startY;
+    const finalPos = clampPos(dragState.startLeft + dx, dragState.startTop + dy);
+    setActivityJournalPos(finalPos);
+    suppressNextClick = true;
+    setTimeout(() => {
+      suppressNextClick = false;
+    }, 0);
+  }
+  dragPos.value = null;
+  isDragging.value = false;
+  dragState = null;
+}
+
+function onDragPointerDown(event: PointerEvent) {
+  if (event.button !== undefined && event.button !== 0) return;
+  const target = event.target as HTMLElement | null;
+  if (target?.closest('.activity-journal-clear, .activity-journal-collapse, .activity-journal-dismiss')) return;
+
+  const existing = activePos.value;
+  const rect = asideRef.value?.getBoundingClientRect();
+  const startLeft = existing
+    ? existing.x
+    : (rect && (rect.width > 0 || rect.left > 0) ? rect.left : Math.max(VIEWPORT_PADDING_PX, viewportSize.value.w - 220));
+  const startTop = existing
+    ? existing.y
+    : (rect && (rect.height > 0 || rect.top > 0) ? rect.top : Math.max(VIEWPORT_PADDING_PX, viewportSize.value.h - 70));
+
+  dragState = {
+    startX: event.clientX,
+    startY: event.clientY,
+    startLeft,
+    startTop,
+    moved: false,
+  };
+
+  (event.currentTarget as HTMLElement | null)?.setPointerCapture?.(event.pointerId);
+  window.addEventListener('pointermove', onWindowPointerMove);
+  window.addEventListener('pointerup', onWindowPointerUp);
+  window.addEventListener('pointercancel', onWindowPointerUp);
+}
+
+function onPillClick() {
+  if (suppressNextClick) {
+    suppressNextClick = false;
+    return;
+  }
+  setExpanded(true);
+}
+
+function onWindowResize() {
+  viewportSize.value = { w: window.innerWidth, h: window.innerHeight };
+}
+
+onMounted(() => {
+  window.addEventListener('resize', onWindowResize);
+});
+
+onBeforeUnmount(() => {
+  stopDragListeners();
+  window.removeEventListener('resize', onWindowResize);
+});
 
 const headerState = computed<'running' | 'error' | 'done'>(() => {
   if (summary.value.running > 0) return 'running';
@@ -229,7 +381,7 @@ function statusLabel(status: ActivityStatus): string {
 <style scoped>
 .activity-journal {
   position: fixed;
-  right: 20px;
+  right: 80px;
   bottom: calc(20px + env(safe-area-inset-bottom, 0px));
   z-index: 335;
   pointer-events: none;
@@ -263,6 +415,7 @@ function statusLabel(status: ActivityStatus): string {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
+  touch-action: none;
   transition: background-color 0.15s ease, transform 0.15s ease;
 }
 
@@ -387,6 +540,14 @@ function statusLabel(status: ActivityStatus): string {
   gap: 10px;
   padding: 12px 14px;
   border-bottom: 1px solid var(--ui-glass-border);
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.activity-journal.is-dragging .activity-journal-head,
+.activity-journal.is-dragging .activity-journal-pill {
+  cursor: grabbing;
 }
 
 .activity-journal-head-title {
@@ -641,13 +802,18 @@ function statusLabel(status: ActivityStatus): string {
 }
 
 @media (max-width: 768px) {
-  .activity-journal {
-    right: 12px;
-    bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+  .activity-journal.is-android-app {
+    right: 74px;
+    bottom: calc(76px + env(safe-area-inset-bottom, 0px));
   }
 
-  .activity-journal.is-expanded {
+  .activity-journal.is-android-app.is-expanded {
     left: 12px;
+  }
+
+  .activity-journal:not(.is-android-app).is-expanded {
+    left: 62px;
+    right: 16px;
   }
 
   .activity-journal-drawer {

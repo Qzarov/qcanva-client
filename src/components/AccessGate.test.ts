@@ -2,6 +2,7 @@
 import { mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import AccessGate from './AccessGate.vue';
+import { useI18n } from '../composables/useI18n';
 
 let mockUser: { id: string; email: string } | null = null;
 
@@ -31,6 +32,7 @@ function mountGate(props: Partial<InstanceType<typeof AccessGate>['$props']> = {
 
 describe('AccessGate', () => {
   beforeEach(() => {
+    useI18n().setLocale('en');
     mockUser = null;
   });
   afterEach(() => {

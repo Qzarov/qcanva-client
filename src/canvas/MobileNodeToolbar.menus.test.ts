@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { mount, enableAutoUnmount } from '@vue/test-utils';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import MobileNodeToolbar from './MobileNodeToolbar.vue';
+import { useI18n } from '../composables/useI18n';
 import { runBackHandlers } from '../composables/useBackHandler';
 import { createCanvasLoaderApi } from '../test-support/canvas-loader-api';
 import type { CanvasLoaderApi } from './loaderApi';
@@ -20,6 +21,9 @@ function setup(extra: Partial<CanvasLoaderApi> = {}) {
   return mount(MobileNodeToolbar, { props: { canvasRef: { ...cr, ...extra }, role: 'owner' }, global: { stubs: { teleport: true } } });
 }
 describe('mobile node floating menus', () => {
+  beforeEach(() => {
+    useI18n().setLocale('en');
+  });
   it('labels Background fill controls and keeps the menu open while toggling them', async () => {
     const toggleNodeFillStyle = vi.fn(), toggleNodeTransparent = vi.fn();
     const wrapper = setup({ toggleNodeFillStyle, toggleNodeTransparent });

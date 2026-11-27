@@ -201,7 +201,9 @@ export async function request<T>(path: string, options: ApiRequestInit = {}): Pr
   }
 
   // 204/205 and empty bodies (e.g. DELETE /photos/albums/:id) carry no JSON.
+  // Drain the empty body stream so Chromium does not report net::ERR_ABORTED on GC.
   if (res.status === 204 || res.status === 205 || res.headers?.get('content-length') === '0') {
+    await Promise.resolve(res.text?.()).catch(() => {});
     return undefined as T;
   }
   return res.json();
@@ -658,7 +660,11 @@ export const recentResources = {
   list: (limit = 12) =>
     request<Array<{ id: string; resourceType: 'canvas' | 'html-document' | 'text-document' | 'interactive-template'; resourceId: string; updatedAt: string }>>(`/recent-resources?limit=${limit}`),
   markOpened: (resourceType: 'canvas' | 'html-document' | 'text-document' | 'interactive-template', resourceId: string) =>
-    request<any>('/recent-resources', { method: 'POST', body: JSON.stringify({ resourceType, resourceId }) }),
+    request<any>('/recent-resources', {
+      method: 'POST',
+      body: JSON.stringify({ resourceType, resourceId }),
+      keepalive: true,
+    }),
 };
 
 export async function uploadImage(file: File): Promise<{ key: string; url: string }> {

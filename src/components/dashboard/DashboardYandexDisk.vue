@@ -30,7 +30,7 @@
         </span>
       </div>
       <template v-if="connected">
-        <DashboardViewToggle class="folder-view-toggle" :mode="viewMode" @update:mode="emit('update:viewMode', $event)" />
+        <DashboardViewToggle v-if="!hideViewToggle" class="folder-view-toggle" :mode="viewMode" @update:mode="emit('update:viewMode', $event)" />
         <div class="folder-manager-menu folder-create-menu">
           <button
             class="folder-manager-trigger folder-create-trigger"
@@ -113,8 +113,17 @@
               :key="folder.path"
               type="button"
               class="subfolder-card"
+              draggable="true"
               :data-yandex-subfolder="folder.path"
-              @click="emit('navigate', folder.path)"
+              :data-select-key="keyOf(folder)"
+              :data-selected="effectiveSelectedKeys.includes(keyOf(folder)) || undefined"
+              @click="onItemClick($event, folder)"
+              @dblclick.stop="emit('navigate', folder.path)"
+              @keydown.enter.prevent="emit('navigate', folder.path)"
+              @contextmenu.prevent.stop="openItemContextMenu($event, folder)"
+              @dragstart="onSubfolderDragStart($event, folder)"
+              @drag="onSubfolderDragMove"
+              @dragend="onSubfolderDragEnd"
             >
               <span class="subfolder-card-icon" aria-hidden="true">▤</span>
               <span class="subfolder-card-name">{{ folder.name }}</span>
@@ -143,23 +152,15 @@
               :data-yandex-file="file.path"
               :data-file-kind="isMarkdown(file) ? 'markdown' : undefined"
               :data-select-key="keyOf(file)"
-              :data-selected="selectedKeys?.includes(keyOf(file)) || undefined"
+              :data-selected="effectiveSelectedKeys.includes(keyOf(file)) || undefined"
               v-file-info="infoOf(file)"
               :aria-label="`${isMarkdown(file) ? t('openDocument') : t('folderFileDownload')}: ${file.name}`"
-              @click="open(file)"
-              @keydown.enter.prevent="open(file)"
+              @click="onItemClick($event, file)"
+              @dblclick.stop="onFileDblClick($event, file)"
+              @keydown.enter="onFileEnter($event, file)"
+              @contextmenu.prevent.stop="openItemContextMenu($event, file)"
             >
               <div class="card-title card-title-with-icon">
-                <span
-                  class="card-select"
-                  data-select-box
-                  role="checkbox"
-                  tabindex="0"
-                  :aria-checked="selectedKeys?.includes(keyOf(file)) ?? false"
-                  :aria-label="t('selectItem')"
-                  @keydown.enter.prevent.stop="emit('toggle-select', keyOf(file))"
-                  @keydown.space.prevent.stop="emit('toggle-select', keyOf(file))"
-                ><Check :size="12" aria-hidden="true" /></span>
                 <span class="folder-file-kind" aria-hidden="true">
                   <Video v-if="file.mediaType === 'video'" :size="16" />
                   <ImageIcon v-else-if="file.mediaType === 'image'" :size="16" />
@@ -205,12 +206,37 @@
         </template>
       </template>
     </div>
+
+    <ExplorerContextMenu
+      :open="ctxMenu.open"
+      :x="ctxMenu.x"
+      :y="ctxMenu.y"
+      :items="ctxMenu.items"
+      :can-share="ctxCanShare"
+      :can-album="ctxCanAddToAlbum"
+      :albums="editableAlbums"
+      :can-favorite="ctxCanFavorite"
+      :is-favorite="ctxAllFavorite"
+      :can-move="true"
+      :can-rename="ctxMenu.items.length === 1"
+      :can-download="ctxCanDownload"
+      :can-delete="true"
+      @close="ctxMenu.open = false"
+      @open="onCtxOpen"
+      @share="onCtxShare"
+      @add-to-album="onCtxAddToAlbum"
+      @toggle-favorite="onCtxToggleFavorite"
+      @move="onCtxMove"
+      @rename="onCtxRename"
+      @download="onCtxDownload"
+      @delete="onCtxDelete"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { ArrowLeft, Check, Cloud, File as FileIcon, Image as ImageIcon, Play, Plus, Video } from '@lucide/vue';
+import { ArrowLeft, Cloud, File as FileIcon, Image as ImageIcon, Play, Plus, Video } from '@lucide/vue';
 import {
   downloadYandexLink,
   isYandexReconnectError,
@@ -223,15 +249,22 @@ import {
   type YandexSort,
 } from '../../api/yandexDisk';
 import { getFileExtension } from '../../api/drive';
+import { spacesApi } from '../../api/spaces';
 import { isDocumentWithPicture, isMarkdownFile } from '../../dashboard/thumb-kinds';
 import { alertDialog, confirmDialog, promptDialog } from '../../composables/appDialog';
+import { useExplorerGroupDnd } from '../../composables/useExplorerGroupDnd';
+import { useExplorerLayoutPrefs } from '../../composables/useExplorerLayoutPrefs';
 import { useI18n } from '../../composables/useI18n';
+import { useSpaces } from '../../composables/useSpaces';
 import { useYandexDisk } from '../../composables/useYandexDisk';
+import { invalidateYandexMediaLibrary } from '../../composables/useYandexMediaLibrary';
 import { vFileInfo } from '../../directives/fileInfo';
 import ResourceIcon from '../ResourceIcon.vue';
 import FilePlaceholder from './FilePlaceholder.vue';
 import { fileInfo, formatFileDateTime, nameParts } from '../../dashboard/file-info';
+import { selectRange, toggleSelection } from '../../dashboard/selection';
 import DashboardViewToggle from './DashboardViewToggle.vue';
+import ExplorerContextMenu, { type ExplorerContextMenuItem } from './ExplorerContextMenu.vue';
 
 type SortMode = 'updated-desc' | 'updated-asc' | 'title-asc' | 'title-desc';
 type ViewMode = 'grid' | 'list';
@@ -243,10 +276,12 @@ const props = defineProps<{
   viewMode: ViewMode;
   refreshKey?: number;
   selectedKeys?: readonly string[];
+  hideViewToggle?: boolean;
 }>();
 const emit = defineEmits<{
   navigate: [path: string];
   'update:viewMode': [mode: ViewMode];
+  'update:selectedKeys': [keys: string[]];
   'toggle-select': [key: string];
   /** The files on screen, for the dashboard's actions on what is ticked. */
   items: [items: YandexItem[]];
@@ -263,6 +298,9 @@ const emit = defineEmits<{
 
 const { t, locale } = useI18n();
 const { status, load: loadStatus, noteError } = useYandexDisk();
+const { spaces, load: loadSpaces } = useSpaces();
+const layoutPrefs = useExplorerLayoutPrefs();
+const dnd = useExplorerGroupDnd();
 const connected = computed(() => Boolean(status.value?.enabled && status.value.connected));
 
 const items = ref<YandexItem[]>([]);
@@ -274,6 +312,85 @@ const menu = ref('');
 const connecting = ref(false);
 const fileInput = ref<HTMLInputElement | null>(null);
 const brokenPreviews = reactive(new Set<string>());
+const localSelectedKeys = ref<string[]>([]);
+const selectionAnchorKey = ref('');
+const effectiveSelectedKeys = computed(() => props.selectedKeys ?? localSelectedKeys.value);
+
+function commitSelection(next: string[]): void {
+  const unique = [...new Set(next)];
+  localSelectedKeys.value = unique;
+  emit('update:selectedKeys', unique);
+}
+
+function allSelectableKeys(): string[] {
+  return [...shownFolders.value, ...shownFiles.value].map(keyOf);
+}
+
+function onItemClick(event: MouseEvent, item: YandexItem): void {
+  if ((event.target as HTMLElement | null)?.closest('.card-manage, .card-menu')) return;
+  const key = keyOf(item);
+  if (event.shiftKey) {
+    event.preventDefault();
+    event.stopPropagation();
+    const onScreen = allSelectableKeys();
+    const validAnchor = selectionAnchorKey.value && onScreen.includes(selectionAnchorKey.value)
+      ? selectionAnchorKey.value
+      : '';
+    const lastSelected = [...effectiveSelectedKeys.value].reverse().find((k) => onScreen.includes(k)) || '';
+    const anchor = validAnchor || lastSelected || key;
+    selectionAnchorKey.value = anchor;
+    commitSelection(selectRange(effectiveSelectedKeys.value, onScreen, anchor, key));
+    return;
+  }
+  if (event.ctrlKey || event.metaKey) {
+    event.preventDefault();
+    event.stopPropagation();
+    selectionAnchorKey.value = key;
+    commitSelection(toggleSelection(effectiveSelectedKeys.value, key));
+    return;
+  }
+  selectionAnchorKey.value = key;
+  commitSelection([key]);
+}
+
+function onSubfolderDragStart(event: DragEvent, folder: YandexItem): void {
+  const key = keyOf(folder);
+  const dirs = effectiveSelectedKeys.value.includes(key) && effectiveSelectedKeys.value.length > 1
+    ? shownFolders.value.filter((candidate) => effectiveSelectedKeys.value.includes(keyOf(candidate)))
+    : [folder];
+  const targets = dirs.length ? dirs : [folder];
+  dnd.startGroupDrag({
+    source: 'explorer',
+    items: targets.map((dir) => ({
+      key: `yandex-folder:${dir.path}`,
+      id: dir.path,
+      kind: 'yandex-folder',
+      name: dir.name,
+      path: dir.path,
+    })),
+  }, event);
+}
+
+function onSubfolderDragMove(event: DragEvent): void {
+  if (event.clientX !== 0 || event.clientY !== 0) {
+    dnd.updateGroupDragPosition(event.clientX, event.clientY);
+  }
+}
+
+function onSubfolderDragEnd(): void {
+  dnd.endGroupDrag();
+}
+
+function onFileDblClick(event: MouseEvent, file: YandexItem): void {
+  if ((event.target as HTMLElement | null)?.closest('.card-manage, .card-menu')) return;
+  open(file);
+}
+
+function onFileEnter(event: KeyboardEvent, file: YandexItem): void {
+  if ((event.target as HTMLElement | null)?.closest('.card-manage, .card-menu, button, a, input, textarea')) return;
+  event.preventDefault();
+  open(file);
+}
 
 const keyOf = (item: YandexItem) => `yandex:${item.path}`;
 const isMedia = (item: YandexItem) => item.mediaType === 'image' || item.mediaType === 'video';
@@ -420,6 +537,10 @@ async function loadMore() {
   }
 }
 
+watch(() => props.path, () => {
+  localSelectedKeys.value = [];
+  selectionAnchorKey.value = '';
+});
 watch(() => [props.path, serverSort.value, connected.value] as const, () => { brokenPreviews.clear(); void load(); });
 watch(() => props.refreshKey, () => { void load(); });
 
@@ -446,6 +567,7 @@ async function disconnect() {
   if (!confirmed) return;
   try {
     await yandexDisk.disconnect();
+    invalidateYandexMediaLibrary();
     await loadStatus(true);
     items.value = [];
     emit('changed');
@@ -461,6 +583,147 @@ function toggleMenu(name: string) {
 const closeMenu = (event: MouseEvent) => {
   if (!(event.target as HTMLElement | null)?.closest('.folder-manager-menu, .card-menu, .card-manage')) menu.value = '';
 };
+
+const ctxMenu = reactive<{
+  open: boolean;
+  x: number;
+  y: number;
+  items: ExplorerContextMenuItem[];
+  raw: YandexItem[];
+}>({
+  open: false,
+  x: 0,
+  y: 0,
+  items: [],
+  raw: [],
+});
+
+const ctxCanShare = computed(() => ctxMenu.raw.length === 1 && ctxMenu.raw[0]?.type === 'file');
+const ctxCanDownload = computed(() => ctxMenu.raw.length > 0 && ctxMenu.raw.every((item) => item.type === 'file'));
+const ctxCanAddToAlbum = computed(() => ctxMenu.raw.some((item) => item.type === 'dir'));
+const ctxCanFavorite = computed(() => ctxMenu.raw.length > 0 && ctxMenu.raw.every((item) => isMedia(item)));
+const ctxAllFavorite = computed(() =>
+  ctxMenu.raw.length > 0 && ctxMenu.raw.every((item) => layoutPrefs.isFavorite(keyOf(item))),
+);
+const editableAlbums = computed(() =>
+  spaces.value
+    .filter((s) => !s.unlisted && (!s.role || s.role === 'owner' || s.role === 'editor'))
+    .map((s) => ({ id: s.id, name: s.name })),
+);
+
+function openItemContextMenu(event: MouseEvent, item: YandexItem): void {
+  menu.value = '';
+  const key = keyOf(item);
+  let targetItems: YandexItem[];
+  if (effectiveSelectedKeys.value.includes(key) && effectiveSelectedKeys.value.length > 1) {
+    const selectedSet = new Set(effectiveSelectedKeys.value);
+    const pool = [...shownFolders.value, ...shownFiles.value];
+    targetItems = pool.filter((candidate) => selectedSet.has(keyOf(candidate)));
+    if (!targetItems.length) targetItems = [item];
+  } else {
+    if (!effectiveSelectedKeys.value.includes(key)) {
+      selectionAnchorKey.value = key;
+      commitSelection([key]);
+    }
+    targetItems = [item];
+  }
+  ctxMenu.x = event.clientX;
+  ctxMenu.y = event.clientY;
+  ctxMenu.raw = targetItems;
+  ctxMenu.items = targetItems.map((entry) => ({
+    key: keyOf(entry),
+    id: entry.path,
+    name: entry.name,
+    kind: entry.type === 'dir' ? 'yandex-folder' : 'yandex-file',
+  }));
+  ctxMenu.open = true;
+}
+
+function findCtxRaw(entry?: ExplorerContextMenuItem): YandexItem | undefined {
+  if (!entry) return undefined;
+  return ctxMenu.raw.find((item) => keyOf(item) === entry.key);
+}
+
+function onCtxOpen(entry: ExplorerContextMenuItem): void {
+  const found = findCtxRaw(entry);
+  if (!found) return;
+  if (found.type === 'dir') emit('navigate', found.path);
+  else open(found);
+}
+
+function onCtxShare(entries: ReadonlyArray<ExplorerContextMenuItem>): void {
+  const found = findCtxRaw(entries[0]);
+  if (found) void copyLink(found);
+}
+
+async function onCtxAddToAlbum(albumId: string | undefined, entries: ReadonlyArray<ExplorerContextMenuItem>): Promise<void> {
+  const dirs = entries
+    .map((entry) => findCtxRaw(entry))
+    .filter((item): item is YandexItem => Boolean(item && item.type === 'dir'));
+  if (!dirs.length) return;
+  let targetAlbumId = albumId;
+  if (!targetAlbumId) {
+    const name = (await promptDialog({
+      title: t('spaceNew'),
+      placeholder: t('spaceNamePlaceholder'),
+      confirmLabel: t('create'),
+      cancelLabel: t('cancel'),
+    }))?.trim();
+    if (!name) return;
+    try {
+      const created = await spacesApi.create(name);
+      targetAlbumId = created.id;
+    } catch (err) {
+      emit('feedback', 'error', errorText(err, t('spaceActionFailed')));
+      return;
+    }
+  }
+  try {
+    for (const dir of dirs) {
+      await spacesApi.addYandexFolder(targetAlbumId, dir.path);
+    }
+    await loadSpaces(true);
+    emit('feedback', 'success', t('explorerAddToAlbum'));
+  } catch (err) {
+    emit('feedback', 'error', errorText(err, t('spaceActionFailed')));
+  }
+}
+
+function onCtxToggleFavorite(entries: ReadonlyArray<ExplorerContextMenuItem>): void {
+  const list = entries
+    .map((entry) => findCtxRaw(entry))
+    .filter((item): item is YandexItem => Boolean(item && isMedia(item)));
+  if (!list.length) return;
+  const nextFav = !list.every((item) => layoutPrefs.isFavorite(keyOf(item)));
+  for (const item of list) {
+    const k = keyOf(item);
+    if (layoutPrefs.isFavorite(k) !== nextFav) {
+      layoutPrefs.toggleFavorite(k);
+    }
+  }
+}
+
+function onCtxMove(entries: ReadonlyArray<ExplorerContextMenuItem>): void {
+  const paths = entries.map((entry) => findCtxRaw(entry)?.path).filter((p): p is string => Boolean(p));
+  if (paths.length) move(paths);
+}
+
+function onCtxRename(entry: ExplorerContextMenuItem): void {
+  const found = findCtxRaw(entry);
+  if (found) void rename(found);
+}
+
+async function onCtxDownload(entries: ReadonlyArray<ExplorerContextMenuItem>): Promise<void> {
+  for (const entry of entries) {
+    const found = findCtxRaw(entry);
+    if (found && found.type === 'file') await download(found);
+  }
+}
+
+function onCtxDelete(entries: ReadonlyArray<ExplorerContextMenuItem>): void {
+  const list = entries.map((entry) => findCtxRaw(entry)).filter((x): x is YandexItem => Boolean(x));
+  if (list.length) void remove(list);
+}
 
 /** A picture or a video opens in the viewer; a Markdown file opens as a document; any other file downloads. */
 function open(file: YandexItem) {
@@ -496,6 +759,7 @@ async function rename(item: YandexItem) {
   try {
     const outcome = await yandexDisk.rename(item.path, name);
     await settleYandexOutcome(outcome);
+    invalidateYandexMediaLibrary();
     if (item.path === props.path) emit('navigate', outcome.path);
     else await load();
     emit('changed');
@@ -520,6 +784,7 @@ async function remove(list: YandexItem[]) {
   if (!confirmed) return;
   try {
     for (const item of list) await settleYandexOutcome(await yandexDisk.remove(item.path));
+    invalidateYandexMediaLibrary();
     if (list.some((item) => item.path === props.path)) emit('navigate', yandexParentPath(props.path));
     else await load();
     emit('changed');
@@ -557,6 +822,7 @@ async function createFolder() {
   }
   try {
     await yandexDisk.createFolder(joinYandexPath(props.path, name));
+    invalidateYandexMediaLibrary();
     await load();
     emit('changed');
   } catch (err) {
@@ -597,15 +863,60 @@ function onDrop(event: DragEvent) {
   if (connected.value && files.length) emit('upload', files, props.path);
 }
 
+function onWindowKeydown(event: KeyboardEvent) {
+  if (event.defaultPrevented) return;
+  if (event.key === 'Enter') {
+    if (ctxMenu.open || effectiveSelectedKeys.value.length !== 1) return;
+    if (typeof document !== 'undefined' && document.querySelector('[role="dialog"], .modal-backdrop, .drive-properties-backdrop, [data-s2-popover]')) {
+      return;
+    }
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest('input, textarea, select, [contenteditable="true"], [role="dialog"], [data-explorer-context-menu], .canvas-card, .subfolder-card, button, a')) {
+      return;
+    }
+    const key = effectiveSelectedKeys.value[0]!;
+    const folder = shownFolders.value.find((f) => keyOf(f) === key);
+    if (folder) {
+      event.preventDefault();
+      emit('navigate', folder.path);
+      return;
+    }
+    const file = shownFiles.value.find((f) => keyOf(f) === key);
+    if (file) {
+      event.preventDefault();
+      open(file);
+    }
+    return;
+  }
+  if (event.key !== 'Escape') return;
+  if (ctxMenu.open) return;
+  if (typeof document !== 'undefined' && document.querySelector('[role="dialog"], .modal-backdrop, .drive-properties-backdrop, [data-s2-popover]')) {
+    return;
+  }
+  if (menu.value) {
+    menu.value = '';
+    event.preventDefault();
+    return;
+  }
+  if (props.query?.trim()) return;
+  if (effectiveSelectedKeys.value.length) {
+    commitSelection([]);
+    event.preventDefault();
+  }
+}
+
 onMounted(async () => {
   document.addEventListener('click', closeMenu);
+  window.addEventListener('keydown', onWindowKeydown);
+  void loadSpaces();
   await loadStatus();
   void load();
 });
 onBeforeUnmount(() => {
   loadId += 1;
   document.removeEventListener('click', closeMenu);
+  window.removeEventListener('keydown', onWindowKeydown);
 });
 
-defineExpose({ reload, pickFiles });
+defineExpose({ reload, pickFiles, items });
 </script>

@@ -8,7 +8,7 @@ export function hasDataTransferFiles(event: DragEvent): boolean {
   const dt = event.dataTransfer;
   if (!dt) return false;
   const types = Array.from(dt.types || []);
-  if (types.includes('Files')) return true;
+  if (types.includes('Files') || types.includes('application/x-moz-file')) return true;
   if (dt.files && dt.files.length > 0) return true;
   if (dt.items && Array.from(dt.items).some((item) => item.kind === 'file')) return true;
   return false;
@@ -40,8 +40,14 @@ export function useDriveDropzone(options: {
   });
 
   if (getCurrentInstance() && typeof window !== 'undefined') {
-    onMounted(() => window.addEventListener('dragend', reset));
-    onBeforeUnmount(() => window.removeEventListener('dragend', reset));
+    onMounted(() => {
+      window.addEventListener('dragend', reset);
+      window.addEventListener('drop', reset, true);
+    });
+    onBeforeUnmount(() => {
+      window.removeEventListener('dragend', reset);
+      window.removeEventListener('drop', reset, true);
+    });
   }
 
   function onDragEnter(event: DragEvent) {

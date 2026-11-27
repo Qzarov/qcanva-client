@@ -9,6 +9,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import TextDocumentView from './TextDocumentView.vue';
 import { CALM_SAVING_DEFAULTS } from '../composables/useCalmSyncStatus';
+import { useI18n } from '../composables/useI18n';
 
 // Populated with REAL refs by the async mock factory below (vi.hoisted
 // callbacks run before any import, including 'vue', resolves - so the refs
@@ -89,6 +90,7 @@ async function mountDoc(): Promise<any> {
 }
 
 beforeEach(() => {
+  useI18n().setLocale('en');
   vi.clearAllMocks();
   state.connected.value = true;
   state.pendingUpdatesCount.value = 0;

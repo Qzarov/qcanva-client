@@ -67,6 +67,7 @@ vi.mock('../api/drive', async (importOriginal) => {
       restoreFile: vi.fn(),
       getTrash: vi.fn(),
       getFileMeta: vi.fn(),
+      getThumbLinks: vi.fn().mockResolvedValue({ links: {} }),
       listDevices: vi.fn(),
     },
   };
@@ -274,6 +275,7 @@ describe('DriveView', () => {
       deletedAt: null,
       replicas: [],
     });
+    vi.mocked(driveApi.getThumbLinks).mockResolvedValue({ links: {} });
     vi.mocked(driveApi.listDevices).mockResolvedValue([]);
     resetPhoneNodeState();
     phoneAgent.isAvailable.mockResolvedValue({
@@ -1126,6 +1128,7 @@ describe('in English', () => {
       promise: Promise.resolve({ items: [] }),
       abort: vi.fn(),
     });
+    vi.mocked(driveApi.getThumbLinks).mockResolvedValue({ links: {} });
     vi.mocked(driveApi.listDevices).mockResolvedValue([]);
     resetPhoneNodeState();
     phoneAgent.isAvailable.mockResolvedValue({

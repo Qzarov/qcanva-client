@@ -2,7 +2,7 @@ import { onBeforeUnmount, ref, watch, type Ref } from 'vue';
 
 type DashboardSection = {
   kind: string;
-  folderId?: string;
+  folderId?: string | null;
 };
 
 type FolderEntry = {

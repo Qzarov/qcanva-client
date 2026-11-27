@@ -3752,6 +3752,10 @@ export interface components {
         CreateFolderDto: Record<string, never>;
         CreateGroupDto: Record<string, never>;
         CreatePlanDto: Record<string, never>;
+        CreateSpaceDto: {
+            name: string;
+            unlisted?: boolean;
+        };
         CreateTextDocumentDto: Record<string, never>;
         FolderNameDto: Record<string, never>;
         FromToDto: Record<string, never>;
@@ -3866,7 +3870,9 @@ export interface components {
         MoveDocumentDto: Record<string, never>;
         MoveFolderDto: Record<string, never>;
         MoveResourceDto: Record<string, never>;
-        NameDto: Record<string, never>;
+        NameDto: {
+            name: string;
+        };
         NoteDto: Record<string, never>;
         OpenRecentResourceDto: Record<string, never>;
         PathDto: Record<string, never>;
@@ -10194,7 +10200,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["NameDto"];
+                "application/json": components["schemas"]["CreateSpaceDto"];
             };
         };
         responses: {

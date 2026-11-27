@@ -214,24 +214,44 @@ describe('PhotosFeed', () => {
     w.unmount();
   });
 
-  it('selection circle toggles and group circle selects whole group', async () => {
+  it('calm interaction: single click focuses without checkmark; selected.size >= 1 shows checkmarks; Ctrl+click adds current; group pick selects whole group', async () => {
     twoMonths();
     const Feed = await load();
     const w = mountFeed(Feed);
     await settle();
 
-    await w.get('[data-file-id="f1"] [data-testid="tile-check"]').trigger('click');
-    expect(w.emitted('toggle-select')![0]).toEqual([['f1'], true]);
-    expect(w.emitted('open')).toBeUndefined();
+    // Single click on f1: opens & focuses, NO green checkmark when selected is empty
+    await w.get('[data-file-id="f1"]').trigger('click');
+    expect((w.emitted('open')![0]![0] as FeedItem).fileId).toBe('f1');
+    expect((w.emitted('focus-photo')![0]![0] as FeedItem).fileId).toBe('f1');
+    expect(w.find('[data-testid="tile-check"]').exists()).toBe(false);
 
-    await w.setProps({ selected: new Set(['f1']) });
-    await w.get('[data-file-id="f1"] [data-testid="tile-check"]').trigger('click');
-    expect(w.emitted('toggle-select')![1]).toEqual([['f1'], false]);
-    // With a selection, a plain click toggles instead of opening.
-    await w.get('[data-file-id="f2"]').trigger('click');
-    expect(w.emitted('toggle-select')![2]).toEqual([['f2'], true]);
-    expect(w.emitted('open')).toBeUndefined();
+    // Focused only (selected empty): shows is-current, NO is-checked, NO tile-check
+    await w.setProps({ selected: new Set<string>(), current: 'f1' });
+    expect(w.get('[data-file-id="f1"]').classes()).toContain('is-current');
+    expect(w.get('[data-file-id="f1"]').classes()).not.toContain('is-checked');
+    expect(w.find('[data-testid="tile-check"]').exists()).toBe(false);
 
+    // Ctrl+click on f2 when f1 is current adds both -> set-selection ['f1', 'f2']
+    await w.get('[data-file-id="f2"]').trigger('click', { ctrlKey: true });
+    expect(w.emitted('set-selection')![0]).toEqual([['f1', 'f2']]);
+
+    // Selected size = 1 (e.g. 1-item marquee) immediately shows green checkmark & border
+    await w.setProps({ selected: new Set(['f1']), current: 'f1' });
+    expect(w.get('[data-file-id="f1"]').classes()).toContain('is-checked');
+    expect(w.find('[data-testid="tile-check"]').exists()).toBe(true);
+
+    // When selected.size >= 2, green checkmarks appear on all selected tiles
+    await w.setProps({ selected: new Set(['f1', 'f2']) });
+    expect(w.get('[data-file-id="f1"]').classes()).toContain('is-checked');
+    expect(w.get('[data-file-id="f2"]').classes()).toContain('is-checked');
+    expect(w.findAll('[data-testid="tile-check"]').length).toBeGreaterThanOrEqual(2);
+
+    // Clicking tile-check toggles that item
+    await w.get('[data-file-id="f1"] [data-testid="tile-check"]').trigger('click');
+    expect(w.emitted('toggle-select')![0]).toEqual([['f1'], false]);
+
+    // Group pick selects whole group
     await w.setProps({ selected: new Set<string>() });
     const picks = w.findAll('[data-testid="group-pick"]');
     await picks[0]!.trigger('click');
@@ -358,12 +378,41 @@ describe('PhotosFeed', () => {
 
     const st = scroller(w).scrollTop;
     expect(st).toBeGreaterThan(0);
-    // The second group's header (48 px) sits right above its first row of photos.
-    const sepTop = rowTopOfFile(w, 'f100') - 48 - 4;
+    // Date groups use overlay gradient curtains with zero block-row gap above the first tile row.
+    const sepTop = rowTopOfFile(w, 'f100');
     expect(st).toBeGreaterThan(sepTop - 20);
     expect(st).toBeLessThan(sepTop + 40);
-    // The group is now current: its header is pinned at the top.
+    // The group is now current: its header is pinned at the top with a gradient curtain.
     expect(w.get('[data-testid="sticky-head"]').text()).toContain('Сентябрь 2026');
+    expect(w.find('[data-testid="sticky-head"] .pgh-curtain').exists()).toBe(true);
+    expect(w.find('[data-testid="sticky-head"] .pgh-pill').exists()).toBe(false);
+    w.unmount();
+  });
+
+  it('date wall renders continuous 2px gap between date groups with overlay gradient curtains', async () => {
+    const oct = [mkItem(0), mkItem(1)];
+    const sep = [mkItem(10, { localTakenAt: '2026-09-10T10:00:00.000Z', takenAt: '2026-09-10T10:00:00.000Z' })];
+    summaryMock.mockResolvedValue({
+      groups: [
+        { key: '2026-10', count: 2 },
+        { key: '2026-09', count: 1 },
+      ],
+    });
+    itemsMock.mockImplementation(async (_p, g) => ({ items: g === '2026-10' ? oct : sep, nextCursor: null }));
+
+    const Feed = await load();
+    const w = mountFeed(Feed);
+    await settle();
+
+    const tileRows = w.findAll('.pf-row[data-kind="tiles"]');
+    expect(tileRows.length).toBe(2);
+    const firstEl = tileRows[0]!.element as HTMLElement;
+    const secondEl = tileRows[1]!.element as HTMLElement;
+    const firstBottom = parseFloat(firstEl.style.top) + parseFloat(firstEl.style.height);
+    const secondTop = parseFloat(secondEl.style.top);
+    expect(secondTop - firstBottom).toBeCloseTo(2, 3);
+    expect(w.findAll('.pf-row.pf-h1.is-overlay .pgh-curtain').length).toBeGreaterThan(0);
+    expect(w.findAll('.pgh-pill').length).toBe(0);
     w.unmount();
   });
 
@@ -550,7 +599,7 @@ describe('PhotosFeed', () => {
     w.unmount();
   });
 
-  it('keyboard: Enter opens a tile, Space toggles its selection', async () => {
+  it('keyboard: Enter and Space activate a tile to open viewer; contextmenu emits right-click', async () => {
     twoMonths();
     const Feed = await load();
     const w = mountFeed(Feed);
@@ -560,12 +609,11 @@ describe('PhotosFeed', () => {
     expect(tile.attributes('role')).toBe('button');
     expect(tile.attributes('aria-label')).toContain('p1.jpg');
     await tile.trigger('keydown.enter');
-    expect((w.emitted('open')![0]![0] as FeedItem).fileId).toBe('f1');
+    expect((w.emitted('activate')![0]![0] as FeedItem).fileId).toBe('f1');
     await tile.trigger('keydown.space');
-    expect(w.emitted('toggle-select')![0]).toEqual([['f1'], true]);
-    const chk = w.get('[data-file-id="f1"] [data-testid="tile-check"]');
-    expect(chk.element.tagName).toBe('BUTTON');
-    expect(chk.attributes('aria-label')).toContain('p1.jpg');
+    expect((w.emitted('activate')![1]![0] as FeedItem).fileId).toBe('f1');
+    await tile.trigger('contextmenu');
+    expect((w.emitted('contextmenu')![0]![1] as FeedItem).fileId).toBe('f1');
     expect(w.get('[data-testid="group-pick"]').attributes('aria-label')).toContain('Октябрь 2026');
     w.unmount();
   });
@@ -686,5 +734,519 @@ describe('PhotosFeed', () => {
 
     expect(await api.loadMore()).toBe(false);
     w.unmount();
+  });
+
+  it('stops pointerdown propagation on .pf-scroller when starting marquee selection', async () => {
+    twoMonths();
+    const Feed = await load();
+    const parent = document.createElement('div');
+    document.body.appendChild(parent);
+    const parentPointerDown = vi.fn();
+    parent.addEventListener('pointerdown', parentPointerDown);
+
+    const w = mount(Feed, {
+      props: {
+        params: params(),
+        captionOnTile: [],
+        tile: 'm',
+        selected: new Set<string>(),
+        current: null,
+      },
+      attachTo: parent,
+    });
+    await settle();
+
+    const sc = w.get('.pf-scroller').element as HTMLElement;
+    sc.dispatchEvent(new MouseEvent('pointerdown', { button: 0, bubbles: true, cancelable: true }));
+    window.dispatchEvent(new MouseEvent('pointerup'));
+    expect(parentPointerDown).not.toHaveBeenCalled();
+
+    w.unmount();
+  });
+
+  it('B-024: renders .pf-stick as direct child of .pf outside .pf-scroller and computes stuck/offset accurately for headroomHidden=false (stickY=50) and headroomHidden=true (stickY=0)', async () => {
+    const oct = Array.from({ length: 24 }, (_, i) => mkItem(i));
+    const sep = Array.from({ length: 12 }, (_, i) =>
+      mkItem(100 + i, { localTakenAt: '2026-09-10T10:00:00.000Z', takenAt: '2026-09-10T10:00:00.000Z' }),
+    );
+    summaryMock.mockResolvedValue({
+      groups: [
+        { key: '2026-10', count: 24 },
+        { key: '2026-09', count: 12 },
+      ],
+    });
+    itemsMock.mockImplementation(async (_p, g) => ({ items: g === '2026-10' ? oct : sep, nextCursor: null }));
+
+    const Feed = await load();
+    const w = mountFeed(Feed, { headroomHidden: false });
+    await settle();
+
+    // At st = 0 with headroomHidden=false, first h1 sits flush at y=50px, so sticky-head is not shown
+    expect(w.find('[data-testid="sticky-head"]').exists()).toBe(false);
+
+    // At st = 10 with headroomHidden=false (stickY=50), sticky-head mounts as direct child of .pf (outside .pf-scroller)
+    await scrollTo(w, 10);
+    const stickEl = w.get('[data-testid="sticky-head"]').element as HTMLElement;
+    expect(stickEl.parentElement).toBe(w.get('[data-testid="photos-feed"]').element);
+    expect(w.get('.pf-scroller').element.contains(stickEl)).toBe(false);
+    expect(stickEl.textContent).toContain('Октябрь 2026');
+    expect((w.get('.pf-stick-inner').element as HTMLElement).style.transform).toBe('translateY(0px)');
+
+    // Find second group header top
+    await scrollTo(w, 800);
+    const sepRow = w.findAll('.pf-row[data-kind="tiles"]').find((r) => r.attributes('data-group') === '2026-09');
+    expect(sepRow).toBeTruthy();
+    const sepTop = parseFloat((sepRow!.element as HTMLElement).style.top);
+    expect(sepTop).toBeGreaterThan(100);
+
+    // Approaching sepTop with headroomHidden=false (stickY=50): threshold = st = sepTop - 20 -> offset = -28px
+    await scrollTo(w, sepTop - 20);
+    expect(w.get('[data-testid="sticky-head"]').text()).toContain('Октябрь 2026');
+    expect((w.get('.pf-stick-inner').element as HTMLElement).style.transform).toBe('translateY(-28px)');
+
+    // Just past sepTop with headroomHidden=false: sticky-head switches to Сентябрь 2026 with offset 0
+    await scrollTo(w, sepTop + 1);
+    expect(w.get('[data-testid="sticky-head"]').text()).toContain('Сентябрь 2026');
+    expect((w.get('.pf-stick-inner').element as HTMLElement).style.transform).toBe('translateY(0px)');
+
+    // Now switch to headroomHidden=true (stickY=0, threshold = st - 50)
+    await w.setProps({ headroomHidden: true });
+    await settle();
+
+    // At st = 40 (<= 50), list[0] is still on screen at y = 50 - 40 = 10 >= 0 -> no sticky-head
+    await scrollTo(w, 40);
+    expect(w.find('[data-testid="sticky-head"]').exists()).toBe(false);
+
+    // At st = 60 (> 50), list[0] passed y = 0 -> sticky-head shows Октябрь 2026 at offset 0
+    await scrollTo(w, 60);
+    expect(w.get('[data-testid="sticky-head"]').text()).toContain('Октябрь 2026');
+    expect((w.get('.pf-stick-inner').element as HTMLElement).style.transform).toBe('translateY(0px)');
+
+    // At st = sepTop + 30 -> threshold = sepTop - 20 -> nextScreenY = 20 -> offset = -28px (no 50px premature push!)
+    await scrollTo(w, sepTop + 30);
+    expect(w.get('[data-testid="sticky-head"]').text()).toContain('Октябрь 2026');
+    expect((w.get('.pf-stick-inner').element as HTMLElement).style.transform).toBe('translateY(-28px)');
+
+    // At st = sepTop + 51 -> threshold = sepTop + 1 -> sticky-head switches to Сентябрь 2026 at offset 0
+    await scrollTo(w, sepTop + 51);
+    expect(w.get('[data-testid="sticky-head"]').text()).toContain('Сентябрь 2026');
+    expect((w.get('.pf-stick-inner').element as HTMLElement).style.transform).toBe('translateY(0px)');
+
+    w.unmount();
+  });
+
+  it('supports two consecutive marquee drags starting below photos (1-item & multi-item), prevents native text selection, deduplicates emits, and suppresses dragstart', async () => {
+    twoMonths();
+    const Feed = await load();
+    const w = mountFeed(Feed);
+    await settle();
+
+    const sc = scroller(w);
+    const removeAllRanges = vi.fn();
+    const getSelectionSpy = vi.spyOn(window, 'getSelection').mockReturnValue({
+      removeAllRanges,
+    } as unknown as Selection);
+    const captureSpy = vi.fn();
+    (sc as unknown as { setPointerCapture?: (id: number) => void }).setPointerCapture = captureSpy;
+
+    // Position two tiles in the top area; drags start well below layout.totalHeight (y = 520)
+    const t0 = w.get('[data-file-id="f0"]').element as HTMLElement;
+    const t1 = w.get('[data-file-id="f1"]').element as HTMLElement;
+    t0.getBoundingClientRect = () =>
+      ({ left: 10, top: 60, right: 110, bottom: 160, width: 100, height: 100, x: 10, y: 60, toJSON() {} }) as DOMRect;
+    t1.getBoundingClientRect = () =>
+      ({ left: 120, top: 60, right: 220, bottom: 160, width: 100, height: 100, x: 120, y: 60, toJSON() {} }) as DOMRect;
+
+    // Drag 1: starts below photos -> selects 1 photo (f0)
+    const down1 = new MouseEvent('pointerdown', { button: 0, clientX: 50, clientY: 520, bubbles: true, cancelable: true });
+    sc.dispatchEvent(down1);
+    expect(down1.defaultPrevented).toBe(true);
+    expect(removeAllRanges).toHaveBeenCalled();
+
+    // Move multiple times over f0 -> deduplicated to a single emit(['f0'])
+    window.dispatchEvent(new MouseEvent('pointermove', { clientX: 60, clientY: 120, bubbles: true }));
+    window.dispatchEvent(new MouseEvent('pointermove', { clientX: 65, clientY: 115, bubbles: true }));
+    await settle();
+    expect(w.get('[data-testid="photos-feed"]').classes()).toContain('is-marquee');
+    expect(w.find('[data-testid="gallery-marquee"]').exists()).toBe(true);
+    expect(captureSpy).toHaveBeenCalledTimes(1);
+    expect(w.emitted('set-selection')).toEqual([[['f0']]]);
+
+    // Tile dragstart while marquee is active is suppressed
+    const dragEvt = new Event('dragstart', { bubbles: true, cancelable: true });
+    t0.dispatchEvent(dragEvt);
+    expect(dragEvt.defaultPrevented).toBe(true);
+
+    window.dispatchEvent(new MouseEvent('pointerup', { clientX: 65, clientY: 115, bubbles: true }));
+    await settle();
+    expect(w.get('[data-testid="photos-feed"]').classes()).not.toContain('is-marquee');
+    expect(w.find('[data-testid="gallery-marquee"]').exists()).toBe(false);
+
+    // Apply parent selection of 1 item -> immediately visible with green checkmark
+    await w.setProps({ selected: new Set(['f0']) });
+    expect(w.get('[data-file-id="f0"]').classes()).toContain('is-checked');
+    expect(w.find('[data-testid="tile-check"]').exists()).toBe(true);
+
+    // Drag 2 (consecutive): starts below photos again -> selects both f0 and f1
+    const down2 = new MouseEvent('pointerdown', { button: 0, clientX: 20, clientY: 540, bubbles: true, cancelable: true });
+    sc.dispatchEvent(down2);
+    expect(down2.defaultPrevented).toBe(true);
+
+    window.dispatchEvent(new MouseEvent('pointermove', { clientX: 200, clientY: 80, bubbles: true }));
+    await settle();
+    expect(w.find('[data-testid="gallery-marquee"]').exists()).toBe(true);
+    const emits = w.emitted('set-selection')!;
+    expect(emits[emits.length - 1]).toEqual([['f0', 'f1']]);
+
+    window.dispatchEvent(new MouseEvent('pointerup', { clientX: 200, clientY: 80, bubbles: true }));
+    await settle();
+    expect(w.find('[data-testid="gallery-marquee"]').exists()).toBe(false);
+
+    getSelectionSpy.mockRestore();
+    w.unmount();
+  });
+
+  it('renders externalItems client-side (Yandex mode) with previewSrc, noReferrer, client grouping/sorting/filtering, and natural aspect ratio on load', async () => {
+    const Feed = await load();
+    const extItems = [
+      {
+        ...mkItem(1, {
+          fileId: 'yd:/Фото/img1.jpg',
+          hash: 'yd1',
+          name: 'img1.jpg',
+          processed: false,
+          folderId: '/Фото',
+          width: null,
+          height: null,
+          bytes: 5_000_000,
+          localTakenAt: '2026-10-15T10:00:00.000Z',
+          takenAt: '2026-10-15T10:00:00.000Z',
+        }),
+        previewSrc: 'https://hub.example/api/yandex-disk/preview?path=/Фото/img1.jpg',
+        noReferrer: true,
+      },
+      {
+        ...mkItem(2, {
+          fileId: 'yd:/Видео/clip.mp4',
+          hash: 'yd2',
+          name: 'clip.mp4',
+          mime: 'video/mp4',
+          kind: 'video',
+          folderId: '/Видео',
+          width: null,
+          height: null,
+          bytes: 60_000_000,
+          localTakenAt: '2025-08-03T10:00:00.000Z',
+          takenAt: '2025-08-03T10:00:00.000Z',
+        }),
+        previewSrc: 'https://hub.example/api/yandex-disk/preview?path=/Видео/clip.mp4',
+        noReferrer: true,
+      },
+    ];
+
+    const w = mountFeed(Feed, {
+      externalItems: extItems,
+      externalLoading: false,
+      aspectMode: 'ratio',
+      params: params({ period: 'year', levels: ['date'], sort: [{ key: 'date', desc: true }] }),
+    });
+    await settle();
+
+    // No hub photosApi / renditionUrl calls in external mode
+    expect(summaryMock).not.toHaveBeenCalled();
+    expect(itemsMock).not.toHaveBeenCalled();
+    expect(renditionMock).not.toHaveBeenCalled();
+
+    const titles = w.findAll('.pgh-title').map((n) => n.text());
+    expect(titles).toEqual(['2026', '2025']);
+
+    const img1 = w.get('[data-file-id="yd:/Фото/img1.jpg"] img');
+    expect(img1.attributes('src')).toContain('/api/yandex-disk/preview?path=/Фото/img1.jpg');
+    expect(img1.attributes('referrerpolicy')).toBe('no-referrer');
+    // Favorites heart button is enabled on external (Yandex) tiles and emits toggle-favorite
+    const extFavBtn = w.get('[data-file-id="yd:/Фото/img1.jpg"] .pf-fav-btn');
+    await extFavBtn.trigger('click');
+    expect((w.emitted('toggle-favorite')?.[0]?.[0] as FeedItem | undefined)?.fileId).toBe('yd:/Фото/img1.jpg');
+
+    // Simulate natural dimensions loading for a 2:1 wide image when width was null
+    const imgEl = img1.element as HTMLImageElement;
+    Object.defineProperty(imgEl, 'naturalWidth', { configurable: true, value: 1600 });
+    Object.defineProperty(imgEl, 'naturalHeight', { configurable: true, value: 800 });
+    const origRaf = window.requestAnimationFrame;
+    (window as unknown as { requestAnimationFrame?: unknown }).requestAnimationFrame = undefined;
+    try {
+      await img1.trigger('load');
+      await settle();
+    } finally {
+      window.requestAnimationFrame = origRaf;
+    }
+    const tileEl = w.get('[data-file-id="yd:/Фото/img1.jpg"]').element as HTMLElement;
+    const tileW = parseFloat(tileEl.style.width);
+    const tileH = parseFloat(tileEl.style.height);
+    expect(tileW / tileH).toBeCloseTo(2, 1);
+    const orderedAfterLoad = (w.vm as unknown as { orderedItems: () => Array<{ fileId: string; processed: boolean }> }).orderedItems();
+    expect(orderedAfterLoad.find((i) => i.fileId === 'yd:/Фото/img1.jpg')?.processed).toBe(false);
+
+    // Filter to video only
+    await w.setProps({
+      params: params({ period: 'year', levels: ['date'], filter: 'video', sort: [{ key: 'date', desc: true }] }),
+    });
+    await settle();
+    expect(w.findAll('.pf-tile')).toHaveLength(1);
+    expect(w.get('.pf-tile').attributes('data-file-id')).toBe('yd:/Видео/clip.mp4');
+
+    // Group by folder
+    await w.setProps({
+      params: params({ period: 'month', levels: ['folder'], filter: 'all', sort: [{ key: 'folder', desc: false }] }),
+    });
+    await settle();
+    expect(w.findAll('.pgh-title').map((n) => n.text())).toEqual(['Видео', 'Фото']);
+
+    w.unmount();
+  });
+
+  it('yandexDisk.listMedia falls back to bounded BFS walk via yandexDisk.list and filters media items', async () => {
+    const { yandexDisk } = await import('../../api/yandexDisk');
+    const listSpy = vi.spyOn(yandexDisk, 'list').mockImplementation(async (dirPath: string) => {
+      if (dirPath === '/') {
+        return {
+          item: { path: '/', name: '', type: 'dir', size: null, mime: null, mediaType: null, md5: null, createdAt: null, modifiedAt: null, publicUrl: null, previewUrl: null },
+          items: [
+            { path: '/Фото', name: 'Фото', type: 'dir', size: null, mime: null, mediaType: null, md5: null, createdAt: null, modifiedAt: null, publicUrl: null, previewUrl: null },
+            { path: '/notes.txt', name: 'notes.txt', type: 'file', size: 100, mime: 'text/plain', mediaType: 'document', md5: null, createdAt: null, modifiedAt: null, publicUrl: null, previewUrl: null },
+            { path: '/root.jpg', name: 'root.jpg', type: 'file', size: 2048, mime: 'image/jpeg', mediaType: 'image', md5: null, createdAt: null, modifiedAt: null, publicUrl: null, previewUrl: '/api/yandex-disk/preview?path=/root.jpg' },
+          ],
+          total: 3,
+          offset: 0,
+          limit: 200,
+        };
+      }
+      return {
+        item: { path: '/Фото', name: 'Фото', type: 'dir', size: null, mime: null, mediaType: null, md5: null, createdAt: null, modifiedAt: null, publicUrl: null, previewUrl: null },
+        items: [
+          { path: '/Фото/clip.mp4', name: 'clip.mp4', type: 'file', size: 9000, mime: 'video/mp4', mediaType: 'video', md5: null, createdAt: null, modifiedAt: null, publicUrl: null, previewUrl: '/api/yandex-disk/preview?path=/Фото/clip.mp4' },
+        ],
+        total: 1,
+        offset: 0,
+        limit: 200,
+      };
+    });
+
+    const media = await yandexDisk.listMedia('/');
+    expect(media.map((m) => m.path)).toEqual(['/root.jpg', '/Фото/clip.mp4']);
+    expect(listSpy).toHaveBeenCalledWith('/', expect.objectContaining({ limit: 200, previewSize: 'L' }));
+    expect(listSpy).toHaveBeenCalledWith('/Фото', expect.objectContaining({ limit: 200, previewSize: 'L' }));
+
+    const ac = new AbortController();
+    ac.abort();
+    await expect(yandexDisk.listMedia('/', { signal: ac.signal })).rejects.toMatchObject({ name: 'AbortError' });
+    listSpy.mockRestore();
+  });
+
+  it('merges supplementaryItems alongside Q Space photosApi feed, populates Yandex folder names without driveApi.getFolder, and reacts without refetching Q Space', async () => {
+    const qOct = [
+      mkItem(1, {
+        fileId: 'q1',
+        name: 'q_oct.jpg',
+        localTakenAt: '2026-10-10T10:00:00.000Z',
+        takenAt: '2026-10-10T10:00:00.000Z',
+        folderId: 'qfold1',
+      }),
+    ];
+    summaryMock.mockResolvedValue({
+      groups: [{ key: '2026-10', count: 1 }],
+    });
+    itemsMock.mockImplementation(async (_p, g) => ({
+      items: g === '2026-10' ? qOct : [],
+      nextCursor: null,
+    }));
+
+    const yOct = {
+      ...mkItem(2, {
+        fileId: 'yandex:/Путешествия/Горы/y_oct.jpg',
+        hash: 'y-oct',
+        name: 'y_oct.jpg',
+        processed: false,
+        folderId: '/Путешествия/Горы',
+        favorite: true,
+        localTakenAt: '2026-10-20T10:00:00.000Z',
+        takenAt: '2026-10-20T10:00:00.000Z',
+      }),
+      previewSrc: 'https://hub.example/api/yandex-disk/preview?path=/Путешествия/Горы/y_oct.jpg',
+      noReferrer: true,
+    };
+    const yNov = {
+      ...mkItem(3, {
+        fileId: 'yandex:/y_nov.mp4',
+        hash: 'y-nov',
+        name: 'y_nov.mp4',
+        mime: 'video/mp4',
+        kind: 'video',
+        processed: false,
+        folderId: '/',
+        favorite: false,
+        localTakenAt: '2026-11-05T10:00:00.000Z',
+        takenAt: '2026-11-05T10:00:00.000Z',
+      }),
+      previewSrc: 'https://hub.example/api/yandex-disk/preview?path=/y_nov.mp4',
+      noReferrer: true,
+    };
+
+    const Feed = await load();
+    const w = mountFeed(Feed, {
+      captionOnTile: ['folder'],
+      supplementaryItems: [],
+    });
+    await settle();
+    expect(summaryMock).toHaveBeenCalledTimes(1);
+    expect(itemsMock).toHaveBeenCalledTimes(1);
+    expect(w.findAll('.pf-tile')).toHaveLength(1);
+
+    // Late arrival of Yandex supplementaryItems merges reactively without re-fetching photosApi!
+    await w.setProps({ supplementaryItems: [yOct, yNov] });
+    await settle();
+
+    expect(summaryMock).toHaveBeenCalledTimes(1);
+    // itemsMock was NEVER called for supplementary-only '2026-11' group
+    expect(itemsMock).toHaveBeenCalledTimes(1);
+    expect(itemsMock).toHaveBeenCalledWith(expect.anything(), '2026-10', null, null, 200);
+
+    // Merged group headers sorted descending: Nov 2026 (supplementary-only), Oct 2026 (merged)
+    const titles = w.findAll('.pgh-title').map((n) => n.text());
+    expect(titles).toEqual(['Ноябрь 2026', 'Октябрь 2026']);
+
+    // Ordered items: yNov (Nov 5), yOct (Oct 20), q1 (Oct 10)
+    const ordered = (w.vm as unknown as { orderedItems: () => FeedItem[] }).orderedItems();
+    expect(ordered.map((i) => i.fileId)).toEqual([
+      'yandex:/y_nov.mp4',
+      'yandex:/Путешествия/Горы/y_oct.jpg',
+      'q1',
+    ]);
+
+    // Yandex folder captions resolved locally without calling driveApi.getFolder('/...')
+    expect(w.get('[data-file-id="yandex:/y_nov.mp4"] .pf-cap').text()).toContain('Яндекс Диск');
+    expect(w.get('[data-file-id="yandex:/Путешествия/Горы/y_oct.jpg"] .pf-cap').text()).toContain('Горы');
+    expect(getFolderMock).toHaveBeenCalledWith('qfold1');
+    expect(getFolderMock).not.toHaveBeenCalledWith('/');
+    expect(getFolderMock).not.toHaveBeenCalledWith('/Путешествия/Горы');
+
+    // Favorite heart works on Yandex tile in mixed feed
+    await w.get('[data-file-id="yandex:/Путешествия/Горы/y_oct.jpg"] .pf-fav-btn').trigger('click');
+    expect((w.emitted('toggle-favorite')?.[0]?.[0] as FeedItem | undefined)?.fileId).toBe(
+      'yandex:/Путешествия/Горы/y_oct.jpg',
+    );
+
+    // Filter to fav: only favorite supplementary item survives alongside empty Q Space summary
+    summaryMock.mockResolvedValue({ groups: [] });
+    await w.setProps({ params: params({ filter: 'fav' }) });
+    await settle();
+    expect(w.findAll('.pf-tile').map((t) => t.attributes('data-file-id'))).toEqual([
+      'yandex:/Путешествия/Горы/y_oct.jpg',
+    ]);
+
+    // Filter to video: only video supplementary item survives
+    await w.setProps({ params: params({ filter: 'video' }) });
+    await settle();
+    expect(w.findAll('.pf-tile').map((t) => t.attributes('data-file-id'))).toEqual([
+      'yandex:/y_nov.mp4',
+    ]);
+
+    // recentLimit caps mixed items in group display order
+    summaryMock.mockResolvedValue({ groups: [{ key: '2026-10', count: 1 }] });
+    await w.setProps({ params: params({ filter: 'all' }), recentLimit: 2 });
+    await settle();
+    const limited = (w.vm as unknown as { orderedItems: () => FeedItem[] }).orderedItems();
+    expect(limited.map((i) => i.fileId)).toEqual([
+      'yandex:/y_nov.mp4',
+      'yandex:/Путешествия/Горы/y_oct.jpg',
+    ]);
+
+    w.unmount();
+  });
+
+  it('useYandexMediaLibrary caches listMedia with TTL, dedupes in-flight loads, and reacts to explorer favorites', async () => {
+    const clientMod = await import('../../api/client');
+    const ydApiMod = await import('../../api/yandexDisk');
+    const ydStatusMod = await import('../../composables/useYandexDisk');
+    const prefsMod = await import('../../composables/useExplorerLayoutPrefs');
+    const libMod = await import('../../composables/useYandexMediaLibrary');
+
+    prefsMod.resetExplorerLayoutPrefs(true);
+    ydStatusMod.resetYandexDiskStatus();
+    libMod.resetYandexMediaLibraryForTests();
+
+    const authSpy = vi.spyOn(clientMod, 'isAuthenticated').mockReturnValue(true);
+    const statusSpy = vi.spyOn(ydApiMod.yandexDisk, 'status').mockResolvedValue({
+      enabled: true,
+      connected: true,
+      reconnectRequired: false,
+      login: 'user',
+      displayName: 'User',
+    });
+    const listMediaSpy = vi.spyOn(ydApiMod.yandexDisk, 'listMedia').mockResolvedValue([
+      {
+        path: '/Отпуск/sea.jpg',
+        name: 'sea.jpg',
+        type: 'file',
+        size: 12345,
+        mime: 'image/jpeg',
+        mediaType: 'image',
+        md5: 'abc123',
+        createdAt: '2026-07-01T10:00:00.000Z',
+        modifiedAt: '2026-07-02T10:00:00.000Z',
+        publicUrl: null,
+        previewUrl: '/api/yandex-disk/preview?path=/Отпуск/sea.jpg',
+      },
+    ]);
+
+    const lib = libMod.useYandexMediaLibrary();
+    // Concurrent ensureLoaded calls share a single in-flight listMedia('/') call
+    const [a, b] = await Promise.all([lib.ensureLoaded(), lib.ensureLoaded()]);
+    expect(statusSpy).toHaveBeenCalledTimes(1);
+    expect(listMediaSpy).toHaveBeenCalledTimes(1);
+    expect(listMediaSpy).toHaveBeenCalledWith('/');
+    expect(a).toHaveLength(1);
+    expect(b).toHaveLength(1);
+    expect(lib.items.value[0]).toMatchObject({
+      fileId: 'yandex:/Отпуск/sea.jpg',
+      hash: 'abc123',
+      name: 'sea.jpg',
+      kind: 'photo',
+      folderId: '/Отпуск',
+      noReferrer: true,
+      sizeBytes: 12345,
+      mimeType: 'image/jpeg',
+      favorite: false,
+    });
+
+    // Cached within 60s TTL
+    await lib.ensureLoaded();
+    expect(listMediaSpy).toHaveBeenCalledTimes(1);
+
+    // Favorite updates reactively from useExplorerLayoutPrefs
+    prefsMod.useExplorerLayoutPrefs().toggleFavorite('yandex:/Отпуск/sea.jpg');
+    expect(lib.items.value[0]?.favorite).toBe(true);
+
+    // Invalidating cache forces next ensureLoaded to refetch
+    libMod.invalidateYandexMediaLibrary();
+    await lib.ensureLoaded();
+    expect(listMediaSpy).toHaveBeenCalledTimes(2);
+
+    // Disconnected status empties items immediately
+    ydStatusMod.useYandexDisk().status.value = {
+      enabled: true,
+      connected: false,
+      reconnectRequired: false,
+      login: null,
+      displayName: null,
+    };
+    expect(lib.items.value).toEqual([]);
+
+    authSpy.mockRestore();
+    statusSpy.mockRestore();
+    listMediaSpy.mockRestore();
+    libMod.resetYandexMediaLibraryForTests();
+    ydStatusMod.resetYandexDiskStatus();
+    prefsMod.resetExplorerLayoutPrefs(true);
   });
 });

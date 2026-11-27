@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import McpTokensPanel from './McpTokensPanel.vue';
 import { mcpTokens } from '../../api/client';
 import { confirmDialog } from '../../composables/appDialog';
+import { useI18n } from '../../composables/useI18n';
 
 vi.mock('../../api/client', () => ({
   mcpTokens: { list: vi.fn(), issue: vi.fn(), rename: vi.fn(), revoke: vi.fn() },
@@ -29,6 +30,7 @@ function mountView() {
 
 describe('McpTokensPanel', () => {
   beforeEach(() => {
+    useI18n().setLocale('en');
     vi.clearAllMocks();
     vi.mocked(mcpTokens.list).mockResolvedValue({ tokens: [record() as never, record({ id: 't-2', name: 'Old', status: 'revoked' }) as never] });
   });

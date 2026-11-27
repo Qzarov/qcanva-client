@@ -23,6 +23,7 @@ The modules are split by the main UI domains and override layers:
 - `13-dashboard-actions.css` — selection and download actions
 - `14-dashboard-dialogs.css` — add and upload dialogs
 - `18-dashboard-spaces.css` — shared spaces feed and member dialogs
+- `19-explorer-redesign.css` — Explorer, Albums and macOS Gallery Liquid Glass redesign overrides
 
 New global rules belong in the narrowest matching module. If a rule is a
 component-only style, prefer the component's scoped stylesheet instead.

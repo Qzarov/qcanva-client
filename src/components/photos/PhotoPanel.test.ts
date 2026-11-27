@@ -2,13 +2,14 @@
 
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Album, FeedItem, PhotoDetails } from '../../api/photos';
+import type { FeedItem, PhotoDetails } from '../../api/photos';
+import type { SpaceSummary } from '../../api/spaces';
 
 const detailsMock = vi.fn<(id: string) => Promise<PhotoDetails>>();
 const editMock = vi.fn<(id: string, patch: Record<string, unknown>) => Promise<void>>();
-const albumsMock = vi.fn<() => Promise<Album[]>>();
-const addMock = vi.fn<(id: string, ids: string[]) => Promise<number>>();
-const removeMock = vi.fn<(id: string, ids: string[]) => Promise<number>>();
+const spacesListMock = vi.fn<() => Promise<{ spaces: SpaceSummary[] }>>();
+const addMock = vi.fn<(id: string, ids: string[]) => Promise<{ added: number }>>();
+const removeMock = vi.fn<(id: string, ids: string[]) => Promise<{ removed: number }>>();
 const createMock = vi.fn<(name: string) => Promise<{ id: string }>>();
 const renditionMock = vi.fn<(hash: string, size: string) => Promise<string>>();
 const downloadMock = vi.fn<(id: string, name?: string) => Promise<string>>();
@@ -84,31 +85,38 @@ async function setup(fileId = 'f1') {
 describe('PhotoPanel', () => {
   beforeEach(() => {
     vi.resetModules();
-    for (const m of [detailsMock, editMock, albumsMock, addMock, removeMock, createMock, renditionMock, downloadMock, promptMock, alertMock]) {
+    for (const m of [detailsMock, editMock, spacesListMock, addMock, removeMock, createMock, renditionMock, downloadMock, promptMock, alertMock]) {
       m.mockReset();
     }
     detailsMock.mockResolvedValue(mkDetails());
     editMock.mockResolvedValue(undefined);
-    albumsMock.mockResolvedValue([
-      { id: 'a1', name: 'Лето 2026', count: 3, bytes: 0, createdAt: '', addedAt: '', coverFileIds: [] },
-      { id: 'a2', name: 'Горы', count: 1, bytes: 0, createdAt: '', addedAt: '', coverFileIds: [] },
-    ]);
-    addMock.mockResolvedValue(1);
-    removeMock.mockResolvedValue(1);
+    spacesListMock.mockResolvedValue({
+      spaces: [
+        { id: 'a1', name: 'Лето 2026', role: 'owner', ownerId: 'u1', memberCount: 1, sourceCount: 0, mediaCount: 3, coverFileIds: [], updatedAt: '' },
+        { id: 'a2', name: 'Горы', role: 'owner', ownerId: 'u1', memberCount: 1, sourceCount: 0, mediaCount: 1, coverFileIds: [], updatedAt: '' },
+      ],
+    });
+    addMock.mockResolvedValue({ added: 1 });
+    removeMock.mockResolvedValue({ removed: 1 });
     createMock.mockResolvedValue({ id: 'a3' });
     renditionMock.mockImplementation(async (hash, size) => `blob:${hash}:${size}`);
     downloadMock.mockResolvedValue('http://x/dl');
     alertMock.mockResolvedValue(undefined);
     vi.doMock('../../api/photos', () => ({
+      isPhotosMock: () => false,
       photosApi: {
         details: detailsMock,
         edit: editMock,
-        albums: albumsMock,
-        addToAlbum: addMock,
-        removeFromAlbum: removeMock,
-        createAlbum: createMock,
       },
       renditionUrl: renditionMock,
+    }));
+    vi.doMock('../../api/spaces', () => ({
+      spacesApi: {
+        list: spacesListMock,
+        addItems: addMock,
+        removeItems: removeMock,
+        create: createMock,
+      },
     }));
     vi.doMock('../../api/drive', async (importOriginal) => {
       const actual = await importOriginal<typeof import('../../api/drive')>();
@@ -121,6 +129,7 @@ describe('PhotoPanel', () => {
     wrapper?.unmount();
     wrapper = null;
     vi.doUnmock('../../api/photos');
+    vi.doUnmock('../../api/spaces');
     vi.doUnmock('../../api/drive');
     vi.doUnmock('../../composables/appDialog');
     document.body.innerHTML = '';
@@ -307,8 +316,8 @@ describe('PhotoPanel', () => {
 
   it('a failed album add does not undo a different successful album removal', async () => {
     let rejectAdd!: (error: Error) => void;
-    addMock.mockImplementation(() => new Promise<number>((_, reject) => { rejectAdd = reject; }));
-    removeMock.mockResolvedValue(1);
+    addMock.mockImplementation(() => new Promise<{ added: number }>((_, reject) => { rejectAdd = reject; }));
+    removeMock.mockResolvedValue({ removed: 1 });
     const w = await setup();
     await w.get('[data-panel-plus]').trigger('click');
     await flushPromises();
@@ -345,14 +354,47 @@ describe('PhotoPanel', () => {
     expect(createMock).not.toHaveBeenCalled();
   });
 
-  it('open, download and close are wired', async () => {
+  it('download and close are wired and open-viewer button is removed', async () => {
     const w = await setup();
-    await w.get('[data-panel-open]').trigger('click');
-    expect(w.emitted('open-viewer')![0]).toEqual(['f1']);
+    expect(w.find('[data-panel-open]').exists()).toBe(false);
     await w.get('[data-panel-download]').trigger('click');
     expect(downloadMock).toHaveBeenCalledWith('f1', 'IMG_0001.jpg');
     await w.get('[data-panel-close]').trigger('click');
     expect(w.emitted('close')).toHaveLength(1);
+  });
+
+  it('renders 2+ group inspector with summary and all 5 group actions without fetching details', async () => {
+    const i18n = await import('../../composables/useI18n');
+    i18n.useI18n().setLocale('ru');
+    const { default: PhotoPanel } = await import('./PhotoPanel.vue');
+    const items = [
+      mkItem({ fileId: 'f1', bytes: 1_048_576, localTakenAt: '2026-08-10T10:00:00.000Z' }),
+      mkItem({ fileId: 'f2', bytes: 2_097_152, localTakenAt: '2026-08-17T10:00:00.000Z' }),
+    ];
+    wrapper = mount(PhotoPanel, {
+      props: { fileId: 'f1', selectedItems: items },
+      attachTo: document.body,
+    });
+    await flushPromises();
+
+    expect(detailsMock).not.toHaveBeenCalled();
+    expect(wrapper.get('[data-panel-title]').text()).toBe('Выбрано: 2');
+    const groupInfo = wrapper.get('[data-panel-group-info]').text();
+    expect(groupInfo).toContain('Общий размер');
+    expect(groupInfo).toContain('3');
+    expect(groupInfo).toContain('Период');
+
+    await wrapper.get('[data-panel-group-fav]').trigger('click');
+    await wrapper.get('[data-panel-group-share]').trigger('click');
+    await wrapper.get('[data-panel-group-album]').trigger('click');
+    await wrapper.get('[data-panel-group-download]').trigger('click');
+    await wrapper.get('[data-panel-group-delete]').trigger('click');
+
+    expect(wrapper.emitted('group-favorite')).toHaveLength(1);
+    expect(wrapper.emitted('group-share')).toHaveLength(1);
+    expect(wrapper.emitted('group-album')).toHaveLength(1);
+    expect(wrapper.emitted('group-download')).toHaveLength(1);
+    expect(wrapper.emitted('group-delete')).toHaveLength(1);
   });
 
   it('preview falls back from the preview rendition to the thumbnail, then to a placeholder', async () => {
@@ -412,5 +454,104 @@ describe('PhotoPanel', () => {
     expect(w.find('[data-panel-menu]').exists()).toBe(false);
     expect(w.emitted('close')).toBeUndefined();
     w.unmount();
+  });
+
+  it('Item 3: renders ML caption, model badge, clickable tags (select-tag), OCR text, and pending/empty fallbacks', async () => {
+    detailsMock.mockResolvedValueOnce(
+      mkDetails({
+        ai: {
+          status: 'ready',
+          caption: 'Солнечный закат над горным озером',
+          tags: ['закат', 'горы', 'озеро'],
+          ocrText: 'ALTAI CAMP 2026',
+          model: 'gemini-2.5-flash',
+          source: 'provider',
+        },
+      }),
+    );
+    const w = await setup('f1');
+    const ml = w.get('[data-testid="photo-panel-ml"]');
+    expect(ml.text()).toContain('ИИ-разметка');
+    expect(w.get('[data-testid="photo-ml-model"]').text()).toBe('gemini-2.5-flash');
+    expect(w.get('[data-testid="photo-ml-caption"]').text()).toBe('Солнечный закат над горным озером');
+    expect(w.get('[data-testid="photo-ml-ocr"]').text()).toContain('ALTAI CAMP 2026');
+    expect(w.find('[data-testid="photo-ml-empty"]').exists()).toBe(false);
+
+    const tagBtns = w.findAll('[data-testid="photo-ml-tag"]');
+    expect(tagBtns.map((b) => b.text())).toEqual(['закат', 'горы', 'озеро']);
+    await tagBtns[1]!.trigger('click');
+    expect(w.emitted('select-tag')).toEqual([['горы']]);
+
+    // Pending ML indexing state (RU & EN)
+    detailsMock.mockResolvedValueOnce(
+      mkDetails({
+        item: mkItem({ fileId: 'f2' }),
+        ai: { status: 'pending', caption: null, tags: [], ocrText: null, model: null, source: null },
+      }),
+    );
+    await w.setProps({ fileId: 'f2' });
+    await flushPromises();
+    expect(w.get('[data-testid="photo-ml-empty"]').text()).toBe('Ожидает ML-индексации');
+
+    const i18n = await import('../../composables/useI18n');
+    i18n.useI18n().setLocale('en');
+    await flushPromises();
+    expect(w.get('[data-testid="photo-panel-ml"]').text()).toContain('AI & ML Info');
+    expect(w.get('[data-testid="photo-ml-empty"]').text()).toBe('Pending ML indexing');
+
+    // Empty / clip_only without tags
+    detailsMock.mockResolvedValueOnce(
+      mkDetails({
+        item: mkItem({ fileId: 'f3' }),
+        ai: { status: 'clip_only', caption: null, tags: [], ocrText: null, model: 'ViT-B-32__openai', source: 'clip' },
+      }),
+    );
+    await w.setProps({ fileId: 'f3' });
+    await flushPromises();
+    expect(w.get('[data-testid="photo-ml-model"]').text()).toBe('ViT-B-32__openai');
+    expect(w.get('[data-testid="photo-ml-empty"]').text()).toBe('No ML tags detected');
+
+    i18n.useI18n().setLocale('ru');
+    await flushPromises();
+    expect(w.get('[data-testid="photo-ml-empty"]').text()).toBe('ML-теги не определены');
+  });
+
+  it('Item 4: enables favorite heart toggle for Yandex fallback items via explorer layout prefs', async () => {
+    const prefsMod = await import('../../composables/useExplorerLayoutPrefs');
+    prefsMod.resetExplorerLayoutPrefs(true);
+    const i18n = await import('../../composables/useI18n');
+    i18n.useI18n().setLocale('ru');
+    const { default: PhotoPanel } = await import('./PhotoPanel.vue');
+
+    const ydItem = {
+      ...mkItem({ fileId: 'yandex:/Фото/sunset.jpg', name: 'sunset.jpg', folderId: '/Фото' }),
+      previewSrc: 'https://hub.example/api/yandex-disk/preview?path=/Фото/sunset.jpg',
+      noReferrer: true,
+    };
+
+    wrapper = mount(PhotoPanel, {
+      props: { fileId: ydItem.fileId, item: ydItem, canFavorite: true },
+      attachTo: document.body,
+    });
+    await flushPromises();
+
+    expect(detailsMock).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-testid="photo-panel-ml"]').exists()).toBe(false);
+
+    const favBtn = wrapper.get('[data-panel-fav]');
+    expect(favBtn.attributes('aria-pressed')).toBe('false');
+    await favBtn.trigger('click');
+    await flushPromises();
+
+    expect(prefsMod.useExplorerLayoutPrefs().isFavorite('yandex:/Фото/sunset.jpg')).toBe(true);
+    expect(wrapper.get('[data-panel-fav]').attributes('aria-pressed')).toBe('true');
+    expect(wrapper.emitted('changed')![0]).toEqual([{ fileId: 'yandex:/Фото/sunset.jpg', favorite: true }]);
+
+    await wrapper.get('[data-panel-fav]').trigger('click');
+    await flushPromises();
+    expect(prefsMod.useExplorerLayoutPrefs().isFavorite('yandex:/Фото/sunset.jpg')).toBe(false);
+    expect(wrapper.get('[data-panel-fav]').attributes('aria-pressed')).toBe('false');
+    expect(wrapper.emitted('changed')![1]).toEqual([{ fileId: 'yandex:/Фото/sunset.jpg', favorite: false }]);
+    prefsMod.resetExplorerLayoutPrefs(true);
   });
 });

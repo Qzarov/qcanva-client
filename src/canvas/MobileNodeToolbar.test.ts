@@ -2,7 +2,7 @@
 
 import { mount } from '@vue/test-utils';
 import { config, enableAutoUnmount } from '@vue/test-utils';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useI18n } from '../composables/useI18n';
 import MobileNodeToolbar from './MobileNodeToolbar.vue';
 import { runBackHandlers } from '../composables/useBackHandler';
@@ -31,6 +31,9 @@ config.global.stubs.teleport = true;
 enableAutoUnmount(afterEach);
 
 describe('MobileNodeToolbar system Back', () => {
+  beforeEach(() => {
+    useI18n().setLocale('en');
+  });
   it('opens shape choices directly without mixing them into Background', async () => {
     const toggleNodeShape = vi.fn();
     const wrapper = mount(MobileNodeToolbar, { props: { canvasRef: { ...canvasRef, toggleNodeShape }, role: 'owner' } });

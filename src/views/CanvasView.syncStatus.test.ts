@@ -145,6 +145,7 @@ vi.mock('../composables/useNativeResourceCache', () => ({
 }));
 
 import CanvasView from './CanvasView.vue';
+import { useI18n } from '../composables/useI18n';
 
 async function mountCanvas(): Promise<any> {
   const wrapper = mount(CanvasView, {
@@ -156,6 +157,7 @@ async function mountCanvas(): Promise<any> {
 }
 
 beforeEach(() => {
+  useI18n().setLocale('en');
   vi.clearAllMocks();
   state.applyRemoteData = vi.fn();
   // Default: the resync request fails, leaving the conflict showing.

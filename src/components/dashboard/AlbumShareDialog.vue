@@ -1,13 +1,41 @@
 <template>
-  <!-- The people of a shared space: the owner invites by e-mail as editor or
-       viewer, changes roles and removes; anyone else may leave. -->
   <Transition name="yandex-picker" appear @after-leave="emit('close')">
-    <div v-if="visible" class="dashboard-modal-backdrop" data-space-members @click.self="close">
-      <div class="dashboard-modal space-members">
+    <div
+      v-if="visible"
+      class="dashboard-modal-backdrop"
+      data-album-share-dialog
+      data-space-members
+      @click.self="close"
+      @keydown.esc.prevent.stop="close"
+    >
+      <div class="dashboard-modal space-members album-share-modal" role="dialog" aria-modal="true" :aria-label="modalTitle">
         <div class="dashboard-modal-head">
-          <h3>{{ t('spaceMembers') }}</h3>
-          <button class="dashboard-modal-close" :aria-label="t('cancel')" @click="close">x</button>
+          <h3>{{ modalTitle }}</h3>
+          <button type="button" class="dashboard-modal-close" :aria-label="t('cancel')" @click="close">
+            <X :size="16" aria-hidden="true" />
+          </button>
         </div>
+
+        <p class="album-share-hint">{{ modalHint }}</p>
+
+        <form v-if="isOwner" class="space-invite" data-space-invite novalidate @submit.prevent="invite">
+          <ContactEmailInput
+            v-model.trim="email"
+            class="dashboard-modal-input"
+            :placeholder="t('spaceInviteEmail')"
+            :aria-label="t('spaceInviteEmail')"
+            :exclude="inSpaceEmails"
+            data-space-invite-email
+          />
+          <select v-model="role" class="dashboard-modal-input space-member-select" :aria-label="t('spaceRole')" data-space-invite-role>
+            <option value="editor">{{ t('spaceRoleEditor') }}</option>
+            <option value="viewer">{{ t('spaceRoleViewer') }}</option>
+          </select>
+          <button type="submit" class="btn-primary" :disabled="busy || !email" data-space-invite-send>{{ t('spaceInvite') }}</button>
+        </form>
+
+        <div class="album-share-members-count">{{ t('explorerMembersCount').replace('{n}', String(space.members.length + 1)) }}</div>
+
         <ul class="space-members-list">
           <li class="space-member" data-space-member="owner">
             <span class="space-member-who">
@@ -44,23 +72,9 @@
             >{{ t('delete') }}</button>
           </li>
         </ul>
-        <form v-if="isOwner" class="space-invite" data-space-invite @submit.prevent="invite">
-          <!-- The contacts and potential contacts, as the share menus offer them. -->
-          <ContactEmailInput
-            v-model.trim="email"
-            class="dashboard-modal-input"
-            :placeholder="t('spaceInviteEmail')"
-            :aria-label="t('spaceInviteEmail')"
-            :exclude="inSpaceEmails"
-            data-space-invite-email
-          />
-          <select v-model="role" class="dashboard-modal-input space-member-select" :aria-label="t('spaceRole')" data-space-invite-role>
-            <option value="editor">{{ t('spaceRoleEditor') }}</option>
-            <option value="viewer">{{ t('spaceRoleViewer') }}</option>
-          </select>
-          <button type="submit" class="btn-primary" :disabled="busy || !email" data-space-invite-send>{{ t('spaceInvite') }}</button>
-        </form>
+
         <p v-if="error" class="dashboard-modal-note space-members-error" role="alert">{{ error }}</p>
+
         <div class="dashboard-modal-actions dashboard-modal-actions-row">
           <button v-if="!isOwner" type="button" class="btn-ghost danger" :disabled="busy" data-space-leave @click="leave">{{ t('spaceLeave') }}</button>
           <button type="button" class="btn-primary" @click="close">{{ t('driveUploadDone') }}</button>
@@ -71,18 +85,23 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { X } from '@lucide/vue';
 import ContactEmailInput from '../ContactEmailInput.vue';
 import { spacesApi, type SpaceDetails, type SpaceMember } from '../../api/spaces';
 import { confirmDialog } from '../../composables/appDialog';
 import { useI18n } from '../../composables/useI18n';
 
-const props = defineProps<{ space: SpaceDetails; meId: string }>();
+const props = defineProps<{
+  space: SpaceDetails;
+  meId: string;
+}>();
+
 const emit = defineEmits<{
-  /** The space as it is now; null when the user left it. */
   changed: [space: SpaceDetails | null];
   close: [];
 }>();
+
 const { t } = useI18n();
 
 const visible = ref(true);
@@ -90,9 +109,21 @@ const busy = ref(false);
 const error = ref('');
 const email = ref('');
 const role = ref<'editor' | 'viewer'>('editor');
+
 const isOwner = computed(() => props.space.role === 'owner');
-/** Already in the space: not offered again. */
-const inSpaceEmails = computed(() => [props.space.owner.email, ...props.space.members.map((member) => member.email)].filter((email): email is string => Boolean(email)));
+const modalTitle = computed(() => (
+  props.space.unlisted
+    ? t('explorerSharePhotosTitle')
+    : t('explorerAlbumShareTitle').replace('{name}', props.space.name)
+));
+const modalHint = computed(() => (
+  props.space.unlisted
+    ? t('explorerSharePhotosHint')
+    : t('explorerAlbumSharedHint')
+));
+const inSpaceEmails = computed(() =>
+  [props.space.owner.email, ...props.space.members.map((member) => member.email)].filter((item): item is string => Boolean(item)),
+);
 
 const errorText = (err: unknown) => {
   const code = (err as { body?: { code?: string } } | null)?.body?.code;
@@ -118,7 +149,9 @@ async function invite() {
   if (!email.value) return;
   if (await run(() => spacesApi.addMember(props.space.id, email.value, role.value))) email.value = '';
 }
+
 const setRole = (userId: string, next: 'editor' | 'viewer') => run(() => spacesApi.setRole(props.space.id, userId, next));
+
 async function remove(member: SpaceMember) {
   const confirmed = await confirmDialog({
     title: t('spaceRemoveMemberTitle').replace('{name}', member.name || member.email),
@@ -132,6 +165,7 @@ async function remove(member: SpaceMember) {
     return spacesApi.get(props.space.id);
   });
 }
+
 async function leave() {
   const confirmed = await confirmDialog({
     title: t('spaceLeaveTitle').replace('{name}', props.space.name),
@@ -146,4 +180,38 @@ async function leave() {
 function close() {
   visible.value = false;
 }
+function onWindowKeydown(event: KeyboardEvent): void {
+  if (event.key === 'Escape' && visible.value) {
+    event.preventDefault();
+    event.stopPropagation();
+    close();
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', onWindowKeydown);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onWindowKeydown);
+});
 </script>
+
+<style scoped>
+.album-share-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(500px, calc(100vw - 32px));
+}
+.album-share-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ui-text-secondary);
+}
+.album-share-members-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ui-text-secondary);
+}
+</style>

@@ -14,6 +14,7 @@ vi.mock('vue-router', () => ({
 }));
 
 vi.mock('../api/client', () => ({
+  onAuthCleared: vi.fn(),
   accessRequests: { incoming: vi.fn().mockResolvedValue([]) },
   canvas: {
     create: vi.fn(),
@@ -248,7 +249,9 @@ describe('DashboardView external drag-and-drop file upload', () => {
       },
       getData: (type: string) => (type === 'application/x-qcanva-folder' ? 'folder-archive' : ''),
     };
-    await wrapper.get('[data-home-disclosure]').trigger('click');
+    if (wrapper.get('[data-home-disclosure]').attributes('aria-expanded') === 'false') {
+      await wrapper.get('[data-home-disclosure]').trigger('click');
+    }
     await wrapper.get('[data-dashboard-folder="folder-archive"]').trigger('dragstart', { dataTransfer: folderTransfer });
     await dropzone.trigger('dragenter', { dataTransfer: folderTransfer });
     await dropzone.trigger('dragover', { dataTransfer: folderTransfer });
@@ -256,7 +259,7 @@ describe('DashboardView external drag-and-drop file upload', () => {
 
     await wrapper.get('[data-dashboard-folder="folder-target"]').trigger('drop', { dataTransfer: folderTransfer });
     await flushPromises();
-    expect(resourceFolders.reorder).toHaveBeenCalledWith(['folder-unsorted', 'folder-archive', 'folder-target']);
+    expect(resourceFolders.moveFolder).toHaveBeenCalledWith('folder-archive', 'folder-target');
     expect(driveApi.uploadFile).not.toHaveBeenCalled();
 
     // Internal card/resource drag between folders

@@ -1,4 +1,6 @@
-export type DashboardTopLevelSection = 'home' | 'shared' | 'interactive' | 'public' | 'drive' | 'trash' | 'spaces';
+export type DashboardTopLevelSection = 'home' | 'shared' | 'interactive' | 'public' | 'drive' | 'trash' | 'spaces' | 'gallery';
+
+export type ExplorerSidebarPanel = 'explorer' | 'search' | 'gallery';
 
 export type DashboardSection =
   | { kind: DashboardTopLevelSection }
@@ -6,8 +8,14 @@ export type DashboardSection =
   | { kind: 'folder'; folderId: string }
   /** A folder of the user's Yandex Disk (Spaces), `/` for its root. */
   | { kind: 'yandex'; path: string }
-  /** A shared space: its folders' contents as one feed. */
-  | { kind: 'space'; spaceId: string };
+  /** A shared space (album): optionally drilled into one of its folders/subfolders. */
+  | {
+      kind: 'space';
+      spaceId: string;
+      folderId?: string | null;
+      yandexSourceId?: string | null;
+      yandexSubpath?: string | null;
+    };
 
 export type SidebarWidthState = 'expanded' | 'collapsed';
 
@@ -170,7 +178,12 @@ export function isDashboardSectionActive(
     return left.path === right.path;
   }
   if (left.kind === 'space' && right.kind === 'space') {
-    return left.spaceId === right.spaceId;
+    return (
+      left.spaceId === right.spaceId
+      && (left.folderId ?? null) === (right.folderId ?? null)
+      && (left.yandexSourceId ?? null) === (right.yandexSourceId ?? null)
+      && (left.yandexSubpath ?? null) === (right.yandexSubpath ?? null)
+    );
   }
 
   return left.kind === right.kind;

@@ -16,7 +16,7 @@ import {
 } from '../../api/photos';
 
 export type SubSortKey = 'folder' | 'album';
-export type CaptionKey = 'folder' | 'album' | 'size';
+export type CaptionKey = 'folder' | 'album' | 'size' | 'access';
 
 export type PhotosViewState = {
   /** Active sort keys in priority order; direction and sub are derived from dirs/subs. */
@@ -34,12 +34,13 @@ export type PhotosViewState = {
 };
 
 export const PHOTOS_VIEW_STORAGE_KEY = 'qcanva:photos:view:v1';
+export const PHOTOS_VIEW_CAPTIONS_EXPLICIT_KEY = 'qcanva:photos:view:captions-explicit:v1';
 export const PHOTOS_VIEW_PREFERENCE_KEY = 'photos.view';
 export const PHOTOS_VIEW_SAVE_DELAY_MS = 500;
 
 const VALID_SORT_KEYS = new Set<string>(['date', 'folder', 'album', 'size']);
 const VALID_SUB_KEYS = new Set<string>(['name', 'size', 'created', 'added']);
-const VALID_CAPTION_KEYS = new Set<string>(['folder', 'album', 'size']);
+const VALID_CAPTION_KEYS = new Set<string>(['folder', 'album', 'size', 'access']);
 const VALID_PERIODS = new Set<string>(['day', 'month', 'year']);
 const VALID_FILTERS = new Set<string>(['all', 'photo', 'video', 'fav']);
 const VALID_TILES = new Set<string>(['s', 'm', 'l']);
@@ -59,21 +60,16 @@ const TILE_CYCLE: Record<'s' | 'm' | 'l', 's' | 'm' | 'l'> = {
 
 const SORT_KEYS: SortKey[] = ['date', 'folder', 'album', 'size'];
 
-function getDefaultDir(key: SortKey): boolean {
-  switch (key) {
-    case 'date':
-      return true;
-    case 'folder':
-      return false;
-    case 'album':
-      return false;
-    case 'size':
-      return true;
-  }
+function uniformDirs(desc: boolean): Record<SortKey, boolean> {
+  return { date: desc, folder: desc, album: desc, size: desc };
+}
+
+function getDefaultDir(_key: SortKey): boolean {
+  return true;
 }
 
 function defaultDirs(): Record<SortKey, boolean> {
-  return { date: true, folder: false, album: false, size: true };
+  return uniformDirs(true);
 }
 
 function defaultSubs(): Record<SubSortKey, SubKey> {
@@ -93,10 +89,7 @@ function withDerivedSort(st: PhotosViewState): PhotosViewState {
 
 export function defaultPhotosViewState(): PhotosViewState {
   return {
-    sort: [
-      { key: 'date', desc: true },
-      { key: 'folder', desc: false, sub: 'name' },
-    ],
+    sort: [],
     dirs: defaultDirs(),
     subs: defaultSubs(),
     period: 'month',
@@ -210,13 +203,21 @@ export function normalizePhotosViewState(raw: unknown): PhotosViewState {
   const shared: boolean =
     typeof obj.shared === 'boolean' ? obj.shared : defaults.shared;
 
-  const dirs = defaultDirs();
+  let unifiedDesc = true;
   if (obj.dirs && typeof obj.dirs === 'object' && !Array.isArray(obj.dirs)) {
-    for (const k of SORT_KEYS) {
-      const v = (obj.dirs as Record<string, unknown>)[k];
-      if (typeof v === 'boolean') dirs[k] = v;
+    const rawDirs = obj.dirs as Record<string, unknown>;
+    if (typeof rawDirs.date === 'boolean') {
+      unifiedDesc = rawDirs.date;
+    } else {
+      for (const k of SORT_KEYS) {
+        if (typeof rawDirs[k] === 'boolean') {
+          unifiedDesc = rawDirs[k] as boolean;
+          break;
+        }
+      }
     }
   }
+  const dirs = uniformDirs(unifiedDesc);
   const subs = defaultSubs();
   if (obj.subs && typeof obj.subs === 'object' && !Array.isArray(obj.subs)) {
     for (const k of ['folder', 'album'] as const) {
@@ -226,7 +227,17 @@ export function normalizePhotosViewState(raw: unknown): PhotosViewState {
   }
   // Only the key order of the stored sort is used; direction and sub come from dirs/subs.
   const sort = normalizeSort(obj.sort, defaults.sort).map((s) => makeSpec(s.key, dirs, subs));
-  const captions = normalizeCaptions(obj.captions);
+  let captions = normalizeCaptions(obj.captions);
+  const explicitMarker = obj.captionsExplicit === true || obj.captionsTouched === true || hasCaptionsExplicit();
+  if (
+    !explicitMarker
+    && sort.length === 0
+    && captions.length > 0
+    && captions.every((c) => c === 'folder' || c === 'album')
+    && captions.includes('folder')
+  ) {
+    captions = [];
+  }
   const collapsedShares = normalizeCollapsedShares(obj.collapsedShares);
 
   return {
@@ -248,7 +259,28 @@ const readonlyState = readonly(state) as unknown as Readonly<Ref<PhotosViewState
 
 let initialized = false;
 let touched = false;
+let captionsExplicit = false;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+let saveInFlight: Promise<void> | null = null;
+let saveQueued = false;
+
+function hasCaptionsExplicit(): boolean {
+  if (captionsExplicit) return true;
+  try {
+    return getStorage()?.getItem(PHOTOS_VIEW_CAPTIONS_EXPLICIT_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function markCaptionsExplicit(): void {
+  captionsExplicit = true;
+  try {
+    getStorage()?.setItem(PHOTOS_VIEW_CAPTIONS_EXPLICIT_KEY, '1');
+  } catch {
+    // ignore storage errors
+  }
+}
 
 export function resetPhotosView(): void {
   if (debounceTimer !== null) {
@@ -257,9 +289,13 @@ export function resetPhotosView(): void {
   }
   initialized = false;
   touched = false;
+  captionsExplicit = false;
+  saveInFlight = null;
+  saveQueued = false;
   state.value = defaultPhotosViewState();
   try {
     getStorage()?.removeItem(PHOTOS_VIEW_STORAGE_KEY);
+    getStorage()?.removeItem(PHOTOS_VIEW_CAPTIONS_EXPLICIT_KEY);
   } catch {
     // ignore storage errors
   }
@@ -283,20 +319,46 @@ function saveToLocalStorage(val: PhotosViewState): void {
   }
 }
 
+function flushHubSave(): void {
+  if (saveInFlight) {
+    saveQueued = true;
+    return;
+  }
+  let payload: unknown;
+  try {
+    payload = JSON.parse(JSON.stringify(state.value));
+  } catch {
+    return;
+  }
+  saveQueued = false;
+  let prefPromise: Promise<void>;
+  try {
+    prefPromise = Promise.resolve(photosApi.putPreference(PHOTOS_VIEW_PREFERENCE_KEY, payload));
+  } catch (err) {
+    prefPromise = Promise.reject(err);
+  }
+  const run = prefPromise
+    .catch(() => {
+      // Swallowed: hub failure leaves local state untouched
+    })
+    .finally(() => {
+      const isCurrent = saveInFlight === run;
+      if (isCurrent) saveInFlight = null;
+      if (isCurrent && saveQueued) {
+        saveQueued = false;
+        flushHubSave();
+      }
+    });
+  saveInFlight = run;
+}
+
 function scheduleHubSave(): void {
   if (debounceTimer !== null) {
     clearTimeout(debounceTimer);
   }
   debounceTimer = setTimeout(() => {
     debounceTimer = null;
-    try {
-      const payload = JSON.parse(JSON.stringify(state.value));
-      Promise.resolve(photosApi.putPreference(PHOTOS_VIEW_PREFERENCE_KEY, payload)).catch(() => {
-        // Swallowed: hub failure leaves local state untouched
-      });
-    } catch {
-      // Swallowed
-    }
+    flushHubSave();
   }, PHOTOS_VIEW_SAVE_DELAY_MS);
 }
 
@@ -347,7 +409,9 @@ function mutate(updater: (prev: PhotosViewState) => PhotosViewState): void {
 
 const levels = computed<SortKey[]>(() => {
   const sortKeys = state.value.sort.map((s) => s.key);
-  const validCaptions = state.value.captions.filter((c) => sortKeys.includes(c));
+  const validCaptions = state.value.captions.filter(
+    (c): c is Exclude<CaptionKey, 'access'> => c !== 'access' && sortKeys.includes(c),
+  );
   const candidates: SortKey[] = ['date', ...validCaptions];
 
   const getRank = (k: SortKey): number => {
@@ -369,9 +433,11 @@ const levels = computed<SortKey[]>(() => {
 });
 
 const captionOnTile = computed<CaptionKey[]>(() => {
-  const sortKeys = new Set(state.value.sort.map((s) => s.key));
-  return state.value.captions.filter((c) => !sortKeys.has(c));
+  const sortKeys = new Set<string>(state.value.sort.map((s) => s.key));
+  return state.value.captions.filter((c) => c === 'access' || !sortKeys.has(c));
 });
+
+const globalDesc = computed<boolean>(() => state.value.dirs.date);
 
 const feedParams = computed<FeedParams>(() => ({
   sort: state.value.sort.map((s) => ({ ...s })),
@@ -381,26 +447,42 @@ const feedParams = computed<FeedParams>(() => ({
   shared: state.value.shared,
 }));
 
+function setSort(sort: SortSpec[]): void {
+  mutate((prev) => {
+    const dirs = uniformDirs(prev.dirs.date);
+    return {
+      ...prev,
+      dirs,
+      sort: normalizeSort(sort, []).map((s) => makeSpec(s.key, dirs, prev.subs)),
+    };
+  });
+}
+
 function toggleSortKey(k: SortKey): void {
   mutate((prev) => {
+    const dirs = uniformDirs(prev.dirs.date);
     if (prev.sort.some((s) => s.key === k)) {
-      return { ...prev, sort: prev.sort.filter((s) => s.key !== k) };
+      return { ...prev, dirs, sort: prev.sort.filter((s) => s.key !== k) };
     }
     const captions =
       k !== 'date' && !prev.captions.includes(k) ? [...prev.captions, k] : prev.captions;
-    // Direction and sub are remembered per key, so re-enabling restores them.
-    return { ...prev, sort: [...prev.sort, makeSpec(k, prev.dirs, prev.subs)], captions };
+    return { ...prev, dirs, sort: [...prev.sort, makeSpec(k, dirs, prev.subs)], captions };
   });
 }
 
 function toggleDir(k: SortKey): void {
-  mutate((prev) => withDerivedSort({ ...prev, dirs: { ...prev.dirs, [k]: !prev.dirs[k] } }));
+  mutate((prev) => {
+    const nextDesc = !prev.dirs[k];
+    return withDerivedSort({ ...prev, dirs: uniformDirs(nextDesc) });
+  });
 }
 
 function setAllDirs(desc: boolean): void {
-  mutate((prev) =>
-    withDerivedSort({ ...prev, dirs: { date: desc, folder: desc, album: desc, size: desc } }),
-  );
+  mutate((prev) => withDerivedSort({ ...prev, dirs: uniformDirs(desc) }));
+}
+
+function toggleGlobalDir(): void {
+  setAllDirs(!globalDesc.value);
 }
 
 function cycleSub(k: SubSortKey): void {
@@ -418,6 +500,7 @@ function setFilter(f: PhotosViewState['filter']): void {
 }
 
 function toggleCaption(c: CaptionKey): void {
+  markCaptionsExplicit();
   mutate((prev) => {
     const exists = prev.captions.includes(c);
     return {
@@ -456,12 +539,15 @@ function reset(): void {
 
 export function usePhotosView(): {
   state: Readonly<Ref<PhotosViewState>>;
+  globalDesc: ComputedRef<boolean>;
   levels: ComputedRef<SortKey[]>;
   captionOnTile: ComputedRef<CaptionKey[]>;
   feedParams: ComputedRef<FeedParams>;
+  setSort(sort: SortSpec[]): void;
   toggleSortKey(k: SortKey): void;
   toggleDir(k: SortKey): void;
   setAllDirs(desc: boolean): void;
+  toggleGlobalDir(): void;
   cycleSub(k: SubSortKey): void;
   setPeriod(p: FeedPeriod): void;
   setFilter(f: PhotosViewState['filter']): void;
@@ -474,12 +560,15 @@ export function usePhotosView(): {
   ensureInitialized();
   return {
     state: readonlyState,
+    globalDesc,
     levels,
     captionOnTile,
     feedParams,
+    setSort,
     toggleSortKey,
     toggleDir,
     setAllDirs,
+    toggleGlobalDir,
     cycleSub,
     setPeriod,
     setFilter,

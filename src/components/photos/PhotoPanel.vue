@@ -5,28 +5,71 @@
     :aria-labelledby="headingId"
     :aria-busy="loading"
     data-photo-panel
-    @keydown.esc="close"
+    @keydown.esc.stop.prevent="close"
   >
     <div class="pp-top">
-      <h3 :id="headingId" class="pp-title" data-panel-title>{{ details ? details.item.name : t('photosLoading') }}</h3>
+      <h3 :id="headingId" class="pp-title" data-panel-title>
+        {{ isGroup ? groupHeading : (details ? details.item.name : (item ? item.name : t('photosLoading'))) }}
+      </h3>
       <button type="button" class="pp-x" :aria-label="t('photosClose')" data-panel-close @click="close">
         <X :size="18" aria-hidden="true" />
       </button>
     </div>
 
-    <div v-if="error" class="pp-error" role="alert" data-panel-error>
+    <div v-if="isGroup" class="pp-group" data-panel-group>
+      <section class="pp-sec" :aria-label="t('photosPanelDetails')">
+        <dl class="pp-kv" data-panel-group-info>
+          <dt>{{ t('galleryGroupTotalSize') }}</dt>
+          <dd>{{ formatFileSize(groupTotalBytes) }}</dd>
+          <dt>{{ t('galleryGroupDateRange') }}</dt>
+          <dd>{{ groupDateRange }}</dd>
+        </dl>
+      </section>
+
+      <div class="pp-group-acts">
+        <button type="button" class="pp-act pp-group-act" data-panel-group-fav @click="emit('group-favorite')">
+          <Heart :size="15" aria-hidden="true" />
+          <span>{{ t('galleryFavoriteToggle') }}</span>
+        </button>
+        <button type="button" class="pp-act pp-group-act" data-panel-group-share @click="emit('group-share')">
+          <Share2 :size="15" aria-hidden="true" />
+          <span>{{ t('galleryShare') }}</span>
+        </button>
+        <button type="button" class="pp-act pp-group-act" data-panel-group-album @click="emit('group-album')">
+          <FolderPlus :size="15" aria-hidden="true" />
+          <span>{{ t('galleryAddToAlbum') }}</span>
+        </button>
+        <button type="button" class="pp-act pp-group-act" data-panel-group-download @click="emit('group-download')">
+          <Download :size="15" aria-hidden="true" />
+          <span>{{ t('photosDownload') }}</span>
+        </button>
+        <button type="button" class="pp-act pp-group-act pp-group-danger" data-panel-group-delete @click="emit('group-delete')">
+          <Trash2 :size="15" aria-hidden="true" />
+          <span>{{ t('galleryDelete') }}</span>
+        </button>
+      </div>
+    </div>
+
+    <div v-else-if="error" class="pp-error" role="alert" data-panel-error>
       <p>{{ error }}</p>
       <button type="button" class="pp-act" @click="load">{{ t('photosRetry') }}</button>
     </div>
 
-    <template v-if="details">
+    <template v-else-if="details || (fallbackMode && item)">
       <div class="pp-prev" data-panel-preview>
-        <img v-if="previewSrc" :src="previewSrc" alt="" @error="onPreviewError" />
+        <img
+          v-if="previewSrc"
+          :referrerpolicy="item?.noReferrer ? 'no-referrer' : undefined"
+          :src="previewSrc"
+          alt=""
+          @error="onPreviewError"
+        />
         <span v-else class="pp-prev-ph">{{ t('photosThumbUnavailable') }}</span>
       </div>
 
       <div class="pp-acts">
         <button
+          v-if="showFavoriteBtn"
           type="button"
           class="pp-act"
           :aria-pressed="favorite"
@@ -36,15 +79,12 @@
           <Heart :size="15" aria-hidden="true" :fill="favorite ? 'currentColor' : 'none'" />
           {{ favorite ? t('photosFavorite') : t('photosFavAdd') }}
         </button>
-        <button type="button" class="pp-act" data-panel-open @click="emit('open-viewer', details.item.fileId)">
-          {{ t('photosOpen') }}
-        </button>
         <button type="button" class="pp-act" data-panel-download @click="download">
           {{ t('photosDownload') }}
         </button>
       </div>
 
-      <section class="pp-sec" :aria-label="t('photosPanelDetails')">
+      <section v-if="infoRows.length" class="pp-sec" :aria-label="t('photosPanelDetails')">
         <dl class="pp-kv" data-panel-info>
           <template v-for="row in infoRows" :key="row.key">
             <dt>{{ row.label }}</dt>
@@ -53,132 +93,236 @@
         </dl>
       </section>
 
-      <section v-if="details.folderPath.length" class="pp-sec" data-panel-folder>
-        <h4 class="pp-sec-h">{{ t('photosPanelFolder') }}</h4>
-        <nav class="pp-crumbs" :aria-label="t('photosPanelFolder')">
-          <template v-for="(part, i) in details.folderPath" :key="part.id + ':' + i">
-            <span v-if="i > 0" class="pp-sep" aria-hidden="true">/</span>
-            <button type="button" class="pp-link" data-panel-crumb @click="emit('open-folder', part.id)">
-              {{ part.name }}
-            </button>
-          </template>
-        </nav>
-      </section>
+      <template v-if="details">
+        <section v-if="details.folderPath.length" class="pp-sec" data-panel-folder>
+          <h4 class="pp-sec-h">{{ t('photosPanelFolder') }}</h4>
+          <nav class="pp-crumbs" :aria-label="t('photosPanelFolder')">
+            <template v-for="(part, i) in details.folderPath" :key="part.id + ':' + i">
+              <span v-if="i > 0" class="pp-sep" aria-hidden="true">/</span>
+              <span v-if="hideOpenFolder" class="pp-crumb-text">{{ part.name }}</span>
+              <button v-else type="button" class="pp-link" data-panel-crumb @click="emit('open-folder', part.id)">
+                {{ part.name }}
+              </button>
+            </template>
+          </nav>
+        </section>
 
-      <section
-        class="pp-sec"
-        data-panel-albums
-        @keydown.esc="if (menuOpen) { $event.stopPropagation(); closeMenu(true); }"
-      >
-        <div class="pp-sec-h">
-          <h4>{{ t('photosPanelAlbums') }}</h4>
-          <button
-            ref="plusBtn"
-            type="button"
-            class="pp-plus"
-            :aria-label="t('photosPanelAddToAlbum')"
-            :aria-expanded="menuOpen"
-            data-panel-plus
-            @click="toggleMenu"
-          >
-            <Plus :size="15" aria-hidden="true" />
-          </button>
-        </div>
-        <div class="pp-chips">
-          <button
-            v-for="a in albums"
-            :key="a.id"
-            type="button"
-            class="pp-chip"
-            data-panel-chip
-            @click="emit('open-album', a.id)"
-          >
-            {{ a.name }}
-          </button>
-          <span v-if="albums.length === 0" class="pp-muted">{{ t('photosPanelNoAlbums') }}</span>
-        </div>
-        <div
-          v-if="menuOpen"
-          ref="menuEl"
-          class="pp-menu"
-          role="group"
-          :aria-label="t('photosPanelAddToAlbum')"
-          data-panel-menu
+        <section
+          class="pp-sec"
+          data-panel-albums
+          @keydown.esc="if (menuOpen) { $event.stopPropagation(); closeMenu(true); }"
         >
-          <button
-            v-for="a in allAlbums"
-            :key="a.id"
-            type="button"
-            :aria-pressed="isMember(a.id)"
-            data-panel-menu-item
-            @click="toggleAlbum(a.id, a.name)"
+          <div class="pp-sec-h">
+            <h4>{{ t('photosPanelAlbums') }}</h4>
+            <button
+              ref="plusBtn"
+              type="button"
+              class="pp-plus"
+              :aria-label="t('photosPanelAddToAlbum')"
+              :aria-expanded="menuOpen"
+              data-panel-plus
+              @click="toggleMenu"
+            >
+              <Plus :size="15" aria-hidden="true" />
+            </button>
+          </div>
+          <div class="pp-chips">
+            <button
+              v-for="a in albums"
+              :key="a.id"
+              type="button"
+              class="pp-chip"
+              data-panel-chip
+              @click="emit('open-album', a.id)"
+            >
+              {{ a.name }}
+            </button>
+            <span v-if="albums.length === 0" class="pp-muted">{{ t('photosPanelNoAlbums') }}</span>
+          </div>
+          <div
+            v-if="menuOpen"
+            ref="menuEl"
+            class="pp-menu"
+            role="group"
+            :aria-label="t('photosPanelAddToAlbum')"
+            data-panel-menu
           >
-            <span>{{ a.name }}</span>
-            <Check v-if="isMember(a.id)" :size="14" aria-hidden="true" />
-          </button>
-          <button type="button" data-panel-new-album @click="newAlbum">
-            <span>{{ t('photosPanelNewAlbum') }}</span>
-          </button>
-        </div>
-      </section>
+            <button
+              v-for="a in allAlbums"
+              :key="a.id"
+              type="button"
+              :aria-pressed="isMember(a.id)"
+              data-panel-menu-item
+              @click="toggleAlbum(a.id, a.name)"
+            >
+              <span>{{ a.name }}</span>
+              <Check v-if="isMember(a.id)" :size="14" aria-hidden="true" />
+            </button>
+            <button type="button" data-panel-new-album @click="newAlbum">
+              <span>{{ t('photosPanelNewAlbum') }}</span>
+            </button>
+          </div>
+        </section>
 
-      <section class="pp-sec" data-panel-storage>
-        <h4 class="pp-sec-h">{{ t('photosPanelStorage') }}</h4>
-        <ul class="pp-devs">
-          <li v-for="d in storageRows" :key="d.key" class="pp-dev" data-panel-dev>
-            <span class="pp-dot" :class="d.dot" aria-hidden="true"></span>
-            <span>{{ d.name }}</span>
-            <small>{{ d.label }}</small>
-          </li>
-        </ul>
-      </section>
+        <section class="pp-sec" data-panel-storage>
+          <h4 class="pp-sec-h">{{ t('photosPanelStorage') }}</h4>
+          <ul class="pp-devs">
+            <li v-for="d in storageRows" :key="d.key" class="pp-dev" data-panel-dev>
+              <span class="pp-dot" :class="d.dot" aria-hidden="true"></span>
+              <span>{{ d.name }}</span>
+              <small>{{ d.label }}</small>
+            </li>
+          </ul>
+        </section>
 
-      <section class="pp-sec">
-        <label class="pp-sec-h" :for="descId">{{ t('photosPanelDescription') }}</label>
-        <textarea
-          :id="descId"
-          v-model="description"
-          class="pp-desc"
-          maxlength="10000"
-          :placeholder="t('photosPanelDescriptionPlaceholder')"
-          data-panel-desc
-          @blur="flushDescription"
-        ></textarea>
-      </section>
+        <section class="pp-sec pp-ml" data-testid="photo-panel-ml">
+          <div class="pp-sec-h">
+            <h4>{{ mlHeading }}</h4>
+            <span v-if="details.ai?.model" class="pp-ml-model" data-testid="photo-ml-model">{{ details.ai.model }}</span>
+          </div>
+          <p v-if="details.ai?.caption" class="pp-ml-caption" data-testid="photo-ml-caption">
+            {{ details.ai.caption }}
+          </p>
+          <div v-if="details.ai?.tags?.length" class="pp-ml-tags">
+            <button
+              v-for="tag in details.ai.tags"
+              :key="tag"
+              type="button"
+              class="pp-ml-tag"
+              data-testid="photo-ml-tag"
+              @click="emit('select-tag', tag)"
+            >
+              {{ tag }}
+            </button>
+          </div>
+          <details
+            v-if="details.ai?.ocrText"
+            class="pp-ml-ocr"
+            :open="details.ai.ocrText.length <= 160"
+            data-testid="photo-ml-ocr"
+          >
+            <summary class="pp-ml-ocr-summary">{{ mlOcrLabel }}</summary>
+            <pre class="pp-ml-ocr-text">{{ details.ai.ocrText }}</pre>
+          </details>
+          <p v-if="showMlEmpty" class="pp-muted pp-ml-empty" data-testid="photo-ml-empty">
+            {{ mlEmptyText }}
+          </p>
+        </section>
+
+        <section class="pp-sec">
+          <label class="pp-sec-h" :for="descId">{{ t('photosPanelDescription') }}</label>
+          <textarea
+            :id="descId"
+            v-model="description"
+            class="pp-desc"
+            maxlength="10000"
+            :placeholder="t('photosPanelDescriptionPlaceholder')"
+            data-panel-desc
+            @blur="flushDescription"
+          ></textarea>
+        </section>
+      </template>
     </template>
   </aside>
 </template>
 
 <script setup lang="ts">
-import { Check, Heart, Plus, X } from '@lucide/vue';
+import { Check, Download, FolderPlus, Heart, Plus, Share2, Trash2, X } from '@lucide/vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import { downloadDriveFile, formatFileSize } from '../../api/drive';
 import {
   photosApi,
   renditionUrl,
   type Album,
+  type FeedItem,
   type PhotoDetails,
   type PhotoReplica,
 } from '../../api/photos';
 import { alertDialog, promptDialog } from '../../composables/appDialog';
+import { useExplorerLayoutPrefs } from '../../composables/useExplorerLayoutPrefs';
 import { useI18n } from '../../composables/useI18n';
+import type { ViewerMediaItem } from './PhotoViewer.vue';
+import {
+  addGalleryAlbumItems,
+  createGalleryAlbum,
+  listGalleryAlbums,
+  removeGalleryAlbumItems,
+} from './usePhotoSelectionActions';
 
-const props = defineProps<{ fileId: string }>();
+const props = withDefaults(defineProps<{
+  fileId?: string;
+  item?: ViewerMediaItem | null;
+  canFavorite?: boolean;
+  selectedItems?: readonly FeedItem[];
+  hideOpenFolder?: boolean;
+}>(), {
+  fileId: '',
+  item: null,
+  canFavorite: true,
+  selectedItems: () => [],
+  hideOpenFolder: false,
+});
 
 const emit = defineEmits<{
   (e: 'close'): void;
   (e: 'open-folder', folderId: string): void;
   (e: 'open-album', albumId: string): void;
-  (e: 'open-viewer', fileId: string): void;
+  (e: 'select-tag', tag: string): void;
+  (e: 'group-favorite'): void;
+  (e: 'group-share'): void;
+  (e: 'group-album'): void;
+  (e: 'group-download'): void;
+  (e: 'group-delete'): void;
   /** The photo's favorite flag or album membership changed here; the feed may refresh it. */
   (e: 'changed', change: { fileId: string; favorite?: boolean; albumIds?: string[] }): void;
 }>();
 
 const { t, locale } = useI18n();
+const layoutPrefs = useExplorerLayoutPrefs();
 const headingId = useId();
 const descId = useId();
 
+const isGroup = computed(() => (props.selectedItems?.length ?? 0) > 1);
+const groupHeading = computed(() =>
+  t('galleryGroupSelected').replace('{n}', String(props.selectedItems?.length ?? 0)),
+);
+
+const groupTotalBytes = computed(() => {
+  const list = props.selectedItems ?? [];
+  return list.reduce((sum, item) => {
+    const raw = (item as FeedItem & { size?: number }).size ?? item.bytes ?? 0;
+    return sum + (Number.isFinite(raw) ? raw : 0);
+  }, 0);
+});
+
+const groupDateRange = computed(() => {
+  const list = props.selectedItems ?? [];
+  const timestamps: Array<{ ms: number; isLocal: boolean }> = [];
+  for (const item of list) {
+    const ext = item as FeedItem & { createdAt?: string | null };
+    const iso = item.localTakenAt ?? item.takenAt ?? ext.createdAt;
+    if (!iso) continue;
+    const ms = Date.parse(iso);
+    if (!Number.isNaN(ms)) {
+      timestamps.push({ ms, isLocal: Boolean(item.localTakenAt) });
+    }
+  }
+  if (timestamps.length === 0) return '—';
+  timestamps.sort((a, b) => a.ms - b.ms);
+  const first = timestamps[0]!;
+  const last = timestamps[timestamps.length - 1]!;
+  const fmtDate = (entry: { ms: number; isLocal: boolean }) =>
+    new Intl.DateTimeFormat(locale.value === 'ru' ? 'ru-RU' : 'en-US', {
+      dateStyle: 'medium',
+      ...(entry.isLocal ? { timeZone: 'UTC' } : {}),
+    }).format(new Date(entry.ms));
+  const a = fmtDate(first);
+  const b = fmtDate(last);
+  return a === b ? a : `${a} — ${b}`;
+});
+
 const details = ref<PhotoDetails | null>(null);
+const fallbackMode = ref(false);
 const loading = ref(false);
 const error = ref('');
 const favorite = ref(false);
@@ -186,8 +330,112 @@ const albums = ref<{ id: string; name: string }[]>([]);
 const description = ref('');
 let savedDescription = '';
 
+const isYandexFallback = computed(
+  () => fallbackMode.value && Boolean(props.item?.fileId.startsWith('yandex:')),
+);
+const showFavoriteBtn = computed(
+  () => props.canFavorite && (Boolean(details.value) || isYandexFallback.value),
+);
+
+const mlHeading = computed(() => (locale.value === 'ru' ? 'ИИ-разметка' : 'AI & ML Info'));
+const mlOcrLabel = computed(() =>
+  locale.value === 'ru' ? 'Распознанный текст (OCR)' : 'Recognized text (OCR)',
+);
+const showMlEmpty = computed(() => {
+  const ai = details.value?.ai;
+  return !ai || ai.status === 'pending' || (!ai.caption && !ai.tags?.length && !ai.ocrText);
+});
+const mlEmptyText = computed(() => {
+  const pending = details.value?.ai?.status === 'pending';
+  if (locale.value === 'ru') {
+    return pending ? 'Ожидает ML-индексации' : 'ML-теги не определены';
+  }
+  return pending ? 'Pending ML indexing' : 'No ML tags detected';
+});
+
 const menuOpen = ref(false);
 const allAlbums = ref<Album[]>([]);
+
+// ----- preview: preview rendition, then thumbnail, then fallback item preview/original, then placeholder -----
+
+const PREVIEW_SIZES = ['preview', 'thumbnail'] as const;
+type PreviewStep = (typeof PREVIEW_SIZES)[number] | 'previewSrc' | 'originalSrc' | 'resolveOriginal';
+const previewSrc = ref<string | null>(null);
+let previewStep: PreviewStep | null = null;
+let previewFailed = new Set<PreviewStep>();
+let previewRequest = 0;
+
+async function loadFallbackPreview(fallback: ViewerMediaItem, reset = false): Promise<void> {
+  if (reset) {
+    previewFailed = new Set();
+    previewSrc.value = null;
+    previewStep = null;
+  }
+  const my = ++previewRequest;
+  const steps: PreviewStep[] = [];
+  if (fallback.previewSrc) steps.push('previewSrc');
+  if (fallback.originalSrc) steps.push('originalSrc');
+  if (fallback.resolveOriginalUrl && fallback.kind !== 'video') steps.push('resolveOriginal');
+
+  for (const step of steps) {
+    if (previewFailed.has(step)) continue;
+    try {
+      let url: string | null = null;
+      if (step === 'previewSrc') url = fallback.previewSrc ?? null;
+      else if (step === 'originalSrc') url = fallback.originalSrc ?? null;
+      else if (step === 'resolveOriginal') url = (await fallback.resolveOriginalUrl?.()) || null;
+      if (my !== previewRequest) return;
+      if (!url) {
+        previewFailed.add(step);
+        continue;
+      }
+      previewSrc.value = url;
+      previewStep = step;
+      return;
+    } catch {
+      previewFailed.add(step);
+    }
+  }
+  if (my === previewRequest) {
+    previewSrc.value = null;
+    previewStep = null;
+  }
+}
+
+async function loadPreview(hash: string, reset = false): Promise<void> {
+  if (reset) {
+    previewFailed = new Set();
+    previewSrc.value = null;
+    previewStep = null;
+  }
+  const my = ++previewRequest;
+  for (const size of PREVIEW_SIZES) {
+    if (previewFailed.has(size)) continue;
+    try {
+      const url = await renditionUrl(hash, size);
+      if (my !== previewRequest) return;
+      previewSrc.value = url;
+      previewStep = size;
+      return;
+    } catch {
+      previewFailed.add(size);
+    }
+  }
+  if (props.item) {
+    await loadFallbackPreview(props.item, false);
+    return;
+  }
+  if (my === previewRequest) {
+    previewSrc.value = null;
+    previewStep = null;
+  }
+}
+
+function onPreviewError(): void {
+  if (previewStep) previewFailed.add(previewStep);
+  if (details.value) void loadPreview(details.value.item.hash);
+  else if (fallbackMode.value && props.item) void loadFallbackPreview(props.item, false);
+}
 
 // ----- loading -----
 
@@ -196,10 +444,25 @@ let request = 0;
 async function load(): Promise<void> {
   const my = ++request;
   const fileId = props.fileId;
+  if (!fileId) {
+    loading.value = false;
+    details.value = null;
+    fallbackMode.value = false;
+    error.value = '';
+    return;
+  }
   loading.value = true;
   error.value = '';
   details.value = null;
+  fallbackMode.value = false;
   menuOpen.value = false;
+  if (fileId.startsWith('yandex:') && props.item) {
+    fallbackMode.value = true;
+    favorite.value = layoutPrefs.isFavorite(props.item.fileId);
+    loading.value = false;
+    void loadFallbackPreview(props.item, true);
+    return;
+  }
   try {
     const d = await photosApi.details(fileId);
     if (my !== request) return;
@@ -211,18 +474,41 @@ async function load(): Promise<void> {
     void loadPreview(d.item.hash, true);
   } catch (e) {
     if (my !== request) return;
-    error.value = e instanceof Error && e.message ? e.message : t('photosPanelLoadError');
+    if (props.item) {
+      fallbackMode.value = true;
+      if (props.item.fileId.startsWith('yandex:')) {
+        favorite.value = layoutPrefs.isFavorite(props.item.fileId);
+      }
+      error.value = '';
+      void loadFallbackPreview(props.item, true);
+    } else {
+      error.value = e instanceof Error && e.message ? e.message : t('photosPanelLoadError');
+    }
   } finally {
     if (my === request) loading.value = false;
   }
 }
 
+watch(
+  () => [isYandexFallback.value, props.item?.fileId, layoutPrefs.favorites.value] as const,
+  ([isYandex, fid]) => {
+    if (isYandex && fid) {
+      favorite.value = layoutPrefs.isFavorite(fid);
+    }
+  },
+);
+
 // The panel follows the current photo: opening the same photo again does not reload it.
 // Flush a pending description first: load() replaces the details it belongs to.
 watch(
-  () => props.fileId,
-  () => {
+  () => [props.fileId, isGroup.value] as const,
+  ([fileId, group]) => {
     flushDescription();
+    if (group || !fileId) {
+      request++;
+      loading.value = false;
+      return;
+    }
     void load();
   },
   { immediate: true },
@@ -234,43 +520,6 @@ onBeforeUnmount(() => {
   previewRequest++;
 });
 
-// ----- preview: preview rendition, then thumbnail, then a placeholder -----
-
-const PREVIEW_SIZES = ['preview', 'thumbnail'] as const;
-const previewSrc = ref<string | null>(null);
-let previewSize: (typeof PREVIEW_SIZES)[number] | null = null;
-let previewFailed = new Set<string>();
-let previewRequest = 0;
-
-async function loadPreview(hash: string, reset = false): Promise<void> {
-  if (reset) {
-    previewFailed = new Set();
-    previewSrc.value = null;
-  }
-  const my = ++previewRequest;
-  for (const size of PREVIEW_SIZES) {
-    if (previewFailed.has(size)) continue;
-    try {
-      const url = await renditionUrl(hash, size);
-      if (my !== previewRequest) return;
-      previewSrc.value = url;
-      previewSize = size;
-      return;
-    } catch {
-      previewFailed.add(size);
-    }
-  }
-  if (my === previewRequest) {
-    previewSrc.value = null;
-    previewSize = null;
-  }
-}
-
-function onPreviewError(): void {
-  if (previewSize) previewFailed.add(previewSize);
-  if (details.value) void loadPreview(details.value.item.hash);
-}
-
 // ----- favorite, download, description -----
 
 async function reportSaveError(e: unknown): Promise<void> {
@@ -281,6 +530,13 @@ async function reportSaveError(e: unknown): Promise<void> {
 }
 
 async function toggleFavorite(): Promise<void> {
+  if (isYandexFallback.value && props.item) {
+    const fileId = props.item.fileId;
+    const next = layoutPrefs.toggleFavorite(fileId);
+    favorite.value = next;
+    emit('changed', { fileId, favorite: next });
+    return;
+  }
   const d = details.value;
   if (!d) return;
   const next = !favorite.value;
@@ -296,9 +552,16 @@ async function toggleFavorite(): Promise<void> {
 
 async function download(): Promise<void> {
   const d = details.value;
-  if (!d) return;
+  const fallback = props.item;
+  if (!d && !fallback) return;
   try {
-    await downloadDriveFile(d.item.fileId, d.item.name);
+    if (fallback?.downloadAction) {
+      await fallback.downloadAction();
+      return;
+    }
+    const id = d ? d.item.fileId : fallback!.fileId;
+    const name = d ? d.item.name : fallback!.name;
+    await downloadDriveFile(id, name);
   } catch (e) {
     await alertDialog({
       title: t('photosDownloadOriginal'),
@@ -359,7 +622,7 @@ async function toggleMenu(): Promise<void> {
   menuOpen.value = !menuOpen.value;
   if (!menuOpen.value) return;
   try {
-    allAlbums.value = await photosApi.albums();
+    allAlbums.value = await listGalleryAlbums();
   } catch (e) {
     menuOpen.value = false;
     await reportSaveError(e);
@@ -378,8 +641,8 @@ async function toggleAlbum(id: string, name: string): Promise<void> {
   const member = memberIds.value.has(id);
   albums.value = member ? before.filter((a) => a.id !== id) : [...before, { id, name }];
   try {
-    if (member) await photosApi.removeFromAlbum(id, [fileId]);
-    else await photosApi.addToAlbum(id, [fileId]);
+    if (member) await removeGalleryAlbumItems(id, [fileId]);
+    else await addGalleryAlbumItems(id, [fileId]);
     if (details.value === d) emitAlbums(fileId);
   } catch (e) {
     if (details.value === d) {
@@ -406,11 +669,11 @@ async function newAlbum(): Promise<void> {
   )?.trim();
   if (!name) return;
   try {
-    const { id } = await photosApi.createAlbum(name);
-    await photosApi.addToAlbum(id, [d.item.fileId]);
+    const { id } = await createGalleryAlbum(name);
+    await addGalleryAlbumItems(id, [d.item.fileId]);
     if (details.value !== d) return;
     albums.value = [...albums.value, { id, name }];
-    allAlbums.value = await photosApi.albums();
+    allAlbums.value = await listGalleryAlbums();
     emitAlbums(d.item.fileId);
   } catch (e) {
     await reportSaveError(e);
@@ -421,38 +684,70 @@ async function newAlbum(): Promise<void> {
 
 const infoRows = computed(() => {
   const d = details.value;
-  if (!d) return [];
-  const { item, meta } = d;
   const rows: { key: string; label: string; value: string }[] = [];
 
-  const iso = item.localTakenAt ?? item.takenAt;
-  const date = iso ? new Date(iso) : null;
-  if (date && !Number.isNaN(date.getTime())) {
-    rows.push({
-      key: 'taken',
-      label: t('photosTakenAt'),
-      value: new Intl.DateTimeFormat(locale.value === 'ru' ? 'ru-RU' : 'en-US', {
-        dateStyle: 'long',
-        timeStyle: 'short',
-        // A local wall-clock time is stored as if it were UTC.
-        ...(item.localTakenAt ? { timeZone: 'UTC' } : {}),
-      }).format(date),
-    });
+  if (d) {
+    const { item, meta } = d;
+
+    const iso = item.localTakenAt ?? item.takenAt;
+    const date = iso ? new Date(iso) : null;
+    if (date && !Number.isNaN(date.getTime())) {
+      rows.push({
+        key: 'taken',
+        label: t('photosTakenAt'),
+        value: new Intl.DateTimeFormat(locale.value === 'ru' ? 'ru-RU' : 'en-US', {
+          dateStyle: 'long',
+          timeStyle: 'short',
+          // A local wall-clock time is stored as if it were UTC.
+          ...(item.localTakenAt ? { timeZone: 'UTC' } : {}),
+        }).format(date),
+      });
+    }
+
+    const camera = [meta?.cameraMake, meta?.cameraModel].filter(Boolean).join(' ');
+    if (camera) rows.push({ key: 'camera', label: t('photosCamera'), value: camera });
+    if (item.width && item.height) {
+      rows.push({ key: 'res', label: t('photosResolution'), value: `${item.width} × ${item.height}` });
+    }
+    rows.push({ key: 'size', label: t('photosFileSize'), value: formatFileSize(item.bytes) });
+    if (meta?.gpsLat != null && meta.gpsLon != null) {
+      rows.push({
+        key: 'place',
+        label: t('photosPlace'),
+        value: `${meta.gpsLat.toFixed(4)}, ${meta.gpsLon.toFixed(4)}`,
+      });
+    }
+    return rows;
   }
 
-  const camera = [meta?.cameraMake, meta?.cameraModel].filter(Boolean).join(' ');
-  if (camera) rows.push({ key: 'camera', label: t('photosCamera'), value: camera });
-  if (item.width && item.height) {
-    rows.push({ key: 'res', label: t('photosResolution'), value: `${item.width} × ${item.height}` });
+  if (fallbackMode.value && props.item) {
+    const item = props.item;
+    const iso = item.localTakenAt ?? item.takenAt;
+    const date = iso ? new Date(iso) : null;
+    if (date && !Number.isNaN(date.getTime())) {
+      rows.push({
+        key: 'taken',
+        label: t('photosTakenAt'),
+        value: new Intl.DateTimeFormat(locale.value === 'ru' ? 'ru-RU' : 'en-US', {
+          dateStyle: 'long',
+          timeStyle: 'short',
+          ...(item.localTakenAt ? { timeZone: 'UTC' } : {}),
+        }).format(date),
+      });
+    }
+    if (item.width && item.height) {
+      rows.push({ key: 'res', label: t('photosResolution'), value: `${item.width} × ${item.height}` });
+    }
+    const bytes = item.sizeBytes ?? item.bytes;
+    if (typeof bytes === 'number' && Number.isFinite(bytes) && (item.sizeBytes != null || bytes > 0)) {
+      rows.push({ key: 'size', label: t('photosFileSize'), value: formatFileSize(bytes) });
+    }
+    const mime = item.mimeType || item.mime;
+    if (mime) {
+      rows.push({ key: 'mime', label: t('fileType'), value: mime });
+    }
   }
-  rows.push({ key: 'size', label: t('photosFileSize'), value: formatFileSize(item.bytes) });
-  if (meta?.gpsLat != null && meta.gpsLon != null) {
-    rows.push({
-      key: 'place',
-      label: t('photosPlace'),
-      value: `${meta.gpsLat.toFixed(4)}, ${meta.gpsLon.toFixed(4)}`,
-    });
-  }
+
   return rows;
 });
 
@@ -491,13 +786,16 @@ const storageRows = computed<StorageRow[]>(() => {
 <style scoped>
 .pp {
   box-sizing: border-box;
-  width: 340px;
+  width: 100%;
+  min-width: 0;
   max-width: 100vw;
   height: 100%;
   overflow-y: auto;
   padding: 16px 18px 40px;
-  background: var(--ui-surface-solid);
-  border-left: 1px solid var(--ui-border);
+  background: var(--ui-glass-tint), var(--ui-glass-bg);
+  backdrop-filter: blur(var(--ui-glass-blur, 18px)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--ui-glass-blur, 18px)) saturate(1.2);
+  border-left: 1px solid var(--ui-glass-border);
   color: var(--ui-text);
   font-size: 14px;
 }
@@ -611,6 +909,31 @@ const storageRows = computed<StorageRow[]>(() => {
   color: var(--ui-glass-accent-text);
 }
 
+.pp-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pp-group-acts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--ui-border);
+}
+
+.pp-group-act {
+  flex: none;
+  justify-content: flex-start;
+  padding: 8px 12px;
+  gap: 9px;
+}
+
+.pp-group-danger {
+  color: var(--ui-danger, #e5484d);
+}
+
 .pp-sec {
   padding: 12px 0;
   border-top: 1px solid var(--ui-border);
@@ -658,6 +981,11 @@ const storageRows = computed<StorageRow[]>(() => {
 .pp-sep,
 .pp-muted {
   color: var(--ui-text-muted);
+}
+
+.pp-crumb-text {
+  padding: 2px 0;
+  color: var(--ui-text-secondary);
 }
 
 .pp-link {
@@ -779,5 +1107,80 @@ const storageRows = computed<StorageRow[]>(() => {
   background: var(--ui-glass-btn-bg);
   color: var(--ui-text);
   font: inherit;
+}
+
+.pp-ml-model {
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--ui-glass-btn-bg);
+  border: 1px solid var(--ui-glass-border);
+  color: var(--ui-text-muted);
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  max-width: 170px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-ml-caption {
+  margin: 0 0 8px;
+  color: var(--ui-text);
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.pp-ml-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.pp-ml-tag {
+  padding: 3px 9px;
+  border: 1px solid var(--ui-glass-accent-border);
+  border-radius: 999px;
+  background: var(--ui-glass-accent-bg);
+  color: var(--ui-glass-accent-text);
+  font-size: 12px;
+  line-height: 1.3;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.pp-ml-tag:hover {
+  background: var(--ui-glass-btn-hover);
+}
+
+.pp-ml-ocr {
+  margin-top: 6px;
+  padding: 6px 9px;
+  border-radius: 8px;
+  border: 1px solid var(--ui-border);
+  background: var(--ui-glass-btn-bg);
+  font-size: 12px;
+}
+
+.pp-ml-ocr-summary {
+  cursor: pointer;
+  color: var(--ui-text-secondary);
+  font-weight: 500;
+}
+
+.pp-ml-ocr-text {
+  margin: 6px 0 0;
+  padding: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font: inherit;
+  color: var(--ui-text);
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.pp-ml-empty {
+  margin: 0;
+  font-size: 12.5px;
 }
 </style>

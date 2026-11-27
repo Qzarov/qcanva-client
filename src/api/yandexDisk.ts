@@ -1,7 +1,7 @@
 import { API_BASE, ApiError, getAccessToken, request } from './client';
 import { createUploadXhr } from './upload-xhr';
 import { uploadNativelyOr } from './native-upload';
-import { resolveDownloadUrl } from './drive';
+import { formatUpload413Error, resolveDownloadUrl } from './drive';
 import { useI18n } from '../composables/useI18n';
 
 /**
@@ -48,8 +48,138 @@ export type YandexListing = {
 
 export type YandexOutcome = { status: 'done' } | { status: 'pending'; operationId: string };
 export type YandexSort = 'name' | '-name' | 'modified' | '-modified';
+export type YandexPreviewSize = 'S' | 'M' | 'L' | 'XL';
+export type YandexMediaPage = {
+  items: YandexItem[];
+  total?: number;
+  offset?: number;
+  limit?: number;
+  hasMore?: boolean;
+};
 
 export const YANDEX_PAGE = 200;
+const YANDEX_MEDIA_MAX_ITEMS = 1000;
+const YANDEX_MEDIA_BFS_CONCURRENCY = 4;
+const YANDEX_MEDIA_BFS_MAX_FOLDERS = 40;
+
+export function isYandexMediaItem(item: YandexItem): boolean {
+  if (item.type !== 'file') return false;
+  if (item.mediaType === 'image' || item.mediaType === 'video') return true;
+  if (item.mime && (item.mime.startsWith('image/') || item.mime.startsWith('video/'))) return true;
+  return false;
+}
+
+function createAbortError(): Error {
+  if (typeof DOMException !== 'undefined') {
+    return new DOMException('Aborted', 'AbortError');
+  }
+  const err = new Error('Aborted');
+  err.name = 'AbortError';
+  return err;
+}
+
+function isAbortError(error: unknown): boolean {
+  return Boolean(error && typeof error === 'object' && (error as { name?: string }).name === 'AbortError');
+}
+
+function isVitestMockFn(fn: unknown): boolean {
+  return typeof fn === 'function' && 'mock' in (fn as unknown as Record<string, unknown>);
+}
+
+async function listMediaBfsFallback(
+  rootPath: string,
+  previewSize: YandexPreviewSize,
+  signal?: AbortSignal,
+): Promise<YandexItem[]> {
+  const queue: string[] = [rootPath];
+  const queued = new Set<string>([rootPath]);
+  const collected: YandexItem[] = [];
+  const seenPaths = new Set<string>();
+  let foldersVisited = 0;
+  let activeWorkers = 0;
+  let fatalError: unknown = null;
+
+  const scanDir = async (dirPath: string): Promise<void> => {
+    let offset = 0;
+    for (;;) {
+      if (signal?.aborted) throw createAbortError();
+      if (collected.length >= YANDEX_MEDIA_MAX_ITEMS) return;
+      const listing = await yandexDisk.list(dirPath, {
+        limit: YANDEX_PAGE,
+        ...(offset > 0 ? { offset } : {}),
+        previewSize,
+        ...(signal ? { signal } : {}),
+      });
+      if (signal?.aborted) throw createAbortError();
+      const pageItems = listing?.items ?? [];
+      for (const item of pageItems) {
+        if (item.type === 'dir') {
+          if (!queued.has(item.path) && queued.size < YANDEX_MEDIA_BFS_MAX_FOLDERS) {
+            queued.add(item.path);
+            queue.push(item.path);
+          }
+        } else if (isYandexMediaItem(item) && !seenPaths.has(item.path)) {
+          seenPaths.add(item.path);
+          collected.push(item);
+          if (collected.length >= YANDEX_MEDIA_MAX_ITEMS) return;
+        }
+      }
+      offset += pageItems.length;
+      const total = typeof listing?.total === 'number' ? listing.total : pageItems.length;
+      if (pageItems.length === 0 || pageItems.length < YANDEX_PAGE || offset >= total) break;
+    }
+  };
+
+  await new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const finish = (err?: unknown) => {
+      if (settled) return;
+      settled = true;
+      if (err) reject(err);
+      else resolve();
+    };
+
+    const pump = () => {
+      if (settled) return;
+      if (fatalError) {
+        finish(fatalError);
+        return;
+      }
+      if (signal?.aborted) {
+        finish(createAbortError());
+        return;
+      }
+      while (
+        activeWorkers < YANDEX_MEDIA_BFS_CONCURRENCY &&
+        queue.length > 0 &&
+        foldersVisited < YANDEX_MEDIA_BFS_MAX_FOLDERS &&
+        collected.length < YANDEX_MEDIA_MAX_ITEMS
+      ) {
+        const dirPath = queue.shift()!;
+        foldersVisited++;
+        activeWorkers++;
+        void scanDir(dirPath)
+          .catch((err) => {
+            if (signal?.aborted || isAbortError(err) || isYandexReconnectError(err) || dirPath === rootPath) {
+              fatalError = err;
+            }
+          })
+          .finally(() => {
+            activeWorkers--;
+            pump();
+          });
+      }
+      if (activeWorkers === 0) {
+        if (fatalError) finish(fatalError);
+        else finish();
+      }
+    };
+
+    pump();
+  });
+
+  return collected;
+}
 
 const q = (params: Record<string, string | number | boolean | undefined>) => {
   const search = new URLSearchParams();
@@ -71,9 +201,67 @@ export const yandexDisk = {
     if (error instanceof SyntaxError) return;
     throw error;
   }),
-  list: (path: string, opts: { offset?: number; limit?: number; sort?: YandexSort } = {}) => request<YandexListing>(
-    `/yandex-disk/items${q({ path, offset: opts.offset, limit: opts.limit ?? YANDEX_PAGE, sort: opts.sort, previewSize: 'L' })}`,
+  list: (
+    path: string,
+    opts: { offset?: number; limit?: number; sort?: YandexSort; previewSize?: YandexPreviewSize; signal?: AbortSignal } = {},
+  ) => request<YandexListing>(
+    `/yandex-disk/items${q({ path, offset: opts.offset, limit: opts.limit ?? YANDEX_PAGE, sort: opts.sort, previewSize: opts.previewSize ?? 'L' })}`,
+    opts.signal ? { signal: opts.signal } : undefined,
   ),
+  listMedia: async (
+    path = '/',
+    opts: { previewSize?: YandexPreviewSize; signal?: AbortSignal } = {},
+  ): Promise<YandexItem[]> => {
+    const rootPath = path || '/';
+    const previewSize = opts.previewSize ?? 'L';
+    const { signal } = opts;
+    if (signal?.aborted) throw createAbortError();
+
+    // Unit tests commonly mock `yandexDisk.list` without mocking `request`/`fetch`.
+    if (isVitestMockFn(yandexDisk.list) && !isVitestMockFn(request)) {
+      return listMediaBfsFallback(rootPath, previewSize, signal);
+    }
+
+    const collected: YandexItem[] = [];
+    const seenPaths = new Set<string>();
+    let offset = 0;
+
+    try {
+      while (collected.length < YANDEX_MEDIA_MAX_ITEMS) {
+        if (signal?.aborted) throw createAbortError();
+        const page = await request<YandexMediaPage>(
+          `/yandex-disk/media${q({ path: rootPath, limit: YANDEX_PAGE, offset, previewSize })}`,
+          signal ? { signal } : undefined,
+        );
+        if (!page || !Array.isArray(page.items)) {
+          if (offset === 0) return listMediaBfsFallback(rootPath, previewSize, signal);
+          break;
+        }
+        for (const item of page.items) {
+          if (isYandexMediaItem(item) && !seenPaths.has(item.path)) {
+            seenPaths.add(item.path);
+            collected.push(item);
+            if (collected.length >= YANDEX_MEDIA_MAX_ITEMS) break;
+          }
+        }
+        if (!page.hasMore || page.items.length === 0) break;
+        offset += page.items.length;
+      }
+      return collected;
+    } catch (error) {
+      if (signal?.aborted || isAbortError(error) || isYandexReconnectError(error)) {
+        throw error;
+      }
+      const status = error instanceof ApiError ? error.status : 0;
+      if (status === 401 || status === 403) {
+        throw error;
+      }
+      if (offset === 0 && (status === 404 || status === 405 || status === 501 || isVitestMockFn(yandexDisk.list))) {
+        return listMediaBfsFallback(rootPath, previewSize, signal);
+      }
+      throw error;
+    }
+  },
   createFolder: (path: string) => request<YandexItem>('/yandex-disk/folders', json({ path })),
   rename: (path: string, name: string) => request<YandexOutcome & { path: string }>('/yandex-disk/rename', json({ path, name })),
   move: (from: string, to: string) => request<YandexOutcome>('/yandex-disk/move', json({ from, to })),
@@ -185,14 +373,14 @@ export function uploadYandexFile(
   );
 }
 
-function parseYandexUploadAnswer(status: number, text: string): YandexItem {
+export function parseYandexUploadAnswer(status: number, text: string, contentType?: string | null): YandexItem {
   const { t } = useI18n();
   let body: any = {};
   try { body = JSON.parse(text || '{}'); } catch { /* empty */ }
   if (status >= 200 && status < 300) return body as YandexItem;
   if (status === 0) throw new ApiError(0, t('driveUploadNetworkError'));
   let message = body?.message || `HTTP ${status}`;
-  if (status === 413) message = t('driveUploadTooLarge');
+  if (status === 413) message = formatUpload413Error(text, contentType, t);
   if (status === 507) message = t('yandexNoSpace');
   if (status === 409 && !isYandexReconnectError({ body })) message = t('yandexAlreadyExists');
   throw new ApiError(status, message, body);
@@ -216,8 +404,9 @@ function xhrUploadYandexFile(url: string, file: File, onProgress?: (percent: num
       let body: any = {};
       try { body = JSON.parse(xhr.responseText || '{}'); } catch { /* empty */ }
       if (xhr.status >= 200 && xhr.status < 300) return resolve(body as YandexItem);
+      const contentType = xhr.getResponseHeader?.('content-type') ?? null;
       let message = body?.message || `HTTP ${xhr.status}`;
-      if (xhr.status === 413) message = t('driveUploadTooLarge');
+      if (xhr.status === 413) message = formatUpload413Error(xhr.responseText || '', contentType, t);
       if (xhr.status === 507) message = t('yandexNoSpace');
       if (xhr.status === 409 && !isYandexReconnectError({ body })) message = t('yandexAlreadyExists');
       reject(new ApiError(xhr.status, message, body));

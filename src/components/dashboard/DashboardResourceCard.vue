@@ -5,31 +5,18 @@
     :data-selected="selectable ? selected || undefined : undefined"
     :class="cardClasses"
     :data-folder-resource="folderResource"
-    :draggable="draggable"
-    @click="emit('open')"
+    :draggable="isDraggable"
+    tabindex="0"
+    @click="onCardClick"
+    @dblclick="onCardDblClick"
+    @keydown.enter.prevent="onCardEnter"
+    @contextmenu.prevent.stop="emit('contextmenu', $event)"
+    @dragstart="onDragStart"
+    @drag="onDragMove"
+    @dragend="onDragEnd"
   >
     <ResourceThumb :kind="kind" :id="resource.id" :version="resource.updatedAt" />
-    <a
-      v-if="openHref"
-      class="card-open-link"
-      :href="openHref"
-      :aria-label="openLabel"
-      @click.stop="emit('open-link')"
-    ></a>
-    <div class="card-title card-title-with-icon" @dblclick.stop="renameable && emit('rename')">
-      <span
-        v-if="selectable"
-        class="card-select"
-        data-select-box
-        role="checkbox"
-        tabindex="0"
-        :aria-checked="selected"
-        :aria-label="selectLabel"
-        @keydown.enter.prevent.stop="emit('toggle-select')"
-        @keydown.space.prevent.stop="emit('toggle-select')"
-      >
-        <Check :size="12" aria-hidden="true" />
-      </span>
+    <div class="card-title card-title-with-icon">
       <slot name="icon">
         <ResourceIcon :kind="kind" :template-type="resource.templateType" :data-resource-icon="kind" :aria-label="iconLabel" />
       </slot>
@@ -81,10 +68,10 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { Check } from '@lucide/vue';
 import ResourceIcon from '../ResourceIcon.vue';
 import ResourceThumb from './ResourceThumb.vue';
 import DashboardResourceMenu from './DashboardResourceMenu.vue';
+import { useExplorerGroupDnd, type GroupDragEntry } from '../../composables/useExplorerGroupDnd';
 import type { DashboardResourceAction, DashboardResourceActionItem } from './resource-card.types';
 
 type ResourceTag = { name: string; color: string };
@@ -96,6 +83,7 @@ type CardResource = {
   pinned?: boolean;
   tags?: ResourceTag[];
   templateType?: string | null;
+  folderId?: string | null;
 };
 
 const props = withDefaults(defineProps<{
@@ -109,9 +97,11 @@ const props = withDefaults(defineProps<{
   selectKey?: string;
   selected?: boolean;
   selectable?: boolean;
+  selectedKeys?: readonly string[];
   busy?: boolean;
   dragging?: boolean;
   draggable?: boolean;
+  renaming?: boolean;
   renameable?: boolean;
   cardTag?: 'article' | 'div';
   folderResource?: string;
@@ -132,9 +122,11 @@ const props = withDefaults(defineProps<{
   selectKey: undefined,
   selected: false,
   selectable: false,
+  selectedKeys: undefined,
   busy: false,
   dragging: false,
   draggable: false,
+  renaming: false,
   renameable: false,
   cardTag: 'article',
   folderResource: undefined,
@@ -155,17 +147,84 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   open: [];
   'open-link': [];
+  select: [event: MouseEvent];
   rename: [];
   'toggle-select': [];
   'toggle-pin': [];
   'toggle-menu': [event: Event];
   'select-action': [action: DashboardResourceAction];
+  'contextmenu': [event: MouseEvent];
 }>();
+
+function isInteractiveCardControl(target: EventTarget | null): boolean {
+  return Boolean((target as HTMLElement | null)?.closest('.card-manage, .card-menu, .card-pin, .card-title-input'));
+}
+
+function onCardClick(event: MouseEvent): void {
+  if (props.renaming || isInteractiveCardControl(event.target)) return;
+  emit('select', event);
+}
+
+function onCardDblClick(event: MouseEvent): void {
+  if (props.renaming || isInteractiveCardControl(event.target)) return;
+  emit('open');
+}
+
+function onCardEnter(event: KeyboardEvent): void {
+  if (props.renaming || (event.target as HTMLElement | null)?.closest('input, textarea, button, a, .card-menu')) return;
+  emit('open');
+}
+
+const dnd = useExplorerGroupDnd();
+const cardKey = computed(() => props.selectKey || `${props.kind}:${props.resource.id}`);
+const isDraggable = computed(() => (props.draggable || props.selectable) && !props.renaming);
+
+function parseSelectedKeyEntry(key: string): GroupDragEntry {
+  const sep = key.indexOf(':');
+  if (sep > 0) {
+    return {
+      key,
+      id: key.slice(sep + 1),
+      kind: key.slice(0, sep),
+    };
+  }
+  return { key, id: key, kind: props.kind };
+}
+
+function onDragStart(event: DragEvent): void {
+  if (!isDraggable.value) return;
+  if ((event.target as HTMLElement | null)?.closest('input, textarea, [contenteditable="true"]')) return;
+  const key = cardKey.value;
+  const selfEntry: GroupDragEntry = {
+    key,
+    id: props.resource.id,
+    kind: props.kind,
+    name: props.resource.title ?? undefined,
+    folderId: props.resource.folderId ?? null,
+  };
+  const items: GroupDragEntry[] = props.selectedKeys?.includes(key) && props.selectedKeys.length > 1
+    ? props.selectedKeys.map((k) => (k === key ? selfEntry : parseSelectedKeyEntry(k)))
+    : [selfEntry];
+  dnd.startGroupDrag({ source: 'explorer', items }, event);
+}
+
+function onDragMove(event: DragEvent): void {
+  if (event.clientX || event.clientY) {
+    dnd.updateGroupDragPosition(event.clientX, event.clientY);
+  }
+}
+
+function onDragEnd(): void {
+  dnd.endGroupDrag();
+}
 
 const cardClasses = computed(() => [
   'canvas-card',
   props.kind !== 'canvas' ? 'html-doc-card' : '',
   props.kind === 'interactive-template' ? 'interactive-template-card' : '',
-  { dragging: props.dragging },
+  {
+    dragging: props.dragging,
+    'is-dragging-group': Boolean(dnd.activeDrag.value?.keys.includes(cardKey.value)),
+  },
 ]);
 </script>

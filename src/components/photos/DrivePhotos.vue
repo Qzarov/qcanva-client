@@ -1,64 +1,209 @@
 <template>
-  <section ref="rootEl" class="drive-photos" data-drive-photos>
-    <header class="dp-top">
-      <div class="dp-tabs" role="tablist" :aria-label="t('photosTabsLabel')" @keydown="onTabsKeydown">
+  <section
+    ref="rootEl"
+    class="drive-photos"
+    data-drive-photos
+    @keydown="onRootKeydown"
+  >
+    <!-- macOS Photos Topbar (NO < ↑ arrows) -->
+    <header
+      class="dp-top"
+      :class="{ 'is-hidden': isTopChromeHidden }"
+      data-testid="gallery-topbar"
+    >
+      <div class="dp-top-left">
         <button
-          v-for="tb in TABS"
-          :id="`dp-tab-${tb}`"
-          :key="tb"
+          v-if="showSidebarExpand"
           type="button"
-          role="tab"
-          class="dp-tab"
-          :aria-selected="tab === tb"
-          :aria-controls="'dp-tabpanel'"
-          :tabindex="tab === tb ? 0 : -1"
-          :data-tab="tb"
-          @click="setTab(tb)"
+          class="dp-icon-btn sb-expand-btn"
+          data-sidebar-expand-btn
+          :aria-label="t('openNavigation')"
+          :title="t('openNavigation')"
+          @click="emit('expand-sidebar')"
         >
-          {{ tb === 'feed' ? t('photosTabFeed') : t('photosTabAlbums') }}
+          <PanelLeft :size="16" aria-hidden="true" />
         </button>
+
+        <button
+          v-if="isYandexMode"
+          type="button"
+          class="dp-crumb-pill"
+          data-testid="gallery-yandex-crumb"
+          @click="clearYandexPath"
+        >
+          <ChevronLeft :size="14" aria-hidden="true" />
+          <span>{{ yandexScopeName }}</span>
+        </button>
+
+        <button
+          v-if="effectiveAlbumId"
+          type="button"
+          class="dp-crumb-pill"
+          data-testid="gallery-album-crumb"
+          @click="clearAlbumFilter"
+        >
+          <ChevronLeft :size="14" aria-hidden="true" />
+          <span>{{ albumName || effectiveAlbumId }}</span>
+        </button>
+
+        <button
+          v-if="effectiveAlbumId"
+          type="button"
+          class="dp-icon-pill dp-album-members-pill"
+          data-testid="gallery-album-members"
+          :aria-label="albumMembersLabel"
+          :title="albumMembersLabel"
+          @click="emit('share-album', effectiveAlbumId)"
+        >
+          <Users :size="13" aria-hidden="true" />
+          <span>{{ albumMembersLabel }}</span>
+        </button>
+
+        <button
+          v-if="selectedPeople.length > 0"
+          type="button"
+          class="dp-crumb-pill"
+          data-testid="gallery-people-crumb"
+          @click="selectedPeople = []"
+        >
+          <ChevronLeft :size="14" aria-hidden="true" />
+          <span>{{ selectedPeopleLabels.join(', ') }}</span>
+        </button>
+
+        <template v-if="!showPeopleGrid && activeSection !== 'trash'">
+          <button
+            type="button"
+            class="dp-icon-pill"
+            :class="{ active: prefs.galleryAspectMode.value === 'ratio' }"
+            :title="aspectToggleLabel"
+            :aria-label="aspectToggleLabel"
+            :aria-pressed="prefs.galleryAspectMode.value === 'ratio'"
+            data-testid="aspect-toggle"
+            @click="prefs.toggleGalleryAspectMode()"
+          >
+            <LayoutGrid v-if="prefs.galleryAspectMode.value === 'square'" :size="15" aria-hidden="true" />
+            <RectangleHorizontal v-else :size="15" aria-hidden="true" />
+          </button>
+
+          <div class="dp-zoom-wrap" :title="t('galleryZoomSlider')">
+            <button
+              type="button"
+              class="dp-zoom-step"
+              :aria-label="t('galleryZoomOut')"
+              data-testid="zoom-out"
+              @click="stepZoom(-24)"
+            >
+              −
+            </button>
+            <input
+              type="range"
+              class="dp-zoom-slider"
+              :min="GALLERY_TILE_MIN_H"
+              :max="GALLERY_TILE_MAX_H"
+              :value="prefs.photoTileH.value"
+              :aria-label="t('galleryZoomSlider')"
+              data-testid="zoom-slider"
+              @input="onZoomInput"
+            />
+            <button
+              type="button"
+              class="dp-zoom-step"
+              :aria-label="t('galleryZoomIn')"
+              data-testid="zoom-in"
+              @click="stepZoom(24)"
+            >
+              +
+            </button>
+          </div>
+        </template>
       </div>
 
-      <form class="dp-search" role="search" data-photos-search @submit.prevent="runSearchNow">
-        <Search :size="16" class="dp-search-icon" aria-hidden="true" />
-        <input
-          v-model="query"
-          type="search"
-          maxlength="200"
-          class="dp-search-input"
-          :placeholder="t('photosSearchPlaceholder')"
-          :aria-label="t('photosSearchPlaceholder')"
-          data-photos-search-input
-          @keydown.esc="clearSearch"
-        />
-        <button
-          v-if="query"
-          type="button"
-          class="dp-search-clear"
-          :aria-label="t('photosClearSearch')"
-          data-photos-search-clear
-          @click="clearSearch"
+      <div class="dp-top-center">
+        <div v-if="showPeopleGrid" class="dp-people-title" data-testid="people-topbar-title">
+          {{ t('galleryPeople') }}
+        </div>
+        <div v-else-if="activeSection === 'trash'" class="dp-people-title" data-testid="trash-topbar-title">
+          {{ t('galleryDeleted') }}
+        </div>
+        <div
+          v-else
+          class="dp-seg-center"
+          role="group"
+          :aria-label="t('photosGroupBy')"
+          data-testid="period-segmented"
         >
-          <X :size="14" aria-hidden="true" />
+          <button
+            v-for="p in PERIOD_CONTROLS"
+            :key="p.period"
+            type="button"
+            class="dp-seg-btn"
+            :class="{ active: view.state.value.period === p.period }"
+            :aria-pressed="view.state.value.period === p.period"
+            :data-testid="`period-${p.period}`"
+            @click="selectPeriod(p.period)"
+          >
+            {{ t(p.label) }}
+          </button>
+        </div>
+      </div>
+
+      <div class="dp-top-right">
+        <button
+          v-if="selected.size >= 2"
+          type="button"
+          class="dp-sel-badge"
+          data-testid="selection-badge"
+          :title="t('photosSelClear')"
+          @click="clearSelection"
+        >
+          <span>{{ selected.size }}</span>
+          <span aria-hidden="true">✕</span>
         </button>
-      </form>
+
+        <ExplorerInlineSearch
+          ref="inlineSearchRef"
+          v-model="query"
+          v-model:scope-mode="searchScopeMode"
+          v-model:type-filter="searchTypeFilter"
+          in-gallery
+          :scope-label="scopeLabel"
+          :albums="inlineSearchAlbums"
+          :folders="inlineSearchFolders"
+          :items="inlineSearchItems"
+          :ml-tags="suggestedTags"
+          :loading="searchLoading"
+          @select-tag="selectSuggestedTag"
+          @select-album="onOpenAlbum"
+          @select-folder="onSearchSelectFolder"
+          @open-item="onSearchOpenItem"
+          @submit="runSearchNow"
+        />
+      </div>
     </header>
 
     <p v-if="mockMode" class="dp-mock" role="status" data-photos-mock-banner>{{ t('photosMockBanner') }}</p>
-
-    <!-- Across the whole width, above the feed and the panel, as in the mockup -->
-    <PhotosViewBar v-if="!searchActive && (tab === 'feed' || albumId)" />
 
     <div class="dp-body">
       <div
         id="dp-tabpanel"
         class="dp-main"
-        role="tabpanel"
-        :aria-labelledby="`dp-tab-${tab}`"
         data-photos-main
-        @keydown.esc="onMainEscape"
       >
-        <!-- Search: a flat relevance grid, no groups, no scrubber -->
+        <!-- Floating translucent Sort pill overlaid directly on top of the sticky curtain -->
+        <div
+          v-if="!searchActive && !showPeopleGrid && activeSection !== 'trash'"
+          class="dp-float-sort"
+          :class="{ 'is-headroom-hidden': isTopChromeHidden }"
+        >
+          <PhotosViewBar
+            :hidden="false"
+            :force-visible="true"
+            :inside-album="Boolean(effectiveAlbumId)"
+            @menu-open="sortMenuOpen = $event"
+          />
+        </div>
+
+        <!-- Search: flat semantic CLIP/hybrid relevance grid -->
         <template v-if="searchActive">
           <p v-if="searchError === 'unavailable'" class="dp-note" role="alert" data-photos-search-unavailable>
             {{ t('photosSearchUnavailable') }}
@@ -67,159 +212,1026 @@
             {{ t('photosSearchError') }}
             <button type="button" class="dp-retry" @click="runSearchNow">{{ t('photosRetry') }}</button>
           </p>
-          <p v-else-if="searchLoading && !searchItems.length" class="dp-note" role="status">{{ t('photosLoading') }}</p>
-          <p v-else-if="!searchItems.length" class="dp-note" role="status" data-photos-search-empty>
+          <p v-else-if="searchLoading && !scopedSearchItems.length" class="dp-note" role="status">{{ t('photosLoading') }}</p>
+          <p v-else-if="!scopedSearchItems.length" class="dp-note" role="status" data-photos-search-empty>
             {{ t('photosSearchNothing') }}
           </p>
           <PhotosSearchGrid
-            v-if="searchItems.length"
-            :items="searchItems"
+            v-if="scopedSearchItems.length"
+            class="dp-search-grid"
+            :items="scopedSearchItems"
             :tile="view.state.value.tile"
             :current="currentId"
+            :selected="selected"
             :has-more="searchCursor !== null && !searchLoading"
             @open="onOpen"
             @activate="onActivate"
+            @contextmenu="onFeedContextMenu"
             @more="loadMoreSearch"
           />
         </template>
 
-        <!-- Feed, or one album's photos -->
-        <template v-else-if="tab === 'feed' || albumId">
-          <div v-if="albumId" class="dp-album-head" data-photos-album-head>
-            <button type="button" class="dp-back" data-photos-back @click="backToAlbums">
-              {{ t('photosBackToAlbums') }}
-            </button>
-            <h2 class="dp-album-title">{{ albumName }}</h2>
-          </div>
-          <PhotosFeed
-            :key="albumId ?? 'feed'"
-            ref="feedRef"
-            class="dp-feed"
-            :params="feedParams"
-            :caption-on-tile="view.captionOnTile.value"
-            :tile="view.state.value.tile"
-            :selected="selected"
-            :current="currentId"
-            @open="onOpen"
-            @activate="onActivate"
-            @toggle-select="onToggleSelect"
+        <!-- In-Gallery Recently Deleted -->
+        <div v-else-if="activeSection === 'trash'" class="dp-trash-scroll" data-testid="gallery-trash-view">
+          <DashboardTrash @restored="onTrashRestored" @feedback="onTrashFeedback" />
+        </div>
+
+        <!-- People grid -->
+        <div v-else-if="showPeopleGrid" class="dp-people-scroll">
+          <GalleryPeopleGrid
+            :people="resolvedPeople"
+            :selected-ids="selectedPeople"
+            @select="onSelectPeople"
           />
+        </div>
+
+        <!-- Continuous edge-to-edge photo wall -->
+        <PhotosFeed
+          v-else
+          :key="isYandexMode ? 'yandex' : (effectiveAlbumId ?? 'feed')"
+          ref="feedRef"
+          class="dp-feed"
+          :params="feedParams"
+          :caption-on-tile="effectiveCaptionOnTile"
+          :tile="view.state.value.tile"
+          :tile-height="prefs.photoTileH.value"
+          :aspect-mode="prefs.galleryAspectMode.value"
+          :folder-filter-id="isYandexMode ? null : externalFolderId"
+          :folder-filter-ids="isYandexMode ? null : effectiveAllowedFolderIds"
+          :folder-include-root="isYandexMode ? false : externalFolderId === 'root'"
+          :people-filter="selectedPeople"
+          :recent-limit="activeSection === 'recent' ? 24 : null"
+          :headroom-hidden="isTopChromeHidden"
+          :selected="selected"
+          :current="currentId"
+          :external-items="isYandexMode ? yandexFeedItems : null"
+          :external-loading="isYandexMode ? yandexLoading : false"
+          :supplementary-items="supplementaryFeedItems"
+          @open="onOpen"
+          @focus-photo="onFeedFocusPhoto"
+          @activate="onActivate"
+          @toggle-select="onToggleSelect"
+          @set-selection="onSetSelection"
+          @contextmenu="onFeedContextMenu"
+          @toggle-favorite="toggleSingleFavorite"
+          @summary="onFeedSummary"
+          @units-loaded="onFeedUnitsLoaded"
+        />
+      </div>
+
+      <!-- Resizable right ⓘ panel wrapper -->
+      <Transition name="dp-panel-slide">
+        <div v-if="isPanelVisible" class="dp-panel-shell">
+          <div
+            class="dp-panel-sash"
+            :class="{ active: panelDragging }"
+            :title="t('galleryResizePanel')"
+            data-testid="panel-sash"
+            @pointerdown="onPanelSashDown"
+          ></div>
+          <div
+            class="dp-panel"
+            :style="{ width: `${panelWidth}px` }"
+            data-photos-panel-wrap
+          >
+            <PhotoPanel
+              :key="panelEpoch"
+              :file-id="panelId ?? ''"
+              :item="panelItem"
+              :can-favorite="true"
+              :selected-items="selectedFeedItems"
+              :hide-open-folder="hideInternalTabs || isPanelItemYandex"
+              @close="closePanel"
+              @open-folder="onOpenFolder"
+              @open-album="onOpenAlbum"
+              @select-tag="onSelectSearchTag"
+              @group-favorite="toggleFavoriteAction"
+              @group-share="shareAction"
+              @group-album="actions.toggleAlbumMenu()"
+              @group-download="downloadSelectedAction"
+              @group-delete="deleteSelectedAction"
+              @changed="onPanelChanged"
+            />
+          </div>
+        </div>
+      </Transition>
+    </div>
+
+    <!-- Gallery Right-Click Context Menu (Group actions open ONLY on right-click) -->
+    <Transition name="card-menu-pop">
+      <div
+        v-if="ctxMenu"
+        ref="ctxMenuEl"
+        class="dp-ctx-menu"
+        role="menu"
+        tabindex="-1"
+        data-testid="gallery-context-menu"
+        :style="{ left: `${ctxMenu.x}px`, top: `${ctxMenu.y}px` }"
+        @click.stop
+        @pointerdown="markPointerInsideCtx"
+        @mousedown="markPointerInsideCtx"
+        @focusout="onCtxFocusOut"
+      >
+        <template v-if="ctxIsYandex">
+          <button type="button" role="menuitem" class="dp-ctx-item" data-ctx-open @click="ctxOpenViewer">
+            <Eye :size="14" aria-hidden="true" />
+            <span>{{ t('photosOpen') }}</span>
+          </button>
+
+          <button type="button" role="menuitem" class="dp-ctx-item" data-ctx-favorite @click="ctxToggleFavorite">
+            <Heart :size="14" aria-hidden="true" />
+            <span>
+              {{ ctxAllFavorite ? t('explorerRemoveFromFavorites') : t('explorerAddToFavorites') }}
+              <template v-if="ctxTargetIds.length > 1">({{ ctxTargetIds.length }})</template>
+            </span>
+          </button>
+
+          <button
+            v-if="ctxShowFolderTarget"
+            type="button"
+            role="menuitem"
+            class="dp-ctx-item"
+            data-ctx-show-folder
+            @click="ctxShowFolder"
+          >
+            <FolderOpen :size="14" aria-hidden="true" />
+            <span>{{ t('photosShowFolder') }}</span>
+          </button>
+
+          <button type="button" role="menuitem" class="dp-ctx-item" data-ctx-download @click="ctxDownload">
+            <Download :size="14" aria-hidden="true" />
+            <span>{{ t('photosDownload') }}</span>
+          </button>
+
+          <button type="button" role="menuitem" class="dp-ctx-item" data-ctx-properties @click="ctxOpenProperties">
+            <Info :size="14" aria-hidden="true" />
+            <span>{{ t('fileProperties') }}</span>
+          </button>
+
+          <div class="dp-ctx-sep" role="separator"></div>
+
+          <button type="button" role="menuitem" class="dp-ctx-item dp-ctx-danger" data-ctx-delete @click="ctxDelete">
+            <Trash2 :size="14" aria-hidden="true" />
+            <span>
+              {{ t('delete') }}
+              <template v-if="ctxTargetIds.length > 1">({{ ctxTargetIds.length }})</template>
+            </span>
+          </button>
         </template>
 
-        <!-- Remounted whenever it is shown again, so counts and covers are fresh -->
-        <PhotosAlbums v-else @open="openAlbum" />
+        <template v-else>
+          <button type="button" role="menuitem" class="dp-ctx-item" data-ctx-favorite @click="ctxToggleFavorite">
+            <Heart :size="14" aria-hidden="true" />
+            <span>
+              {{ ctxAllFavorite ? t('explorerRemoveFromFavorites') : t('explorerAddToFavorites') }}
+              <template v-if="ctxTargetIds.length > 1">({{ ctxTargetIds.length }})</template>
+            </span>
+          </button>
 
-        <SelectionBar
-          v-if="selected.size > 0"
-          :count="selected.size"
-          :in-album="albumId !== null"
-          :busy="selBusy"
-          :album-menu-open="albumMenuOpen"
-          :albums="albums"
-          :albums-failed="albumsFailed"
-          @album="actions.toggleAlbumMenu()"
-          @move="actions.openMove()"
-          @clear="clearSelection"
-          @remove-from-album="actions.removeFromAlbum()"
-          @pick-album="actions.addToAlbum($event)"
-          @new-album="actions.createAlbumAndAdd()"
-          @close-album="actions.closeAlbumMenu()"
-        />
-      </div>
+          <button type="button" role="menuitem" class="dp-ctx-item" data-ctx-share @click="ctxShare">
+            <Share2 :size="14" aria-hidden="true" />
+            <span>
+              {{ t('galleryShare') }}
+              <template v-if="ctxTargetIds.length > 1">({{ ctxTargetIds.length }})</template>
+            </span>
+          </button>
 
-      <div v-if="panelId" class="dp-panel" data-photos-panel-wrap>
-        <PhotoPanel
-          :key="panelEpoch"
-          :file-id="panelId"
-          @close="closePanel"
-          @open-folder="onOpenFolder"
-          @open-album="onOpenAlbum"
-          @open-viewer="onOpenViewerFromPanel"
-          @changed="onPanelChanged"
-        />
+          <div class="dp-ctx-sep" role="separator"></div>
+
+          <div class="dp-ctx-album-wrap">
+            <button
+              ref="ctxAlbumTriggerEl"
+              type="button"
+              role="menuitem"
+              aria-haspopup="menu"
+              :aria-expanded="ctxAlbumsOpen"
+              class="dp-ctx-item"
+              :class="{ 'is-submenu-open': ctxAlbumsOpen }"
+              data-ctx-album
+              @pointerenter="onCtxAlbumTriggerPointerEnter"
+              @mouseenter="onCtxAlbumTriggerEnter"
+              @mouseleave="scheduleCloseCtxAlbums"
+              @focusin="cancelCloseCtxAlbums"
+              @keydown="onCtxAlbumTriggerKeydown"
+              @pointerdown="onCtxAlbumTriggerPointerDown"
+              @click="onCtxAlbumTriggerClick"
+            >
+              <FolderPlus :size="14" aria-hidden="true" />
+              <span>{{ t('explorerAddToAlbum') }}</span>
+              <ChevronRight :size="13" class="dp-ctx-chevron" aria-hidden="true" />
+            </button>
+          </div>
+
+          <button
+            v-if="effectiveAlbumId"
+            type="button"
+            role="menuitem"
+            class="dp-ctx-item"
+            data-ctx-remove-album
+            @click="ctxRemoveFromAlbum"
+          >
+            <X :size="14" aria-hidden="true" />
+            <span>{{ t('photosSelRemoveFromAlbum') }}</span>
+          </button>
+
+          <button
+            v-if="ctxShowFolderTarget"
+            type="button"
+            role="menuitem"
+            class="dp-ctx-item"
+            data-ctx-show-folder
+            @click="ctxShowFolder"
+          >
+            <FolderOpen :size="14" aria-hidden="true" />
+            <span>{{ t('photosShowFolder') }}</span>
+          </button>
+
+          <button type="button" role="menuitem" class="dp-ctx-item" data-ctx-move @click="ctxOpenMove">
+            <FolderInput :size="14" aria-hidden="true" />
+            <span>
+              {{ t('photosMoveAction') }}
+              <template v-if="ctxTargetIds.length > 1">({{ ctxTargetIds.length }})</template>…
+            </span>
+          </button>
+
+          <button type="button" role="menuitem" class="dp-ctx-item" data-ctx-download @click="ctxDownload">
+            <Download :size="14" aria-hidden="true" />
+            <span>{{ t('photosDownload') }}</span>
+          </button>
+
+          <button type="button" role="menuitem" class="dp-ctx-item" data-ctx-properties @click="ctxOpenProperties">
+            <Info :size="14" aria-hidden="true" />
+            <span>{{ t('fileProperties') }}</span>
+          </button>
+
+          <div class="dp-ctx-sep" role="separator"></div>
+
+          <button type="button" role="menuitem" class="dp-ctx-item dp-ctx-danger" data-ctx-delete @click="ctxDelete">
+            <Trash2 :size="14" aria-hidden="true" />
+            <span>
+              {{ t('delete') }}
+              <template v-if="ctxTargetIds.length > 1">({{ ctxTargetIds.length }})</template>
+            </span>
+          </button>
+        </template>
       </div>
-    </div>
+    </Transition>
+
+    <Teleport to="body">
+      <Transition name="ctx-flyout-pop">
+        <div
+          v-if="ctxMenu && ctxAlbumsOpen"
+          ref="ctxFlyoutEl"
+          class="dp-ctx-flyout"
+          role="menu"
+          tabindex="-1"
+          :aria-label="t('explorerAddToAlbum')"
+          :data-flyout-side="ctxFlyoutSide"
+          data-gallery-ctx-album-flyout
+          :style="ctxFlyoutStyle"
+          @mouseenter="cancelCloseCtxAlbums"
+          @mouseleave="scheduleCloseCtxAlbums"
+          @pointerdown="markPointerInsideCtx"
+          @mousedown="markPointerInsideCtx"
+          @focusin="cancelCloseCtxAlbums"
+          @focusout="onCtxFocusOut"
+          @keydown="onCtxFlyoutKeydown"
+          @click.stop
+          @contextmenu.prevent
+        >
+          <div v-if="ctxAlbumsList.length" class="dp-ctx-flyout-scroll">
+            <button
+              v-for="alb in ctxAlbumsList"
+              :key="alb.id"
+              type="button"
+              role="menuitem"
+              class="dp-ctx-item dp-ctx-sub-item"
+              :data-gallery-ctx-album="alb.id"
+              @click="ctxAddToAlbum(alb.id)"
+            >
+              <span class="dp-ctx-dot" aria-hidden="true"></span>
+              <span class="dp-ctx-sub-name">{{ alb.name }}</span>
+              <Check v-if="ctxSingleItemAlbumIds.has(alb.id)" :size="13" class="dp-ctx-check" aria-hidden="true" />
+            </button>
+          </div>
+          <div v-if="ctxAlbumsList.length" class="dp-ctx-sep" role="separator"></div>
+          <button
+            type="button"
+            role="menuitem"
+            class="dp-ctx-item dp-ctx-sub-item dp-ctx-new-album"
+            data-gallery-ctx-new-album
+            @click="ctxCreateAlbumAndAdd"
+          >
+            <Plus :size="14" aria-hidden="true" />
+            <span class="dp-ctx-sub-name">{{ t('photosPanelNewAlbum') }}</span>
+          </button>
+        </div>
+      </Transition>
+    </Teleport>
 
     <PhotoViewer
       v-if="viewerItem"
       :item="viewerItem"
+      :items="viewer!.items"
       :index="viewer!.index"
       :total="viewer!.items.length"
       :has-prev="viewer!.index > 0"
       :has-next="viewer!.index < viewer!.items.length - 1"
+      :can-favorite="true"
+      :can-share="!isViewerItemYandex || Boolean(viewerItemPublicUrl)"
+      :can-delete="true"
+      :can-info="true"
       @close="viewer = null"
       @prev="stepViewer(-1)"
       @next="stepViewer(1)"
-      @info="onViewerInfo"
+      @jump="jumpViewer"
+      @toggle-favorite="toggleSingleFavorite"
+      @share="shareSingleItem"
+      @delete="onViewerDelete"
+      @panel-changed="onPanelChanged"
+      @select-tag="onViewerSelectTag"
     />
 
     <FolderPickerDialog
       v-if="moveOpen"
-      :title="fmt('photosMoveTitle', { n: selected.size })"
+      :title="fmt('photosMoveTitle', { n: moveTargetIds.length })"
       :confirm-label="t('photosMoveAction')"
       :exclude-ids="moveExcl.ids"
       :exclude-root="moveExcl.root"
       @select="actions.moveTo($event)"
       @close="actions.closeMove()"
     />
+
+    <div
+      v-if="actions.albumMenuOpen.value"
+      class="dp-album-picker-backdrop"
+      data-testid="gallery-group-album-menu"
+      @click="actions.closeAlbumMenu()"
+    >
+      <div class="dp-album-picker" role="dialog" :aria-label="t('galleryAddToAlbum')" @click.stop>
+        <div class="dp-album-picker-head">
+          <span>{{ t('galleryAddToAlbum') }}</span>
+          <button type="button" class="dp-search-clear" :aria-label="t('photosClose')" @click="actions.closeAlbumMenu()">
+            <X :size="14" aria-hidden="true" />
+          </button>
+        </div>
+        <p v-if="actions.albumsFailed.value" class="dp-album-picker-note">{{ t('photosAlbumsLoadFailed') }}</p>
+        <p v-else-if="actions.albums.value === null" class="dp-album-picker-note">{{ t('photosLoading') }}</p>
+        <div v-else class="dp-album-picker-list">
+          <button
+            v-for="alb in actions.albums.value"
+            :key="alb.id"
+            type="button"
+            class="dp-ctx-item"
+            :data-group-album-choice="alb.id"
+            @click="actions.addToAlbum(alb.id)"
+          >
+            <span>{{ alb.name }}</span>
+          </button>
+          <button
+            type="button"
+            class="dp-ctx-item"
+            data-group-album-new
+            @click="actions.createAlbumAndAdd()"
+          >
+            <span>{{ t('photosPanelNewAlbum') }}</span>
+          </button>
+        </div>
+      </div>
+    </div>
   </section>
 </template>
 
 <script setup lang="ts">
-import { Search, X } from '@lucide/vue';
-import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
-import { isPhotosMock, isSearchUnavailable, photosApi, type FeedItem } from '../../api/photos';
-import { useI18n } from '../../composables/useI18n';
+import {
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  Eye,
+  FolderInput,
+  FolderOpen,
+  FolderPlus,
+  Heart,
+  Info,
+  LayoutGrid,
+  PanelLeft,
+  Plus,
+  RectangleHorizontal,
+  Share2,
+  Trash2,
+  Users,
+  X,
+} from '@lucide/vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
+import { resourceFolders, type ResourceFolderSummary } from '../../api/client';
+import { downloadDriveFile, driveApi, resolveDownloadUrl } from '../../api/drive';
+import {
+  isPhotosMock,
+  isSearchUnavailable,
+  photosApi,
+  type Album,
+  type FeedItem,
+  type FeedPeriod,
+  type SortKey,
+} from '../../api/photos';
+import { spacesApi, type SpaceFeedItem } from '../../api/spaces';
+import {
+  downloadYandexLink,
+  settleYandexOutcome,
+  yandexDisk,
+  yandexParentPath,
+  yandexPreviewUrl,
+  type YandexItem,
+} from '../../api/yandexDisk';
+import { confirmDialog } from '../../composables/appDialog';
+import {
+  GALLERY_TILE_MAX_H,
+  GALLERY_TILE_MIN_H,
+  useExplorerLayoutPrefs,
+} from '../../composables/useExplorerLayoutPrefs';
+import { useI18n, type MessageKey } from '../../composables/useI18n';
+import { useSpaces } from '../../composables/useSpaces';
+import { useToast } from '../../composables/useToast';
+import { useYandexMediaLibrary } from '../../composables/useYandexMediaLibrary';
+import DashboardTrash from '../dashboard/DashboardTrash.vue';
+import ExplorerInlineSearch, {
+  type InlineSearchAlbum,
+  type InlineSearchFolder,
+  type InlineSearchItem,
+  type InlineSearchScopeMode,
+  type InlineSearchTypeFilter,
+} from '../dashboard/ExplorerInlineSearch.vue';
 import FolderPickerDialog from '../FolderPickerDialog.vue';
+import GalleryPeopleGrid, { type GalleryPerson } from './GalleryPeopleGrid.vue';
 import PhotoPanel from './PhotoPanel.vue';
-import PhotosAlbums from './PhotosAlbums.vue';
 import PhotosFeed from './PhotosFeed.vue';
 import PhotosSearchGrid from './PhotosSearchGrid.vue';
 import PhotosViewBar from './PhotosViewBar.vue';
-import PhotoViewer from './PhotoViewer.vue';
-import SelectionBar from './SelectionBar.vue';
-import { usePhotoSelectionActions } from './usePhotoSelectionActions';
+import PhotoViewer, { type ViewerMediaItem } from './PhotoViewer.vue';
+import {
+  invalidateGalleryFolderFilesCache,
+  type GallerySection,
+  type GallerySidebarCounts,
+  type GalleryStorageFolder,
+} from './GallerySidebar.vue';
+import { addGalleryAlbumItems, listGalleryAlbums, usePhotoSelectionActions } from './usePhotoSelectionActions';
 import { usePhotosView } from './usePhotosView';
+
+const props = withDefaults(defineProps<{
+  activeSection?: GallerySection;
+  externalAlbumId?: string | null;
+  externalAlbumMembersCount?: number | null;
+  externalFolderId?: string | null;
+  externalYandexPath?: string | null;
+  folders?: readonly GalleryStorageFolder[];
+  hideInternalTabs?: boolean;
+  showSidebarExpand?: boolean;
+  people?: readonly GalleryPerson[];
+}>(), {
+  activeSection: 'library',
+  externalAlbumId: null,
+  externalAlbumMembersCount: null,
+  externalFolderId: null,
+  externalYandexPath: null,
+  folders: undefined,
+  hideInternalTabs: false,
+  showSidebarExpand: false,
+  people: undefined,
+});
+
+export interface GalleryFocusTransfer {
+  fileId: string;
+  folderId: string | null;
+  shared: boolean;
+  selectedIds: string[];
+}
 
 const emit = defineEmits<{
   (e: 'openFolder', folderId: string, fileId: string): void;
+  (e: 'show-folder-in-gallery', folderId: string, fileId: string): void;
+  (e: 'focus-photo', item: FeedItem): void;
+  (e: 'share-album', id: string): void;
+  (e: 'share-photos', ids: string[]): void;
+  (e: 'select-album', albumId: string): void;
+  (e: 'select-yandex-path', path: string | null): void;
+  (e: 'clear-album'): void;
+  (e: 'open-trash'): void;
+  (e: 'expand-sidebar'): void;
+  (e: 'update:counts', counts: GallerySidebarCounts): void;
+  (e: 'drop-folder', folderId: string | null, fileIds: string[], folderIds: string[]): void;
+  (e: 'drop-album', albumId: string, fileIds: string[], folderIds: string[]): void;
+  (e: 'folder-contextmenu', payload: { event: MouseEvent; folderId: string }): void;
 }>();
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
+const homeFolderLabel = computed(() => {
+  const translated = (t as (key: string) => string)('explorerHomeFolder');
+  if (translated && translated !== 'explorerHomeFolder') return translated;
+  return locale.value === 'ru' ? 'Домашняя' : 'Home';
+});
+const toast = useToast();
 const view = usePhotosView();
+const prefs = useExplorerLayoutPrefs();
+const { spaces, load: loadSpaces } = useSpaces();
+const yandexLib = useYandexMediaLibrary();
 const mockMode = isPhotosMock();
 
-type MsgKey = Parameters<typeof t>[0];
-const fmt = (key: MsgKey, vars: Record<string, string | number>): string =>
+const fmt = (key: MessageKey, vars: Record<string, string | number>): string =>
   t(key).replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m));
 
 const SEARCH_DEBOUNCE_MS = 350;
 const SEARCH_PAGE = 60;
+const PANEL_MIN_W = 240;
+const PANEL_MAX_W = 480;
+const PANEL_COLLAPSE_THRESHOLD = 160;
+const PANEL_DEFAULT_W = 320;
 
-const TABS = ['feed', 'albums'] as const;
-type Tab = (typeof TABS)[number];
+const PERIOD_CONTROLS: { period: FeedPeriod; label: MessageKey }[] = [
+  { period: 'year', label: 'galleryYears' },
+  { period: 'month', label: 'galleryMonths' },
+  { period: 'day', label: 'galleryDays' },
+];
 
 const rootEl = ref<HTMLElement | null>(null);
 const feedRef = ref<InstanceType<typeof PhotosFeed> | null>(null);
+const inlineSearchRef = ref<{ focus: () => void; close?: () => void; handleEscape?: () => boolean } | null>(null);
 
-const tab = ref<Tab>('feed');
-/** The album shown in the Albums tab (its photos as a feed), or null for the album list. */
-const albumId = ref<string | null>(null);
+const internalAlbumId = ref<string | null>(null);
 const albumName = ref('');
+const folderName = ref('');
+const albumSourceFolderIds = ref<Set<string>>(new Set());
+const effectiveAlbumId = computed(() => props.externalAlbumId ?? internalAlbumId.value);
+const effectiveAlbumMembersCount = computed<number>(() => {
+  if (typeof props.externalAlbumMembersCount === 'number' && props.externalAlbumMembersCount > 0) {
+    return props.externalAlbumMembersCount;
+  }
+  const id = effectiveAlbumId.value;
+  if (id) {
+    const found = spaces.value.find((s) => s.id === id);
+    if (found && typeof found.memberCount === 'number' && found.memberCount >= 0) {
+      return found.memberCount + 1;
+    }
+  }
+  return 1;
+});
+const albumMembersLabel = computed(() => fmt('explorerMembersCount', { n: effectiveAlbumMembersCount.value }));
 
-const feedParams = computed(() => (albumId.value ? { ...view.feedParams.value, albumId: albumId.value } : view.feedParams.value));
+const loadedStorageFolders = ref<GalleryStorageFolder[]>([]);
+const allStorageFolders = computed<readonly GalleryStorageFolder[]>(() => props.folders ?? loadedStorageFolders.value);
+let storageFoldersRequested = false;
 
-// ----- search -----
+async function ensureStorageFolders(): Promise<void> {
+  if (props.folders !== undefined || storageFoldersRequested) return;
+  storageFoldersRequested = true;
+  try {
+    if (typeof resourceFolders?.list !== 'function') return;
+    const res = await resourceFolders.list();
+    const own = (res.own ?? []).map((f: ResourceFolderSummary) => ({
+      id: f.id,
+      name: f.name,
+      parentId: f.parentId ?? null,
+      sortOrder: f.sortOrder,
+      role: f.role ?? ('owner' as const),
+    }));
+    const shared = (res.shared ?? []).map((f: ResourceFolderSummary) => ({
+      id: f.id,
+      name: f.name,
+      parentId: f.parentId ?? null,
+      sortOrder: f.sortOrder,
+      role: f.role ?? ('read' as const),
+    }));
+    loadedStorageFolders.value = [...own, ...shared];
+  } catch {
+    // Standalone or mock mode without resource folders API
+  }
+}
+
+function collectSubtreeIds(rootId: string, list: readonly GalleryStorageFolder[]): Set<string> {
+  const byParent = new Map<string, string[]>();
+  for (const f of list) {
+    if (!f.parentId) continue;
+    const bucket = byParent.get(f.parentId) ?? [];
+    bucket.push(f.id);
+    byParent.set(f.parentId, bucket);
+  }
+  const out = new Set<string>([rootId]);
+  const queue: string[] = [rootId];
+  while (queue.length > 0) {
+    const cur = queue.shift()!;
+    for (const childId of byParent.get(cur) ?? []) {
+      if (!out.has(childId)) {
+        out.add(childId);
+        queue.push(childId);
+      }
+    }
+  }
+  return out;
+}
+
+const ownHomeSubtreeIds = computed<Set<string>>(() => {
+  const ids = new Set<string>();
+  for (const f of allStorageFolders.value) {
+    if (f.role !== 'read') ids.add(f.id);
+  }
+  return ids;
+});
+
+const effectiveAllowedFolderIds = computed<ReadonlySet<string> | null>(() => {
+  const fid = props.externalFolderId;
+  if (!fid) return null;
+  if (fid === 'root') {
+    return ownHomeSubtreeIds.value.size > 0 ? ownHomeSubtreeIds.value : null;
+  }
+  return collectSubtreeIds(fid, allStorageFolders.value);
+});
+
+const selected = shallowRef<Set<string>>(new Set());
+const focusedId = ref<string | null>(null);
+const focusedItemCache = ref<ViewerMediaItem | null>(null);
+let preserveFocusForShowFolder = false;
+const panelOpen = ref(false);
+const panelId = ref<string | null>(null);
+const panelEpoch = ref(0);
+const panelWidth = ref(PANEL_DEFAULT_W);
+const panelDragging = ref(false);
+const sortMenuOpen = ref(false);
+const viewer = shallowRef<{ items: ViewerMediaItem[]; index: number } | null>(null);
+const viewerItem = computed<ViewerMediaItem | null>(() => viewer.value?.items[viewer.value.index] ?? null);
+const currentId = computed(() => viewerItem.value?.fileId ?? focusedId.value ?? panelId.value);
+
+// ----- Yandex Disk Media Mode -----
+type YandexViewerMediaItem = ViewerMediaItem & {
+  yandexPath: string;
+  folderName: string;
+  publicUrl?: string | null;
+};
+
+const YANDEX_ID_PREFIX = 'yandex:';
+const isYandexFileId = (fileId: string | null | undefined): boolean =>
+  typeof fileId === 'string' && fileId.startsWith(YANDEX_ID_PREFIX);
+const yandexPathFromFileId = (fileId: string): string =>
+  fileId.startsWith(YANDEX_ID_PREFIX) ? fileId.slice(YANDEX_ID_PREFIX.length) : fileId;
+
+const isYandexMode = computed(() => props.externalYandexPath !== null && props.externalYandexPath !== undefined);
+
+function yandexFolderDisplayName(path: string): string {
+  if (!path || path === '/') return t('yandexDisk');
+  return path.split('/').filter(Boolean).pop() || t('yandexDisk');
+}
+
+const yandexScopeName = computed(() =>
+  props.externalYandexPath !== null && props.externalYandexPath !== undefined
+    ? yandexFolderDisplayName(props.externalYandexPath)
+    : '',
+);
+
+function yandexItemToViewerMedia(item: YandexItem): YandexViewerMediaItem {
+  const isVideo = item.mediaType === 'video' || Boolean(item.mime?.toLowerCase().startsWith('video/'));
+  const fileId = `${YANDEX_ID_PREFIX}${item.path}`;
+  const parentPath = yandexParentPath(item.path);
+  const takenAt = item.modifiedAt || item.createdAt || new Date().toISOString();
+  const folderLabel = yandexFolderDisplayName(parentPath);
+  return {
+    fileId,
+    hash: item.md5 || fileId,
+    name: item.name,
+    mime: item.mime || (isVideo ? 'video/mp4' : 'image/jpeg'),
+    kind: isVideo ? 'video' : 'photo',
+    processed: false,
+    takenAt,
+    localTakenAt: takenAt,
+    width: null,
+    height: null,
+    durationSec: null,
+    bytes: item.size ?? 0,
+    folderId: parentPath,
+    favorite: prefs.isFavorite(fileId),
+    albumIds: [],
+    thumbhash: null,
+    share: null,
+    previewSrc: yandexPreviewUrl(item),
+    noReferrer: true,
+    sizeBytes: item.size ?? undefined,
+    mimeType: item.mime || undefined,
+    folderName: folderLabel,
+    yandexPath: item.path,
+    publicUrl: item.publicUrl,
+    resolveOriginalUrl: async () => (await yandexDisk.downloadLink(item.path)).href,
+    downloadAction: async () => {
+      const { href } = await yandexDisk.downloadLink(item.path);
+      downloadYandexLink(href, item.name);
+    },
+  };
+}
+
+function spaceFeedYandexItemToViewerMedia(spaceId: string, item: SpaceFeedItem): YandexViewerMediaItem | null {
+  if (item.origin !== 'yandex' || !item.path) return null;
+  const mime = (item.mime ?? '').toLowerCase();
+  const isVideo = item.mediaType === 'video' || mime.startsWith('video/');
+  const isImage = item.mediaType === 'image' || mime.startsWith('image/');
+  if (!isVideo && !isImage) return null;
+  const fileId = `${YANDEX_ID_PREFIX}${item.path}`;
+  const parentPath = yandexParentPath(item.path);
+  const takenAt = item.updatedAt || new Date().toISOString();
+  const folderLabel = yandexFolderDisplayName(parentPath);
+  const previewSrc = item.previewUrl ? resolveDownloadUrl(item.previewUrl) : null;
+  const sourceId = item.sourceId;
+  const yPath = item.path;
+  return {
+    fileId,
+    hash: item.hash || fileId,
+    name: item.name,
+    mime: item.mime || (isVideo ? 'video/mp4' : 'image/jpeg'),
+    kind: isVideo ? 'video' : 'photo',
+    processed: false,
+    takenAt,
+    localTakenAt: takenAt,
+    width: null,
+    height: null,
+    durationSec: null,
+    bytes: item.size ?? 0,
+    folderId: parentPath,
+    favorite: prefs.isFavorite(fileId),
+    albumIds: [spaceId],
+    thumbhash: null,
+    share: null,
+    previewSrc,
+    noReferrer: true,
+    sizeBytes: item.size ?? undefined,
+    mimeType: item.mime || undefined,
+    folderName: folderLabel,
+    yandexPath: yPath,
+    publicUrl: null,
+    resolveOriginalUrl: async () => {
+      if (sourceId && typeof spacesApi?.yandexDownload === 'function') {
+        return (await spacesApi.yandexDownload(spaceId, sourceId, yPath)).href;
+      }
+      return (await yandexDisk.downloadLink(yPath)).href;
+    },
+    downloadAction: async () => {
+      const res = sourceId && typeof spacesApi?.yandexDownload === 'function'
+        ? await spacesApi.yandexDownload(spaceId, sourceId, yPath)
+        : await yandexDisk.downloadLink(yPath);
+      downloadYandexLink(res.href, item.name);
+    },
+  };
+}
+
+const yandexRawItems = shallowRef<YandexItem[]>([]);
+const yandexLoading = ref(false);
+let yandexAbort: AbortController | null = null;
+let yandexLoadSeq = 0;
+
+const yandexFeedItems = computed<YandexViewerMediaItem[]>(() =>
+  yandexRawItems.value.map(yandexItemToViewerMedia),
+);
+
+let albumLoadSeq = 0;
+const albumYandexRawItems = shallowRef<YandexItem[]>([]);
+const albumYandexSpaceFeedItems = shallowRef<{ spaceId: string; items: SpaceFeedItem[] } | null>(null);
+
+const albumYandexFeedItems = computed<YandexViewerMediaItem[]>(() => {
+  const albId = effectiveAlbumId.value;
+  if (!albId) return [];
+  const byId = new Map<string, YandexViewerMediaItem>();
+  for (const raw of albumYandexRawItems.value) {
+    const mapped = yandexItemToViewerMedia(raw);
+    mapped.albumIds = [albId];
+    byId.set(mapped.fileId, mapped);
+  }
+  if (albumYandexSpaceFeedItems.value && albumYandexSpaceFeedItems.value.spaceId === albId) {
+    for (const sItem of albumYandexSpaceFeedItems.value.items) {
+      const mapped = spaceFeedYandexItemToViewerMedia(albId, sItem);
+      if (mapped && !byId.has(mapped.fileId)) {
+        byId.set(mapped.fileId, mapped);
+      }
+    }
+  }
+  return [...byId.values()];
+});
+
+const isPhotoSectionWithYandex = computed(() =>
+  !effectiveAlbumId.value
+  && !props.externalFolderId
+  && !isYandexMode.value
+  && selectedPeople.value.length === 0
+  && props.activeSection !== 'trash',
+);
+
+const supplementaryFeedItems = computed<ViewerMediaItem[] | null>(() => {
+  if (isYandexMode.value) return null;
+  if (effectiveAlbumId.value) {
+    return albumYandexFeedItems.value.length > 0 ? albumYandexFeedItems.value : null;
+  }
+  if (isPhotoSectionWithYandex.value) {
+    const list = yandexLib.items.value;
+    return list.length > 0 ? list : null;
+  }
+  return null;
+});
+
+async function loadYandexMedia(path: string): Promise<void> {
+  yandexAbort?.abort();
+  const controller = new AbortController();
+  yandexAbort = controller;
+  const seq = ++yandexLoadSeq;
+  yandexLoading.value = true;
+  try {
+    const list = await yandexDisk.listMedia(path, { signal: controller.signal });
+    if (seq !== yandexLoadSeq || controller.signal.aborted) return;
+    yandexRawItems.value = list;
+  } catch (err) {
+    if (seq !== yandexLoadSeq || controller.signal.aborted) return;
+    yandexRawItems.value = [];
+    if ((err as { name?: string })?.name !== 'AbortError') {
+      toast.show(t('yandexLoadFailed'), 'error');
+    }
+  } finally {
+    if (seq === yandexLoadSeq) {
+      yandexLoading.value = false;
+    }
+  }
+}
+
+function clearYandexPath(): void {
+  searchScopeMode.value = 'current';
+  clearSelection();
+  emit('select-yandex-path', null);
+}
+
+const isViewerItemYandex = computed(() => isYandexFileId(viewerItem.value?.fileId));
+const viewerItemPublicUrl = computed(() => (viewerItem.value as YandexViewerMediaItem | null)?.publicUrl ?? null);
+
+const panelItem = computed<ViewerMediaItem | null>(() => {
+  const id = panelId.value;
+  if (!id) return null;
+  const found = findLoadedItem(id);
+  if (found) return found;
+  if (focusedItemCache.value?.fileId === id) return focusedItemCache.value;
+  return null;
+});
+const isPanelItemYandex = computed(() => isYandexFileId(panelId.value) || isYandexFileId(panelItem.value?.fileId));
+
+const feedParams = computed(() => {
+  const base = view.feedParams.value;
+  if (!effectiveAlbumId.value) return base;
+  const filteredSort = base.sort.filter((s) => s.key !== 'album');
+  const filteredLevels = base.levels.filter((k) => k !== 'album');
+  return {
+    ...base,
+    sort: filteredSort,
+    levels: filteredLevels.length > 0 ? filteredLevels : (['date'] as SortKey[]),
+    albumId: effectiveAlbumId.value,
+  };
+});
+
+const effectiveCaptionOnTile = computed(() => (
+  effectiveAlbumId.value
+    ? view.captionOnTile.value.filter((k) => k !== 'album')
+    : view.captionOnTile.value
+));
+
+// ----- search (unified S2 inline search + live CLIP/hybrid POST /api/photos/search) -----
 
 type SearchError = '' | 'unavailable' | 'failed';
 const query = ref('');
-/** The query the displayed results belong to; empty = the feed. */
 const searchQuery = ref('');
+const searchScopeMode = ref<InlineSearchScopeMode>('current');
+const searchTypeFilter = ref<InlineSearchTypeFilter>('all');
 const searchItems = shallowRef<FeedItem[]>([]);
 const searchCursor = ref<string | null>(null);
 const searchLoading = ref(false);
 const searchError = ref<SearchError>('');
 const searchActive = computed(() => searchQuery.value !== '');
+
+const SUGGESTED_TAGS_RU = ['природа', 'горы', 'море', 'портрет', 'архитектура', 'закат', 'еда', 'документы'] as const;
+const SUGGESTED_TAGS_EN = ['nature', 'mountains', 'sea', 'portrait', 'architecture', 'sunset', 'food', 'documents'] as const;
+const suggestedTags = computed<string[]>(() => [...(locale.value === 'ru' ? SUGGESTED_TAGS_RU : SUGGESTED_TAGS_EN)]);
+
+const scopeLabel = computed<string>(() => {
+  if (isYandexMode.value) return yandexScopeName.value;
+  if (effectiveAlbumId.value) return albumName.value || effectiveAlbumId.value;
+  if (props.externalFolderId) return folderName.value || homeFolderLabel.value;
+  return t('galleryLibrary');
+});
+
+function matchesActiveFolderScope(item: FeedItem): boolean {
+  const fid = props.externalFolderId;
+  if (!fid) return true;
+  if (fid === 'root') {
+    if (item.share) return false;
+    const allowed = effectiveAllowedFolderIds.value;
+    if (allowed && allowed.size > 0) {
+      return item.folderId === null || allowed.has(item.folderId);
+    }
+    return true;
+  }
+  const allowed = effectiveAllowedFolderIds.value;
+  if (allowed && allowed.size > 0) {
+    return Boolean(item.folderId && allowed.has(item.folderId));
+  }
+  return item.folderId === fid;
+}
+
+function itemMatchesScope(item: FeedItem): boolean {
+  if (searchScopeMode.value !== 'current') return true;
+  if (effectiveAlbumId.value) {
+    if (item.albumIds.includes(effectiveAlbumId.value)) return true;
+    if (item.folderId && albumSourceFolderIds.value.has(item.folderId)) return true;
+    return false;
+  }
+  if (props.externalFolderId) {
+    return matchesActiveFolderScope(item);
+  }
+  return true;
+}
+
+const isYandexScopedSearch = computed(() => isYandexMode.value && searchScopeMode.value === 'current');
+
+function matchesYandexSearchQuery(item: ViewerMediaItem, qLower: string): boolean {
+  if (!qLower) return true;
+  const name = (item.name || '').toLowerCase();
+  const folder = (item.folderId || '').toLowerCase();
+  const yPath = (
+    (item as YandexViewerMediaItem).yandexPath
+    || (isYandexFileId(item.fileId) ? yandexPathFromFileId(item.fileId) : '')
+  ).toLowerCase();
+  return name.includes(qLower) || folder.includes(qLower) || yPath.includes(qLower);
+}
+
+const scopedSearchItems = computed<ViewerMediaItem[]>(() => {
+  const qLower = searchQuery.value.trim().toLowerCase();
+  if (isYandexScopedSearch.value) {
+    if (!qLower) return yandexFeedItems.value;
+    return yandexFeedItems.value.filter((it) => matchesYandexSearchQuery(it, qLower));
+  }
+  const qspaceFiltered = searchItems.value.filter(itemMatchesScope);
+  let yandexPool: readonly ViewerMediaItem[] = [];
+  if (searchScopeMode.value !== 'current' || (!effectiveAlbumId.value && !props.externalFolderId && !isYandexMode.value)) {
+    yandexPool = yandexLib.items.value;
+  } else if (effectiveAlbumId.value && albumYandexFeedItems.value.length > 0) {
+    yandexPool = albumYandexFeedItems.value;
+  }
+  if (yandexPool.length === 0 || !qLower) return qspaceFiltered;
+  const yMatches = yandexPool.filter((it) => matchesYandexSearchQuery(it, qLower));
+  if (yMatches.length === 0) return qspaceFiltered;
+  const seen = new Set(qspaceFiltered.map((i) => i.fileId));
+  const merged: ViewerMediaItem[] = [...qspaceFiltered];
+  for (const item of yMatches) {
+    if (!seen.has(item.fileId)) {
+      seen.add(item.fileId);
+      merged.push(item);
+    }
+  }
+  return merged;
+});
+
+const inlineSearchAlbums = computed<InlineSearchAlbum[]>(() => {
+  if (searchScopeMode.value === 'current' && (props.externalFolderId || isYandexMode.value)) return [];
+  return spaces.value.map((s) => ({
+    id: s.id,
+    name: s.name,
+    count: s.mediaCount ?? s.itemCount ?? s.sourceCount,
+  }));
+});
+
+const inlineSearchFolders = computed<InlineSearchFolder[]>(() => []);
+
+const inlineSearchItems = computed<InlineSearchItem[]>(() => {
+  let src: ViewerMediaItem[];
+  if (searchActive.value) {
+    src = scopedSearchItems.value;
+  } else if (isYandexScopedSearch.value) {
+    src = yandexFeedItems.value;
+  } else {
+    const feedOrdered = (feedRef.value?.orderedItems() ?? []).filter(itemMatchesScope);
+    const qLower = query.value.trim().toLowerCase();
+    const includeGlobalYandex = searchScopeMode.value !== 'current'
+      || (!effectiveAlbumId.value && !props.externalFolderId && !isYandexMode.value);
+    const yPool = includeGlobalYandex
+      ? yandexLib.items.value
+      : (effectiveAlbumId.value ? albumYandexFeedItems.value : []);
+    const extraYandex = yPool.length > 0
+      ? (qLower ? yPool.filter((it) => matchesYandexSearchQuery(it, qLower)) : yPool)
+      : [];
+    if (extraYandex.length === 0) {
+      src = feedOrdered;
+    } else {
+      const seen = new Set(feedOrdered.map((i) => i.fileId));
+      src = [...feedOrdered, ...extraYandex.filter((it) => !seen.has(it.fileId))];
+    }
+  }
+  return src.slice(0, 20).map((it) => ({
+    id: it.fileId,
+    title: it.name,
+    type: 'media',
+    folderId: it.folderId,
+    fileId: it.fileId,
+    mimeType: it.mime,
+  }));
+});
+
 let searchGen = 0;
 let searchTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -231,6 +1243,14 @@ function cancelSearchTimer(): void {
 }
 
 async function runSearch(q: string, more = false): Promise<void> {
+  if (isYandexScopedSearch.value) {
+    searchGen++;
+    searchError.value = '';
+    searchLoading.value = false;
+    searchCursor.value = null;
+    searchItems.value = [];
+    return;
+  }
   const gen = ++searchGen;
   searchError.value = '';
   searchLoading.value = true;
@@ -291,6 +1311,36 @@ function clearSearch(): void {
   endSearch();
 }
 
+function selectSuggestedTag(tag: string): void {
+  cancelSearchTimer();
+  query.value = tag;
+  startSearch();
+}
+
+function onSelectSearchTag(tag: string): void {
+  selectSuggestedTag(tag);
+}
+
+function onViewerSelectTag(tag: string): void {
+  viewer.value = null;
+  onSelectSearchTag(tag);
+}
+
+function onSearchSelectFolder(folderId: string): void {
+  emit('openFolder', folderId, '');
+}
+
+function onSearchOpenItem(item: InlineSearchItem): void {
+  const targetId = item.fileId ?? item.id;
+  const found = shownItems().find((i) => i.fileId === targetId)
+    ?? scopedSearchItems.value.find((i) => i.fileId === targetId)
+    ?? searchItems.value.find((i) => i.fileId === targetId)
+    ?? feedRef.value?.orderedItems().find((i) => i.fileId === targetId)
+    ?? yandexLib.items.value.find((i) => i.fileId === targetId)
+    ?? albumYandexFeedItems.value.find((i) => i.fileId === targetId);
+  if (found) onActivate(found);
+}
+
 function loadMoreSearch(): void {
   if (!searchActive.value || searchLoading.value || searchCursor.value === null) return;
   void runSearch(searchQuery.value, true);
@@ -298,14 +1348,15 @@ function loadMoreSearch(): void {
 
 watch(query, (value) => {
   cancelSearchTimer();
-  if (value.trim() === '') {
+  const trimmed = value.trim();
+  if (trimmed === '') {
     if (searchActive.value) endSearch();
     return;
   }
+  if (trimmed === searchQuery.value) return;
   searchTimer = setTimeout(startSearch, SEARCH_DEBOUNCE_MS);
 });
 
-// The "shared" switch changes what the hub returns.
 watch(
   () => view.state.value.shared,
   () => {
@@ -313,50 +1364,261 @@ watch(
   },
 );
 
-// ----- tabs and albums -----
+watch(searchScopeMode, () => {
+  if (searchActive.value) void runSearch(searchQuery.value);
+});
 
-function setTab(next: Tab): void {
-  if (tab.value === next && albumId.value === null && !searchActive.value && !query.value) return;
-  clearSearch();
-  tab.value = next;
-  albumId.value = null;
-  clearSelection();
-  if (next === 'albums') closePanel(false);
+// ----- people & sections -----
+const selectedPeople = ref<string[]>([]);
+
+const showPeopleGrid = computed(
+  () =>
+    props.activeSection === 'people'
+    && selectedPeople.value.length === 0
+    && !effectiveAlbumId.value
+    && !props.externalFolderId
+    && !isYandexMode.value
+    && !searchActive.value,
+);
+
+// Face recognition is not available yet (T-039): people only come from explicit props.
+const derivedPeople = computed<GalleryPerson[]>(() => (props.people ? [...props.people] : []));
+
+const resolvedPeople = computed(() => derivedPeople.value);
+const selectedPeopleLabels = computed(() => {
+  const byId = new Map(resolvedPeople.value.map((p) => [p.id, p.name]));
+  return selectedPeople.value.map((id) => byId.get(id) ?? id);
+});
+
+function onSelectPeople(ids: string[]): void {
+  selectedPeople.value = ids;
 }
 
-function onTabsKeydown(e: KeyboardEvent): void {
-  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' && e.key !== 'Home' && e.key !== 'End') return;
-  e.preventDefault();
-  const idx = TABS.indexOf(tab.value);
-  const nextIdx =
-    e.key === 'Home' ? 0 : e.key === 'End' ? TABS.length - 1 : (idx + (e.key === 'ArrowRight' ? 1 : -1) + TABS.length) % TABS.length;
-  setTab(TABS[nextIdx]!);
-  void nextTick(() => rootEl.value?.querySelector<HTMLElement>(`#dp-tab-${TABS[nextIdx]}`)?.focus());
+function applySectionFilter(sec: GallerySection): void {
+  selectedPeople.value = [];
+  if (sec === 'favorites') view.setFilter('fav');
+  else if (sec === 'videos') view.setFilter('video');
+  else view.setFilter('all');
 }
 
-function openAlbum(id: string): void {
-  clearSearch();
-  tab.value = 'albums';
-  albumId.value = id;
+watch(
+  () => props.activeSection,
+  (sec, prev) => {
+    if (sec === prev) return;
+    searchScopeMode.value = 'current';
+    prefs.setHeadroomHidden(false);
+    clearSearch();
+    clearSelection();
+    if (sec === 'trash') {
+      focusedId.value = null;
+      focusedItemCache.value = null;
+      panelId.value = null;
+      panelOpen.value = false;
+    } else if (!preserveFocusForShowFolder) {
+      focusedId.value = null;
+      focusedItemCache.value = null;
+    }
+    applySectionFilter(sec);
+  },
+);
+
+if (props.activeSection !== 'library') {
+  applySectionFilter(props.activeSection);
+}
+
+watch(
+  () => props.externalAlbumId,
+  (id) => {
+    searchScopeMode.value = 'current';
+    prefs.setHeadroomHidden(false);
+    clearSearch();
+    clearSelection();
+    if (!preserveFocusForShowFolder) {
+      focusedId.value = null;
+      focusedItemCache.value = null;
+    }
+    albumName.value = '';
+    albumSourceFolderIds.value = new Set();
+    albumYandexRawItems.value = [];
+    albumYandexSpaceFeedItems.value = null;
+    albumLoadSeq++;
+    if (id) void loadAlbumName(id);
+  },
+  { immediate: true },
+);
+
+watch(
+  () => props.externalFolderId,
+  (id) => {
+    searchScopeMode.value = 'current';
+    prefs.setHeadroomHidden(false);
+    clearSearch();
+    clearSelection();
+    if (!preserveFocusForShowFolder) {
+      focusedId.value = null;
+      focusedItemCache.value = null;
+    }
+    folderName.value = '';
+    if (!id) return;
+    if (props.folders === undefined) void ensureStorageFolders();
+    if (id === 'root') {
+      folderName.value = homeFolderLabel.value;
+      return;
+    }
+    const localMatch = allStorageFolders.value.find((f) => f.id === id);
+    if (localMatch?.name) folderName.value = localMatch.name;
+    void loadFolderName(id);
+  },
+  { immediate: true },
+);
+
+watch(
+  () => props.externalYandexPath,
+  (path) => {
+    searchScopeMode.value = 'current';
+    prefs.setHeadroomHidden(false);
+    clearSearch();
+    clearSelection();
+    viewer.value = null;
+    if (!preserveFocusForShowFolder) {
+      focusedId.value = null;
+      focusedItemCache.value = null;
+    }
+    if (path !== null && path !== undefined) {
+      yandexRawItems.value = [];
+      void loadYandexMedia(path);
+    } else {
+      yandexAbort?.abort();
+      yandexAbort = null;
+      yandexLoadSeq++;
+      yandexRawItems.value = [];
+      yandexLoading.value = false;
+    }
+  },
+  { immediate: true },
+);
+
+async function loadFolderName(id: string): Promise<void> {
+  try {
+    if (typeof driveApi?.getFolder !== 'function') return;
+    const res = await driveApi.getFolder(id);
+    if (props.externalFolderId === id) {
+      folderName.value = res.folder?.name ?? '';
+    }
+  } catch {
+    // Ignore folder metadata error
+  }
+}
+
+async function loadAlbumName(id: string): Promise<void> {
+  const seq = ++albumLoadSeq;
+  try {
+    if (!isPhotosMock()) {
+      let found = spaces.value.find((s) => s.id === id);
+      if (!found) {
+        await loadSpaces();
+        found = spaces.value.find((s) => s.id === id);
+      }
+      if (seq !== albumLoadSeq || effectiveAlbumId.value !== id) return;
+      let resolvedName = found?.name ?? '';
+      if (resolvedName) albumName.value = resolvedName;
+
+      if (typeof spacesApi?.get === 'function') {
+        const details = await spacesApi.get(id);
+        if (seq !== albumLoadSeq || effectiveAlbumId.value !== id) return;
+        if (!resolvedName && details?.name) resolvedName = details.name;
+        const sources = details?.sources ?? [];
+        albumSourceFolderIds.value = new Set(
+          sources.map((s) => s.folderId).filter((x): x is string => Boolean(x)),
+        );
+        albumName.value = resolvedName;
+
+        const yandexPaths = [
+          ...new Set(
+            sources
+              .filter((s) => s.kind === 'yandex' && typeof s.yandexPath === 'string' && s.yandexPath.length > 0)
+              .map((s) => s.yandexPath as string),
+          ),
+        ];
+        if (yandexPaths.length === 0) {
+          albumYandexRawItems.value = [];
+          albumYandexSpaceFeedItems.value = null;
+        } else {
+          const mediaPromises = yandexPaths.map((p) => yandexDisk.listMedia(p));
+          const feedPromise = typeof spacesApi?.feed === 'function'
+            ? spacesApi.feed(id, { types: ['image', 'video'], limit: 200 })
+            : Promise.resolve(null);
+          const [feedResult, ...mediaResults] = await Promise.allSettled([feedPromise, ...mediaPromises]);
+          if (seq !== albumLoadSeq || effectiveAlbumId.value !== id) return;
+
+          const byPath = new Map<string, YandexItem>();
+          for (const res of mediaResults) {
+            if (res.status === 'fulfilled' && Array.isArray(res.value)) {
+              for (const item of res.value) {
+                if (item?.path && !byPath.has(item.path)) {
+                  byPath.set(item.path, item);
+                }
+              }
+            }
+          }
+          albumYandexRawItems.value = [...byPath.values()];
+
+          if (feedResult.status === 'fulfilled' && Array.isArray(feedResult.value?.items)) {
+            const yFeedItems = feedResult.value.items.filter((it) => it.origin === 'yandex' && Boolean(it.path));
+            albumYandexSpaceFeedItems.value = { spaceId: id, items: yFeedItems };
+          } else {
+            albumYandexSpaceFeedItems.value = null;
+          }
+        }
+      } else {
+        albumName.value = resolvedName;
+      }
+      return;
+    }
+    const list = await photosApi.albums();
+    if (seq === albumLoadSeq && effectiveAlbumId.value === id) {
+      albumName.value = list.find((a) => a.id === id)?.name ?? '';
+    }
+  } catch {
+    // Ignore album metadata error
+  }
+}
+
+function clearAlbumFilter(): void {
+  internalAlbumId.value = null;
   albumName.value = '';
+  albumSourceFolderIds.value = new Set();
+  albumYandexRawItems.value = [];
+  albumYandexSpaceFeedItems.value = null;
+  albumLoadSeq++;
+  searchScopeMode.value = 'current';
   clearSelection();
-  void photosApi
-    .albums()
-    .then((list) => {
-      if (albumId.value === id) albumName.value = list.find((a) => a.id === id)?.name ?? '';
-    })
-    .catch(() => {});
+  emit('clear-album');
 }
 
-function backToAlbums(): void {
-  albumId.value = null;
-  clearSelection();
-  closePanel(false);
+// ----- topbar controls: aspect, zoom, period -----
+const aspectToggleLabel = computed(() =>
+  prefs.galleryAspectMode.value === 'square' ? t('gallerySquareGrid') : t('galleryRatioGrid'),
+);
+
+function onZoomInput(e: Event): void {
+  const val = Number((e.target as HTMLInputElement).value);
+  prefs.setPhotoTileH(val);
 }
 
-// ----- selection -----
+function stepZoom(delta: number): void {
+  prefs.setPhotoTileH(prefs.photoTileH.value + delta);
+}
 
-const selected = shallowRef<Set<string>>(new Set());
+function selectPeriod(period: FeedPeriod): void {
+  view.setPeriod(period);
+  const firstSort = view.state.value.sort[0]?.key;
+  if (firstSort && firstSort !== 'date') {
+    view.setSort([]);
+  }
+}
+
+// ----- selection & focus -----
 
 function onToggleSelect(fileIds: string[], on: boolean): void {
   const next = new Set(selected.value);
@@ -365,11 +1627,48 @@ function onToggleSelect(fileIds: string[], on: boolean): void {
     else next.delete(id);
   }
   selected.value = next;
+  if (!focusedId.value && next.size > 0) {
+    focusedItemCache.value = findLoadedItem([...next][0]!) ?? null;
+  } else if (!focusedId.value && next.size === 0) {
+    focusedItemCache.value = null;
+  }
+}
+
+function onSetSelection(fileIds: string[]): void {
+  const next = new Set(fileIds);
+  selected.value = next;
+  if (!focusedId.value && next.size > 0) {
+    focusedItemCache.value = findLoadedItem([...next][0]!) ?? null;
+  } else if (!focusedId.value && next.size === 0) {
+    focusedItemCache.value = null;
+  }
 }
 
 function clearSelection(): void {
   if (selected.value.size > 0) selected.value = new Set();
 }
+
+const activeTargetIds = computed<string[]>(() => {
+  if (selected.value.size >= 2) return [...selected.value];
+  const single = focusedId.value ?? [...selected.value][0];
+  return single ? [single] : [];
+});
+
+function findLoadedItem(fileId: string): ViewerMediaItem | undefined {
+  return shownItems().find((i) => i.fileId === fileId)
+    ?? yandexLib.items.value.find((i) => i.fileId === fileId)
+    ?? albumYandexFeedItems.value.find((i) => i.fileId === fileId);
+}
+
+const allTargetsFavorite = computed(() => {
+  const ids = activeTargetIds.value;
+  if (ids.length === 0) return false;
+  return ids.every((id) => (
+    isYandexFileId(id) ? prefs.isFavorite(id) : findLoadedItem(id)?.favorite === true
+  ));
+});
+
+// ----- selection actions & right-click context menu -----
 
 let folderMap: Map<string, string | null> | null = null;
 function folderOf(fileId: string): string | null | undefined {
@@ -382,20 +1681,50 @@ function folderOf(fileId: string): string | null | undefined {
   return folderMap.get(fileId);
 }
 
+const ctxMenu = ref<{ x: number; y: number; item: FeedItem; targets: string[] } | null>(null);
+const ctxMenuEl = ref<HTMLElement | null>(null);
+const ctxAlbumTriggerEl = ref<HTMLButtonElement | null>(null);
+const ctxFlyoutEl = ref<HTMLElement | null>(null);
+const ctxAlbumsOpen = ref(false);
+const ctxAlbumsList = ref<Album[]>([]);
+const ctxActionTargets = ref<string[] | null>(null);
+const ctxFlyoutSide = ref<'right' | 'left'>('right');
+const ctxFlyoutPos = ref<{ left: number; top: number }>({ left: 0, top: 0 });
+const ctxFlyoutStyle = computed(() => ({
+  left: `${Math.round(ctxFlyoutPos.value.left)}px`,
+  top: `${Math.round(ctxFlyoutPos.value.top)}px`,
+}));
+const CTX_FLYOUT_CLOSE_DELAY_MS = 180;
+let ctxAlbumsCloseTimer: ReturnType<typeof setTimeout> | null = null;
+let ctxAlbumsOpenedByHover = false;
+let ctxLastAlbumPointerType = '';
+let ctxAlbumsLoadSeq = 0;
+let ctxAlbumsLoaded = false;
+let ctxAlbumsLoading = false;
+
+const moveTargetIds = computed(() =>
+  ctxMenu.value?.targets
+  ?? ctxActionTargets.value
+  ?? (selected.value.size >= 2 ? [...selected.value] : activeTargetIds.value),
+);
+
 const actions = usePhotoSelectionActions({
-  selected: () => selected.value,
-  albumId: () => albumId.value,
+  selected: () => moveTargetIds.value,
+  albumId: () => effectiveAlbumId.value,
   folderOf,
   deselect: (ids) => onToggleSelect(ids, false),
   onMoved: (ids) => {
+    invalidateGalleryFolderFilesCache();
     void feedRef.value?.refresh();
+    void refreshSidebarCounts();
+    if (searchActive.value && searchQuery.value) void runSearch(searchQuery.value);
     if (panelId.value && ids.includes(panelId.value)) panelEpoch.value++;
   },
   onAlbumChanged: (kind, id, fileIds) => {
     const feed = feedRef.value;
     if (!feed) return;
     if (view.state.value.captions.includes('album')) feed.refreshAlbums?.();
-    if (albumId.value || feedParams.value.levels.includes('album')) {
+    if (effectiveAlbumId.value || feedParams.value.levels.includes('album')) {
       void feed.refresh();
     } else {
       const byId = new Map(feed.orderedItems().map((i) => [i.fileId, i]));
@@ -411,14 +1740,14 @@ const actions = usePhotoSelectionActions({
     if (panelId.value && fileIds.includes(panelId.value)) panelEpoch.value++;
   },
 });
-const { busy: selBusy, moveOpen, albumMenuOpen, albums, albumsFailed } = actions;
+const { moveOpen } = actions;
 
-/** Evaluated when the picker opens, so it greys out the folder the selection sits in now. */
 const moveExcl = ref<{ ids: string[]; root: boolean }>({ ids: [], root: false });
 watch(
   moveOpen,
   (open) => {
     if (open) moveExcl.value = actions.moveExclusion();
+    else ctxActionTargets.value = null;
   },
   { flush: 'sync' },
 );
@@ -433,42 +1762,1027 @@ watch(
   },
 );
 
-// ----- panel and viewer -----
+let ctxListenersAttached = false;
+let pointerInsideCtx = false;
+let pointerInsideCtxTimer: ReturnType<typeof setTimeout> | null = null;
 
-const panelId = ref<string | null>(null);
-/** Bumped to reload the panel's data after the photo was moved or re-albumed from the selection bar. */
-const panelEpoch = ref(0);
-const viewer = shallowRef<{ items: FeedItem[]; index: number } | null>(null);
-const viewerItem = computed(() => viewer.value?.items[viewer.value.index] ?? null);
-const currentId = computed(() => viewerItem.value?.fileId ?? panelId.value);
-
-function shownItems(): FeedItem[] {
-  return searchActive.value ? searchItems.value : (feedRef.value?.orderedItems() ?? []);
+function clearPointerInsideCtx(): void {
+  if (pointerInsideCtxTimer !== null) {
+    clearTimeout(pointerInsideCtxTimer);
+    pointerInsideCtxTimer = null;
+  }
+  pointerInsideCtx = false;
 }
 
-/** Keyboard users land in the panel; mouse users keep their place in the feed. */
-function openedByKeyboard(): boolean {
-  const el = document.activeElement as HTMLElement | null;
-  if (!el || !rootEl.value?.contains(el) || !el.matches('[data-file-id]')) return false;
-  try {
-    return el.matches(':focus-visible');
-  } catch {
-    return false;
+function markPointerInsideCtx(): void {
+  if (pointerInsideCtxTimer !== null) {
+    clearTimeout(pointerInsideCtxTimer);
   }
+  pointerInsideCtx = true;
+  pointerInsideCtxTimer = setTimeout(() => {
+    pointerInsideCtxTimer = null;
+    pointerInsideCtx = false;
+  }, 0);
+}
+
+function isInsideCtxMenuOrFlyout(node: Node | null): boolean {
+  if (!node) return false;
+  return Boolean(ctxMenuEl.value?.contains(node) || ctxFlyoutEl.value?.contains(node));
+}
+
+function measureCtxFlyout(): void {
+  const vw = typeof window !== 'undefined' && window.innerWidth > 0 ? window.innerWidth : 1280;
+  const vh = typeof window !== 'undefined' && window.innerHeight > 0 ? window.innerHeight : 800;
+  const menuRect = ctxMenuEl.value?.getBoundingClientRect();
+  const triggerRect = ctxAlbumTriggerEl.value?.getBoundingClientRect();
+  const flyoutRect = ctxFlyoutEl.value?.getBoundingClientRect();
+
+  const fallbackLeft = ctxMenu.value?.x ?? 8;
+  const fallbackTop = ctxMenu.value?.y ?? 8;
+  const hasMenuRect = Boolean(menuRect && (menuRect.width > 0 || menuRect.right > 0 || menuRect.left > 0));
+  const menuLeft = hasMenuRect ? menuRect!.left : fallbackLeft;
+  const menuRight = hasMenuRect ? menuRect!.right : fallbackLeft + 220;
+  const menuTop = hasMenuRect ? menuRect!.top : fallbackTop;
+
+  const rawFlyoutW = ctxFlyoutEl.value?.offsetWidth || (flyoutRect && flyoutRect.width > 0 ? flyoutRect.width : 0);
+  const flyoutWidth = rawFlyoutW > 0 ? rawFlyoutW : 216;
+  const estimatedHeight = Math.min(320, (ctxAlbumsList.value.length + 1) * 32 + 20);
+  const rawFlyoutH = ctxFlyoutEl.value?.offsetHeight || (flyoutRect && flyoutRect.height > 0 ? flyoutRect.height : 0);
+  const flyoutHeight = rawFlyoutH > 0 ? rawFlyoutH : estimatedHeight;
+
+  const gap = 6;
+  let side: 'right' | 'left' = 'right';
+  let left = menuRight + gap;
+  if (menuRight + flyoutWidth + 12 > vw && menuLeft - flyoutWidth - gap >= 4) {
+    side = 'left';
+    left = Math.max(8, menuLeft - flyoutWidth - gap);
+  } else if (menuRight + flyoutWidth + 12 > vw) {
+    left = Math.max(8, Math.min(menuRight + gap, Math.max(8, vw - flyoutWidth - 8)));
+  }
+
+  const hasTriggerRect = Boolean(triggerRect && (triggerRect.height > 0 || triggerRect.top > 0));
+  const anchorTop = hasTriggerRect ? triggerRect!.top : menuTop;
+  const top = Math.max(8, Math.min(anchorTop - 4, Math.max(8, vh - flyoutHeight - 8)));
+
+  ctxFlyoutSide.value = side;
+  ctxFlyoutPos.value = { left, top };
+}
+
+function cancelCloseCtxAlbums(): void {
+  if (ctxAlbumsCloseTimer !== null) {
+    clearTimeout(ctxAlbumsCloseTimer);
+    ctxAlbumsCloseTimer = null;
+  }
+}
+
+function scheduleCloseCtxAlbums(): void {
+  cancelCloseCtxAlbums();
+  ctxAlbumsCloseTimer = setTimeout(() => {
+    ctxAlbumsCloseTimer = null;
+    ctxAlbumsOpen.value = false;
+    ctxAlbumsOpenedByHover = false;
+  }, CTX_FLYOUT_CLOSE_DELAY_MS);
+}
+
+async function preloadCtxAlbums(): Promise<void> {
+  const seq = ++ctxAlbumsLoadSeq;
+  ctxAlbumsLoading = true;
+  try {
+    const list = await listGalleryAlbums();
+    if (seq === ctxAlbumsLoadSeq && ctxMenu.value) {
+      ctxAlbumsList.value = list;
+      ctxAlbumsLoaded = true;
+      if (ctxAlbumsOpen.value) {
+        void nextTick(measureCtxFlyout);
+      }
+    }
+  } catch {
+    if (seq === ctxAlbumsLoadSeq && ctxMenu.value) {
+      ctxAlbumsList.value = [];
+      ctxAlbumsLoaded = true;
+    }
+  } finally {
+    if (seq === ctxAlbumsLoadSeq) {
+      ctxAlbumsLoading = false;
+    }
+  }
+}
+
+function openCtxAlbumsFlyout(byHover: boolean, focusFirst = false): void {
+  cancelCloseCtxAlbums();
+  const wasOpen = ctxAlbumsOpen.value;
+  ctxAlbumsOpen.value = true;
+  if (byHover) ctxAlbumsOpenedByHover = true;
+  else if (!wasOpen) ctxAlbumsOpenedByHover = false;
+  if (!ctxAlbumsLoaded && !ctxAlbumsLoading) {
+    void preloadCtxAlbums();
+  }
+  measureCtxFlyout();
+  void nextTick(() => {
+    measureCtxFlyout();
+    if (focusFirst) {
+      const firstBtn = ctxFlyoutEl.value?.querySelector<HTMLButtonElement>('button[role="menuitem"]');
+      firstBtn?.focus({ preventScroll: true });
+    }
+  });
+}
+
+function closeCtxAlbumsFlyout(returnFocus = false): void {
+  cancelCloseCtxAlbums();
+  ctxAlbumsOpen.value = false;
+  ctxAlbumsOpenedByHover = false;
+  if (returnFocus) {
+    ctxAlbumTriggerEl.value?.focus({ preventScroll: true });
+  }
+}
+
+function onOutsidePointer(e: Event): void {
+  if (!ctxMenu.value || !ctxMenuEl.value) return;
+  const target = e.target as Node | null;
+  if (!isInsideCtxMenuOrFlyout(target)) {
+    closeCtxMenu();
+  }
+}
+
+function onCtxFocusOut(e: FocusEvent): void {
+  if (!ctxMenu.value || pointerInsideCtx) return;
+  const next = e.relatedTarget as Node | null;
+  if (!next || !isInsideCtxMenuOrFlyout(next)) {
+    closeCtxMenu();
+  }
+}
+
+function onDocFocusIn(e: FocusEvent): void {
+  if (!ctxMenu.value || !ctxMenuEl.value) return;
+  const target = e.target as Node | null;
+  if (target && !isInsideCtxMenuOrFlyout(target)) {
+    closeCtxMenu();
+  }
+}
+
+function onWindowScroll(e: Event): void {
+  if (!ctxMenu.value || !ctxMenuEl.value) return;
+  const target = e.target as Node | null;
+  if (isInsideCtxMenuOrFlyout(target)) return;
+  closeCtxMenu();
+}
+
+function attachCtxListeners(): void {
+  if (ctxListenersAttached) return;
+  ctxListenersAttached = true;
+  window.addEventListener('pointerdown', onOutsidePointer, true);
+  window.addEventListener('mousedown', onOutsidePointer, true);
+  window.addEventListener('click', onOutsidePointer, true);
+  document.addEventListener('focusin', onDocFocusIn, true);
+  window.addEventListener('blur', closeCtxMenu);
+  window.addEventListener('scroll', onWindowScroll, true);
+}
+
+function detachCtxListeners(): void {
+  if (!ctxListenersAttached) return;
+  ctxListenersAttached = false;
+  window.removeEventListener('pointerdown', onOutsidePointer, true);
+  window.removeEventListener('mousedown', onOutsidePointer, true);
+  window.removeEventListener('click', onOutsidePointer, true);
+  document.removeEventListener('focusin', onDocFocusIn, true);
+  window.removeEventListener('blur', closeCtxMenu);
+  window.removeEventListener('scroll', onWindowScroll, true);
+}
+
+function closeCtxMenu(): void {
+  cancelCloseCtxAlbums();
+  ctxAlbumsOpenedByHover = false;
+  ctxLastAlbumPointerType = '';
+  ctxAlbumsLoadSeq++;
+  ctxAlbumsLoaded = false;
+  ctxAlbumsLoading = false;
+  ctxMenu.value = null;
+  ctxAlbumsOpen.value = false;
+  clearPointerInsideCtx();
+  detachCtxListeners();
+}
+
+function onFeedContextMenu(e: MouseEvent, item: FeedItem): void {
+  const targets =
+    selected.value.size >= 2 && selected.value.has(item.fileId)
+      ? [...selected.value]
+      : [item.fileId];
+  const vw = typeof window !== 'undefined' ? window.innerWidth : 1280;
+  const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
+  const x = Math.min(e.clientX, vw - 240);
+  const y = Math.min(e.clientY, vh - 320);
+  cancelCloseCtxAlbums();
+  ctxAlbumsOpen.value = false;
+  ctxAlbumsOpenedByHover = false;
+  ctxLastAlbumPointerType = '';
+  ctxAlbumsLoaded = false;
+  ctxAlbumsLoading = false;
+  ctxMenu.value = { x: Math.max(8, x), y: Math.max(8, y), item, targets };
+  if (!isYandexFileId(item.fileId) && !targets.some(isYandexFileId)) {
+    void preloadCtxAlbums();
+  }
+  attachCtxListeners();
+  void nextTick(() => {
+    ctxMenuEl.value?.focus({ preventScroll: true });
+  });
+}
+
+const ctxTargetIds = computed(() => ctxMenu.value?.targets ?? []);
+const ctxIsYandex = computed(() =>
+  Boolean(ctxMenu.value && (isYandexFileId(ctxMenu.value.item.fileId) || ctxMenu.value.targets.some(isYandexFileId))),
+);
+const ctxSingleItemAlbumIds = computed<ReadonlySet<string>>(() => {
+  if (!ctxMenu.value || ctxMenu.value.targets.length !== 1) return new Set();
+  const item = findLoadedItem(ctxMenu.value.targets[0]!) ?? ctxMenu.value.item;
+  return new Set(item?.albumIds ?? []);
+});
+const ctxAllFavorite = computed(() =>
+  ctxTargetIds.value.length > 0 && ctxTargetIds.value.every((id) => (
+    isYandexFileId(id) ? prefs.isFavorite(id) : findLoadedItem(id)?.favorite === true
+  )),
+);
+const ctxShowFolderTarget = computed<string | null>(() => {
+  if (!ctxMenu.value) return null;
+  const ids = ctxTargetIds.value;
+  if (ids.length === 0) return null;
+  const fallback = ctxMenu.value.item;
+  const items = ids
+    .map((id) => findLoadedItem(id) ?? (fallback.fileId === id ? fallback : undefined))
+    .filter((x): x is FeedItem => Boolean(x));
+  if (items.length !== ids.length) return null;
+  const resolveTarget = (item: FeedItem): string | null => {
+    if (isYandexFileId(item.fileId)) {
+      return typeof item.folderId === 'string' && item.folderId.length > 0
+        ? item.folderId
+        : yandexParentPath(yandexPathFromFileId(item.fileId));
+    }
+    if (typeof item.folderId === 'string' && item.folderId.length > 0) return item.folderId;
+    if (!item.share) return 'root';
+    return null;
+  };
+  const first = resolveTarget(items[0]!);
+  if (!first) return null;
+  return items.every((item) => resolveTarget(item) === first) ? first : null;
+});
+
+async function setFavoriteForIds(ids: string[], nextFav: boolean): Promise<void> {
+  const yandexIds = ids.filter(isYandexFileId);
+  const qspaceIds = ids.filter((id) => !isYandexFileId(id));
+  if (yandexIds.length === 0 && qspaceIds.length === 0) return;
+
+  for (const id of yandexIds) {
+    if (prefs.isFavorite(id) !== nextFav) {
+      prefs.toggleFavorite(id);
+    }
+    feedRef.value?.patchItem(id, { favorite: nextFav });
+    if (viewer.value) {
+      const idx = viewer.value.items.findIndex((i) => i.fileId === id);
+      if (idx >= 0) {
+        const updated = viewer.value.items.map((i) => (i.fileId === id ? { ...i, favorite: nextFav } : i));
+        viewer.value = { items: updated, index: viewer.value.index };
+      }
+    }
+    if (focusedItemCache.value?.fileId === id) {
+      focusedItemCache.value = { ...focusedItemCache.value, favorite: nextFav };
+    }
+  }
+
+  for (const id of qspaceIds) {
+    feedRef.value?.patchItem(id, { favorite: nextFav });
+    if (searchItems.value.some((i) => i.fileId === id)) {
+      searchItems.value = searchItems.value.map((i) => (i.fileId === id ? { ...i, favorite: nextFav } : i));
+    }
+  }
+  if (qspaceIds.length > 0) {
+    await Promise.allSettled(qspaceIds.map((id) => photosApi.edit(id, { favorite: nextFav })));
+  }
+  if (view.state.value.filter === 'fav') {
+    void feedRef.value?.refresh();
+  }
+  void refreshSidebarCounts();
+}
+
+async function toggleSingleFavorite(item: FeedItem): Promise<void> {
+  const currentFav = isYandexFileId(item.fileId) ? prefs.isFavorite(item.fileId) : item.favorite;
+  await setFavoriteForIds([item.fileId], !currentFav);
+}
+
+async function toggleFavoriteAction(): Promise<void> {
+  const ids = activeTargetIds.value;
+  if (ids.length === 0) return;
+  await setFavoriteForIds(ids, !allTargetsFavorite.value);
+}
+
+async function shareSingleItem(item: ViewerMediaItem): Promise<void> {
+  if (isYandexFileId(item.fileId)) {
+    const publicUrl = (item as YandexViewerMediaItem).publicUrl;
+    if (publicUrl) {
+      try {
+        if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(publicUrl);
+        }
+        toast.show(t('yandexLinkCopied'), 'success');
+      } catch {
+        toast.show(item.name, 'info');
+      }
+    }
+    return;
+  }
+  try {
+    const res = await driveApi.getDownloadLink(item.fileId);
+    const fullUrl = resolveDownloadUrl(res.url);
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(fullUrl);
+    }
+    toast.show(t('explorerAlbumLinkCopied'), 'success');
+  } catch {
+    toast.show(item.name, 'info');
+  }
+}
+
+async function shareAction(): Promise<void> {
+  if (effectiveAlbumId.value && activeTargetIds.value.length === 0) {
+    emit('share-album', effectiveAlbumId.value);
+    return;
+  }
+  const ids = activeTargetIds.value;
+  if (ids.length === 0) return;
+  const first = findLoadedItem(ids[0]!);
+  if (ids.length === 1 && first) {
+    await shareSingleItem(first);
+  } else {
+    emit('share-photos', ids);
+  }
+}
+
+async function ctxToggleFavorite(): Promise<void> {
+  const ids = ctxTargetIds.value;
+  const nextFav = !ctxAllFavorite.value;
+  closeCtxMenu();
+  await setFavoriteForIds(ids, nextFav);
+}
+
+async function ctxShare(): Promise<void> {
+  const ids = ctxTargetIds.value;
+  const item = ctxMenu.value?.item;
+  closeCtxMenu();
+  if (ids.length === 1 && item) await shareSingleItem(item);
+  else if (ids.length > 1) emit('share-photos', ids);
+}
+
+function onCtxAlbumTriggerPointerEnter(e: PointerEvent): void {
+  if (e.pointerType) {
+    ctxLastAlbumPointerType = e.pointerType;
+  }
+}
+
+function onCtxAlbumTriggerEnter(): void {
+  if (ctxLastAlbumPointerType === 'touch') return;
+  openCtxAlbumsFlyout(true);
+}
+
+function onCtxAlbumTriggerPointerDown(e: PointerEvent): void {
+  ctxLastAlbumPointerType = e.pointerType || 'mouse';
+}
+
+function onCtxAlbumTriggerKeydown(e: KeyboardEvent): void {
+  if (e.key === 'ArrowRight') {
+    e.preventDefault();
+    e.stopPropagation();
+    openCtxAlbumsFlyout(false, true);
+  } else if (e.key === 'ArrowLeft' && ctxAlbumsOpen.value) {
+    e.preventDefault();
+    e.stopPropagation();
+    closeCtxAlbumsFlyout(true);
+  } else if (e.key === 'Enter' || e.key === ' ') {
+    ctxLastAlbumPointerType = 'keyboard';
+  }
+}
+
+function onCtxFlyoutKeydown(e: KeyboardEvent): void {
+  if (e.key === 'ArrowLeft') {
+    e.preventDefault();
+    e.stopPropagation();
+    closeCtxAlbumsFlyout(true);
+  }
+}
+
+function onCtxAlbumTriggerClick(): void {
+  const pointerType = ctxLastAlbumPointerType;
+  ctxLastAlbumPointerType = '';
+  if (!ctxAlbumsOpen.value) {
+    openCtxAlbumsFlyout(false);
+    return;
+  }
+  if (pointerType === 'touch' || pointerType === 'keyboard' || !ctxAlbumsOpenedByHover) {
+    closeCtxAlbumsFlyout();
+    return;
+  }
+  cancelCloseCtxAlbums();
+  void nextTick(measureCtxFlyout);
+}
+
+async function ctxAddToAlbum(albId: string): Promise<void> {
+  const ids = ctxTargetIds.value;
+  const targetAlbumName = ctxAlbumsList.value.find((a) => a.id === albId)?.name ?? '';
+  closeCtxMenu();
+  if (ids.length === 0) return;
+  try {
+    const added = await addGalleryAlbumItems(albId, ids);
+    if (added <= 0) {
+      toast.show(fmt('photosAlreadyInAlbumToast', { album: targetAlbumName }), 'info');
+      return;
+    }
+    const vars = { n: added, total: ids.length, album: targetAlbumName };
+    toast.show(
+      fmt(added < ids.length ? 'photosAddedPartialToast' : 'photosAddedToAlbumToast', vars),
+      'success',
+    );
+    if (!isPhotosMock()) void useSpaces().load(true);
+    feedRef.value?.refreshAlbums?.();
+    void feedRef.value?.refresh();
+    panelEpoch.value++;
+  } catch {
+    toast.show(t('photosAlbumAddFailedToast'), 'error');
+  }
+}
+
+async function ctxCreateAlbumAndAdd(): Promise<void> {
+  const ids = [...ctxTargetIds.value];
+  closeCtxMenu();
+  if (ids.length === 0) return;
+  ctxActionTargets.value = ids;
+  try {
+    await actions.createAlbumAndAdd();
+  } finally {
+    ctxActionTargets.value = null;
+  }
+}
+
+async function ctxRemoveFromAlbum(): Promise<void> {
+  const ids = [...ctxTargetIds.value];
+  closeCtxMenu();
+  if (ids.length === 0) return;
+  ctxActionTargets.value = ids;
+  try {
+    await actions.removeFromAlbum();
+  } finally {
+    ctxActionTargets.value = null;
+  }
+}
+
+function ctxOpenViewer(): void {
+  const item = ctxMenu.value?.item ?? null;
+  closeCtxMenu();
+  if (item) onActivate(item);
+}
+
+function ctxShowFolder(): void {
+  const folderId = ctxShowFolderTarget.value;
+  const item = ctxMenu.value?.item ?? null;
+  const fileId = item?.fileId ?? ctxTargetIds.value[0] ?? '';
+  const isYandex = ctxIsYandex.value;
+  closeCtxMenu();
+  if (!folderId) return;
+  if (isYandex) {
+    preserveFocusForShowFolder = true;
+    searchTypeFilter.value = 'all';
+    clearSearch();
+    if (fileId) {
+      focusedId.value = fileId;
+      if (item) focusedItemCache.value = item;
+    }
+    emit('select-yandex-path', folderId);
+    void nextTick(() => {
+      preserveFocusForShowFolder = false;
+      if (fileId) focusTile(fileId);
+    });
+    return;
+  }
+  preserveFocusForShowFolder = true;
+  searchTypeFilter.value = 'all';
+  clearSearch();
+  internalAlbumId.value = null;
+  albumName.value = '';
+  albumSourceFolderIds.value = new Set();
+  if (fileId) {
+    focusedId.value = fileId;
+    if (item) focusedItemCache.value = item;
+  }
+  emit('show-folder-in-gallery', folderId, fileId);
+  void nextTick(() => {
+    preserveFocusForShowFolder = false;
+    if (fileId) focusTile(fileId);
+  });
+}
+
+function ctxOpenMove(): void {
+  const ids = [...ctxTargetIds.value];
+  closeCtxMenu();
+  if (ids.length === 0) return;
+  ctxActionTargets.value = ids;
+  actions.openMove();
+}
+
+async function downloadFeedItems(items: readonly ViewerMediaItem[]): Promise<void> {
+  if (items.length === 0) return;
+  const results = await Promise.allSettled(
+    items.map(async (it) => {
+      if (it.downloadAction) {
+        await it.downloadAction();
+        return;
+      }
+      if (isYandexFileId(it.fileId)) {
+        const { href } = await yandexDisk.downloadLink(yandexPathFromFileId(it.fileId));
+        downloadYandexLink(href, it.name);
+        return;
+      }
+      await downloadDriveFile(it.fileId, it.name);
+    }),
+  );
+  if (results.some((r) => r.status === 'rejected')) {
+    toast.show(t('photosDownloadError'), 'error');
+  }
+}
+
+async function ctxDownload(): Promise<void> {
+  const ids = [...ctxTargetIds.value];
+  const fallbackItem = ctxMenu.value?.item;
+  closeCtxMenu();
+  const targets = ids
+    .map((id) => findLoadedItem(id) ?? (fallbackItem?.fileId === id ? fallbackItem : undefined))
+    .filter((x): x is ViewerMediaItem => Boolean(x));
+  if (targets.length === 0 && fallbackItem) targets.push(fallbackItem);
+  await downloadFeedItems(targets);
+}
+
+function ctxOpenProperties(): void {
+  const item = ctxMenu.value?.item ?? null;
+  const id = item?.fileId ?? ctxTargetIds.value[0] ?? null;
+  closeCtxMenu();
+  if (id) {
+    focusedId.value = id;
+    if (item) focusedItemCache.value = item;
+    panelId.value = id;
+  }
+  panelOpen.value = true;
+}
+
+async function deleteYandexIds(ids: string[]): Promise<boolean> {
+  const yandexPaths = ids.filter(isYandexFileId).map(yandexPathFromFileId);
+  if (yandexPaths.length === 0) return false;
+  const title = yandexPaths.length === 1
+    ? fmt('yandexDeleteTitle', { name: findLoadedItem(ids[0]!)?.name ?? yandexPaths[0]!.split('/').pop() ?? yandexPaths[0]! })
+    : fmt('bulkDeleteTitle', { n: yandexPaths.length });
+  const confirmed = await confirmDialog({
+    title,
+    confirmLabel: t('delete'),
+    cancelLabel: t('cancel'),
+    danger: true,
+  });
+  if (!confirmed) return false;
+
+  const removedPaths = new Set<string>();
+  let failed = false;
+  for (const path of yandexPaths) {
+    try {
+      const outcome = await yandexDisk.remove(path);
+      if (outcome && outcome.status === 'pending') {
+        await settleYandexOutcome(outcome);
+      }
+      removedPaths.add(path);
+    } catch {
+      failed = true;
+    }
+  }
+  if (removedPaths.size > 0) {
+    yandexRawItems.value = yandexRawItems.value.filter((it) => !removedPaths.has(it.path));
+    albumYandexRawItems.value = albumYandexRawItems.value.filter((it) => !removedPaths.has(it.path));
+    if (albumYandexSpaceFeedItems.value) {
+      albumYandexSpaceFeedItems.value = {
+        ...albumYandexSpaceFeedItems.value,
+        items: albumYandexSpaceFeedItems.value.items.filter((it) => !it.path || !removedPaths.has(it.path)),
+      };
+    }
+    yandexLib.invalidate();
+    void yandexLib.ensureLoaded();
+    clearSelection();
+    const removedIds = new Set([...removedPaths].map((p) => `${YANDEX_ID_PREFIX}${p}`));
+    if (focusedId.value && removedIds.has(focusedId.value)) {
+      focusedId.value = null;
+      focusedItemCache.value = null;
+    }
+    if (panelId.value && removedIds.has(panelId.value)) panelId.value = null;
+    if (props.externalYandexPath) {
+      void loadYandexMedia(props.externalYandexPath);
+    }
+    void refreshSidebarCounts();
+  }
+  if (failed) {
+    toast.show(t('yandexOperationFailed'), 'error');
+  }
+  return removedPaths.size > 0;
+}
+
+async function deleteFileIds(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  if (ids.some(isYandexFileId)) {
+    await deleteYandexIds(ids);
+    return;
+  }
+  await Promise.allSettled(ids.map((id) => driveApi.trashFile(id)));
+  clearSelection();
+  if (focusedId.value && ids.includes(focusedId.value)) {
+    focusedId.value = null;
+    focusedItemCache.value = null;
+  }
+  if (panelId.value && ids.includes(panelId.value)) panelId.value = null;
+  feedRef.value?.removeItems?.(ids);
+  if (searchItems.value.some((i) => ids.includes(i.fileId))) {
+    const idSet = new Set(ids);
+    searchItems.value = searchItems.value.filter((i) => !idSet.has(i.fileId));
+  }
+  void feedRef.value?.refresh();
+  void refreshSidebarCounts();
+}
+
+const deletingViewerIds = new Set<string>();
+async function onViewerDelete(item: ViewerMediaItem): Promise<void> {
+  if (!item?.fileId || deletingViewerIds.has(item.fileId)) return;
+  deletingViewerIds.add(item.fileId);
+  const isYandex = isYandexFileId(item.fileId);
+  if (isYandex) {
+    const confirmed = await confirmDialog({
+      title: fmt('yandexDeleteTitle', { name: item.name }),
+      confirmLabel: t('delete'),
+      cancelLabel: t('cancel'),
+      danger: true,
+    });
+    if (!confirmed) {
+      deletingViewerIds.delete(item.fileId);
+      return;
+    }
+  }
+  try {
+    if (isYandex) {
+      const path = yandexPathFromFileId(item.fileId);
+      const outcome = await yandexDisk.remove(path);
+      if (outcome && outcome.status === 'pending') {
+        await settleYandexOutcome(outcome);
+      }
+      yandexRawItems.value = yandexRawItems.value.filter((it) => it.path !== path);
+      albumYandexRawItems.value = albumYandexRawItems.value.filter((it) => it.path !== path);
+      if (albumYandexSpaceFeedItems.value) {
+        albumYandexSpaceFeedItems.value = {
+          ...albumYandexSpaceFeedItems.value,
+          items: albumYandexSpaceFeedItems.value.items.filter((it) => it.path !== path),
+        };
+      }
+      yandexLib.invalidate();
+      void yandexLib.ensureLoaded();
+    } else {
+      await driveApi.trashFile(item.fileId);
+    }
+  } catch (err) {
+    deletingViewerIds.delete(item.fileId);
+    toast.show(err instanceof Error && err.message ? err.message : t('photosPanelSaveError'), 'error');
+    return;
+  }
+  deletingViewerIds.delete(item.fileId);
+
+  if (!isYandex) {
+    feedRef.value?.removeItems?.([item.fileId]);
+    if (searchItems.value.some((i) => i.fileId === item.fileId)) {
+      searchItems.value = searchItems.value.filter((i) => i.fileId !== item.fileId);
+    }
+  }
+  if (selected.value.has(item.fileId)) {
+    onToggleSelect([item.fileId], false);
+  }
+
+  const v = viewer.value;
+  if (v) {
+    const nextItems = v.items.filter((i) => i.fileId !== item.fileId);
+    if (nextItems.length === 0) {
+      viewer.value = null;
+      if (focusedId.value === item.fileId) {
+        focusedId.value = null;
+        focusedItemCache.value = null;
+      }
+      if (panelId.value === item.fileId) panelId.value = null;
+    } else {
+      const nextIndex = Math.min(v.index, nextItems.length - 1);
+      const nextItem = nextItems[nextIndex]!;
+      viewer.value = { items: nextItems, index: nextIndex };
+      focusedId.value = nextItem.fileId;
+      focusedItemCache.value = nextItem;
+      if (panelOpen.value && panelId.value) panelId.value = nextItem.fileId;
+      emitFocusPhoto(nextItem);
+      maybeLoadMoreForViewer(nextIndex, nextItems);
+    }
+  }
+
+  if (isYandex && props.externalYandexPath) {
+    void loadYandexMedia(props.externalYandexPath);
+  } else {
+    void refreshSidebarCounts();
+  }
+}
+
+async function ctxDelete(): Promise<void> {
+  const ids = ctxTargetIds.value;
+  closeCtxMenu();
+  await deleteFileIds(ids);
+}
+
+async function downloadSelectedAction(): Promise<void> {
+  await downloadFeedItems(selectedFeedItems.value);
+}
+
+async function deleteSelectedAction(): Promise<void> {
+  await deleteFileIds([...selected.value]);
+}
+
+const isTopChromeHidden = computed(() => (
+  prefs.headroomHidden.value
+  && !searchActive.value
+  && selected.value.size < 2
+  && !ctxMenu.value
+  && !sortMenuOpen.value
+  && !actions.albumMenuOpen.value
+  && !moveOpen.value
+  && props.activeSection !== 'trash'
+  && !showPeopleGrid.value
+));
+
+watch(searchActive, (active) => {
+  if (active) prefs.setHeadroomHidden(false);
+});
+
+function onWindowKeydown(e: KeyboardEvent): void {
+  if (e.key !== 'Escape' || e.defaultPrevented) return;
+  if (
+    viewer.value
+    || moveOpen.value
+    || document.querySelector('[role="dialog"]:not(.dp-album-picker), .modal-backdrop')
+  ) {
+    return;
+  }
+  if (ctxMenu.value) {
+    e.preventDefault();
+    closeCtxMenu();
+    return;
+  }
+  if (actions.albumMenuOpen.value) {
+    e.preventDefault();
+    actions.closeAlbumMenu();
+    return;
+  }
+  if (inlineSearchRef.value?.handleEscape?.()) {
+    e.preventDefault();
+    return;
+  }
+  if (searchActive.value || query.value.trim() !== '' || searchTypeFilter.value !== 'all') {
+    e.preventDefault();
+    searchTypeFilter.value = 'all';
+    clearSearch();
+    return;
+  }
+  if (selected.value.size > 0 || focusedId.value !== null) {
+    e.preventDefault();
+    clearSelection();
+    focusedId.value = null;
+    focusedItemCache.value = null;
+    return;
+  }
+  if (panelOpen.value) {
+    e.preventDefault();
+    closePanel();
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', onWindowKeydown);
+  if (!isPhotosMock()) {
+    void loadSpaces();
+    void yandexLib.ensureLoaded();
+  }
+  void refreshSidebarCounts();
+});
+
+watch(
+  () => yandexLib.items.value.map((i) => `${i.fileId}:${i.favorite ? 1 : 0}`).join('|'),
+  () => {
+    void refreshSidebarCounts();
+  },
+);
+
+// ----- panel (resizable) and viewer -----
+
+function shownItems(): ViewerMediaItem[] {
+  if (searchActive.value) return scopedSearchItems.value;
+  const fromFeed = (feedRef.value?.orderedItems() ?? []) as ViewerMediaItem[];
+  if (isYandexMode.value && fromFeed.length === 0) return yandexFeedItems.value;
+  return fromFeed;
+}
+
+const selectedFeedItems = computed<FeedItem[]>(() => {
+  if (selected.value.size < 2) return [];
+  const byId = new Map(shownItems().map((i) => [i.fileId, i]));
+  return [...selected.value].map((id) => byId.get(id)).filter((x): x is FeedItem => Boolean(x));
+});
+
+const isPanelVisible = computed(() => panelOpen.value && (Boolean(panelId.value) || selectedFeedItems.value.length > 1));
+
+let lastFeedTotal: number | undefined;
+let lastSidebarCounts: GallerySidebarCounts = {};
+
+async function refreshSidebarCounts(): Promise<void> {
+  const counts: GallerySidebarCounts = {};
+  const loaded = feedRef.value?.orderedItems() ?? [];
+  const qspaceLoaded = loaded.filter((i) => !isYandexFileId(i.fileId));
+  const yAll = yandexLib.items.value;
+  const yCount = yAll.length;
+  const yFavCount = yAll.filter((i) => i.favorite).length;
+  const yVidCount = yAll.filter((i) => i.kind === 'video').length;
+
+  const baseParams = {
+    sort: [],
+    levels: ['date' as const],
+    period: 'month' as const,
+    shared: view.state.value.shared,
+  };
+
+  const sumGroups = (res: { groups?: Array<{ count: number }> } | undefined): number | undefined =>
+    Array.isArray(res?.groups) ? res.groups.reduce((s, g) => s + g.count, 0) : undefined;
+
+  const isAllSection =
+    props.activeSection === 'library'
+    && !effectiveAlbumId.value
+    && !props.externalFolderId
+    && !isYandexMode.value
+    && selectedPeople.value.length === 0;
+
+  let qspaceLibraryTotal: number | undefined;
+  if (typeof photosApi?.summary === 'function') {
+    try {
+      qspaceLibraryTotal = sumGroups(await photosApi.summary({ ...baseParams, filter: 'all' }));
+    } catch {
+      // Ignore summary count error
+    }
+  }
+  if (qspaceLibraryTotal === undefined && isAllSection && typeof lastFeedTotal === 'number') {
+    qspaceLibraryTotal = Math.max(0, lastFeedTotal - yCount);
+  }
+  if ((qspaceLibraryTotal === undefined || qspaceLibraryTotal === 0) && isAllSection && qspaceLoaded.length > 0) {
+    qspaceLibraryTotal = qspaceLoaded.length;
+  }
+
+  if (typeof qspaceLibraryTotal === 'number') {
+    const combinedLibrary = qspaceLibraryTotal + yCount;
+    counts.library = combinedLibrary;
+    counts.recent = Math.min(24, combinedLibrary);
+  } else if (yCount > 0) {
+    counts.library = yCount;
+    counts.recent = Math.min(24, yCount);
+  }
+
+  let qspaceFavTotal: number | undefined;
+  let qspaceVidTotal: number | undefined;
+  if (qspaceLoaded.length > 0 && typeof qspaceLibraryTotal === 'number' && qspaceLoaded.length >= qspaceLibraryTotal && isAllSection) {
+    qspaceFavTotal = qspaceLoaded.filter((i) => i.favorite).length;
+    qspaceVidTotal = qspaceLoaded.filter((i) => i.kind === 'video').length;
+  } else if (typeof photosApi?.summary === 'function') {
+    const [favRes, vidRes] = await Promise.allSettled([
+      photosApi.summary({ ...baseParams, filter: 'fav' }),
+      photosApi.summary({ ...baseParams, filter: 'video' }),
+    ]);
+    if (favRes.status === 'fulfilled') {
+      qspaceFavTotal = sumGroups(favRes.value);
+    }
+    if (vidRes.status === 'fulfilled') {
+      qspaceVidTotal = sumGroups(vidRes.value);
+    }
+  }
+
+  if (typeof qspaceFavTotal === 'number' || yFavCount > 0) {
+    counts.favorites = (qspaceFavTotal ?? 0) + yFavCount;
+  }
+  if (typeof qspaceVidTotal === 'number' || yVidCount > 0) {
+    counts.videos = (qspaceVidTotal ?? 0) + yVidCount;
+  }
+
+  counts.people = resolvedPeople.value.length;
+
+  if (typeof driveApi?.getTrash === 'function') {
+    try {
+      const trashRes = await driveApi.getTrash({ limit: 100 });
+      if (Array.isArray(trashRes?.items)) counts.trash = trashRes.items.length;
+    } catch {
+      // Ignore trash count error
+    }
+  }
+
+  lastSidebarCounts = counts;
+  emit('update:counts', counts);
+}
+
+function onFeedSummary(total: number): void {
+  lastFeedTotal = total;
+  void refreshSidebarCounts();
+}
+
+function onFeedUnitsLoaded(): void {
+  const nextPeople = resolvedPeople.value.length;
+  if (lastSidebarCounts.people !== nextPeople) {
+    lastSidebarCounts = { ...lastSidebarCounts, people: nextPeople };
+    emit('update:counts', { ...lastSidebarCounts });
+  }
+}
+
+function onTrashRestored(): void {
+  void feedRef.value?.refresh();
+  void refreshSidebarCounts();
+}
+
+function onTrashFeedback(type: 'success' | 'error', message: string): void {
+  toast.show(message, type);
+}
+
+function toggleInfoPanel(): void {
+  if (isPanelVisible.value) {
+    panelOpen.value = false;
+    return;
+  }
+  const target = focusedId.value ?? [...selected.value][0] ?? shownItems()[0]?.fileId ?? null;
+  if (target) {
+    panelId.value = target;
+    focusedId.value = target;
+  }
+  panelOpen.value = true;
+}
+
+let stopDrag: (() => void) | null = null;
+
+function onPanelSashDown(e: PointerEvent): void {
+  e.preventDefault();
+  stopDrag?.();
+  const startX = e.clientX;
+  const startW = panelWidth.value;
+  panelDragging.value = true;
+
+  const onMove = (ev: PointerEvent) => {
+    const dx = startX - ev.clientX;
+    const raw = startW + dx;
+    if (raw < PANEL_COLLAPSE_THRESHOLD) {
+      panelOpen.value = false;
+    } else {
+      panelWidth.value = Math.max(PANEL_MIN_W, Math.min(PANEL_MAX_W, Math.round(raw)));
+    }
+  };
+
+  const cleanup = () => {
+    panelDragging.value = false;
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', onUp);
+    window.removeEventListener('pointercancel', onUp);
+    if (stopDrag === cleanup) stopDrag = null;
+  };
+
+  const onUp = () => {
+    cleanup();
+  };
+
+  stopDrag = cleanup;
+  window.addEventListener('pointermove', onMove);
+  window.addEventListener('pointerup', onUp);
+  window.addEventListener('pointercancel', onUp);
+}
+
+function emitFocusPhoto(item: FeedItem): void {
+  if (effectiveAlbumId.value) return;
+  emit('focus-photo', item);
 }
 
 function onOpen(item: FeedItem): void {
-  const byKeyboard = openedByKeyboard();
-  panelId.value = item.fileId;
-  if (byKeyboard) {
-    void nextTick(() => {
-      rootEl.value?.querySelector<HTMLElement>('[data-photo-panel] button, [data-photo-panel] textarea')?.focus();
-    });
+  focusedId.value = item.fileId;
+  focusedItemCache.value = item;
+  emitFocusPhoto(item);
+  if (panelOpen.value) {
+    panelId.value = item.fileId;
   }
 }
 
-function maybeLoadMoreForViewer(index: number, items: FeedItem[]): void {
+function onFeedFocusPhoto(item: FeedItem): void {
+  if (focusedId.value === item.fileId && focusedItemCache.value?.fileId === item.fileId) return;
+  focusedId.value = item.fileId;
+  focusedItemCache.value = item;
+  emitFocusPhoto(item);
+}
+
+function maybeLoadMoreForViewer(index: number, items: ViewerMediaItem[]): void {
   if (index < items.length - 5) return;
+  if (isYandexMode.value) return;
   if (searchActive.value) {
     if (searchCursor.value !== null) loadMoreSearch();
     return;
@@ -485,21 +2799,17 @@ function maybeLoadMoreForViewer(index: number, items: FeedItem[]): void {
   });
 }
 
-function onActivate(item: FeedItem): void {
+function onActivate(item: ViewerMediaItem): void {
   const items = shownItems();
   const index = items.findIndex((i) => i.fileId === item.fileId);
-  if (index < 0) return;
-  panelId.value = item.fileId;
-  viewer.value = { items, index };
-  maybeLoadMoreForViewer(index, items);
-}
-
-function onOpenViewerFromPanel(fileId: string): void {
-  const items = shownItems();
-  const index = items.findIndex((i) => i.fileId === fileId);
-  if (index < 0) return;
-  viewer.value = { items, index };
-  maybeLoadMoreForViewer(index, items);
+  const resolvedItems = index >= 0 ? items : [item];
+  const resolvedIndex = index >= 0 ? index : 0;
+  focusedId.value = item.fileId;
+  focusedItemCache.value = item;
+  emitFocusPhoto(item);
+  if (panelOpen.value) panelId.value = item.fileId;
+  viewer.value = { items: resolvedItems, index: resolvedIndex };
+  maybeLoadMoreForViewer(resolvedIndex, resolvedItems);
 }
 
 function stepViewer(delta: number): void {
@@ -507,37 +2817,117 @@ function stepViewer(delta: number): void {
   if (!v) return;
   const index = Math.min(v.items.length - 1, Math.max(0, v.index + delta));
   if (index === v.index) return;
+  const next = v.items[index]!;
   viewer.value = { items: v.items, index };
-  // An open panel follows the photo being viewed.
-  if (panelId.value) panelId.value = v.items[index]!.fileId;
+  focusedId.value = next.fileId;
+  focusedItemCache.value = next;
+  if (panelOpen.value && panelId.value) panelId.value = next.fileId;
+  emitFocusPhoto(next);
   maybeLoadMoreForViewer(index, v.items);
 }
 
-watch(searchItems, (list) => {
+function jumpViewer(index: number): void {
+  const v = viewer.value;
+  if (!v || index < 0 || index >= v.items.length) return;
+  const next = v.items[index]!;
+  viewer.value = { items: v.items, index };
+  focusedId.value = next.fileId;
+  focusedItemCache.value = next;
+  if (panelOpen.value && panelId.value) panelId.value = next.fileId;
+  emitFocusPhoto(next);
+  maybeLoadMoreForViewer(index, v.items);
+}
+
+watch(scopedSearchItems, (list) => {
   if (viewer.value && searchActive.value) {
     viewer.value = { ...viewer.value, items: list };
   }
 });
-
-function onViewerInfo(item: FeedItem): void {
-  viewer.value = null;
-  panelId.value = item.fileId;
-}
 
 function focusTile(fileId: string): void {
   const safe = fileId.replace(/"/g, '');
   rootEl.value?.querySelector<HTMLElement>(`[data-file-id="${safe}"]`)?.focus();
 }
 
+function focusFile(fileId: string): void {
+  if (!fileId) return;
+  focusedId.value = fileId;
+  const found = findLoadedItem(fileId);
+  if (found) focusedItemCache.value = found;
+  else if (focusedItemCache.value?.fileId !== fileId) focusedItemCache.value = null;
+  panelId.value = fileId;
+  focusTile(fileId);
+  void nextTick(() => focusTile(fileId));
+}
+
+function focusSearch(): void {
+  inlineSearchRef.value?.focus();
+}
+
+function getActiveFocusTransfer(): GalleryFocusTransfer | null {
+  const primaryId = focusedId.value ?? (selected.value.size > 0 ? [...selected.value][0]! : null);
+  if (!primaryId || isYandexFileId(primaryId)) return null;
+  const item = findLoadedItem(primaryId)
+    ?? (focusedItemCache.value?.fileId === primaryId ? focusedItemCache.value : null);
+  const resolvedFolderId = item ? item.folderId : (folderOf(primaryId) ?? null);
+  const primaryShared = Boolean(item?.share);
+  const matchingSelectedIds = selected.value.size >= 2
+    ? [...selected.value].filter((id) => {
+      if (id === primaryId) return true;
+      const candidate = findLoadedItem(id);
+      const candFolderId = candidate ? candidate.folderId : (folderOf(id) ?? null);
+      const candShared = Boolean(candidate?.share);
+      return candFolderId === resolvedFolderId && candShared === primaryShared;
+    })
+    : [primaryId];
+  if (!matchingSelectedIds.includes(primaryId)) matchingSelectedIds.unshift(primaryId);
+  return {
+    fileId: primaryId,
+    folderId: resolvedFolderId,
+    shared: primaryShared,
+    selectedIds: matchingSelectedIds,
+  };
+}
+
+function refresh(opts?: { clearSelection?: boolean; invalidateFolders?: boolean }): void {
+  if (opts?.clearSelection !== false) {
+    selected.value = new Set();
+  }
+  if (opts?.invalidateFolders !== false) {
+    invalidateGalleryFolderFilesCache();
+  }
+  if (isYandexMode.value && props.externalYandexPath !== null && props.externalYandexPath !== undefined) {
+    void loadYandexMedia(props.externalYandexPath);
+  } else {
+    if (effectiveAlbumId.value) {
+      void loadAlbumName(effectiveAlbumId.value);
+    }
+    void feedRef.value?.refresh();
+  }
+  if (!isPhotosMock()) {
+    void yandexLib.ensureLoaded();
+  }
+  void refreshSidebarCounts();
+  if (searchActive.value && searchQuery.value) {
+    void runSearch(searchQuery.value);
+  }
+}
+
+defineExpose({ focusFile, focusSearch, getActiveFocusTransfer, refresh });
+
 function closePanel(restoreFocus = true): void {
   const id = panelId.value;
-  panelId.value = null;
+  panelOpen.value = false;
   if (restoreFocus && id) void nextTick(() => focusTile(id));
 }
 
-function onMainEscape(): void {
-  if (selected.value.size > 0) clearSelection();
-  else if (panelId.value) closePanel();
+function onRootKeydown(e: KeyboardEvent): void {
+  const tag = (e.target as HTMLElement | null)?.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+  if (e.key.toLowerCase() === 'i' && !viewer.value && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    e.preventDefault();
+    toggleInfoPanel();
+  }
 }
 
 function onOpenFolder(folderId: string): void {
@@ -545,7 +2935,12 @@ function onOpenFolder(folderId: string): void {
 }
 
 function onOpenAlbum(id: string): void {
-  openAlbum(id);
+  clearSearch();
+  internalAlbumId.value = id;
+  albumName.value = '';
+  clearSelection();
+  void loadAlbumName(id);
+  emit('select-album', id);
 }
 
 function onPanelChanged(change: { fileId: string; favorite?: boolean; albumIds?: string[] }): void {
@@ -555,23 +2950,45 @@ function onPanelChanged(change: { fileId: string; favorite?: boolean; albumIds?:
     feed?.refreshAlbums?.();
   }
   feed?.patchItem(fileId, patch);
-  // The photo may have to leave (or move between) the groups on screen.
-  const albumMoved = patch.albumIds !== undefined && (albumId.value !== null || feedParams.value.levels.includes('album'));
+  const albumMoved = patch.albumIds !== undefined && (effectiveAlbumId.value !== null || feedParams.value.levels.includes('album'));
   const leavesFavorites = patch.favorite !== undefined && view.state.value.filter === 'fav';
   if (albumMoved || leavesFavorites) void feed?.refresh();
   if (searchItems.value.some((i) => i.fileId === fileId)) {
     searchItems.value = searchItems.value.map((i) => (i.fileId === fileId ? { ...i, ...patch } : i));
   }
+  if (patch.favorite !== undefined) {
+    if (viewer.value) {
+      const idx = viewer.value.items.findIndex((i) => i.fileId === fileId);
+      if (idx >= 0) {
+        const updated = viewer.value.items.map((i) => (i.fileId === fileId ? { ...i, favorite: patch.favorite! } : i));
+        viewer.value = { items: updated, index: viewer.value.index };
+      }
+    }
+    if (focusedItemCache.value?.fileId === fileId) {
+      focusedItemCache.value = { ...focusedItemCache.value, favorite: patch.favorite };
+    }
+    void refreshSidebarCounts();
+  }
 }
 
 onBeforeUnmount(() => {
+  stopDrag?.();
+  cancelCloseCtxAlbums();
+  clearPointerInsideCtx();
+  detachCtxListeners();
+  window.removeEventListener('keydown', onWindowKeydown);
   cancelSearchTimer();
   searchGen++;
+  yandexAbort?.abort();
+  yandexAbort = null;
+  yandexLoadSeq++;
+  prefs.setHeadroomHidden(false);
 });
 </script>
 
 <style scoped>
 .drive-photos {
+  --dp-top-h: 50px;
   position: relative;
   display: flex;
   flex-direction: column;
@@ -583,96 +3000,229 @@ onBeforeUnmount(() => {
 }
 
 .dp-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--dp-top-h, 50px);
+  box-sizing: border-box;
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 12px 20px;
-  padding: 0 0 10px;
-  border-bottom: 1px solid var(--ui-border);
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--ui-glass-border, var(--ui-border));
+  background: var(--ui-glass-tint, transparent), var(--ui-glass-bg, transparent);
+  backdrop-filter: blur(var(--ui-glass-blur, 16px)) saturate(1.18);
+  -webkit-backdrop-filter: blur(var(--ui-glass-blur, 16px)) saturate(1.18);
+  z-index: 25;
+  transition: transform 0.22s ease, opacity 0.2s ease;
+}
+.dp-top.is-hidden {
+  transform: translateY(calc(-100% - 2px));
+  opacity: 0;
+  pointer-events: none;
+}
+.dp-top .sb-expand-btn {
+  display: inline-flex;
 }
 
-.dp-tabs {
+.dp-top-left,
+.dp-top-right {
   display: flex;
-  gap: 4px;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
 }
 
-.dp-tab {
-  padding: 7px 14px;
-  border: 0;
+.dp-top-right {
+  flex: 1 1 auto;
+  justify-content: flex-end;
+}
+
+.dp-top-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+
+.dp-crumb-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  max-width: 150px;
+  padding: 0 9px;
   border-radius: 999px;
-  background: transparent;
-  color: var(--ui-text-secondary);
+  border: 1px solid var(--ui-glass-border);
+  background: var(--ui-glass-btn-bg);
+  color: var(--ui-text);
   font: inherit;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
 }
-
-.dp-tab:hover {
-  background: var(--ui-surface-subtle);
+.dp-crumb-pill span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.dp-tab[aria-selected='true'] {
-  background: var(--ui-surface-subtle);
-  color: var(--ui-accent-strong);
-  box-shadow: inset 0 0 0 1px var(--ui-accent-strong);
-}
-
-.dp-tab:focus-visible {
-  outline: 2px solid var(--ui-focus);
-  outline-offset: 2px;
-}
-
-.dp-search {
-  position: relative;
-  display: flex;
+.dp-icon-pill {
+  display: inline-flex;
   align-items: center;
-  flex: 1;
-  min-width: 200px;
-  max-width: 420px;
-  gap: 8px;
-  padding: 0 12px;
-  border: 1px solid var(--ui-border);
-  border-radius: 10px;
-  background: var(--ui-surface-subtle);
-}
-
-.dp-search-icon {
+  gap: 5px;
+  height: 28px;
+  padding: 0 9px;
+  border-radius: 999px;
+  border: 1px solid var(--ui-glass-border);
+  background: var(--ui-glass-btn-bg);
   color: var(--ui-text-secondary);
-  flex-shrink: 0;
-}
-
-.dp-search-input {
-  flex: 1;
-  min-width: 0;
-  height: 36px;
-  border: 0;
-  background: none;
-  color: var(--ui-text);
   font: inherit;
-  outline: none;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.dp-icon-pill:hover {
+  background: var(--ui-glass-btn-hover);
+  color: var(--ui-text);
+}
+.dp-icon-pill.active {
+  background: var(--ui-glass-accent-bg);
+  border-color: var(--ui-glass-accent-border);
+  color: var(--ui-glass-accent-text);
 }
 
-.dp-search:focus-within {
-  outline: 2px solid var(--ui-focus);
-  outline-offset: 1px;
+.dp-zoom-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--ui-glass-btn-bg);
+  border: 1px solid var(--ui-glass-border);
+  color: var(--ui-text-muted);
+  flex: none;
+  min-width: 0;
+}
+.dp-zoom-step {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  padding: 0 3px;
+  cursor: pointer;
+}
+.dp-zoom-step:hover {
+  color: var(--ui-text);
+}
+.dp-zoom-slider {
+  width: clamp(64px, 7vw, 96px);
+  min-width: 48px;
+  accent-color: var(--ui-brand);
+  cursor: pointer;
+}
+
+.dp-seg-center {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  border-radius: 9px;
+  background: var(--ui-glass-btn-bg);
+  border: 1px solid var(--ui-glass-border);
+}
+.dp-seg-btn {
+  height: 24px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ui-text-secondary);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.dp-seg-btn:hover {
+  color: var(--ui-text);
+}
+.dp-seg-btn.active {
+  background: var(--ui-glass-accent-bg);
+  color: var(--ui-glass-accent-text);
+  font-weight: 600;
+  box-shadow: var(--ui-glass-accent-shadow);
+}
+.dp-people-title {
+  padding: 4px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ui-text);
+}
+
+.dp-sel-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 9px;
+  border-radius: 999px;
+  border: 1px solid var(--ui-glass-accent-border);
+  background: var(--ui-glass-accent-bg);
+  color: var(--ui-glass-accent-text);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.dp-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid var(--ui-glass-border);
+  background: var(--ui-glass-btn-bg);
+  color: var(--ui-text-secondary);
+  cursor: pointer;
+  flex: none;
+}
+.dp-icon-btn:hover {
+  background: var(--ui-glass-btn-hover);
+  color: var(--ui-text);
+}
+.dp-icon-btn.active {
+  background: var(--ui-glass-accent-bg);
+  border-color: var(--ui-glass-accent-border);
+  color: var(--ui-glass-accent-text);
 }
 
 .dp-search-clear {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 18px;
+  height: 18px;
   border: 0;
   border-radius: 50%;
   background: transparent;
   color: var(--ui-text-secondary);
   cursor: pointer;
+  flex: none;
+}
+.dp-search-clear:hover {
+  background: var(--ui-glass-btn-hover);
+  color: var(--ui-text);
 }
 
-.dp-search-clear:focus-visible,
-.dp-retry:focus-visible,
-.dp-back:focus-visible {
+.dp-top button:focus-visible {
   outline: 2px solid var(--ui-focus);
   outline-offset: 2px;
 }
@@ -693,14 +3243,36 @@ onBeforeUnmount(() => {
   min-height: 0;
 }
 
+.dp-float-sort {
+  position: absolute;
+  top: calc(var(--dp-top-h, 50px) + 7px);
+  right: 64px;
+  z-index: 12;
+  transition: top 0.22s ease;
+}
+.dp-float-sort.is-headroom-hidden {
+  top: 7px;
+}
+
+.dp-search-grid {
+  padding-top: calc(var(--dp-top-h, 50px) + 6px);
+}
+
 .dp-feed {
   flex: 1;
   min-height: 0;
 }
 
+.dp-people-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-top: var(--dp-top-h, 50px);
+}
+
 .dp-note {
   margin: 0;
-  padding: 24px 20px;
+  padding: calc(var(--dp-top-h, 50px) + 24px) 20px 24px;
   color: var(--ui-text-secondary);
 }
 
@@ -715,62 +3287,310 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
-.dp-album-head {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 10px 20px 0;
-}
-
-.dp-back {
-  padding: 4px 10px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--ui-accent-strong);
-  font: inherit;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.dp-album-title {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-}
-
 .dp-mock {
-  margin: 0;
-  padding: 6px 12px;
+  margin: var(--dp-top-h, 50px) 0 0;
+  padding: 5px 12px;
   font-size: 12px;
   color: var(--ui-text-secondary);
   background: var(--ui-surface-subtle);
-  border-radius: 8px;
+}
+
+.dp-panel-shell {
+  display: flex;
+  flex: none;
+  min-height: 0;
+  max-width: 100%;
+}
+
+.dp-panel-slide-enter-active {
+  transition:
+    opacity 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.dp-panel-slide-leave-active {
+  transition:
+    opacity 0.13s ease-in,
+    transform 0.13s ease-in;
+}
+.dp-panel-slide-enter-from,
+.dp-panel-slide-leave-to {
+  opacity: 0;
+  transform: translateX(14px);
+}
+
+.dp-panel-sash {
+  width: 6px;
+  flex: none;
+  margin-left: -3px;
+  margin-right: -3px;
+  position: relative;
+  z-index: 22;
+  cursor: col-resize;
+}
+.dp-panel-sash::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 2px;
+  width: 2px;
+  background: transparent;
+  transition: background 0.15s;
+}
+.dp-panel-sash:hover::after,
+.dp-panel-sash.active::after {
+  background: var(--ui-glass-accent-text);
 }
 
 .dp-panel {
   flex: none;
-  width: 340px;
   max-width: 100%;
   min-height: 0;
+  height: 100%;
+  box-sizing: border-box;
+  padding-top: var(--dp-top-h, 50px);
+}
+
+.dp-ctx-menu {
+  position: fixed;
+  z-index: 1100;
+  min-width: 210px;
+  max-width: 280px;
+  padding: 6px;
+  border-radius: 13px;
+  background: var(--ui-glass-tint), var(--ui-surface-solid);
+  border: 1px solid var(--ui-glass-border);
+  box-shadow: var(--ui-glass-surface-shadow);
+  backdrop-filter: blur(var(--ui-glass-blur, 18px)) saturate(1.25);
+  -webkit-backdrop-filter: blur(var(--ui-glass-blur, 18px)) saturate(1.25);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  outline: none;
+  transform-origin: top left;
+}
+.dp-ctx-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ui-text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.dp-ctx-item:hover,
+.dp-ctx-item.is-submenu-open {
+  background: var(--ui-glass-btn-hover);
+}
+.dp-ctx-danger {
+  color: var(--ui-danger);
+}
+.dp-ctx-sep {
+  height: 1px;
+  background: var(--ui-glass-border);
+  margin: 3px 4px;
+}
+.dp-ctx-chevron {
+  margin-left: auto;
+  flex: none;
+  opacity: 0.72;
+}
+.dp-ctx-flyout {
+  position: fixed;
+  z-index: 1110;
+  min-width: 204px;
+  max-width: min(272px, calc(100vw - 16px));
+  max-height: min(320px, calc(100dvh - 16px));
+  padding: 6px;
+  border-radius: 13px;
+  background: var(--ui-glass-tint), var(--ui-surface-solid);
+  border: 1px solid var(--ui-glass-border);
+  box-shadow: var(--ui-glass-surface-shadow);
+  backdrop-filter: blur(var(--ui-glass-blur, 18px)) saturate(1.25);
+  -webkit-backdrop-filter: blur(var(--ui-glass-blur, 18px)) saturate(1.25);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--ui-text);
+  outline: none;
+  overflow: visible;
+  transform-origin: top left;
+}
+.dp-ctx-flyout[data-flyout-side="left"] {
+  transform-origin: top right;
+}
+.dp-ctx-flyout::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -10px;
+  width: 10px;
+}
+.dp-ctx-flyout[data-flyout-side="left"]::before {
+  left: auto;
+  right: -10px;
+}
+.dp-ctx-flyout-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.dp-ctx-sub-item {
+  font-size: 12.5px;
+  padding: 6px 9px;
+}
+.dp-ctx-sub-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dp-ctx-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--color-brands, #44cf6e);
+}
+.dp-ctx-check {
+  flex: none;
+  color: var(--ui-glass-accent-text, var(--color-brands));
+}
+.dp-ctx-new-album {
+  color: var(--ui-glass-accent-text, var(--color-brands));
+  font-weight: 500;
+}
+
+.dp-trash-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: calc(var(--dp-top-h, 50px) + 14px) 18px 14px;
+}
+
+.dp-album-picker-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1150;
+  background: rgba(0, 0, 0, 0.36);
+  display: grid;
+  place-items: center;
+  padding: 16px;
+}
+.dp-album-picker {
+  width: min(320px, 100%);
+  padding: 12px;
+  border-radius: 14px;
+  background: var(--ui-glass-tint), var(--ui-surface-solid);
+  border: 1px solid var(--ui-glass-border);
+  box-shadow: var(--ui-glass-surface-shadow);
+  backdrop-filter: blur(var(--ui-glass-blur, 18px)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--ui-glass-blur, 18px)) saturate(1.2);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.dp-album-picker-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 600;
+}
+.dp-album-picker-note {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--ui-text-muted);
+}
+.dp-album-picker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+@media (max-width: 820px) {
+  .dp-zoom-wrap {
+    display: none;
+  }
 }
 
 @media (max-width: 720px) {
-  .dp-search {
-    max-width: none;
-    flex-basis: 100%;
+  .dp-top {
+    padding: 0 6px;
+    gap: 4px;
   }
-
-  /* On a phone the panel covers the feed instead of squeezing it. */
-  .dp-panel {
+  .dp-top-left {
+    flex: 0 0 auto;
+    gap: 4px;
+  }
+  .dp-top-right {
+    flex: 0 1 auto;
+    min-width: 0;
+    gap: 4px;
+  }
+  .dp-top-center {
+    position: static;
+    transform: none;
+    margin: 0 auto;
+    flex: 0 0 auto;
+  }
+  .dp-crumb-pill {
+    max-width: 82px;
+    height: 26px;
+    padding: 0 6px;
+    font-size: 11px;
+  }
+  .dp-album-members-pill {
+    height: 26px;
+    padding: 0 7px;
+    font-size: 11px;
+  }
+  .dp-icon-pill[data-testid='aspect-toggle'] {
+    height: 26px;
+    padding: 0 7px;
+  }
+  .dp-icon-btn {
+    width: 26px;
+    height: 26px;
+  }
+  .dp-seg-btn {
+    height: 26px;
+    padding: 0 7px;
+    font-size: 11.5px;
+  }
+  .dp-panel-shell {
     position: absolute;
     inset: 0;
-    width: auto;
     z-index: 20;
   }
+  .dp-panel-sash {
+    display: none;
+  }
+  .dp-panel {
+    position: static;
+    flex: 1 1 auto;
+    width: auto !important;
+  }
+}
 
-  .dp-panel :deep(.pp) {
-    width: 100%;
+@media (prefers-reduced-motion: reduce) {
+  .dp-panel-slide-enter-active,
+  .dp-panel-slide-leave-active {
+    transition: none;
   }
 }
 </style>

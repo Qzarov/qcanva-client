@@ -6,11 +6,13 @@
     :data-selected="isSelected(item) || undefined"
     class="canvas-card html-doc-card interactive-template-card"
     :data-template-resource="item.id"
-    @click="emit('open', item.id)"
+    tabindex="0"
+    @dblclick="onCardDblClick($event, item.id)"
+    @keydown.enter.prevent="onCardEnter($event, item.id)"
+    @contextmenu.prevent.stop="emit('contextmenu', $event, item)"
   >
     <ResourceThumb kind="interactive-template" :id="item.id" :version="item.updatedAt" />
     <div class="card-title card-title-with-icon">
-      <span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="emit('toggle-selected', selectionKey(item))" @keydown.space.prevent.stop="emit('toggle-selected', selectionKey(item))"><Check :size="12" aria-hidden="true" /></span>
       <ResourceIcon kind="interactive-template" :template-type="item.templateType" data-resource-icon="interactive-template" :data-template-type="item.templateType" role="img" :aria-label="interactiveTemplateTypeLabel(item.templateType)" />
       <span class="card-title-text">{{ item.title }}</span>
     </div>
@@ -31,15 +33,16 @@
 </template>
 
 <script setup lang="ts">
-import { Check, Folder } from '@lucide/vue';
-import { useI18n } from '../../composables/useI18n';
+import { Folder } from '@lucide/vue';
 import ResourceIcon from '../ResourceIcon.vue';
 import DashboardResourceMenu from './DashboardResourceMenu.vue';
 import ResourceThumb from './ResourceThumb.vue';
 import type { DashboardResourceAction, DashboardResourceActionItem } from './resource-card.types';
 
+type InteractiveTemplateRecord = any;
+
 defineProps<{
-  items: any[];
+  items: InteractiveTemplateRecord[];
   isLoggedIn: boolean;
   isBusy: boolean;
   openMenuCanvasId: string;
@@ -57,8 +60,18 @@ const emit = defineEmits<{
   'toggle-selected': [key: string];
   'toggle-menu': [id: string, event: Event];
   'select-action': [item: any, action: DashboardResourceAction];
+  'contextmenu': [event: MouseEvent, item: InteractiveTemplateRecord];
 }>();
 
-const { t } = useI18n();
 const menuId = (item: any) => `interactive-template:${item.id}`;
+
+function onCardDblClick(event: MouseEvent, id: string): void {
+  if ((event.target as HTMLElement | null)?.closest('.card-manage, .card-menu')) return;
+  emit('open', id);
+}
+
+function onCardEnter(event: KeyboardEvent, id: string): void {
+  if ((event.target as HTMLElement | null)?.closest('button, a, input, textarea, .card-menu')) return;
+  emit('open', id);
+}
 </script>

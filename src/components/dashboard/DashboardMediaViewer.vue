@@ -212,18 +212,34 @@ function resetZoom() {
 }
 
 /** The picture's centre and size before any zoom (layout boxes ignore transforms). */
-function imageFrame() {
+function imageFrame(fallbackX = 0, fallbackY = 0) {
   const img = imageEl.value;
-  const stage = img?.offsetParent as HTMLElement | null;
-  if (!img || !stage) return null;
-  const rect = stage.getBoundingClientRect();
+  if (!img) return null;
+  const offsetParent = img.offsetParent as HTMLElement | null;
+  const stage = offsetParent ?? img.parentElement;
+  const stageRect = stage?.getBoundingClientRect();
+  if (offsetParent && img.offsetWidth > 0 && img.offsetHeight > 0 && stageRect) {
+    return {
+      cx: stageRect.left + img.offsetLeft + img.offsetWidth / 2,
+      cy: stageRect.top + img.offsetTop + img.offsetHeight / 2,
+      width: img.offsetWidth,
+      height: img.offsetHeight,
+      stageWidth: stageRect.width,
+      stageHeight: stageRect.height,
+    };
+  }
+  const imgRect = img.getBoundingClientRect();
+  const width = imgRect.width;
+  const height = imgRect.height;
+  const stageWidth = stageRect?.width ?? 0;
+  const stageHeight = stageRect?.height ?? 0;
   return {
-    cx: rect.left + img.offsetLeft + img.offsetWidth / 2,
-    cy: rect.top + img.offsetTop + img.offsetHeight / 2,
-    width: img.offsetWidth,
-    height: img.offsetHeight,
-    stageWidth: rect.width,
-    stageHeight: rect.height,
+    cx: width > 0 ? imgRect.left + width / 2 : stageWidth > 0 && stageRect ? stageRect.left + stageWidth / 2 : fallbackX,
+    cy: height > 0 ? imgRect.top + height / 2 : stageHeight > 0 && stageRect ? stageRect.top + stageHeight / 2 : fallbackY,
+    width,
+    height,
+    stageWidth,
+    stageHeight,
   };
 }
 
@@ -243,7 +259,7 @@ function clampPan() {
 
 /** To `scale`, the point (px, py) on screen staying where it is. */
 function zoomAt(scale: number, px: number, py: number) {
-  const frame = imageFrame();
+  const frame = imageFrame(px, py);
   const next = Math.min(MAX_SCALE, Math.max(1, scale));
   if (!frame) return;
   if (next === 1) {
@@ -355,8 +371,9 @@ function onDoubleClick(event: MouseEvent) {
 function onWheel(event: WheelEvent) {
   if (!zoomable(event)) return;
   event.preventDefault();
-  const step = event.ctrlKey ? 0.01 : 0.0015;
-  zoomAt(zoom.scale * Math.exp(-event.deltaY * step), event.clientX, event.clientY);
+  const dy = event.deltaMode === 1 ? event.deltaY * 32 : event.deltaMode === 2 ? event.deltaY * 300 : event.deltaY;
+  const step = event.ctrlKey || event.metaKey ? 0.01 : 0.0015;
+  zoomAt(zoom.scale * Math.exp(-dy * step), event.clientX, event.clientY);
 }
 
 function close() {
@@ -422,6 +439,10 @@ onMounted(async () => {
   position: fixed;
   inset: 0;
   z-index: 1200;
+  box-sizing: border-box;
+  overflow: hidden;
+  height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
   background: #050506;
@@ -434,6 +455,7 @@ onMounted(async () => {
   align-items: center;
   gap: 12px;
   padding: 10px 12px;
+  flex: none;
 }
 .media-viewer-title {
   flex: 1;
@@ -468,8 +490,10 @@ onMounted(async () => {
 .media-viewer-icon:focus-visible { background: rgba(255, 255, 255, 0.12); }
 .media-viewer-stage {
   position: relative;
-  flex: 1;
+  flex: 1 1 0%;
   min-height: 0;
+  min-width: 0;
+  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -478,6 +502,11 @@ onMounted(async () => {
 .media-viewer-image {
   max-width: 100%;
   max-height: 100%;
+  width: auto;
+  height: auto;
+  min-width: 0;
+  min-height: 0;
+  display: block;
   object-fit: contain;
   user-select: none;
   /* The fingers are ours on the picture: a pinch zooms it, not the page. */
@@ -506,21 +535,32 @@ onMounted(async () => {
 .media-viewer-video {
   width: 100%;
   height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: block;
   object-fit: contain;
   background: #000;
   outline: none;
 }
 .media-viewer-video-note {
-  display: grid;
-  justify-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   gap: 14px;
   max-width: 100%;
   max-height: 100%;
+  min-width: 0;
+  min-height: 0;
   text-align: center;
 }
 .media-viewer-video-poster {
   max-width: min(100%, 560px);
-  max-height: 50vh;
+  max-height: min(50vh, 100%);
+  min-height: 0;
+  display: block;
   object-fit: contain;
   opacity: 0.55;
 }

@@ -12,8 +12,11 @@
       :select-key="selectionKey(item)"
       :selected="isSelected(item)"
       :selectable="isLoggedIn"
+      :selected-keys="selectedKeys"
       :busy="isBusy"
       :dragging="draggingResourceId === item.id"
+      :draggable="isLoggedIn && renamingId !== item.id"
+      :renaming="renamingId === item.id"
       card-tag="div"
       :renameable="true"
       :show-pin="isOwnedResource(item)"
@@ -28,6 +31,7 @@
       @toggle-pin="emit('toggle-pinned', item)"
       @toggle-menu="emit('toggle-menu', item.id, $event)"
       @select-action="emit('select-action', item, $event)"
+      @contextmenu="(ev) => emit('contextmenu', ev, item)"
     >
       <template #title>
         <input
@@ -56,8 +60,10 @@
       :select-key="selectionKey(item)"
       :selected="isSelected(item)"
       :selectable="isLoggedIn"
+      :selected-keys="selectedKeys"
       :busy="isBusy"
       :dragging="draggingResourceId === item.id"
+      :draggable="isLoggedIn"
       :show-pin="isOwnedResource(item)"
       pin-title="Pin HTML"
       :open-href="`/edit/html/${item.slug || item.id}`"
@@ -72,6 +78,7 @@
       @toggle-pin="emit('toggle-pinned', item)"
       @toggle-menu="emit('toggle-menu', item.id, $event)"
       @select-action="emit('select-action', item, $event)"
+      @contextmenu="(ev) => emit('contextmenu', ev, item)"
     />
 
     <DashboardResourceCard
@@ -86,8 +93,10 @@
       :select-key="selectionKey(item)"
       :selected="isSelected(item)"
       :selectable="isLoggedIn"
+      :selected-keys="selectedKeys"
       :busy="isBusy"
       :dragging="draggingResourceId === item.id"
+      :draggable="isLoggedIn"
       :folder-resource="`interactive-template:${item.id}`"
       :badge-text="item.role && item.role !== 'owner' ? item.role : null"
       :show-tags="false"
@@ -100,6 +109,7 @@
       @toggle-select="emit('toggle-selected', selectionKey(item))"
       @toggle-menu="emit('toggle-menu', `folder:interactive-template:${item.id}`, $event)"
       @select-action="emit('select-action', item, $event)"
+      @contextmenu="(ev) => emit('contextmenu', ev, item)"
     />
 
     <DashboardResourceCard
@@ -114,8 +124,10 @@
       :select-key="selectionKey(item)"
       :selected="isSelected(item)"
       :selectable="isLoggedIn"
+      :selected-keys="selectedKeys"
       :busy="isBusy"
       :dragging="draggingResourceId === item.id"
+      :draggable="isLoggedIn"
       :show-pin="isOwnedResource(item)"
       pin-title="Pin document"
       :open-href="`/docs/${item.slug || item.id}`"
@@ -130,6 +142,7 @@
       @toggle-pin="emit('toggle-pinned', item)"
       @toggle-menu="emit('toggle-menu', item.id, $event)"
       @select-action="emit('select-action', item, $event)"
+      @contextmenu="(ev) => emit('contextmenu', ev, item)"
     />
   </template>
 </template>
@@ -141,12 +154,14 @@ import DashboardResourceCard from './DashboardResourceCard.vue';
 import type { DashboardResourceAction, DashboardResourceActionItem } from './resource-card.types';
 
 type RecentResourceType = 'html-document' | 'text-document';
+type FolderGridItem = any;
 
 const props = defineProps<{
-  items: any[];
+  items: FolderGridItem[];
   isLoggedIn: boolean;
   isBusy: boolean;
   draggingResourceId: string | null;
+  selectedKeys?: readonly string[];
   openMenuCanvasId: string;
   renamingId: string;
   cardMenuStyle: Record<string, string> | null;
@@ -172,16 +187,18 @@ const emit = defineEmits<{
   'toggle-pinned': [item: any];
   'toggle-menu': [id: string, event: Event];
   'select-action': [item: any, action: DashboardResourceAction];
+  'contextmenu': [event: MouseEvent, item: FolderGridItem];
 }>();
 
 const { t } = useI18n();
-const renameInput = ref<HTMLInputElement | null>(null);
+const renameInput = ref<HTMLInputElement | HTMLInputElement[] | null>(null);
 
 watch(() => props.renamingId, (id) => {
   if (!id) return;
   void nextTick(() => {
-    renameInput.value?.focus();
-    renameInput.value?.select();
+    const input = Array.isArray(renameInput.value) ? renameInput.value[0] : renameInput.value;
+    input?.focus();
+    input?.select();
   });
 });
 </script>

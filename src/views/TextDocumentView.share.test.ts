@@ -13,6 +13,7 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import TextDocumentView from './TextDocumentView.vue';
+import { useI18n } from '../composables/useI18n';
 
 const routeState = vi.hoisted(() => ({
   id: 'doc-1',
@@ -102,6 +103,7 @@ async function mountEditableDoc(): Promise<any> {
 }
 
 beforeEach(() => {
+  useI18n().setLocale('en');
   vi.clearAllMocks();
   routeState.id = 'doc-1';
   routeState.query = {};

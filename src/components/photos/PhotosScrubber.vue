@@ -187,15 +187,33 @@ function onLeave(): void {
 }
 
 let ro: ResizeObserver | null = null;
+let roRaf = 0;
+
+function scheduleMeasure(): void {
+  if (typeof requestAnimationFrame !== 'function') {
+    measure();
+    return;
+  }
+  if (roRaf) cancelAnimationFrame(roRaf);
+  roRaf = requestAnimationFrame(() => {
+    roRaf = 0;
+    measure();
+  });
+}
+
 onMounted(() => {
   measure();
   if (typeof ResizeObserver !== 'undefined' && root.value) {
-    ro = new ResizeObserver(measure);
+    ro = new ResizeObserver(scheduleMeasure);
     ro.observe(root.value);
   }
   window.addEventListener('resize', measure);
 });
 onBeforeUnmount(() => {
+  if (roRaf && typeof cancelAnimationFrame === 'function') {
+    cancelAnimationFrame(roRaf);
+    roRaf = 0;
+  }
   ro?.disconnect();
   window.removeEventListener('resize', measure);
 });
@@ -274,9 +292,12 @@ onBeforeUnmount(() => {
 }
 .scrub-now {
   position: absolute;
-  right: 0;
-  left: 6px;
-  height: 2px;
+  right: 2px;
+  left: auto;
+  width: 3px;
+  height: 18px;
+  border-radius: 999px;
+  transform: translateY(-50%);
   background: var(--ui-brand);
   box-shadow: 0 0 10px color-mix(in srgb, var(--ui-brand) 60%, transparent);
   pointer-events: none;
@@ -303,5 +324,10 @@ onBeforeUnmount(() => {
   white-space: nowrap;
   pointer-events: none;
   z-index: 5;
+}
+:root[data-theme='light'] .scrub-hover {
+  background: rgba(255, 255, 255, 0.92);
+  border-color: rgba(20, 91, 37, 0.22);
+  color: var(--ui-text);
 }
 </style>

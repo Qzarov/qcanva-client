@@ -43,9 +43,13 @@
   grid-template-columns: minmax(0, 1fr);
 }
 .dashboard-central-shell {
+  width: 100%;
   min-width: 0;
+  max-width: 100%;
   min-height: 0;
+  box-sizing: border-box;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
   overflow: hidden;
 }
@@ -53,6 +57,8 @@
    into an implicit third row below the screen. */
 .dashboard-central-shell > .app-header {
   grid-row: 1;
+  min-width: 0;
+  max-width: 100%;
 }
 .dashboard-central-shell .app-main {
   /* Always the 1fr row, even when the header above is hidden (desktop):
@@ -61,7 +67,9 @@
      (a near-empty folder's "⋯"). */
   grid-row: 2;
   min-width: 0;
+  max-width: 100%;
   min-height: 0;
+  box-sizing: border-box;
   overflow-y: auto;
   overscroll-behavior-y: contain;
 }
@@ -548,6 +556,9 @@
 }
 .dashboard-shell {
   width: min(1280px, 100%);
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
   margin: 0 auto;
 }
 .dash-header {
@@ -1400,7 +1411,12 @@
   border-radius: var(--radius-full);
 }
 .card-delete:hover { color: var(--ui-danger-foreground); background: color-mix(in srgb, var(--ui-danger) 15%, transparent); }
-.dash-section { margin-top: 32px; }
+.dash-section {
+  margin-top: 32px;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
 .dash-section h2 { font-size: 18px; margin-bottom: 0; color: var(--ui-text-secondary); }
 .dashboard-workspace {
   display: grid;
@@ -1501,7 +1517,11 @@
   cursor: help;
 }
 .folder-nav-item.active .folder-technical-icon { color: color-mix(in srgb, var(--color-brands) 70%, var(--ui-text)); }
-.dashboard-folder-content { min-width: 0; }
+.dashboard-folder-content {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
 .canvas-card-welcome { border-color: color-mix(in srgb, var(--ui-info) 30%, transparent); }
 .canvas-card-welcome:hover { border-color: color-mix(in srgb, var(--ui-info) 60%, transparent); }
 .badge-public { background: var(--ui-info-soft); color: var(--ui-info-foreground); }
@@ -1515,6 +1535,9 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
   padding: 10px 12px;
   border: 1px solid var(--ui-border);
   border-radius: var(--radius-sm);
@@ -1638,6 +1661,9 @@
    own with a scrollbar inside the page's. */
 .folder-manager-body {
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 .folder-collapse-enter-active,
 .folder-collapse-leave-active {

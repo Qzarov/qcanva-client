@@ -215,6 +215,7 @@ describe('photos API', () => {
     expect(request).toHaveBeenCalledWith('/me/preferences/photos.view', {
       method: 'PUT',
       body: JSON.stringify({ value: { view: 'grid' } }),
+      keepalive: true,
     });
   });
 

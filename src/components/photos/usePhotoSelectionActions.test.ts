@@ -2,12 +2,12 @@
 
 import { flushPromises } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Album } from '../../api/photos';
+import type { SpaceSummary } from '../../api/spaces';
 
 const moveFile = vi.fn<(id: string, folderId: string | null) => Promise<unknown>>();
-const albumsMock = vi.fn<() => Promise<Album[]>>();
-const addMock = vi.fn<(id: string, ids: string[]) => Promise<number>>();
-const removeMock = vi.fn<(id: string, ids: string[]) => Promise<number>>();
+const spacesListMock = vi.fn<() => Promise<{ spaces: SpaceSummary[] }>>();
+const addMock = vi.fn<(id: string, ids: string[]) => Promise<{ added: number }>>();
+const removeMock = vi.fn<(id: string, ids: string[]) => Promise<{ removed: number }>>();
 const createMock = vi.fn<(name: string) => Promise<{ id: string }>>();
 const promptMock = vi.fn<(o: unknown) => Promise<string | null>>();
 
@@ -35,21 +35,42 @@ async function setup(selectedIds: string[], extra: Record<string, unknown> = {},
 describe('usePhotoSelectionActions', () => {
   beforeEach(() => {
     vi.resetModules();
-    for (const m of [moveFile, albumsMock, addMock, removeMock, createMock, promptMock]) m.mockReset();
+    for (const m of [moveFile, spacesListMock, addMock, removeMock, createMock, promptMock]) m.mockReset();
     moveFile.mockResolvedValue({});
-    albumsMock.mockResolvedValue([
-      { id: 'a1', name: 'Лето 2026', count: 3, bytes: 0, createdAt: '', addedAt: '', coverFileIds: [] },
-    ]);
-    addMock.mockResolvedValue(1);
-    removeMock.mockResolvedValue(1);
+    spacesListMock.mockResolvedValue({
+      spaces: [
+        {
+          id: 'a1',
+          name: 'Лето 2026',
+          role: 'owner',
+          ownerId: 'u1',
+          memberCount: 1,
+          sourceCount: 1,
+          mediaCount: 3,
+          coverFileIds: [],
+          updatedAt: '',
+        },
+      ],
+    });
+    addMock.mockResolvedValue({ added: 1 });
+    removeMock.mockResolvedValue({ removed: 1 });
     createMock.mockResolvedValue({ id: 'a9' });
     vi.doMock('../../api/drive', async (importOriginal) => {
       const actual = await importOriginal<typeof import('../../api/drive')>();
       return { ...actual, driveApi: { ...actual.driveApi, moveFile } };
     });
     vi.doMock('../../api/photos', () => ({
-      photosApi: { albums: albumsMock, addToAlbum: addMock, removeFromAlbum: removeMock, createAlbum: createMock },
+      isPhotosMock: () => false,
+      photosApi: {},
       photosMockDrive: () => null,
+    }));
+    vi.doMock('../../api/spaces', () => ({
+      spacesApi: {
+        list: spacesListMock,
+        addItems: addMock,
+        removeItems: removeMock,
+        create: createMock,
+      },
     }));
     vi.doMock('../../composables/appDialog', () => ({ promptDialog: promptMock }));
   });
@@ -110,7 +131,7 @@ describe('usePhotoSelectionActions', () => {
   });
 
   it('add to album sends all ids', async () => {
-    addMock.mockResolvedValue(3);
+    addMock.mockResolvedValue({ added: 3 });
     const { actions, selection, onAlbumChanged, toasts } = await setup(['f1', 'f2', 'f3']);
     await actions.toggleAlbumMenu();
     expect(actions.albumMenuOpen.value).toBe(true);
@@ -125,7 +146,7 @@ describe('usePhotoSelectionActions', () => {
   });
 
   it('add to album toasts the count the hub added and says when some were already there', async () => {
-    addMock.mockResolvedValue(1);
+    addMock.mockResolvedValue({ added: 1 });
     const { actions, selection, onAlbumChanged, toasts } = await setup(['f1', 'f2', 'f3']);
     await actions.toggleAlbumMenu();
     await actions.addToAlbum('a1');
@@ -137,7 +158,7 @@ describe('usePhotoSelectionActions', () => {
   });
 
   it('add to album that added nothing is an info toast and keeps the selection', async () => {
-    addMock.mockResolvedValue(0);
+    addMock.mockResolvedValue({ added: 0 });
     const { actions, selection, onAlbumChanged, toasts } = await setup(['f1', 'f2']);
     await actions.toggleAlbumMenu();
     await actions.addToAlbum('a1');
@@ -158,7 +179,7 @@ describe('usePhotoSelectionActions', () => {
   });
 
   it('album list failure is shown, not left loading', async () => {
-    albumsMock.mockRejectedValue(new Error('x'));
+    spacesListMock.mockRejectedValue(new Error('x'));
     const { actions } = await setup(['f1']);
     await actions.toggleAlbumMenu();
     expect(actions.albumsFailed.value).toBe(true);
@@ -167,7 +188,7 @@ describe('usePhotoSelectionActions', () => {
 
   it('new album creates it and adds the selection', async () => {
     promptMock.mockResolvedValue('  Новый  ');
-    addMock.mockResolvedValue(2);
+    addMock.mockResolvedValue({ added: 2 });
     const { actions, selection, toasts } = await setup(['f1', 'f2']);
     await actions.createAlbumAndAdd();
     expect(createMock).toHaveBeenCalledWith('Новый');
@@ -185,7 +206,7 @@ describe('usePhotoSelectionActions', () => {
   });
 
   it('remove from album sends the ids for the open album', async () => {
-    removeMock.mockResolvedValue(2);
+    removeMock.mockResolvedValue({ removed: 2 });
     const { actions, selection, onAlbumChanged, toasts } = await setup(['f1', 'f2'], { albumId: 'a1' });
     await actions.removeFromAlbum();
     await flushPromises();
@@ -196,7 +217,7 @@ describe('usePhotoSelectionActions', () => {
   });
 
   it('remove from album toasts the count the hub removed', async () => {
-    removeMock.mockResolvedValue(1);
+    removeMock.mockResolvedValue({ removed: 1 });
     const { actions, selection, toasts } = await setup(['f1', 'f2'], { albumId: 'a1' });
     await actions.removeFromAlbum();
     expect(toasts.value[0]?.message).toBe('Убрано из альбома: 1 из 2');
@@ -204,7 +225,7 @@ describe('usePhotoSelectionActions', () => {
   });
 
   it('remove from album that removed nothing is an info toast and keeps the selection', async () => {
-    removeMock.mockResolvedValue(0);
+    removeMock.mockResolvedValue({ removed: 0 });
     const { actions, selection, onAlbumChanged, toasts } = await setup(['f1', 'f2'], { albumId: 'a1' });
     await actions.removeFromAlbum();
     expect(toasts.value[0]?.message).toBe('Этих фото нет в альбоме');

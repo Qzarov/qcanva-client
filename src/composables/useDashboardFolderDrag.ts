@@ -12,6 +12,8 @@ export function useDashboardFolderDrag<T extends FolderTarget>(options: {
   onResourceDragLeave?: (folder: T) => void;
   dropResourceToFolder: (folder: T) => Promise<void>;
   reorderFoldersApi: (ids: string[]) => Promise<void>;
+  moveFolderApi?: (sourceId: string, targetId: string) => Promise<void>;
+  canMoveFolderInto?: (sourceId: string, targetId: string) => boolean;
   setFeedback: (type: 'success' | 'error', message: string) => void;
 }) {
   const folderDragId = ref('');
@@ -31,7 +33,8 @@ export function useDashboardFolderDrag<T extends FolderTarget>(options: {
     }
     folderDragId.value = folder.id;
     event.dataTransfer?.setData('application/x-qcanva-folder', folder.id);
-    if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+    // Allow both 'move' (into folders/home) and 'copy' (into albums) in native browser DnD.
+    if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copyMove';
   };
 
   const onFolderDragEnd = () => {
@@ -43,9 +46,15 @@ export function useDashboardFolderDrag<T extends FolderTarget>(options: {
     Boolean(folderDragId.value || Array.from(event.dataTransfer?.types || []).includes('application/x-qcanva-folder'))
   );
 
+  const canAcceptFolderDrop = (sourceId: string, targetFolder: T) => {
+    if (!sourceId || sourceId === targetFolder.id) return false;
+    if (options.canMoveFolderInto) return options.canMoveFolderInto(sourceId, targetFolder.id);
+    return canReorderFolder(targetFolder);
+  };
+
   const onFolderDragEnter = (event: DragEvent, folder: T) => {
     if (isFolderReorderDrag(event)) {
-      if (canReorderFolder(folder) && folder.id !== folderDragId.value) folderDragOverId.value = folder.id;
+      if (canAcceptFolderDrop(folderDragId.value, folder)) folderDragOverId.value = folder.id;
       return;
     }
     onFolderDragOverEvent(event, folder);
@@ -53,7 +62,7 @@ export function useDashboardFolderDrag<T extends FolderTarget>(options: {
 
   const onFolderDragOverEvent = (event: DragEvent, folder: T) => {
     if (isFolderReorderDrag(event)) {
-      if (canReorderFolder(folder) && folder.id !== folderDragId.value) folderDragOverId.value = folder.id;
+      if (canAcceptFolderDrop(folderDragId.value, folder)) folderDragOverId.value = folder.id;
       return;
     }
     if (!options.canDropResource(folder)) return;
@@ -93,6 +102,12 @@ export function useDashboardFolderDrag<T extends FolderTarget>(options: {
     const sourceId = folderDragId.value || event.dataTransfer?.getData('application/x-qcanva-folder') || '';
     if (sourceId) {
       onFolderDragEnd();
+      if (options.moveFolderApi) {
+        if (canAcceptFolderDrop(sourceId, folder)) {
+          await options.moveFolderApi(sourceId, folder.id);
+        }
+        return;
+      }
       if (canReorderFolder(folder)) await reorderFolders(sourceId, folder.id);
       return;
     }

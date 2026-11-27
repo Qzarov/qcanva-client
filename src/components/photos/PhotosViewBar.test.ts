@@ -7,16 +7,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 let wrapper: VueWrapper | null = null;
 
-async function setup() {
+async function setup(props: Record<string, unknown> = {}) {
   const { useI18n } = await import('../../composables/useI18n');
   useI18n().setLocale('ru');
   const { usePhotosView } = await import('./usePhotosView');
+  const { resetExplorerLayoutPrefs, useExplorerLayoutPrefs } = await import('../../composables/useExplorerLayoutPrefs');
+  resetExplorerLayoutPrefs(true);
   const { default: PhotosViewBar } = await import('./PhotosViewBar.vue');
-  wrapper = mount(PhotosViewBar, { attachTo: document.body });
-  return { view: usePhotosView(), w: wrapper };
+  wrapper = mount(PhotosViewBar, { props, attachTo: document.body });
+  return { view: usePhotosView(), prefs: useExplorerLayoutPrefs(), w: wrapper };
 }
 
-const pillText = (w: VueWrapper) => w.get('[data-testid="sort-pill"]').text().replace(/\s+/g, ' ');
+const pillText = (w: VueWrapper) => w.get('[data-testid="sort-pill"]').text().replace(/\s+/g, ' ').trim();
 const sortKeys = (view: { state: { value: { sort: { key: string }[] } } }) =>
   view.state.value.sort.map((s) => s.key);
 
@@ -44,16 +46,24 @@ describe('PhotosViewBar', () => {
     vi.restoreAllMocks();
   });
 
-  it('pill summarises active sort with sub', async () => {
+  it('defaults to "по дате" with all sort checkboxes unchecked and summarises active keys', async () => {
     const { view, w } = await setup();
-    expect(pillText(w)).toBe('Сортировка: дата, затем папка');
-    view.cycleSub('folder');
-    await nextTick();
-    expect(pillText(w)).toBe('Сортировка: дата, затем папка (по размеру)');
+    expect(pillText(w)).toBe('Сортировка: по дате ▾');
+    expect(view.state.value.sort).toEqual([]);
+
     view.toggleSortKey('date');
     view.toggleSortKey('folder');
     await nextTick();
-    expect(pillText(w)).toBe('Сортировка: по дате');
+    expect(pillText(w)).toBe('Сортировка: дата, затем папка ▾');
+
+    view.cycleSub('folder');
+    await nextTick();
+    expect(pillText(w)).toBe('Сортировка: дата, затем папка (по размеру) ▾');
+
+    view.toggleSortKey('date');
+    view.toggleSortKey('folder');
+    await nextTick();
+    expect(pillText(w)).toBe('Сортировка: по дате ▾');
   });
 
   it('menu is closed until the pill is pressed and exposes aria state', async () => {
@@ -67,45 +77,101 @@ describe('PhotosViewBar', () => {
     expect(pill.attributes('aria-controls')).toBe(menu.attributes('id'));
   });
 
-  it('clicking key toggles and orders by activation', async () => {
+  it('does not render duplicate period, filter, or size controls outside/inside popover', async () => {
+    const { w } = await setup();
+    await openMenu(w);
+    expect(w.find('[data-testid="period-day"]').exists()).toBe(false);
+    expect(w.find('[data-testid="filter-video"]').exists()).toBe(false);
+    expect(w.find('[data-testid="size-button"]').exists()).toBe(false);
+    expect(w.find('[data-testid="shared-toggle"]').exists()).toBe(false);
+  });
+
+  it('clicking key toggles and orders by activation with #1/#2 badges', async () => {
     const { view, w } = await setup();
     await openMenu(w);
     const rowKeys = () => w.findAll('[data-testid^="sort-key-"]').map((b) => b.attributes('data-testid'));
-    // active first (priority order), then the inactive ones
+    // All unchecked initially in default order
     expect(rowKeys()).toEqual(['sort-key-date', 'sort-key-folder', 'sort-key-album', 'sort-key-size']);
 
     await w.get('[data-testid="sort-key-size"]').trigger('click');
-    expect(sortKeys(view)).toEqual(['date', 'folder', 'size']);
-    expect(rowKeys()).toEqual(['sort-key-date', 'sort-key-folder', 'sort-key-size', 'sort-key-album']);
+    expect(sortKeys(view)).toEqual(['size']);
+    expect(rowKeys()).toEqual(['sort-key-size', 'sort-key-date', 'sort-key-folder', 'sort-key-album']);
     expect(w.get('[data-testid="sort-key-size"]').attributes('aria-pressed')).toBe('true');
+    expect(w.get('[data-testid="sort-key-size"] .pvb-ord-badge').text()).toBe('1');
     expect(view.state.value.captions).toContain('size');
 
     await w.get('[data-testid="sort-key-date"]').trigger('click');
-    expect(sortKeys(view)).toEqual(['folder', 'size']);
-    expect(rowKeys()).toEqual(['sort-key-folder', 'sort-key-size', 'sort-key-date', 'sort-key-album']);
-    expect(w.get('[data-testid="sort-key-date"]').attributes('aria-pressed')).toBe('false');
+    expect(sortKeys(view)).toEqual(['size', 'date']);
+    expect(w.get('[data-testid="sort-key-date"] .pvb-ord-badge').text()).toBe('2');
     expect(w.find('[data-testid="sort-sep"]').exists()).toBe(true);
   });
 
-  it('inactive rows keep showing their order and sub button, muted', async () => {
-    const { w } = await setup();
-    await openMenu(w);
-    const ord = w.get('[data-testid="sort-ord-album"]');
-    expect(ord.classes()).toContain('off');
-    expect(ord.text()).toBe('↑ А → Я');
-    expect(w.get('[data-testid="sort-sub-album"]').text()).toBe('по имени');
-    expect(w.get('[data-testid="sort-ord-size"]').text()).toBe('↓ большие сначала');
-    expect(w.get('[data-testid="sort-ord-date"]').text()).toBe('↓ новые сначала');
-    expect(w.find('[data-testid="sort-sub-date"]').exists()).toBe(false);
-    expect(w.find('[data-testid="sort-sub-size"]').exists()).toBe(false);
-  });
-
-  it('order button flips the direction', async () => {
+  it('renders single global sort-dir-toggle and removes per-row/duplicate direction buttons', async () => {
     const { view, w } = await setup();
     await openMenu(w);
-    await w.get('[data-testid="sort-ord-date"]').trigger('click');
-    expect(view.state.value.dirs.date).toBe(false);
-    expect(w.get('[data-testid="sort-ord-date"]').text()).toBe('↑ старые сначала');
+
+    expect(w.find('[data-testid="sort-all-desc"]').exists()).toBe(false);
+    expect(w.find('[data-testid="sort-all-asc"]').exists()).toBe(false);
+    expect(w.find('[data-testid="sort-ord-date"]').exists()).toBe(false);
+    expect(w.find('[data-testid="sort-ord-album"]').exists()).toBe(false);
+    expect(w.find('[data-testid="sort-ord-size"]').exists()).toBe(false);
+    expect(w.find('[data-testid="sort-sub-date"]').exists()).toBe(false);
+    expect(w.find('[data-testid="sort-sub-size"]').exists()).toBe(false);
+    expect(w.get('[data-testid="sort-sub-album"]').text()).toBe('по имени');
+
+    await w.get('[data-testid="sort-key-date"]').trigger('click');
+    await w.get('[data-testid="sort-key-folder"]').trigger('click');
+
+    const toggle = w.get('[data-testid="sort-dir-toggle"]');
+    expect(toggle.text()).toContain('По убыванию');
+    expect(view.globalDesc.value).toBe(true);
+    expect(view.state.value.sort.every((s) => s.desc === true)).toBe(true);
+
+    await toggle.trigger('click');
+    expect(view.globalDesc.value).toBe(false);
+    expect(toggle.text()).toContain('По возрастанию');
+    expect(Object.values(view.state.value.dirs).every((d) => d === false)).toBe(true);
+    expect(view.state.value.sort.every((s) => s.desc === false)).toBe(true);
+
+    await toggle.trigger('click');
+    expect(view.globalDesc.value).toBe(true);
+    expect(toggle.text()).toContain('По убыванию');
+    expect(Object.values(view.state.value.dirs).every((d) => d === true)).toBe(true);
+    expect(view.state.value.sort.every((s) => s.desc === true)).toBe(true);
+  });
+
+  it('reorders active priority rows via LMB vertical pointer drag without toggling on release', async () => {
+    const { view, w } = await setup();
+    await openMenu(w);
+
+    await w.get('[data-testid="sort-key-date"]').trigger('click');
+    await w.get('[data-testid="sort-key-folder"]').trigger('click');
+    await w.get('[data-testid="sort-key-size"]').trigger('click');
+    expect(sortKeys(view)).toEqual(['date', 'folder', 'size']);
+
+    // Drag 'size' (index 2) upward by 70px (~2 rows in 34px jsdom fallback) -> index 0
+    const sizeRow = w.get('[data-testid="sort-row-size"]').element as HTMLElement;
+    sizeRow.dispatchEvent(new MouseEvent('pointerdown', { button: 0, clientY: 100, bubbles: true, cancelable: true }));
+    window.dispatchEvent(new MouseEvent('pointermove', { clientY: 30, bubbles: true, cancelable: true }));
+    await nextTick();
+    expect(sortKeys(view)).toEqual(['size', 'date', 'folder']);
+    expect(w.get('[data-testid="sort-row-size"]').classes()).toContain('is-dragging');
+
+    window.dispatchEvent(new MouseEvent('pointerup', { clientY: 30, bubbles: true }));
+    await nextTick();
+    expect(w.get('[data-testid="sort-row-size"]').classes()).not.toContain('is-dragging');
+
+    // Immediate post-drag click event must be suppressed so 'size' stays enabled
+    await w.get('[data-testid="sort-key-size"]').trigger('click');
+    expect(sortKeys(view)).toEqual(['size', 'date', 'folder']);
+
+    // Sub-key button pointerdown does not initiate drag
+    const subBtn = w.get('[data-testid="sort-sub-folder"]').element as HTMLElement;
+    subBtn.dispatchEvent(new MouseEvent('pointerdown', { button: 0, clientY: 60, bubbles: true, cancelable: true }));
+    window.dispatchEvent(new MouseEvent('pointermove', { clientY: 0, bubbles: true, cancelable: true }));
+    window.dispatchEvent(new MouseEvent('pointerup', { clientY: 0, bubbles: true }));
+    await nextTick();
+    expect(sortKeys(view)).toEqual(['size', 'date', 'folder']);
   });
 
   it('sub button cycles', async () => {
@@ -119,33 +185,52 @@ describe('PhotosViewBar', () => {
     expect(seen).toEqual(['size', 'created', 'added', 'name']);
     await w.get('[data-testid="sort-sub-folder"]').trigger('click');
     expect(w.get('[data-testid="sort-sub-folder"]').text()).toBe('по размеру');
-    // a sub click is not a key click
-    expect(sortKeys(view)).toEqual(['date', 'folder']);
-    // inactive album row has its own working sub button
+    expect(sortKeys(view)).toEqual([]);
     await w.get('[data-testid="sort-sub-album"]').trigger('click');
     expect(view.state.value.subs.album).toBe('size');
-    expect(sortKeys(view)).toEqual(['date', 'folder']);
-    // menu stays open
     expect(w.find('[data-testid="sort-menu"]').exists()).toBe(true);
   });
 
-  it('all-down sets every dir desc', async () => {
-    const { view, w } = await setup();
+  it('insideAlbum disables album sort key, sub-sort, and album caption', async () => {
+    const { view, w } = await setup({ insideAlbum: true });
+    // Even if album was previously enabled in state, insideAlbum hides it from pill & disables controls
+    view.toggleSortKey('album');
+    view.toggleSortKey('date');
+    await nextTick();
+    expect(pillText(w)).toBe('Сортировка: дата ▾');
+
     await openMenu(w);
-    await w.get('[data-testid="sort-all-asc"]').trigger('click');
-    expect(Object.values(view.state.value.dirs).every((d) => d === false)).toBe(true);
-    await w.get('[data-testid="sort-all-desc"]').trigger('click');
-    expect(Object.values(view.state.value.dirs).every((d) => d === true)).toBe(true);
-    expect(view.state.value.sort.every((s) => s.desc)).toBe(true);
+    const albumRow = w.get('[data-testid="sort-row-album"]');
+    const albumBtn = w.get('[data-testid="sort-key-album"]');
+    const albumSub = w.get('[data-testid="sort-sub-album"]');
+    const albumCap = w.get('[data-testid="caption-album"]');
+
+    expect(albumRow.classes()).toContain('is-disabled');
+    expect(albumRow.attributes('aria-disabled')).toBe('true');
+    expect(albumBtn.attributes('disabled')).toBeDefined();
+    expect(albumSub.attributes('disabled')).toBeDefined();
+    expect(albumCap.attributes('disabled')).toBeDefined();
+    expect(albumCap.attributes('aria-pressed')).toBe('false');
+
+    // Clicking disabled controls does nothing
+    const beforeSort = [...view.state.value.sort];
+    const beforeCaps = [...view.state.value.captions];
+    await albumBtn.trigger('click');
+    await albumSub.trigger('click');
+    await albumCap.trigger('click');
+    expect(view.state.value.sort).toEqual(beforeSort);
+    expect(view.state.value.captions).toEqual(beforeCaps);
   });
 
   it('reset restores the default view', async () => {
     const { view, w } = await setup();
     await openMenu(w);
     await w.get('[data-testid="sort-key-size"]').trigger('click');
+    await w.get('[data-testid="caption-access"]').trigger('click');
     await w.get('[data-testid="sort-reset"]').trigger('click');
-    expect(sortKeys(view)).toEqual(['date', 'folder']);
-    expect(w.text()).toContain('Приоритет — в порядке включения');
+    expect(sortKeys(view)).toEqual([]);
+    expect(view.state.value.captions).toEqual([]);
+    expect(w.text()).toContain('перетащите строки');
   });
 
   it('outside click closes menu, inside click does not', async () => {
@@ -167,56 +252,26 @@ describe('PhotosViewBar', () => {
     expect(document.activeElement).toBe(w.get('[data-testid="sort-pill"]').element);
   });
 
-  it('period, filter and caption controls drive the view', async () => {
+  it('caption controls inside popover toggle folder, album, size, and access', async () => {
     const { view, w } = await setup();
-    await w.get('[data-testid="period-day"]').trigger('click');
-    expect(view.state.value.period).toBe('day');
-    expect(w.get('[data-testid="period-day"]').attributes('aria-pressed')).toBe('true');
-    expect(w.get('[data-testid="period-month"]').attributes('aria-pressed')).toBe('false');
-    await w.get('[data-testid="filter-video"]').trigger('click');
-    expect(view.state.value.filter).toBe('video');
-    await w.get('[data-testid="filter-fav"]').trigger('click');
-    expect(view.state.value.filter).toBe('fav');
+    await openMenu(w);
     await w.get('[data-testid="caption-album"]').trigger('click');
     expect(view.state.value.captions).toEqual(['album']);
     expect(w.get('[data-testid="caption-album"]').attributes('aria-pressed')).toBe('true');
+    await w.get('[data-testid="caption-access"]').trigger('click');
+    expect(view.state.value.captions).toEqual(['album', 'access']);
     await w.get('[data-testid="caption-album"]').trigger('click');
-    expect(view.state.value.captions).toEqual([]);
+    expect(view.state.value.captions).toEqual(['access']);
   });
 
-  it('shows the Russian labels from the mockup', async () => {
-    const { w } = await setup();
-    const text = w.text().replace(/\s+/g, ' ');
-    for (const s of [
-      'Объединить в группу', 'день', 'месяц', 'год', 'Показать', 'всё', 'фото', 'видео',
-      'избранное', 'и подписать', 'папку', 'альбомы', 'размер', 'общие', 'Размер: средние',
-    ]) {
-      expect(text).toContain(s);
-    }
-  });
-
-  it('size button cycles', async () => {
-    const { view, w } = await setup();
-    const btn = w.get('[data-testid="size-button"]');
-    expect(btn.text()).toBe('Размер: средние');
-    await btn.trigger('click');
-    expect(view.state.value.tile).toBe('l');
-    expect(btn.text()).toBe('Размер: крупные');
-    await btn.trigger('click');
-    expect(btn.text()).toBe('Размер: мелкие');
-    await btn.trigger('click');
-    expect(view.state.value.tile).toBe('m');
-  });
-
-  it('shared toggle', async () => {
-    const { view, w } = await setup();
-    const btn = w.get('[data-testid="shared-toggle"]');
-    expect(btn.attributes('aria-pressed')).toBe('true');
-    await btn.trigger('click');
-    expect(view.state.value.shared).toBe(false);
-    expect(btn.attributes('aria-pressed')).toBe('false');
-    await btn.trigger('click');
-    expect(view.state.value.shared).toBe(true);
+  it('syncs with headroomHidden when menu is closed', async () => {
+    const { prefs, w } = await setup();
+    expect(w.classes()).not.toContain('is-hidden');
+    prefs.setHeadroomHidden(true);
+    await nextTick();
+    expect(w.classes()).toContain('is-hidden');
+    await openMenu(w);
+    expect(w.classes()).not.toContain('is-hidden');
   });
 
   it('popup is a dialog popup and toggling a key keeps focus on it after rows reorder', async () => {
@@ -241,9 +296,9 @@ describe('PhotosViewBar', () => {
     const phone = media![1];
     expect(phone).toMatch(/\.pvb-pop \{[^}]*position: fixed;[^}]*left: 8px;[^}]*right: 8px;/);
     expect(phone).toMatch(/\.pvb-pop \{[^}]*top: var\(--pvb-pop-top/);
-    expect(phone).toMatch(/\.pvb-st \{[^}]*minmax\(0, 1fr\) minmax\(0, auto\)/);
+    expect(phone).toMatch(/\.pvb-st \{[^}]*min-width: 0;[^}]*width: 100%/);
     const desktop = css.slice(0, css.indexOf('@media'));
     expect(desktop).toMatch(/\.pvb-pop \{[^}]*max-width: calc\(100vw - 16px\)/);
-    expect(desktop).toMatch(/\.pvb-st \{[^}]*grid-template-columns: 210px 170px/);
+    expect(desktop).toMatch(/\.pvb-st \{[^}]*flex-direction: column;/);
   });
 });
