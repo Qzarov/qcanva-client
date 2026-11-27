@@ -70,8 +70,9 @@ export function shareKey(
 }
 
 function getItemRatio(item: FeedItem): number {
+  const hasExternalPreview = 'previewSrc' in (item as FeedItem & { previewSrc?: unknown });
   if (
-    item.processed &&
+    (item.processed || hasExternalPreview) &&
     typeof item.width === 'number' &&
     typeof item.height === 'number' &&
     Number.isFinite(item.width) &&

@@ -914,6 +914,7 @@ describe('PhotosFeed', () => {
           fileId: 'yd:/Фото/img1.jpg',
           hash: 'yd1',
           name: 'img1.jpg',
+          processed: false,
           folderId: '/Фото',
           width: null,
           height: null,
@@ -981,6 +982,8 @@ describe('PhotosFeed', () => {
     const tileW = parseFloat(tileEl.style.width);
     const tileH = parseFloat(tileEl.style.height);
     expect(tileW / tileH).toBeCloseTo(2, 1);
+    const orderedAfterLoad = (w.vm as unknown as { orderedItems: () => Array<{ fileId: string; processed: boolean }> }).orderedItems();
+    expect(orderedAfterLoad.find((i) => i.fileId === 'yd:/Фото/img1.jpg')?.processed).toBe(false);
 
     // Filter to video only
     await w.setProps({

@@ -399,7 +399,7 @@ watch(
     for (let i = 0; i < list.length; i++) {
       const m = list[i]!;
       const nearby = Math.abs(i - activeIdx) <= 12;
-      if (m.processed && m.hash) {
+      if (m.processed && m.hash && !m.fileId.startsWith('yandex:')) {
         if (filmstripThumbs[m.fileId] || requestedFilmstrip.has(m.fileId)) continue;
         requestedFilmstrip.add(m.fileId);
         renditionUrl(m.hash, 'thumbnail')
@@ -695,7 +695,7 @@ async function resolveOriginalMediaUrl(item: ViewerMediaItem): Promise<string | 
 async function loadImage(): Promise<void> {
   const request = ++imgRequest;
   const item = props.item;
-  const useRenditions = Boolean(item.processed && item.hash);
+  const useRenditions = Boolean(item.processed && item.hash && !item.fileId.startsWith('yandex:'));
   const allowFallback = hasCustomImageFallback(item);
 
   if (!useRenditions && !allowFallback) {
@@ -805,7 +805,7 @@ async function loadVideo(): Promise<void> {
     videoFailed.value = true;
     return;
   }
-  if (item.processed && item.hash && !isPhotosMock()) {
+  if (item.processed && item.hash && !item.fileId.startsWith('yandex:') && !isPhotosMock()) {
     try {
       const url = await renditionUrl(item.hash, 'video');
       if (request !== videoRequest) return;

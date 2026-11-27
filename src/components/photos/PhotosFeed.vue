@@ -246,6 +246,9 @@ function withNaturalDimensions(item: FeedItem): FeedItem {
   if (item.width && item.height) return item;
   const dim = naturalDims.get(item.fileId);
   if (!dim) return item;
+  if (hasExplicitPreview(item)) {
+    return { ...item, width: dim.width, height: dim.height };
+  }
   return { ...item, processed: true, width: dim.width, height: dim.height };
 }
 
