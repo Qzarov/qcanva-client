@@ -38,17 +38,42 @@ body.resizing * {
 
 .dashboard-central-shell {
   position: relative;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .dashboard-central-shell .app-main:not(.app-main-gallery) {
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding-inline: clamp(12px, 2.2vw, 28px);
 }
 
 .dashboard-shell {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.dash-section {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.dashboard-folder-content,
+.dashboard-folder-content > .folder-manager-row,
+.folder-manager-row,
+.yandex-disk-view {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .dashboard-folder-content,
@@ -62,6 +87,9 @@ body.resizing * {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
   min-height: calc(100vh - 56px);
   min-height: calc(100dvh - 56px);
 }
@@ -1120,53 +1148,13 @@ body.resizing * {
   color: var(--ui-glass-accent-text);
 }
 
-/* ===== Windows Explorer Table (.explorer-table) ===== */
-.explorer-table,
-.exp-table-shell {
+/* ===== Windows Explorer Table (.explorer-table legacy container; .exp-table-* layout lives in ExplorerTableView.vue) ===== */
+.explorer-table {
   border-radius: 13px;
   background: var(--ui-glass-tint), var(--ui-glass-card-bg);
   border: 1px solid var(--ui-glass-border);
   box-shadow: var(--ui-glass-card-shadow);
   padding: 6px 8px 10px;
-}
-
-.exp-table-head {
-  display: grid;
-  grid-template-columns: minmax(210px, 1fr) 106px 90px 78px 110px 155px;
-  align-items: center;
-  height: 29px;
-  padding: 0 8px;
-  border-bottom: 1px solid var(--ui-glass-border);
-  color: var(--explorer-muted);
-  font-size: 11.5px;
-  font-weight: 500;
-  user-select: none;
-}
-
-.col-sort-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  text-align: left;
-  border: 0;
-  background: transparent;
-  color: var(--explorer-muted);
-  font-size: 11.5px;
-  font-weight: 500;
-  padding: 3px 4px;
-  margin-left: -4px;
-  border-radius: 5px;
-  cursor: pointer;
-}
-
-.col-sort-btn:hover {
-  color: var(--ui-text);
-  background: var(--ui-glass-btn-bg);
-}
-
-.col-sort-btn.active {
-  color: var(--ui-glass-accent-text);
-  font-weight: 600;
 }
 
 .exp-group-head {
@@ -1191,37 +1179,6 @@ body.resizing * {
   font-weight: 500;
   opacity: 0.85;
   font-variant-numeric: tabular-nums;
-}
-
-.exp-row {
-  display: grid;
-  grid-template-columns: minmax(210px, 1fr) 106px 90px 78px 110px 155px;
-  align-items: center;
-  height: 32px;
-  padding: 0 8px;
-  border-radius: 8px;
-  font-size: 12.5px;
-  color: var(--ui-text);
-  cursor: pointer;
-  user-select: none;
-  border: 1px solid transparent;
-  transition: background 0.08s ease, border-color 0.08s ease;
-}
-
-.exp-row:hover {
-  background: var(--ui-glass-btn-hover);
-  box-shadow: var(--ui-glass-inset-highlight);
-}
-
-.exp-row.selected {
-  background: var(--ui-glass-accent-tint), var(--ui-glass-accent-bg);
-  border-color: var(--ui-glass-accent-border);
-  box-shadow: var(--ui-glass-accent-shadow);
-}
-
-.exp-row.drag-over {
-  background: var(--ui-glass-accent-bg);
-  border-color: var(--ui-glass-accent-border);
 }
 
 /* ===== Album Share Modal, Context Menu, Drag Ghost Pill, FAB ===== */
@@ -1660,30 +1617,6 @@ body.resizing * {
     padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
   }
 
-  .dashboard-view:not(.is-android-app) .exp-table-shell {
-    overflow-x: auto;
-  }
-
-  .dashboard-view:not(.is-android-app) .exp-table-head,
-  .dashboard-view:not(.is-android-app) .exp-row {
-    min-width: 760px;
-  }
-
-  .dashboard-view:not(.is-android-app) .exp-table-shell.hide-source .exp-table-head,
-  .dashboard-view:not(.is-android-app) .exp-table-shell.hide-source .exp-row {
-    min-width: 680px;
-  }
-
-  .dashboard-view:not(.is-android-app) .exp-table-shell.hide-albums .exp-table-head,
-  .dashboard-view:not(.is-android-app) .exp-table-shell.hide-albums .exp-row {
-    min-width: 640px;
-  }
-
-  .dashboard-view:not(.is-android-app) .exp-table-shell.hide-source.hide-albums .exp-table-head,
-  .dashboard-view:not(.is-android-app) .exp-table-shell.hide-source.hide-albums .exp-row {
-    min-width: 530px;
-  }
-
   .dashboard-view.is-android-app .explorer-mobile-tabbar.mobile-tabbar {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1737,6 +1670,7 @@ body.resizing * {
   .dashboard-view.is-android-app .exp-table-head,
   .dashboard-view.is-android-app .exp-row {
     grid-template-columns: minmax(0, 1fr) 72px;
+    min-width: 0 !important;
   }
 
   .dashboard-view.is-android-app .exp-table-head .col-hide-sm,

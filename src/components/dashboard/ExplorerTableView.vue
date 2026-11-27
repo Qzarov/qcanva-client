@@ -148,6 +148,7 @@
             class="album-pill"
             :class="{ inherited: album.inherited }"
             :style="album.color ? { '--tag-c': album.color } : undefined"
+            :title="album.name"
             @click.stop="emit('album-click', album.id || album.name, row)"
           >
             {{ album.name }}
@@ -544,6 +545,13 @@ function onRowDrop(event: DragEvent, row: ExplorerTableRow): void {
 
 <style scoped>
 .exp-table-shell {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
   border-radius: 13px;
   background: var(--ui-glass-tint), var(--ui-glass-card-bg, var(--ui-surface-subtle));
   border: 1px solid var(--ui-glass-border, var(--ui-border));
@@ -554,28 +562,33 @@ function onRowDrop(event: DragEvent, row: ExplorerTableRow): void {
 .exp-table-head,
 .exp-row {
   display: grid;
-  grid-template-columns: minmax(200px, 1fr) 128px 96px 82px 116px 150px;
+  grid-template-columns: minmax(136px, 2.5fr) minmax(84px, 1.05fr) minmax(58px, 0.72fr) minmax(58px, 0.65fr) minmax(72px, 0.88fr) minmax(86px, 1.15fr);
+  min-width: 536px;
+  box-sizing: border-box;
   align-items: center;
   gap: 6px;
   padding: 0 8px;
 }
 .exp-table-shell.hide-source .exp-table-head,
 .exp-table-shell.hide-source .exp-row {
-  grid-template-columns: minmax(200px, 1fr) 128px 96px 82px 150px;
+  grid-template-columns: minmax(136px, 2.6fr) minmax(84px, 1.05fr) minmax(58px, 0.72fr) minmax(58px, 0.65fr) minmax(86px, 1.15fr);
+  min-width: 458px;
 }
 .exp-table-shell.hide-albums .exp-table-head,
 .exp-table-shell.hide-albums .exp-row {
-  grid-template-columns: minmax(200px, 1fr) 128px 96px 82px 116px;
+  grid-template-columns: minmax(136px, 2.6fr) minmax(84px, 1.05fr) minmax(58px, 0.72fr) minmax(58px, 0.65fr) minmax(72px, 0.88fr);
+  min-width: 444px;
 }
 .exp-table-shell.hide-source.hide-albums .exp-table-head,
 .exp-table-shell.hide-source.hide-albums .exp-row {
-  grid-template-columns: minmax(200px, 1fr) 128px 96px 82px;
+  grid-template-columns: minmax(136px, 2.7fr) minmax(84px, 1.05fr) minmax(58px, 0.72fr) minmax(58px, 0.65fr);
+  min-width: 366px;
 }
 
 .exp-table-head {
   height: 30px;
   border-bottom: 1px solid var(--ui-glass-border, var(--ui-border));
-  color: var(--ui-text-muted);
+  color: var(--explorer-muted, var(--ui-text-muted));
   font-size: 11.5px;
   font-weight: 500;
   user-select: none;
@@ -585,10 +598,13 @@ function onRowDrop(event: DragEvent, row: ExplorerTableRow): void {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
   border: 0;
   background: transparent;
   text-align: left;
-  color: var(--ui-text-muted);
+  color: var(--explorer-muted, var(--ui-text-muted));
   font: inherit;
   font-size: 11.5px;
   font-weight: 500;
@@ -596,6 +612,12 @@ function onRowDrop(event: DragEvent, row: ExplorerTableRow): void {
   margin-left: -5px;
   border-radius: 6px;
   cursor: pointer;
+}
+.col-sort-btn > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 .col-sort-btn:hover {
   color: var(--ui-text);
@@ -606,6 +628,7 @@ function onRowDrop(event: DragEvent, row: ExplorerTableRow): void {
   font-weight: 600;
 }
 .exp-sort-arrow {
+  flex: none;
   font-size: 10px;
   line-height: 1;
 }
@@ -664,6 +687,7 @@ function onRowDrop(event: DragEvent, row: ExplorerTableRow): void {
   white-space: nowrap;
 }
 .exp-cell {
+  min-width: 0;
   color: var(--ui-text-secondary);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
@@ -682,9 +706,11 @@ function onRowDrop(event: DragEvent, row: ExplorerTableRow): void {
   min-width: 0;
 }
 .album-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
+  display: inline-block;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   padding: 1px 7px;
   border-radius: 999px;
   font: inherit;
@@ -711,6 +737,7 @@ function onRowDrop(event: DragEvent, row: ExplorerTableRow): void {
   :global(.is-android-app) .exp-table-shell .exp-table-head,
   :global(.is-android-app) .exp-table-shell .exp-row {
     grid-template-columns: minmax(0, 1fr) 74px !important;
+    min-width: 0 !important;
   }
   :global(.is-android-app) .col-hide-sm {
     display: none !important;

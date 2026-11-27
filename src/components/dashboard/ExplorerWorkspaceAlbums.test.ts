@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 
+import fs from 'node:fs';
+import path from 'node:path';
 import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { nextTick } from 'vue';
@@ -241,6 +243,54 @@ describe('ExplorerTableView', () => {
 
     await row1.trigger('dragend');
     expect(badge.find('[data-explorer-drag-badge]').exists()).toBe(false);
+  });
+
+  it('B-021: applies hide-source/hide-albums variants, exposes album pill title, and defines fluid minmax zoom layout without 19-explorer-redesign.css overrides', async () => {
+    const wrapper = mount(ExplorerTableView, {
+      props: {
+        rows: [
+          {
+            key: 'file:long',
+            id: 'long',
+            kind: 'file',
+            name: 'Very-Long-Quarterly-Report-2026.pdf',
+            updatedAt: '2026-11-05T10:00:00Z',
+            typeLabel: 'PDF',
+            sizeBytes: 4096,
+            sourceLabel: 'Q Space',
+            albumNames: [{ id: 'a-long', name: 'Очень длинное название семейного альбома 2026' }],
+            isFolder: false,
+            raw: {},
+          },
+        ],
+      },
+    });
+
+    const shell = wrapper.get('[data-explorer-table]');
+    expect(shell.classes()).not.toContain('hide-source');
+    expect(shell.classes()).not.toContain('hide-albums');
+    expect(wrapper.get('.album-pill').attributes('title')).toBe('Очень длинное название семейного альбома 2026');
+
+    await wrapper.setProps({ hideSource: true, hideAlbums: false });
+    expect(shell.classes()).toContain('hide-source');
+    expect(shell.classes()).not.toContain('hide-albums');
+    expect(wrapper.find('[data-sort-col="source"]').exists()).toBe(false);
+    expect(wrapper.find('[data-sort-col="albums"]').exists()).toBe(true);
+
+    await wrapper.setProps({ hideSource: true, hideAlbums: true });
+    expect(shell.classes()).toContain('hide-source');
+    expect(shell.classes()).toContain('hide-albums');
+    expect(wrapper.find('[data-sort-col="albums"]').exists()).toBe(false);
+
+    const tableSrc = fs.readFileSync(path.resolve(__dirname, './ExplorerTableView.vue'), 'utf8');
+    const redesignCss = fs.readFileSync(path.resolve(process.cwd(), 'src/styles/19-explorer-redesign.css'), 'utf8');
+
+    expect(tableSrc).toContain('overflow-x: auto;');
+    expect(tableSrc).toContain('grid-template-columns: minmax(136px, 2.5fr) minmax(84px, 1.05fr) minmax(58px, 0.72fr) minmax(58px, 0.65fr) minmax(72px, 0.88fr) minmax(86px, 1.15fr);');
+    expect(tableSrc).toContain('grid-template-columns: minmax(136px, 2.6fr) minmax(84px, 1.05fr) minmax(58px, 0.72fr) minmax(58px, 0.65fr) minmax(86px, 1.15fr);');
+    expect(tableSrc).toContain('grid-template-columns: minmax(136px, 2.6fr) minmax(84px, 1.05fr) minmax(58px, 0.72fr) minmax(58px, 0.65fr) minmax(72px, 0.88fr);');
+    expect(tableSrc).toContain('grid-template-columns: minmax(136px, 2.7fr) minmax(84px, 1.05fr) minmax(58px, 0.72fr) minmax(58px, 0.65fr);');
+    expect(redesignCss).not.toContain('minmax(210px, 1fr) 106px');
   });
 });
 

@@ -899,4 +899,44 @@ describe('UX v2 Explorer & B-011/B-012/B-013/B-014 regressions', () => {
     expect(freshSidebar.find('[data-album-folder="rem-2"]').exists()).toBe(true);
     expect(freshSidebar.find('[data-album-folder-toggle="alb-1:rem-2"]').exists()).toBe(false);
   });
+
+  it('B-021: ExplorerTableView uses fluid minmax columns with horizontal scroll fallback, unbroken ancestor min-width: 0 chain, and no conflicting 19-explorer-redesign.css tracks', () => {
+    const redesignCss = fs.readFileSync(path.resolve(process.cwd(), 'src/styles/19-explorer-redesign.css'), 'utf8');
+    const shellCss = fs.readFileSync(path.resolve(process.cwd(), 'src/styles/03-dashboard-shell.css'), 'utf8');
+    const tableSrc = fs.readFileSync(path.resolve(__dirname, './ExplorerTableView.vue'), 'utf8');
+
+    // 1. Unconditional min-width: 0 / max-width: 100% / box-sizing: border-box ancestor chain before @media queries
+    const topRedesign = redesignCss.slice(0, redesignCss.indexOf('@media'));
+    expect(topRedesign).toMatch(/\.dashboard-central-shell\s*\{[^}]*min-width:\s*0;[^}]*max-width:\s*100%;[^}]*box-sizing:\s*border-box;/);
+    expect(topRedesign).toMatch(/\.dashboard-central-shell\s+\.app-main:not\(\.app-main-gallery\)\s*\{[^}]*min-width:\s*0;[^}]*max-width:\s*100%;[^}]*box-sizing:\s*border-box;[^}]*padding-inline:\s*clamp\(12px,\s*2\.2vw,\s*28px\);/);
+    expect(topRedesign).toMatch(/\.dashboard-shell\s*\{[^}]*min-width:\s*0;[^}]*max-width:\s*100%;[^}]*box-sizing:\s*border-box;/);
+    expect(topRedesign).toMatch(/\.dash-section\s*\{[^}]*min-width:\s*0;[^}]*max-width:\s*100%;[^}]*box-sizing:\s*border-box;/);
+    expect(topRedesign).toMatch(/\.dashboard-folder-content,[\s\S]*\.folder-manager-row,[\s\S]*\.yandex-disk-view\s*\{[^}]*min-width:\s*0;[^}]*max-width:\s*100%;[^}]*box-sizing:\s*border-box;/);
+    expect(topRedesign).toMatch(/\.folder-manager-body\s*\{[^}]*min-width:\s*0;[^}]*max-width:\s*100%;[^}]*box-sizing:\s*border-box;/);
+
+    expect(shellCss).toMatch(/\.dashboard-central-shell\s*\{[^}]*min-width:\s*0;[^}]*max-width:\s*100%;[^}]*box-sizing:\s*border-box;/);
+    expect(shellCss).toMatch(/\.dashboard-shell\s*\{[^}]*min-width:\s*0;[^}]*max-width:\s*100%;[^}]*box-sizing:\s*border-box;/);
+    expect(shellCss).toMatch(/\.dash-section\s*\{[^}]*min-width:\s*0;[^}]*max-width:\s*100%;[^}]*box-sizing:\s*border-box;/);
+    expect(shellCss).toMatch(/\.folder-manager-row\s*\{[^}]*min-width:\s*0;[^}]*max-width:\s*100%;[^}]*box-sizing:\s*border-box;/);
+    expect(shellCss).toMatch(/\.folder-manager-body\s*\{[^}]*min-width:\s*0;[^}]*max-width:\s*100%;[^}]*box-sizing:\s*border-box;/);
+
+    // 2. No competing unscoped .exp-table-head / .exp-row fixed grid-template-columns or stale 760px web min-width in 19-explorer-redesign.css
+    expect(redesignCss).not.toMatch(/(?:^|\n)\.exp-table-head\s*\{/);
+    expect(redesignCss).not.toMatch(/(?:^|\n)\.exp-row\s*\{/);
+    expect(redesignCss).not.toContain('minmax(210px, 1fr) 106px');
+    expect(redesignCss).not.toContain('min-width: 760px;');
+
+    // 3. ExplorerTableView fluid minmax(...) columns, overflow-x: auto, header/pill truncation, and Android min-width reset
+    expect(tableSrc).toMatch(/\.exp-table-shell\s*\{[^}]*width:\s*100%;[^}]*max-width:\s*100%;[^}]*min-width:\s*0;[^}]*box-sizing:\s*border-box;[^}]*overflow-x:\s*auto;[^}]*overscroll-behavior-x:\s*contain;/);
+    expect(tableSrc).toContain('grid-template-columns: minmax(136px, 2.5fr) minmax(84px, 1.05fr) minmax(58px, 0.72fr) minmax(58px, 0.65fr) minmax(72px, 0.88fr) minmax(86px, 1.15fr);');
+    expect(tableSrc).toContain('min-width: 536px;');
+    expect(tableSrc).toContain('min-width: 458px;');
+    expect(tableSrc).toContain('min-width: 444px;');
+    expect(tableSrc).toContain('min-width: 366px;');
+    expect(tableSrc).toMatch(/\.col-sort-btn\s*\{[^}]*min-width:\s*0;[^}]*max-width:\s*100%;[^}]*overflow:\s*hidden;/);
+    expect(tableSrc).toMatch(/\.col-sort-btn\s*>\s*span:first-child\s*\{[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;[^}]*min-width:\s*0;/);
+    expect(tableSrc).toMatch(/\.exp-sort-arrow\s*\{[^}]*flex:\s*none;/);
+    expect(tableSrc).toMatch(/\.album-pill\s*\{[^}]*max-width:\s*100%;[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;/);
+    expect(tableSrc).toMatch(/@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*:global\(\.is-android-app\)\s+\.exp-table-shell\s+\.exp-table-head,[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+74px\s*!important;[\s\S]*min-width:\s*0\s*!important;/);
+  });
 });
