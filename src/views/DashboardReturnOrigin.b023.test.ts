@@ -2,7 +2,7 @@
 import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { textDocuments } from '../api/client';
+import { recentResources, textDocuments } from '../api/client';
 import { driveApi } from '../api/drive';
 import { spacesApi } from '../api/spaces';
 import { confirmDialog, promptDialog } from '../composables/appDialog';
@@ -616,6 +616,7 @@ describe('B-023: Album header members pill, Album ПКМ menu, and Editor return
     const docLink = w1.get('[data-dashboard-view="folder"] a.card-open-link[href="/docs/t1"]');
     await docLink.trigger('click');
     expect(peekDashboardReturnOrigin()?.section).toEqual({ kind: 'folder', folderId: 'folder-child' });
+    expect(recentResources.markOpened).not.toHaveBeenCalled();
 
     // Simulating Ctrl+click (new tab) followed by manual navigation in current tab clears stale pending origin
     (w1.vm as any).selectFolder('folder-home');

@@ -590,7 +590,7 @@
                 @open-html="openHtmlDocumentFromCard"
                 @open-text="openTextDocumentFromCard"
                 @open-interactive="openInteractiveTemplate"
-                @remember="rememberRecentResource"
+                @remember="(type, routeId) => rememberRecentResource(type, routeId, { skipServerMark: true })"
                 @start-rename="startRename"
                 @finish-rename="finishRename"
                 @cancel-rename="renamingId = ''"
@@ -698,7 +698,7 @@
                     @open-html="openHtmlDocumentFromCard"
                     @open-text="openTextDocumentFromCard"
                     @open-interactive="openInteractiveTemplate"
-                    @remember="rememberRecentResource"
+                    @remember="(type, routeId) => rememberRecentResource(type, routeId, { skipServerMark: true })"
                     @start-rename="startRename"
                     @finish-rename="finishRename"
                     @cancel-rename="renamingId = ''"
@@ -2721,13 +2721,19 @@ export default defineComponent({
       recentResourceHistory.value = [recent, ...recentResourceHistory.value.filter((entry) => !(entry.type === type && entry.id === record.id))].slice(0, RECENT_RESOURCES_LIMIT);
       markResourceOpened(type, record.id);
     };
-    const rememberRecentResource = (type: RecentResourceType, routeId: string) => {
+    const rememberRecentResource = (
+      type: RecentResourceType,
+      routeId: string,
+      options?: { skipServerMark?: boolean },
+    ) => {
       recordDashboardReturnOrigin();
       const item = allRecentResourceItems.value.find((resource) => resource.type === type && (resource.id === routeId || ('slug' in resource && resource.slug === routeId)));
       if (!item) return;
       const recent: RecentHistoryEntry = { id: item.id, routeId: ('slug' in item && item.slug) || item.id, type, title: item.title || '', openedAt: Date.now() };
       recentResourceHistory.value = [recent, ...recentResourceHistory.value.filter((entry) => !(entry.type === recent.type && entry.id === recent.id))].slice(0, RECENT_RESOURCES_LIMIT);
-      markResourceOpened(type, item.id);
+      if (!options?.skipServerMark) {
+        markResourceOpened(type, item.id);
+      }
     };
 
     const openCanvas = (id: string) => {
