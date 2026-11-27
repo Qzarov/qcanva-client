@@ -1585,7 +1585,7 @@ function appendYandexRows(rows: TreeRow[], path: string, parentKey: string, dept
       expandable: false,
       expanded: false,
       active: false,
-      draggable: false,
+      draggable: true,
       yandexPath: file.path,
       yandexItem: file,
     });
@@ -1914,6 +1914,16 @@ function rowToDragEntry(row: TreeRow): GroupDragEntry | null {
       path,
     };
   }
+  if (row.kind === 'yandex-file' && row.yandexPath) {
+    const path = normalizeYandexTreePath(row.yandexPath);
+    return {
+      key: `yandex:${path}`,
+      id: path,
+      kind: 'yandex-file',
+      name: row.label,
+      path,
+    };
+  }
   return null;
 }
 
@@ -1931,10 +1941,9 @@ function isFolderDescendantOrSelf(targetFolderId: string, draggedFolderId: strin
 }
 
 function canDropGroupOnFolder(targetFolderId: string, payload: GroupDragPayload): boolean {
+  const targetFolder = folderLookup.value.get(targetFolderId);
+  if (targetFolder?.role === 'read') return false;
   for (const entry of payload.items) {
-    if (entry.kind === 'yandex-folder' || entry.key.startsWith('yandex-folder:')) {
-      return false;
-    }
     if (entry.kind === 'folder' || entry.key.startsWith('folder:')) {
       const draggedFolderId = entry.id || entry.key.replace(/^folder:/, '');
       if (draggedFolderId && isFolderDescendantOrSelf(targetFolderId, draggedFolderId)) {
@@ -2029,7 +2038,7 @@ function onRowDragEnter(event: DragEvent, row: TreeRow) {
         dnd.setGroupDropTarget({ kind: 'folder', id: row.folderId });
         scheduleSpringIfExpandable(row);
       }
-    } else if (row.key === 'qspace:home' && !payload.items.some((e) => e.kind === 'yandex-folder' || e.key.startsWith('yandex-folder:'))) {
+    } else if (row.key === 'qspace:home' && payload.items.length > 0) {
       event.preventDefault();
       internalHomeDropOver.value = true;
       scheduleSpringIfExpandable(row);
@@ -2095,7 +2104,7 @@ function onRowDragOver(event: DragEvent, row: TreeRow) {
         dnd.setGroupDropTarget({ kind: 'folder', id: row.folderId });
         scheduleSpringIfExpandable(row);
       }
-    } else if (row.key === 'qspace:home' && !payload.items.some((e) => e.kind === 'yandex-folder' || e.key.startsWith('yandex-folder:'))) {
+    } else if (row.key === 'qspace:home' && payload.items.length > 0) {
       event.preventDefault();
       event.stopPropagation();
       if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
@@ -2176,7 +2185,7 @@ function onRowDrop(event: DragEvent, row: TreeRow) {
         emit('drop-group-to-folder', { folderId: row.folderId, drag: payload });
         treeSelectedKeys.value = new Set();
       }
-    } else if (row.key === 'qspace:home' && !payload.items.some((e) => e.kind === 'yandex-folder' || e.key.startsWith('yandex-folder:'))) {
+    } else if (row.key === 'qspace:home' && payload.items.length > 0) {
       event.preventDefault();
       event.stopPropagation();
       emit('drop-group-to-folder', { folderId: null, drag: payload });

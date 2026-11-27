@@ -16,6 +16,33 @@
       @contextmenu.prevent
     >
       <template v-if="emptyArea">
+        <div
+          v-if="hasCreateMenu"
+          class="explorer-ctx-create-wrap"
+        >
+          <button
+            ref="createTriggerEl"
+            type="button"
+            class="explorer-ctx-item"
+            :class="{ 'is-submenu-open': createOpen }"
+            role="menuitem"
+            aria-haspopup="menu"
+            :aria-expanded="createOpen"
+            data-ctx-action="create-submenu"
+            @pointerenter="onCreateTriggerPointerEnter"
+            @mouseenter="onCreateTriggerEnter"
+            @mouseleave="scheduleCloseCreate"
+            @focusin="onCreateTriggerFocusIn"
+            @keydown="onCreateTriggerKeydown"
+            @pointerdown="onCreateTriggerPointerDown"
+            @click="onCreateTriggerClick"
+          >
+            <Plus :size="15" aria-hidden="true" />
+            <span>{{ t('addCreate') }}</span>
+            <ChevronRight :size="13" class="explorer-ctx-chevron" aria-hidden="true" />
+          </button>
+        </div>
+
         <button
           v-if="showEmptyCreateFolder"
           type="button"
@@ -68,6 +95,33 @@
         <Eye :size="15" aria-hidden="true" />
         <span>{{ t('accessGateOpen') }}</span>
       </button>
+
+      <div
+        v-if="hasCreateMenu"
+        class="explorer-ctx-create-wrap"
+      >
+        <button
+          ref="createTriggerEl"
+          type="button"
+          class="explorer-ctx-item"
+          :class="{ 'is-submenu-open': createOpen }"
+          role="menuitem"
+          aria-haspopup="menu"
+          :aria-expanded="createOpen"
+          data-ctx-action="create-submenu"
+          @pointerenter="onCreateTriggerPointerEnter"
+          @mouseenter="onCreateTriggerEnter"
+          @mouseleave="scheduleCloseCreate"
+          @focusin="onCreateTriggerFocusIn"
+          @keydown="onCreateTriggerKeydown"
+          @pointerdown="onCreateTriggerPointerDown"
+          @click="onCreateTriggerClick"
+        >
+          <Plus :size="15" aria-hidden="true" />
+          <span>{{ t('addCreate') }}</span>
+          <ChevronRight :size="13" class="explorer-ctx-chevron" aria-hidden="true" />
+        </button>
+      </div>
 
       <button
         v-if="canShare"
@@ -206,6 +260,52 @@
   <Teleport to="body">
     <Transition name="ctx-flyout-pop">
       <div
+        v-if="open && hasCreateMenu && createOpen"
+        ref="createFlyoutEl"
+        class="explorer-ctx-flyout"
+        role="menu"
+        tabindex="-1"
+        :aria-label="t('addCreate')"
+        :data-flyout-side="createFlyoutSide"
+        data-ctx-create-list
+        :style="createFlyoutStyle"
+        @mouseenter="cancelCloseCreate"
+        @mouseleave="scheduleCloseCreate"
+        @pointerdown="markPointerInside"
+        @mousedown="markPointerInside"
+        @focusin="cancelCloseCreate"
+        @focusout="onMenuFocusOut"
+        @keydown="onCreateFlyoutKeydown"
+        @click.stop
+        @contextmenu.prevent
+      >
+        <div class="explorer-ctx-flyout-scroll">
+          <button
+            v-for="opt in createOptions"
+            :key="opt.id"
+            type="button"
+            class="explorer-ctx-item explorer-ctx-sub-item"
+            role="menuitem"
+            :data-ctx-create-option="opt.id"
+            @click="onPickCreateOption(opt.id)"
+          >
+            <FolderPlus v-if="opt.icon === 'folder'" :size="14" aria-hidden="true" />
+            <FileText v-else-if="opt.icon === 'markdown'" :size="14" aria-hidden="true" />
+            <Workflow v-else-if="opt.icon === 'canvas'" :size="14" aria-hidden="true" />
+            <FileCode2 v-else-if="opt.icon === 'html'" :size="14" aria-hidden="true" />
+            <SquareKanban v-else-if="opt.icon === 'board'" :size="14" aria-hidden="true" />
+            <Swords v-else-if="opt.icon === 'sheet'" :size="14" aria-hidden="true" />
+            <Plus v-else :size="14" aria-hidden="true" />
+            <span class="explorer-ctx-sub-name">{{ opt.label }}</span>
+          </button>
+        </div>
+      </div>
+    </Transition>
+  </Teleport>
+
+  <Teleport to="body">
+    <Transition name="ctx-flyout-pop">
+      <div
         v-if="open && !emptyArea && items.length > 0 && canAlbum && albumsOpen"
         ref="flyoutEl"
         class="explorer-ctx-flyout"
@@ -276,6 +376,14 @@ export interface ExplorerContextMenuAlbum {
   color?: string;
   active?: boolean;
 }
+
+export type ExplorerContextCreateIcon = 'folder' | 'markdown' | 'canvas' | 'html' | 'board' | 'sheet';
+
+export interface ExplorerContextMenuCreateOption {
+  id: string;
+  label: string;
+  icon?: ExplorerContextCreateIcon;
+}
 </script>
 
 <script setup lang="ts">
@@ -285,6 +393,8 @@ import {
   ChevronRight,
   Download,
   Eye,
+  FileCode2,
+  FileText,
   FolderHeart,
   FolderInput,
   FolderMinus,
@@ -295,7 +405,10 @@ import {
   Plus,
   RefreshCw,
   Share2,
+  SquareKanban,
+  Swords,
   Trash2,
+  Workflow,
 } from '@lucide/vue';
 import { useI18n } from '../../composables/useI18n';
 
@@ -308,6 +421,8 @@ const props = withDefaults(defineProps<{
   showEmptyCreateFolder?: boolean;
   showEmptyAdd?: boolean;
   emptyCreateFolderLabel?: string;
+  canCreate?: boolean;
+  createOptions?: ReadonlyArray<ExplorerContextMenuCreateOption>;
   canShare?: boolean;
   canAlbum?: boolean;
   canRemoveFromAlbum?: boolean;
@@ -326,6 +441,8 @@ const props = withDefaults(defineProps<{
   showEmptyCreateFolder: true,
   showEmptyAdd: true,
   emptyCreateFolderLabel: '',
+  canCreate: false,
+  createOptions: () => [],
   canShare: true,
   canAlbum: true,
   canRemoveFromAlbum: false,
@@ -342,6 +459,7 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   close: [];
   open: [item: ExplorerContextMenuItem];
+  'create-item': [kind: string, items: ReadonlyArray<ExplorerContextMenuItem>];
   share: [items: ReadonlyArray<ExplorerContextMenuItem>];
   'add-to-album': [albumId: string | undefined, items: ReadonlyArray<ExplorerContextMenuItem>];
   'remove-from-album': [items: ReadonlyArray<ExplorerContextMenuItem>];
@@ -360,16 +478,25 @@ const { t } = useI18n();
 const menuEl = ref<HTMLElement | null>(null);
 const albumTriggerEl = ref<HTMLButtonElement | null>(null);
 const flyoutEl = ref<HTMLElement | null>(null);
+const createTriggerEl = ref<HTMLButtonElement | null>(null);
+const createFlyoutEl = ref<HTMLElement | null>(null);
 const albumsOpen = ref(false);
+const createOpen = ref(false);
 const measured = ref({ w: 232, h: 300 });
 const flyoutSide = ref<'right' | 'left'>('right');
 const flyoutPos = ref<{ left: number; top: number }>({ left: 0, top: 0 });
+const createFlyoutSide = ref<'right' | 'left'>('right');
+const createFlyoutPos = ref<{ left: number; top: number }>({ left: 0, top: 0 });
 const FLYOUT_CLOSE_DELAY_MS = 180;
 let albumsCloseTimer: ReturnType<typeof setTimeout> | null = null;
 let albumsOpenedByHover = false;
 let lastAlbumPointerType = '';
+let createCloseTimer: ReturnType<typeof setTimeout> | null = null;
+let createOpenedByHover = false;
+let lastCreatePointerType = '';
 
 const count = computed(() => props.items.length);
+const hasCreateMenu = computed(() => Boolean(props.canCreate && props.createOptions && props.createOptions.length > 0));
 const withCount = (label: string) => (count.value > 1 ? `${label} (${count.value})` : label);
 
 const selectedHeaderLabel = computed(() => t('selectedCount').replace('{n}', String(count.value)));
@@ -408,6 +535,11 @@ const flyoutStyle = computed(() => ({
   top: `${Math.round(flyoutPos.value.top)}px`,
 }));
 
+const createFlyoutStyle = computed(() => ({
+  left: `${Math.round(createFlyoutPos.value.left)}px`,
+  top: `${Math.round(createFlyoutPos.value.top)}px`,
+}));
+
 function measureMenu(): void {
   const el = menuEl.value;
   if (!el) return;
@@ -417,12 +549,16 @@ function measureMenu(): void {
   }
 }
 
-function measureFlyout(): void {
+function computeSideFlyout(
+  triggerEl: HTMLElement | null,
+  targetEl: HTMLElement | null,
+  itemCount: number,
+): { side: 'right' | 'left'; left: number; top: number } {
   const vw = typeof window !== 'undefined' && window.innerWidth > 0 ? window.innerWidth : 1280;
   const vh = typeof window !== 'undefined' && window.innerHeight > 0 ? window.innerHeight : 800;
   const menuRect = menuEl.value?.getBoundingClientRect();
-  const triggerRect = albumTriggerEl.value?.getBoundingClientRect();
-  const flyoutRect = flyoutEl.value?.getBoundingClientRect();
+  const triggerRect = triggerEl?.getBoundingClientRect();
+  const flyoutRect = targetEl?.getBoundingClientRect();
 
   const fallbackMenuLeft = Number.parseFloat(positionStyle.value.left) || props.x;
   const fallbackMenuTop = Number.parseFloat(positionStyle.value.top) || props.y;
@@ -431,10 +567,10 @@ function measureFlyout(): void {
   const menuRight = hasMenuRect ? menuRect!.right : fallbackMenuLeft + measured.value.w;
   const menuTop = hasMenuRect ? menuRect!.top : fallbackMenuTop;
 
-  const rawFlyoutW = flyoutEl.value?.offsetWidth || (flyoutRect && flyoutRect.width > 0 ? flyoutRect.width : 0);
+  const rawFlyoutW = targetEl?.offsetWidth || (flyoutRect && flyoutRect.width > 0 ? flyoutRect.width : 0);
   const flyoutWidth = rawFlyoutW > 0 ? rawFlyoutW : 216;
-  const estimatedHeight = Math.min(320, ((props.albums?.length ?? 0) + 1) * 32 + 20);
-  const rawFlyoutH = flyoutEl.value?.offsetHeight || (flyoutRect && flyoutRect.height > 0 ? flyoutRect.height : 0);
+  const estimatedHeight = Math.min(320, Math.max(1, itemCount) * 32 + 20);
+  const rawFlyoutH = targetEl?.offsetHeight || (flyoutRect && flyoutRect.height > 0 ? flyoutRect.height : 0);
   const flyoutHeight = rawFlyoutH > 0 ? rawFlyoutH : estimatedHeight;
 
   const gap = 6;
@@ -451,8 +587,19 @@ function measureFlyout(): void {
   const anchorTop = hasTriggerRect ? triggerRect!.top : menuTop;
   const top = Math.max(8, Math.min(anchorTop - 4, Math.max(8, vh - flyoutHeight - 8)));
 
-  flyoutSide.value = side;
-  flyoutPos.value = { left, top };
+  return { side, left, top };
+}
+
+function measureFlyout(): void {
+  const res = computeSideFlyout(albumTriggerEl.value, flyoutEl.value, (props.albums?.length ?? 0) + 1);
+  flyoutSide.value = res.side;
+  flyoutPos.value = { left: res.left, top: res.top };
+}
+
+function measureCreateFlyout(): void {
+  const res = computeSideFlyout(createTriggerEl.value, createFlyoutEl.value, props.createOptions?.length ?? 1);
+  createFlyoutSide.value = res.side;
+  createFlyoutPos.value = { left: res.left, top: res.top };
 }
 
 function cancelCloseAlbums(): void {
@@ -472,6 +619,7 @@ function scheduleCloseAlbums(): void {
 }
 
 function openAlbumsFlyout(byHover: boolean, focusFirst = false): void {
+  closeCreateFlyout(false);
   cancelCloseAlbums();
   const wasOpen = albumsOpen.value;
   albumsOpen.value = true;
@@ -496,13 +644,59 @@ function closeAlbumsFlyout(returnFocus = false): void {
   }
 }
 
+function cancelCloseCreate(): void {
+  if (createCloseTimer !== null) {
+    clearTimeout(createCloseTimer);
+    createCloseTimer = null;
+  }
+}
+
+function scheduleCloseCreate(): void {
+  cancelCloseCreate();
+  createCloseTimer = setTimeout(() => {
+    createCloseTimer = null;
+    createOpen.value = false;
+    createOpenedByHover = false;
+  }, FLYOUT_CLOSE_DELAY_MS);
+}
+
+function openCreateFlyout(byHover: boolean, focusFirst = false): void {
+  closeAlbumsFlyout(false);
+  cancelCloseCreate();
+  const wasOpen = createOpen.value;
+  createOpen.value = true;
+  if (byHover) createOpenedByHover = true;
+  else if (!wasOpen) createOpenedByHover = false;
+  measureCreateFlyout();
+  void nextTick(() => {
+    measureCreateFlyout();
+    if (focusFirst) {
+      const firstBtn = createFlyoutEl.value?.querySelector<HTMLButtonElement>('button[role="menuitem"]');
+      firstBtn?.focus({ preventScroll: true });
+    }
+  });
+}
+
+function closeCreateFlyout(returnFocus = false): void {
+  cancelCloseCreate();
+  createOpen.value = false;
+  createOpenedByHover = false;
+  if (returnFocus) {
+    createTriggerEl.value?.focus({ preventScroll: true });
+  }
+}
+
 let pointerInsideMenu = false;
 let pointerInsideTimer: ReturnType<typeof setTimeout> | null = null;
 let listenersAttached = false;
 
 function isInsideMenuOrFlyout(node: Node | null): boolean {
   if (!node) return false;
-  return Boolean(menuEl.value?.contains(node) || flyoutEl.value?.contains(node));
+  return Boolean(
+    menuEl.value?.contains(node)
+    || flyoutEl.value?.contains(node)
+    || createFlyoutEl.value?.contains(node),
+  );
 }
 
 function clearPointerInsideTimer(): void {
@@ -598,7 +792,9 @@ function detachListeners(): void {
 
 watch(() => props.open, (isOpen) => {
   closeAlbumsFlyout();
+  closeCreateFlyout();
   lastAlbumPointerType = '';
+  lastCreatePointerType = '';
   if (isOpen) {
     attachListeners();
     focusAndMeasureMenu();
@@ -610,6 +806,7 @@ watch(() => props.open, (isOpen) => {
 watch(() => [props.x, props.y] as const, () => {
   if (props.open) {
     closeAlbumsFlyout();
+    closeCreateFlyout();
     focusAndMeasureMenu();
   }
 });
@@ -620,14 +817,82 @@ watch(() => props.albums?.length, () => {
   }
 });
 
+watch(() => props.createOptions?.length, () => {
+  if (props.open && createOpen.value) {
+    void nextTick(measureCreateFlyout);
+  }
+});
+
 onBeforeUnmount(() => {
   cancelCloseAlbums();
+  cancelCloseCreate();
   detachListeners();
 });
 
 function onOpen(): void {
   const first = props.items[0];
   if (first) emit('open', first);
+  emit('close');
+}
+
+function onCreateTriggerPointerEnter(event: PointerEvent): void {
+  if (event.pointerType) {
+    lastCreatePointerType = event.pointerType;
+  }
+}
+
+function onCreateTriggerEnter(): void {
+  if (lastCreatePointerType === 'touch') return;
+  openCreateFlyout(true);
+}
+
+function onCreateTriggerFocusIn(): void {
+  cancelCloseCreate();
+}
+
+function onCreateTriggerPointerDown(event: PointerEvent): void {
+  lastCreatePointerType = event.pointerType || 'mouse';
+}
+
+function onCreateTriggerKeydown(event: KeyboardEvent): void {
+  if (event.key === 'ArrowRight') {
+    event.preventDefault();
+    event.stopPropagation();
+    openCreateFlyout(false, true);
+  } else if (event.key === 'ArrowLeft' && createOpen.value) {
+    event.preventDefault();
+    event.stopPropagation();
+    closeCreateFlyout(true);
+  } else if (event.key === 'Enter' || event.key === ' ') {
+    lastCreatePointerType = 'keyboard';
+  }
+}
+
+function onCreateFlyoutKeydown(event: KeyboardEvent): void {
+  if (event.key === 'ArrowLeft') {
+    event.preventDefault();
+    event.stopPropagation();
+    closeCreateFlyout(true);
+  }
+}
+
+function onCreateTriggerClick(): void {
+  const pointerType = lastCreatePointerType;
+  lastCreatePointerType = '';
+  if (!createOpen.value) {
+    openCreateFlyout(false);
+    return;
+  }
+  if (pointerType === 'touch' || pointerType === 'keyboard' || !createOpenedByHover) {
+    closeCreateFlyout();
+    return;
+  }
+  cancelCloseCreate();
+  void nextTick(measureCreateFlyout);
+}
+
+function onPickCreateOption(kind: string): void {
+  emit('create-item', kind, props.items);
   emit('close');
 }
 

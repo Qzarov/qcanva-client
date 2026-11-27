@@ -785,7 +785,7 @@ describe('Batch 8 Explorer: Tree Exclusive Highlight, Yandex Search Scope, Yande
     await flushPromises();
     expect(spacesApi.addYandexFolder).toHaveBeenCalledWith('alb-1', '/Фото');
 
-    // GallerySidebar @yandex-contextmenu opens context menu with only Open & Add to Album (no Share/Delete/Move/Rename)
+    // GallerySidebar @yandex-contextmenu opens context menu with full Q Space folder parity (B-043)
     vi.mocked(spacesApi.addYandexFolder).mockClear();
     (dash.vm as any).onGalleryYandexContextMenu({
       event: new MouseEvent('contextmenu', { clientX: 100, clientY: 120 }),
@@ -793,11 +793,13 @@ describe('Batch 8 Explorer: Tree Exclusive Highlight, Yandex Search Scope, Yande
       name: 'Отпуск',
     });
     await nextTick();
-    expect((dash.vm as any).explorerCtxMenu.canShare).toBe(false);
-    expect((dash.vm as any).explorerCtxMenu.canMove).toBe(false);
-    expect((dash.vm as any).explorerCtxMenu.canDelete).toBe(false);
-    expect((dash.vm as any).explorerCtxMenu.canRename).toBe(false);
-    expect((dash.vm as any).explorerCtxMenu.canDownload).toBe(false);
+    expect((dash.vm as any).explorerCtxMenu.canCreate).toBe(true);
+    expect((dash.vm as any).explorerCtxMenu.canShare).toBe(true);
+    expect((dash.vm as any).explorerCtxMenu.canFavorite).toBe(true);
+    expect((dash.vm as any).explorerCtxMenu.canMove).toBe(true);
+    expect((dash.vm as any).explorerCtxMenu.canDelete).toBe(true);
+    expect((dash.vm as any).explorerCtxMenu.canRename).toBe(true);
+    expect((dash.vm as any).explorerCtxMenu.canDownload).toBe(true);
     expect((dash.vm as any).contextMenuCanAlbum).toBe(true);
     await (dash.vm as any).onCtxMenuAddToAlbum('alb-1', (dash.vm as any).explorerCtxMenu.items);
     await flushPromises();

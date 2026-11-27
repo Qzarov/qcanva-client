@@ -12,6 +12,7 @@ import { useExplorerLayoutPrefs } from './useExplorerLayoutPrefs';
 import { useYandexDisk } from './useYandexDisk';
 
 const YANDEX_MEDIA_TTL_MS = 60_000;
+const YANDEX_MEDIA_PAGE_LIMIT = 120;
 const YANDEX_ID_PREFIX = 'yandex:';
 
 export type YandexMediaLibraryItem = ViewerMediaItem & {
@@ -21,8 +22,12 @@ export type YandexMediaLibraryItem = ViewerMediaItem & {
 
 const rawItems = shallowRef<YandexItem[]>([]);
 const loading = ref(false);
+const loadingMore = ref(false);
+const hasMore = ref(false);
+let nextCursor: string | null = null;
 let fetchedAt = 0;
 let inFlight: Promise<YandexMediaLibraryItem[]> | null = null;
+let loadMoreInFlight: Promise<void> | null = null;
 let generation = 0;
 
 function mapYandexItemToViewerMedia(
@@ -81,6 +86,9 @@ async function ensureLoaded(force = false): Promise<YandexMediaLibraryItem[]> {
   }
   if (!yd.status.value?.connected) {
     rawItems.value = [];
+    nextCursor = null;
+    hasMore.value = false;
+    loadingMore.value = false;
     fetchedAt = 0;
     return [];
   }
@@ -93,18 +101,32 @@ async function ensureLoaded(force = false): Promise<YandexMediaLibraryItem[]> {
 
   const myGen = ++generation;
   loading.value = true;
+  loadingMore.value = false;
+  loadMoreInFlight = null;
   let promise: Promise<YandexMediaLibraryItem[]> | null = null;
   promise = (async (): Promise<YandexMediaLibraryItem[]> => {
     try {
-      const list = await yandexDisk.listMedia('/');
+      const page = await yandexDisk.listMediaPage('/', { limit: YANDEX_MEDIA_PAGE_LIMIT });
       if (myGen !== generation) return items.value;
-      rawItems.value = list;
+      const seen = new Set<string>();
+      const pageItems: YandexItem[] = [];
+      for (const item of page.items ?? []) {
+        if (item?.path && !seen.has(item.path)) {
+          seen.add(item.path);
+          pageItems.push(item);
+        }
+      }
+      rawItems.value = pageItems;
+      nextCursor = page.nextCursor ?? null;
+      hasMore.value = Boolean(page.hasMore && nextCursor);
       fetchedAt = Date.now();
       return items.value;
     } catch (err) {
       yd.noteError(err);
       if (myGen === generation && !yd.status.value?.connected) {
         rawItems.value = [];
+        nextCursor = null;
+        hasMore.value = false;
         fetchedAt = 0;
       }
       return items.value;
@@ -117,10 +139,64 @@ async function ensureLoaded(force = false): Promise<YandexMediaLibraryItem[]> {
   return promise;
 }
 
+async function loadMore(): Promise<void> {
+  const yd = useYandexDisk();
+  if (!yd.status.value?.connected) return;
+  if (loading.value || !hasMore.value || !nextCursor) return;
+  if (loadMoreInFlight) return loadMoreInFlight;
+
+  const myGen = generation;
+  const cursor = nextCursor;
+  loadingMore.value = true;
+  let promise: Promise<void> | null = null;
+  promise = (async (): Promise<void> => {
+    try {
+      const page = await yandexDisk.listMediaPage('/', {
+        limit: YANDEX_MEDIA_PAGE_LIMIT,
+        cursor,
+      });
+      if (myGen !== generation) return;
+      const seen = new Set(rawItems.value.map((i) => i.path));
+      const appended: YandexItem[] = [];
+      for (const item of page.items ?? []) {
+        if (item?.path && !seen.has(item.path)) {
+          seen.add(item.path);
+          appended.push(item);
+        }
+      }
+      if (appended.length > 0) {
+        rawItems.value = [...rawItems.value, ...appended];
+      }
+      const next = page.nextCursor ?? null;
+      nextCursor = next && next !== cursor ? next : null;
+      hasMore.value = Boolean(page.hasMore && nextCursor);
+    } catch (err) {
+      yd.noteError(err);
+      if (myGen === generation) {
+        if (!yd.status.value?.connected) {
+          rawItems.value = [];
+          fetchedAt = 0;
+        }
+        nextCursor = null;
+        hasMore.value = false;
+      }
+    } finally {
+      if (loadMoreInFlight === promise) loadMoreInFlight = null;
+      if (myGen === generation) loadingMore.value = false;
+    }
+  })();
+  loadMoreInFlight = promise;
+  return promise;
+}
+
 export function invalidateYandexMediaLibrary(): void {
   generation++;
   fetchedAt = 0;
   inFlight = null;
+  loadMoreInFlight = null;
+  nextCursor = null;
+  hasMore.value = false;
+  loadingMore.value = false;
   if (!useYandexDisk().status.value?.connected) {
     rawItems.value = [];
   }
@@ -130,8 +206,12 @@ export function resetYandexMediaLibraryForTests(): void {
   generation++;
   rawItems.value = [];
   loading.value = false;
+  loadingMore.value = false;
+  hasMore.value = false;
+  nextCursor = null;
   fetchedAt = 0;
   inFlight = null;
+  loadMoreInFlight = null;
 }
 
 onAuthCleared(resetYandexMediaLibraryForTests);
@@ -140,8 +220,11 @@ export function useYandexMediaLibrary() {
   return {
     connected,
     loading: readonly(loading),
+    loadingMore: readonly(loadingMore),
+    hasMore: readonly(hasMore),
     items,
     ensureLoaded,
+    loadMore,
     invalidate: invalidateYandexMediaLibrary,
   };
 }

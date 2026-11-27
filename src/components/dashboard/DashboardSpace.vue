@@ -1518,16 +1518,36 @@ function qspaceFolderIdOf(folder: SpaceFolderEntry | null): string | null {
   return folder.folderId || folder.id || null;
 }
 
+function yandexFolderPathOf(folder: SpaceFolderEntry | null): string | null {
+  if (!folder) return null;
+  if (folder.kind === 'source-yandex') {
+    return folder.source?.yandexPath || null;
+  }
+  if (folder.kind === 'yandex-subfolder') {
+    const base = folder.source?.yandexPath || '';
+    const sub = folder.yandexSubpath || '';
+    if (base && sub) return `${base.replace(/\/+$/, '')}/${sub.replace(/^\/+/, '')}`;
+    return base || sub || null;
+  }
+  return null;
+}
+
 const ctxCanAddToOtherAlbum = computed(() => {
   if (ctxMenu.emptyArea) return false;
-  if (ctxMenu.folder) return Boolean(qspaceFolderIdOf(ctxMenu.folder));
-  return ctxMenu.items.some((it) => it.origin === 'qspace' && it.kind === 'file' && Boolean(it.id));
+  if (ctxMenu.folder) return Boolean(qspaceFolderIdOf(ctxMenu.folder) || yandexFolderPathOf(ctxMenu.folder));
+  return ctxMenu.items.some((it) =>
+    (it.origin === 'qspace' && Boolean(it.id))
+    || (it.origin === 'yandex' && Boolean(it.path)),
+  );
 });
 
 const ctxCanRemoveFromAlbum = computed(() => {
   if (!canAdd.value) return false;
   if (ctxMenu.folder) return Boolean(ctxMenu.folder.source);
-  return ctxMenu.items.some((it) => !it.sourceId && it.origin === 'qspace' && it.kind === 'file' && Boolean(it.id));
+  return ctxMenu.items.some((it) => (
+    (!it.sourceId && it.origin === 'qspace' && Boolean(it.id))
+    || (it.origin === 'yandex' && (!it.sourceId || !rootSourceIds.value.has(it.sourceId)) && Boolean(it.path))
+  ));
 });
 
 const propertiesFile = ref<{ id: string; name?: string } | null>(null);
@@ -1646,10 +1666,17 @@ function onCtxOpen(entry: ExplorerContextMenuItem): void {
 
 async function onCtxAddToAlbum(albumId: string | undefined): Promise<void> {
   const folderId = qspaceFolderIdOf(ctxMenu.folder);
+  const yandexFolderPath = yandexFolderPathOf(ctxMenu.folder);
   const fileIds = ctxMenu.items
     .filter((it) => it.origin === 'qspace' && it.kind === 'file' && Boolean(it.id))
     .map((it) => it.id!);
-  if (!folderId && !fileIds.length) return;
+  const yandexPaths = ctxMenu.items
+    .filter((it) => it.origin === 'yandex' && Boolean(it.path))
+    .map((it) => it.path!);
+  const resources = ctxMenu.items
+    .filter((it) => it.origin === 'qspace' && it.kind !== 'file' && Boolean(it.id))
+    .map((it) => ({ kind: it.kind, id: it.id! }));
+  if (!folderId && !yandexFolderPath && !fileIds.length && !yandexPaths.length && !resources.length) return;
   let targetAlbumId = albumId;
   if (!targetAlbumId) {
     const name = (await promptDialog({
@@ -1668,11 +1695,22 @@ async function onCtxAddToAlbum(albumId: string | undefined): Promise<void> {
     }
   }
   try {
-    if (fileIds.length) {
-      await spacesApi.addItems(targetAlbumId, fileIds);
+    if (fileIds.length || yandexPaths.length || resources.length) {
+      if (!yandexPaths.length && !resources.length) {
+        await spacesApi.addItems(targetAlbumId, fileIds);
+      } else {
+        await spacesApi.addItems(targetAlbumId, {
+          ...(fileIds.length ? { fileIds } : {}),
+          ...(yandexPaths.length ? { yandexPaths } : {}),
+          ...(resources.length ? { resources } : {}),
+        });
+      }
     }
     if (folderId) {
       await spacesApi.addQspaceFolder(targetAlbumId, folderId);
+    }
+    if (yandexFolderPath) {
+      await spacesApi.addYandexFolder(targetAlbumId, yandexFolderPath);
     }
     emit('feedback', 'success', t('explorerAddToAlbum'));
     void loadSpaces(true);
@@ -1704,9 +1742,23 @@ async function onCtxRemoveFromAlbum(): Promise<void> {
   const fileIds = ctxMenu.items
     .filter((it) => !it.sourceId && it.origin === 'qspace' && it.kind === 'file' && Boolean(it.id))
     .map((it) => it.id!);
-  if (!fileIds.length) return;
+  const yandexPaths = ctxMenu.items
+    .filter((it) => it.origin === 'yandex' && (!it.sourceId || !rootSourceIds.value.has(it.sourceId)) && Boolean(it.path))
+    .map((it) => it.path!);
+  const resources = ctxMenu.items
+    .filter((it) => !it.sourceId && it.origin === 'qspace' && it.kind !== 'file' && Boolean(it.id))
+    .map((it) => ({ kind: it.kind, id: it.id! }));
+  if (!fileIds.length && !yandexPaths.length && !resources.length) return;
   try {
-    await spacesApi.removeItems(props.spaceId, fileIds);
+    if (!yandexPaths.length && !resources.length) {
+      await spacesApi.removeItems(props.spaceId, fileIds);
+    } else {
+      await spacesApi.removeItems(props.spaceId, {
+        ...(fileIds.length ? { fileIds } : {}),
+        ...(yandexPaths.length ? { yandexPaths } : {}),
+        ...(resources.length ? { resources } : {}),
+      });
+    }
     onTableSelection([]);
     await reload();
     void loadSpaces(true);

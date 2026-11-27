@@ -859,6 +859,7 @@
           @update:counts="gallerySidebarCounts = $event"
           @show-folder-in-gallery="onGalleryShowFolder"
           @open-folder="(folderId) => selectFolder(folderId)"
+          @move-yandex-items="onDrivePhotosMoveYandexItems"
         />
       </section>
 
@@ -1156,6 +1157,8 @@
       :y="explorerCtxMenu.y"
       :items="explorerCtxMenu.items"
       :empty-area="explorerCtxMenu.emptyArea"
+      :can-create="explorerCtxMenu.canCreate"
+      :create-options="explorerCtxMenu.createOptions"
       :can-share="explorerCtxMenu.canShare"
       :can-favorite="explorerCtxMenu.canFavorite"
       :can-move="explorerCtxMenu.canMove"
@@ -1169,6 +1172,7 @@
       :albums="contextMenuAlbums"
       @close="explorerCtxMenu.open = false"
       @open="onCtxMenuOpen"
+      @create-item="onCtxMenuCreateItem"
       @share="onCtxMenuShare"
       @add-to-album="onCtxMenuAddToAlbum"
       @toggle-favorite="onCtxMenuToggleFavorite"
@@ -1230,6 +1234,74 @@
       @close="yandexMove = null"
     />
 
+    <div
+      v-if="yandexTransferModal"
+      class="dashboard-modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      :aria-label="t('yandexTransferToQspaceTitle')"
+      data-yandex-transfer-modal
+      @click.self="closeYandexTransferModal"
+    >
+      <div class="dashboard-modal yandex-picker">
+        <div class="dashboard-modal-head">
+          <h3>
+            {{ yandexTransferModal.paths.length > 1
+              ? `${t('yandexTransferToQspaceTitle')} (${yandexTransferModal.paths.length})`
+              : t('yandexTransferToQspaceTitle') }}
+          </h3>
+          <button type="button" class="dashboard-modal-close" :aria-label="t('cancel')" @click="closeYandexTransferModal">x</button>
+        </div>
+        <div class="dashboard-modal-note">{{ t('chooseFolder') }}</div>
+        <div class="folder-parent-list" data-yandex-transfer-list>
+          <button
+            type="button"
+            class="folder-parent-option folder-destination"
+            :class="{ active: yandexTransferModal.selectedFolderId === '' }"
+            data-yandex-transfer-folder="root"
+            @click="yandexTransferModal.selectedFolderId = ''"
+          >
+            <span class="folder-destination-name">{{ t('explorerHomeFolder') }}</span>
+            <span class="folder-destination-path">{{ t('inRoot') }}</span>
+          </button>
+          <button
+            v-for="folder in folderOptions"
+            :key="folder.id"
+            type="button"
+            class="folder-parent-option folder-destination"
+            :class="{ active: yandexTransferModal.selectedFolderId === folder.id }"
+            :style="{ paddingLeft: 12 + folder.depth * 16 + 'px' }"
+            :data-yandex-transfer-folder="folder.id"
+            @click="yandexTransferModal.selectedFolderId = folder.id"
+          >
+            <span class="folder-destination-name">
+              <span v-if="folder.depth" class="folder-destination-branch" aria-hidden="true">└</span>
+              {{ folder.name }}
+            </span>
+            <span class="folder-destination-path">{{ folder.path || t('inRoot') }}</span>
+          </button>
+        </div>
+        <div class="dashboard-modal-actions dashboard-modal-actions-row">
+          <button
+            v-if="yandexTransferModal.allowYandexMove"
+            type="button"
+            class="btn-ghost"
+            :disabled="yandexTransferModal.busy"
+            data-yandex-transfer-to-yandex
+            @click="switchYandexTransferToYandex"
+          >{{ t('yandexTransferMoveInYandex') }}</button>
+          <button type="button" class="btn-ghost" :disabled="yandexTransferModal.busy" @click="closeYandexTransferModal">{{ t('cancel') }}</button>
+          <button
+            type="button"
+            class="btn-primary"
+            :disabled="yandexTransferModal.busy"
+            data-yandex-transfer-confirm
+            @click="confirmYandexTransferToQspace"
+          >{{ t('yandexTransferConfirm') }}</button>
+        </div>
+      </div>
+    </div>
+
     <InteractiveTemplatePicker
       v-if="templatePickerOpen"
       :busy="isBusy"
@@ -1263,7 +1335,10 @@ import { useDocumentTitle } from '../composables/useDocumentTitle';
 import DashboardSidebar, { type ExplorerSidebarMode, type TreeContextMenuPayload } from '../components/dashboard/DashboardSidebar.vue';
 import ExplorerHeadroomBar, { type HeadroomViewToggleMode } from '../components/dashboard/ExplorerHeadroomBar.vue';
 import ExplorerTableView, { type ExplorerSortCol, type ExplorerSortDir, type ExplorerTableRow } from '../components/dashboard/ExplorerTableView.vue';
-import ExplorerContextMenu, { type ExplorerContextMenuItem } from '../components/dashboard/ExplorerContextMenu.vue';
+import ExplorerContextMenu, {
+  type ExplorerContextMenuCreateOption,
+  type ExplorerContextMenuItem,
+} from '../components/dashboard/ExplorerContextMenu.vue';
 import ExplorerDragBadge from '../components/dashboard/ExplorerDragBadge.vue';
 import ExplorerMobileTabBar, { type ExplorerMobileTabId } from '../components/dashboard/ExplorerMobileTabBar.vue';
 import type {
@@ -3988,6 +4063,12 @@ export default defineComponent({
     const yandexPicker = ref<InstanceType<typeof YandexFolderPicker> | null>(null);
     const yandexPath = computed(() => (activeSection.value.kind === 'yandex' ? activeSection.value.path : null));
     const yandexMove = ref<{ sources: string[]; start: string } | null>(null);
+    const yandexTransferModal = ref<{
+      paths: string[];
+      selectedFolderId: string;
+      allowYandexMove: boolean;
+      busy: boolean;
+    } | null>(null);
     const yandexRootCount = ref<number | null>(null);
     let yandexRootCountRun = 0;
     const loadYandexRootCount = async () => {
@@ -4017,12 +4098,71 @@ export default defineComponent({
     const onYandexDiskChanged = () => {
       yandexRefreshKey.value += 1;
       invalidateYandexMediaLibrary();
+      void gallerySidebarRef.value?.refreshYandex?.();
+      refreshGalleryView({ clearSelection: false, invalidateFolders: false });
     };
-    const openYandexMove = (sources: string[]) => {
+    const openYandexTransferModal = (
+      sources: string[],
+      opts: { allowYandexMove?: boolean } = {},
+    ) => {
       closeCardMenu();
+      const cleaned = [...new Set(sources.map((s) => normalizeYandexAlbumPath(s)).filter(Boolean))];
+      if (!cleaned.length) return;
+      yandexTransferModal.value = {
+        paths: cleaned,
+        selectedFolderId: '',
+        allowYandexMove: Boolean(opts.allowYandexMove ?? true) && !cleaned.includes('/'),
+        busy: false,
+      };
+    };
+    const closeYandexTransferModal = () => {
+      if (yandexTransferModal.value?.busy) return;
+      yandexTransferModal.value = null;
+    };
+    const switchYandexTransferToYandex = () => {
+      const modal = yandexTransferModal.value;
+      if (!modal || modal.busy) return;
+      const sources = [...modal.paths];
       const first = sources[0];
+      yandexTransferModal.value = null;
       if (!first) return;
       yandexMove.value = { sources, start: yandexParentPath(first) };
+    };
+    const confirmYandexTransferToQspace = async () => {
+      const modal = yandexTransferModal.value;
+      if (!modal || modal.busy) return;
+      const targetFolderId = modal.selectedFolderId || null;
+      const targetName = targetFolderId
+        ? (allFolderSummaries.value.find((f) => f.id === targetFolderId)?.name
+          || allResourceFolders.value.find((f) => f.id === targetFolderId)?.name
+          || t('explorerHomeFolder'))
+        : t('explorerHomeFolder');
+      modal.busy = true;
+      try {
+        const res = await yandexDisk.importToQspace(modal.paths, targetFolderId);
+        const importedCount = (res?.importedFiles ?? 0) + (res?.importedFolders ?? 0) || modal.paths.length;
+        yandexTransferModal.value = null;
+        if (targetFolderId) expandTree(targetFolderId);
+        setFeedback('success', t('yandexImportedToFolder').replace('{folder}', targetName).replace('{n}', String(importedCount)));
+        clearSelection();
+        folderFilesRefreshKey.value += 1;
+        sidebarDriveFiles.forget();
+        refreshFolderFileCounts();
+        void spaceView.value?.reload?.();
+        void loadSpaces(true);
+        gallerySidebarRef.value?.invalidateFolderFilesCache?.();
+        refreshGalleryView({ clearSelection: true, invalidateFolders: true });
+        await load({ showLoading: false });
+      } catch (err) {
+        if (yandexTransferModal.value) yandexTransferModal.value.busy = false;
+        setFeedback('error', err instanceof Error && err.message ? err.message : t('yandexImportFailed'));
+      }
+    };
+    const openYandexMove = (sources: string[]) => {
+      openYandexTransferModal(sources, { allowYandexMove: true });
+    };
+    const onDrivePhotosMoveYandexItems = (paths: string[]) => {
+      openYandexTransferModal(paths, { allowYandexMove: true });
     };
     const confirmYandexMove = async (target: string) => {
       const move = yandexMove.value;
@@ -4047,6 +4187,8 @@ export default defineComponent({
       clearSelection();
       yandexRefreshKey.value += 1;
       invalidateYandexMediaLibrary();
+      void gallerySidebarRef.value?.refreshYandex?.();
+      refreshGalleryView({ clearSelection: true, invalidateFolders: false });
       // The open folder itself moved: follow it.
       const open = yandexPath.value;
       const followed = open && move.sources.find((source) => open === source || open.startsWith(`${source}/`));
@@ -5111,6 +5253,7 @@ export default defineComponent({
       && !templatePickerOpen.value
       && !mediaViewer.value
       && !yandexMove.value
+      && !yandexTransferModal.value
       && (
         isHomeFeed.value
         || activeSection.value.kind === 'home'
@@ -6710,6 +6853,44 @@ export default defineComponent({
       groupDnd.endGroupDrag();
     };
 
+    const normalizeYandexAlbumPath = (raw: string): string => {
+      const stripped = raw.replace(/^disk:/, '').trim();
+      if (!stripped || stripped === '/') return '/';
+      const withSlash = stripped.startsWith('/') ? stripped : `/${stripped}`;
+      return withSlash.replace(/\/+$/, '') || '/';
+    };
+
+    const extractYandexDragEntry = (entry: GroupDragEntry): { kind: 'folder' | 'file'; path: string } | null => {
+      if (
+        entry.kind === 'yandex-folder'
+        || entry.kind === 'yandex-dir'
+        || entry.kind === 'yandex-root'
+        || entry.key.startsWith('yandex-folder:')
+        || entry.key === 'clouds:yandex'
+      ) {
+        const rawPath = entry.path
+          || (entry.key === 'clouds:yandex' ? '/' : entry.id)
+          || entry.key.replace(/^yandex-folder:/, '');
+        if (!rawPath) return null;
+        return { kind: 'folder', path: normalizeYandexAlbumPath(rawPath) };
+      }
+      if (
+        entry.kind === 'yandex-file'
+        || entry.key.startsWith('yandex-file:')
+        || entry.key.startsWith('yandex:')
+        || entry.key.startsWith('photo:yandex:')
+        || entry.id.startsWith('yandex:')
+      ) {
+        const rawPath = entry.path
+          || (entry.id.startsWith('yandex:') ? entry.id.slice('yandex:'.length) : '')
+          || entry.key.replace(/^(photo:yandex:|yandex-file:|yandex:)/, '')
+          || entry.id;
+        if (!rawPath) return null;
+        return { kind: 'file', path: normalizeYandexAlbumPath(rawPath) };
+      }
+      return null;
+    };
+
     const onDropGroupToFolder = async (folderId: string | null, payload: GroupDragPayload) => {
       if (!payload?.items?.length) return;
       const target = folderId !== null ? allResourceFolders.value.find((f) => f.id === folderId) : null;
@@ -6720,7 +6901,13 @@ export default defineComponent({
       let failed = 0;
       let skippedTemplateToRoot = 0;
       let lastError: unknown = null;
+      const yandexImportPaths = new Set<string>();
       for (const entry of payload.items) {
+        const yandexEntry = extractYandexDragEntry(entry);
+        if (yandexEntry) {
+          yandexImportPaths.add(yandexEntry.path);
+          continue;
+        }
         try {
           if (
             entry.kind === 'drive-file'
@@ -6763,13 +6950,26 @@ export default defineComponent({
           lastError = err;
         }
       }
+      if (yandexImportPaths.size > 0) {
+        try {
+          const imported = await yandexDisk.importToQspace([...yandexImportPaths], folderId);
+          const count = (imported?.importedFiles ?? 0) + (imported?.importedFolders ?? 0);
+          moved += count > 0 ? count : yandexImportPaths.size;
+        } catch (err) {
+          failed += 1;
+          lastError = err;
+        }
+      }
       if (moved > 0) {
         if (folderId) expandTree(folderId);
         if (failed > 0) {
           const reason = lastError instanceof Error && lastError.message ? lastError.message : t('spaceActionFailed');
           setFeedback('error', reason);
         } else {
-          setFeedback('success', t('bulkMovedTo').replace('{folder}', targetName).replace('{n}', String(moved)));
+          const tpl = yandexImportPaths.size > 0 && yandexImportPaths.size === payload.items.length
+            ? t('yandexImportedToFolder')
+            : t('bulkMovedTo');
+          setFeedback('success', tpl.replace('{folder}', targetName).replace('{n}', String(moved)));
         }
         clearSelection();
         folderFilesRefreshKey.value += 1;
@@ -6777,6 +6977,7 @@ export default defineComponent({
         refreshFolderFileCounts();
         void spaceView.value?.reload?.();
         void loadSpaces(true);
+        gallerySidebarRef.value?.invalidateFolderFilesCache?.();
         refreshGalleryView({ clearSelection: true, invalidateFolders: true });
         await load({ showLoading: false });
       } else if (failed > 0) {
@@ -6792,29 +6993,30 @@ export default defineComponent({
       }
     };
 
-    const normalizeYandexAlbumPath = (raw: string): string => {
-      const stripped = raw.replace(/^disk:/, '').trim();
-      if (!stripped || stripped === '/') return '/';
-      const withSlash = stripped.startsWith('/') ? stripped : `/${stripped}`;
-      return withSlash.replace(/\/+$/, '') || '/';
-    };
-
     const onDropGroupToAlbum = async (targetSpaceId: string, payload: GroupDragPayload) => {
       if (!targetSpaceId || !payload.items.length) return;
       let added = 0;
       const folderIds = new Set<string>();
-      const yandexPaths = new Set<string>();
-      const fileIds: string[] = [];
+      const yandexFolderPaths = new Set<string>();
+      const yandexFilePaths = new Set<string>();
+      const fileIds = new Set<string>();
+      const resourcesMap = new Map<string, { kind: string; id: string }>();
+      const resourceKinds = new Set([
+        'canvas',
+        'text-document',
+        'html-document',
+        'interactive-template',
+        'board',
+        'sheet',
+      ]);
       for (const entry of payload.items) {
-        if (
-          entry.kind === 'yandex-folder'
-          || entry.kind === 'yandex-dir'
-          || entry.kind === 'yandex-root'
-          || entry.key.startsWith('yandex-folder:')
-        ) {
-          const rawPath = entry.path || entry.id || entry.key.replace(/^yandex-folder:/, '');
-          if (rawPath) yandexPaths.add(normalizeYandexAlbumPath(rawPath));
-        } else if (entry.kind === 'folder' || entry.key.startsWith('folder:')) {
+        const yandexEntry = extractYandexDragEntry(entry);
+        if (yandexEntry) {
+          if (yandexEntry.kind === 'folder') yandexFolderPaths.add(yandexEntry.path);
+          else yandexFilePaths.add(yandexEntry.path);
+          continue;
+        }
+        if (entry.kind === 'folder' || entry.key.startsWith('folder:')) {
           const fId = entry.id || entry.key.replace(/^folder:/, '');
           if (fId) folderIds.add(fId);
         } else if (
@@ -6826,17 +7028,34 @@ export default defineComponent({
           || entry.key.startsWith('photo:')
         ) {
           const fileId = entry.id || entry.key.replace(/^(drive-file:|photo:)/, '');
-          if (fileId && !entry.key.startsWith('y:')) fileIds.push(fileId);
+          if (fileId && !entry.key.startsWith('y:')) fileIds.add(fileId);
+        } else if (resourceKinds.has(entry.kind)) {
+          const refId = entry.id || entry.key.replace(/^[^:]+:/, '');
+          if (refId) {
+            const canonicalKind = entry.kind === 'board' || entry.kind === 'sheet'
+              ? 'interactive-template'
+              : entry.kind;
+            resourcesMap.set(`${canonicalKind}:${refId}`, { kind: canonicalKind, id: refId });
+          }
         }
       }
-      if (!fileIds.length && !folderIds.size && !yandexPaths.size) {
+      const resources = [...resourcesMap.values()];
+      if (!fileIds.size && !yandexFilePaths.size && !resources.length && !folderIds.size && !yandexFolderPaths.size) {
         setFeedback('error', t('albumOnlyFilesAndFolders'));
         return;
       }
-      if (fileIds.length) {
+      if (fileIds.size || yandexFilePaths.size || resources.length) {
         try {
-          await spacesApi.addItems(targetSpaceId, fileIds);
-          added += fileIds.length;
+          if (!yandexFilePaths.size && !resources.length) {
+            await spacesApi.addItems(targetSpaceId, [...fileIds]);
+          } else {
+            await spacesApi.addItems(targetSpaceId, {
+              ...(fileIds.size ? { fileIds: [...fileIds] } : {}),
+              ...(yandexFilePaths.size ? { yandexPaths: [...yandexFilePaths] } : {}),
+              ...(resources.length ? { resources } : {}),
+            });
+          }
+          added += fileIds.size + yandexFilePaths.size + resources.length;
         } catch {
           // Ignore individual failures
         }
@@ -6849,7 +7068,7 @@ export default defineComponent({
           // Folder may already be attached or non-owned
         }
       }
-      for (const yPath of yandexPaths) {
+      for (const yPath of yandexFolderPaths) {
         try {
           await spacesApi.addYandexFolder(targetSpaceId, yPath);
           added += 1;
@@ -6872,12 +7091,27 @@ export default defineComponent({
 
     // Multi-select Right-Click Context Menu
     const propertiesFile = ref<{ id: string; name?: string } | null>(null);
+    const qspaceCreateOptions = computed<ExplorerContextMenuCreateOption[]>(() => [
+      { id: 'folder', label: t('createOptionFolder'), icon: 'folder' },
+      { id: 'markdown', label: t('createOptionMarkdown'), icon: 'markdown' },
+      { id: 'canvas', label: t('canvas'), icon: 'canvas' },
+      { id: 'html', label: t('createOptionHtml'), icon: 'html' },
+      { id: 'board', label: t('driveBoard'), icon: 'board' },
+      { id: 'sheet', label: t('driveSheet'), icon: 'sheet' },
+    ]);
+    const yandexCreateOptions = computed<ExplorerContextMenuCreateOption[]>(() => [
+      { id: 'folder', label: t('createOptionFolder'), icon: 'folder' },
+      { id: 'markdown', label: t('createOptionMarkdown'), icon: 'markdown' },
+    ]);
+
     const explorerCtxMenu = ref<{
       open: boolean;
       x: number;
       y: number;
       items: ExplorerContextMenuItem[];
       emptyArea: boolean;
+      canCreate: boolean;
+      createOptions: ExplorerContextMenuCreateOption[];
       canShare: boolean;
       canFavorite: boolean;
       canMove: boolean;
@@ -6893,6 +7127,8 @@ export default defineComponent({
       y: 0,
       items: [],
       emptyArea: false,
+      canCreate: false,
+      createOptions: [],
       canShare: true,
       canFavorite: true,
       canMove: false,
@@ -6912,6 +7148,30 @@ export default defineComponent({
       || item.key === 'clouds:yandex'
     );
 
+    const isYandexFileContextItem = (item: ExplorerContextMenuItem): boolean => (
+      item.kind === 'yandex-file'
+      || item.key.startsWith('yandex-file:')
+      || (item.key.startsWith('yandex:') && !isYandexFolderContextItem(item))
+    );
+
+    const isAnyYandexContextItem = (item: ExplorerContextMenuItem): boolean => (
+      isYandexFolderContextItem(item) || isYandexFileContextItem(item)
+    );
+
+    const yandexPathOfContextItem = (item: ExplorerContextMenuItem): string => {
+      if (item.key === 'clouds:yandex') return '/';
+      const raw = item.id || item.key.replace(/^(yandex-folder:|yandex-file:|yandex:)/, '');
+      return normalizeYandexAlbumPath(raw || '/');
+    };
+
+    const favoriteKeyOfContextItem = (item: ExplorerContextMenuItem): string => (
+      isAnyYandexContextItem(item) ? `yandex:${yandexPathOfContextItem(item)}` : item.key
+    );
+
+    const isHomeRootContextItem = (item: ExplorerContextMenuItem): boolean => (
+      item.key === 'qspace:home' || item.kind === 'home'
+    );
+
     const isAlbumEligibleContextItem = (item: ExplorerContextMenuItem): boolean => {
       if (!item || item.key.startsWith('y:')) return false;
       if (
@@ -6919,17 +7179,39 @@ export default defineComponent({
         || item.kind === 'album'
         || item.key.startsWith('space:')
         || item.key.startsWith('album:')
+        || item.kind === 'root'
+        || item.kind === 'section'
+        || item.kind === 'telegram'
+        || item.kind === 'more'
+        || isHomeRootContextItem(item)
       ) {
         return false;
       }
-      if (isYandexFolderContextItem(item)) {
-        return Boolean(item.id || item.key.replace(/^yandex-folder:/, ''));
+      if (isAnyYandexContextItem(item)) {
+        return Boolean(yandexPathOfContextItem(item));
       }
       if (item.kind === 'folder' || item.key.startsWith('folder:')) {
         return Boolean(item.id || item.key.replace(/^folder:/, ''));
       }
-      if (item.kind === 'drive-file' || item.kind === 'file' || item.key.startsWith('drive-file:')) {
-        return Boolean(item.id || item.key.replace(/^drive-file:/, ''));
+      if (
+        item.kind === 'drive-file'
+        || item.kind === 'file'
+        || item.kind === 'photo'
+        || item.kind === 'video'
+        || item.key.startsWith('drive-file:')
+        || item.key.startsWith('photo:')
+      ) {
+        return Boolean(item.id || item.key.replace(/^(drive-file:|photo:)/, ''));
+      }
+      if (
+        item.kind === 'canvas'
+        || item.kind === 'text-document'
+        || item.kind === 'html-document'
+        || item.kind === 'interactive-template'
+        || item.kind === 'board'
+        || item.kind === 'sheet'
+      ) {
+        return Boolean(item.id || item.key.replace(/^[^:]+:/, ''));
       }
       return false;
     };
@@ -6967,6 +7249,17 @@ export default defineComponent({
       return null;
     };
 
+    const isWritableQspaceFolderContextItem = (item: ExplorerContextMenuItem): boolean => {
+      if (isHomeRootContextItem(item)) return true;
+      if (item.kind !== 'folder' && !item.key.startsWith('folder:')) return false;
+      const folderId = item.id || item.key.replace(/^folder:/, '');
+      if (!folderId) return false;
+      const folder = allFolderSummaries.value.find((f) => f.id === folderId)
+        || allResourceFolders.value.find((f) => f.id === folderId);
+      if (!folder) return true;
+      return folder.role !== 'read';
+    };
+
     const openContextMenuForItems = (x: number, y: number, items: ExplorerContextMenuItem[]) => {
       if (!items.length) return;
       const first = items[0]!;
@@ -6981,15 +7274,62 @@ export default defineComponent({
         'file',
         'interactive-template',
       ]);
+      const singleIsHomeRoot = items.length === 1 && isHomeRootContextItem(first);
+      if (singleIsHomeRoot) {
+        explorerCtxMenu.value = {
+          open: true,
+          x,
+          y,
+          items,
+          emptyArea: false,
+          canCreate: true,
+          createOptions: qspaceCreateOptions.value,
+          canShare: false,
+          canFavorite: false,
+          canMove: false,
+          canDelete: false,
+          canRename: false,
+          canDownload: false,
+          canProperties: false,
+          deleteLabel: '',
+          isFavorite: false,
+        };
+        return;
+      }
+
       const singleIsSpace = items.length === 1 && isSpaceContextItem(first);
       const singleSpace = singleIsSpace ? findSpaceForContextItem(first) : null;
       const allSpacesOnly = items.every(isSpaceContextItem);
-      const allYandexFoldersOnly = items.every(isYandexFolderContextItem);
-      const canRename = allYandexFoldersOnly
-        ? false
-        : singleIsSpace
-          ? singleSpace?.role === 'owner'
-          : items.length === 1 && renamableKinds.has(first.kind || '');
+      const allYandexOnly = items.every(isAnyYandexContextItem);
+
+      if (allYandexOnly) {
+        const hasYandexRoot = items.some((i) => yandexPathOfContextItem(i) === '/');
+        const singleIsYandexFolder = items.length === 1 && isYandexFolderContextItem(first);
+        explorerCtxMenu.value = {
+          open: true,
+          x,
+          y,
+          items,
+          emptyArea: false,
+          canCreate: singleIsYandexFolder,
+          createOptions: singleIsYandexFolder ? yandexCreateOptions.value : [],
+          canShare: !hasYandexRoot,
+          canFavorite: !hasYandexRoot,
+          canMove: true,
+          canDelete: !hasYandexRoot,
+          canRename: items.length === 1 && !hasYandexRoot,
+          canDownload: true,
+          canProperties: false,
+          deleteLabel: '',
+          isFavorite: !hasYandexRoot && items.every((i) => layoutPrefs.isFavorite(favoriteKeyOfContextItem(i))),
+        };
+        return;
+      }
+
+      const singleIsWritableQspaceFolder = items.length === 1 && isWritableQspaceFolderContextItem(first);
+      const canRename = singleIsSpace
+        ? singleSpace?.role === 'owner'
+        : items.length === 1 && renamableKinds.has(first.kind || '');
       const deleteLabel = singleIsSpace && singleSpace && singleSpace.role !== 'owner'
         ? t('spaceLeave')
         : '';
@@ -6999,15 +7339,17 @@ export default defineComponent({
         y,
         items,
         emptyArea: false,
-        canShare: !allYandexFoldersOnly,
-        canFavorite: !allYandexFoldersOnly,
-        canMove: !allYandexFoldersOnly && items.some((i) => !isSpaceContextItem(i)),
-        canDelete: !allYandexFoldersOnly,
+        canCreate: singleIsWritableQspaceFolder,
+        createOptions: singleIsWritableQspaceFolder ? qspaceCreateOptions.value : [],
+        canShare: true,
+        canFavorite: true,
+        canMove: items.some((i) => !isSpaceContextItem(i)),
+        canDelete: true,
         canRename,
-        canDownload: !allSpacesOnly && !allYandexFoldersOnly,
-        canProperties: !allYandexFoldersOnly && items.length === 1 && (first.kind === 'drive-file' || first.kind === 'file') && Boolean(first.id),
+        canDownload: !allSpacesOnly,
+        canProperties: items.length === 1 && (first.kind === 'drive-file' || first.kind === 'file') && Boolean(first.id),
         deleteLabel,
-        isFavorite: !allYandexFoldersOnly && items.every((i) => layoutPrefs.isFavorite(i.key)),
+        isFavorite: items.every((i) => layoutPrefs.isFavorite(favoriteKeyOfContextItem(i))),
       };
     };
 
@@ -7050,6 +7392,30 @@ export default defineComponent({
         || homeRootDriveFiles.value.find((f) => `drive-file:${f.id}` === key);
       if (driveFile) {
         return { key, id: driveFile.id, kind: 'drive-file', name: driveFile.name };
+      }
+      if (key.startsWith('yandex:') || key.startsWith('yandex-file:') || key.startsWith('yandex-folder:')) {
+        const yFile = yandexFilesByKey.value.get(key)
+          || yandexFiles.value.find((f) => `yandex:${f.path}` === key || `yandex-file:${f.path}` === key);
+        if (yFile) {
+          return {
+            key: yFile.type === 'dir' ? `yandex-folder:${yFile.path}` : `yandex:${yFile.path}`,
+            id: yFile.path,
+            kind: yFile.type === 'dir' ? 'yandex-folder' : 'yandex-file',
+            name: yFile.name,
+          };
+        }
+        const rawPath = key.replace(/^(yandex-folder:|yandex-file:|yandex:)/, '');
+        if (rawPath) {
+          const yPath = normalizeYandexAlbumPath(rawPath);
+          const yName = yPath === '/' ? t('yandexDisk') : (yPath.split('/').filter(Boolean).pop() || t('yandexDisk'));
+          const isDir = key.startsWith('yandex-folder:');
+          return {
+            key: isDir ? `yandex-folder:${yPath}` : `yandex:${yPath}`,
+            id: yPath,
+            kind: isDir ? 'yandex-folder' : 'yandex-file',
+            name: yName,
+          };
+        }
       }
       const spaceItem = spaceItemsByKey.value.get(key);
       if (spaceItem) {
@@ -7129,12 +7495,16 @@ export default defineComponent({
     const onEmptyAreaContextMenu = (event: MouseEvent) => {
       const target = event.target as HTMLElement | null;
       if (target?.closest('[data-select-key], .subfolder-card, .canvas-card, .exp-row, button, a, input, textarea, [data-explorer-context-menu]')) return;
+      const canCreateHere = activeSection.value.kind === 'home'
+        || (activeSection.value.kind === 'folder' && activeFolder.value?.role !== 'read');
       explorerCtxMenu.value = {
         open: true,
         x: event.clientX,
         y: event.clientY,
         items: [],
         emptyArea: true,
+        canCreate: canCreateHere,
+        createOptions: canCreateHere ? qspaceCreateOptions.value : [],
         canShare: false,
         canFavorite: false,
         canMove: false,
@@ -7177,6 +7547,14 @@ export default defineComponent({
     const onTreeContextMenu = (payload: TreeContextMenuPayload) => {
       const keys = payload.selectedKeys.length ? payload.selectedKeys : [payload.nodeKey];
       const items: ExplorerContextMenuItem[] = keys.map((key) => {
+        if (key === 'qspace:home') {
+          return {
+            key: 'qspace:home',
+            id: '',
+            kind: 'home',
+            name: t('explorerHomeFolder'),
+          };
+        }
         const treeFileMatch = key.match(/^file:[^/]+\/([^:]+):(.+)$/);
         if (treeFileMatch) {
           const fileType = treeFileMatch[1]!;
@@ -7188,6 +7566,19 @@ export default defineComponent({
             id: fileId,
             kind: fileType,
             name: (dashboardItemsByKey.value as ReadonlyMap<string, FolderItem>).get(canonicalKey)?.title || fileId,
+          };
+        }
+        if (key.startsWith('yandex-file:') || (key === payload.nodeKey && payload.kind === 'yandex-file')) {
+          const rawPath = key.startsWith('yandex-file:')
+            ? key.slice('yandex-file:'.length)
+            : payload.targetId;
+          const yPath = normalizeYandexAlbumPath(rawPath || '/');
+          const yName = yPath.split('/').filter(Boolean).pop() || yPath;
+          return {
+            key: `yandex:${yPath}`,
+            id: yPath,
+            kind: 'yandex-file',
+            name: yName,
           };
         }
         if (
@@ -7233,12 +7624,26 @@ export default defineComponent({
     };
 
     const onCtxMenuOpen = (item: ExplorerContextMenuItem) => {
+      if (isHomeRootContextItem(item)) {
+        selectDashboardSection({ kind: 'home' });
+        return;
+      }
       if (isYandexFolderContextItem(item)) {
-        const yPath = normalizeYandexAlbumPath(item.id || item.key.replace(/^yandex-folder:/, '') || '/');
+        const yPath = yandexPathOfContextItem(item);
         if (activeSection.value.kind === 'gallery') {
           onGallerySelectYandex(yPath);
         } else {
           openYandexPath(yPath);
+        }
+      } else if (isYandexFileContextItem(item)) {
+        const yPath = yandexPathOfContextItem(item);
+        const found = yandexFiles.value.find((f) => normalizeYandexAlbumPath(f.path) === yPath);
+        if (found) {
+          openYandexSidebarFile(found);
+        } else {
+          void yandexDisk.downloadLink(yPath)
+            .then(({ href }) => downloadYandexLink(href, item.name || yPath.split('/').pop()))
+            .catch((err) => setFeedback('error', err instanceof Error && err.message ? err.message : t('driveDownloadLinkFailed')));
         }
       } else if (item.kind === 'folder' && item.id) {
         selectFolder(item.id);
@@ -7290,9 +7695,130 @@ export default defineComponent({
       }
     };
 
-    const onCtxMenuShare = (items: readonly ExplorerContextMenuItem[]) => {
+    const onCtxMenuCreateItem = async (kind: string, items: readonly ExplorerContextMenuItem[]) => {
+      const target = items[0] ?? null;
+      if (target && isYandexFolderContextItem(target)) {
+        const targetYandexPath = yandexPathOfContextItem(target);
+        if (kind === 'folder') {
+          const name = (await promptDialog({
+            title: t('driveNewFolderTitle'),
+            placeholder: t('driveNewFolderPlaceholder'),
+            confirmLabel: t('create'),
+            cancelLabel: t('cancel'),
+          }))?.trim();
+          if (!name) return;
+          if (name.includes('/')) {
+            await alertDialog({ title: t('driveNewFolderTitle'), message: t('yandexBadName') });
+            return;
+          }
+          try {
+            await yandexDisk.createFolder(joinYandexPath(targetYandexPath, name));
+            invalidateYandexMediaLibrary();
+            yandexRefreshKey.value += 1;
+            void gallerySidebarRef.value?.refreshYandex?.(targetYandexPath);
+            void yandexView.value?.reload?.();
+            refreshGalleryView({ clearSelection: false, invalidateFolders: false });
+            setFeedback('success', t('folderCreatedNamed').replace('{name}', name));
+          } catch (err) {
+            setFeedback('error', err instanceof Error && err.message ? err.message : t('yandexLoadFailed'));
+          }
+          return;
+        }
+        if (kind === 'markdown') {
+          const rawName = (await promptDialog({
+            title: t('createMarkdownTitle'),
+            placeholder: t('createMarkdownPlaceholder'),
+            confirmLabel: t('create'),
+            cancelLabel: t('cancel'),
+          }))?.trim();
+          if (!rawName) return;
+          if (rawName.includes('/')) {
+            await alertDialog({ title: t('createMarkdownTitle'), message: t('yandexBadName') });
+            return;
+          }
+          const fileName = /\.md$/i.test(rawName) ? rawName : `${rawName}.md`;
+          const baseName = fileName.replace(/\.md$/i, '') || t('untitled');
+          const file = new File([`# ${baseName}\n`], fileName, { type: 'text/markdown' });
+          try {
+            await uploadYandexFile(joinYandexPath(targetYandexPath, fileName), file).promise;
+            invalidateYandexMediaLibrary();
+            yandexRefreshKey.value += 1;
+            void gallerySidebarRef.value?.refreshYandex?.(targetYandexPath);
+            void yandexView.value?.reload?.();
+            refreshGalleryView({ clearSelection: false, invalidateFolders: false });
+            setFeedback('success', t('documentCreated'));
+          } catch (err) {
+            setFeedback('error', err instanceof Error && err.message ? err.message : t('yandexLoadFailed'));
+          }
+        }
+        return;
+      }
+
+      const targetFolderId: string | null = target && !isHomeRootContextItem(target) && (target.kind === 'folder' || target.key.startsWith('folder:'))
+        ? (target.id || target.key.replace(/^folder:/, '') || null)
+        : (activeSection.value.kind === 'folder' && !target ? (activeFolder.value?.id ?? null) : null);
+
+      if (kind === 'folder') {
+        const name = (await promptDialog({
+          title: t('addFolderTitle'),
+          placeholder: t('folderName'),
+          confirmLabel: t('create'),
+          cancelLabel: t('cancel'),
+        }))?.trim();
+        if (!name) return;
+        const created = await runAction(
+          'create-folder',
+          () => resourceFolders.create(name, targetFolderId),
+          t('folderCreatedNamed').replace('{name}', name),
+        );
+        if (created) {
+          if (targetFolderId) expandTree(targetFolderId);
+          await load({ showLoading: false });
+          galleryViewRef.value?.refresh?.({ clearSelection: false, invalidateFolders: true });
+          gallerySidebarRef.value?.invalidateFolderFilesCache?.();
+        }
+        return;
+      }
+      if (kind === 'markdown') {
+        await createTextDocument(targetFolderId || undefined);
+        return;
+      }
+      if (kind === 'canvas') {
+        await createCanvas(targetFolderId || undefined);
+        return;
+      }
+      if (kind === 'html') {
+        await createHtmlDocument(targetFolderId || undefined);
+        return;
+      }
+      if (kind === 'board') {
+        templateFolderId.value = targetFolderId;
+        await createInteractiveTemplate('trello-board');
+        return;
+      }
+      if (kind === 'sheet') {
+        templateFolderId.value = targetFolderId;
+        await createInteractiveTemplate('dnd-character');
+      }
+    };
+
+    const onCtxMenuShare = async (items: readonly ExplorerContextMenuItem[]) => {
       const first = items[0];
       if (!first) return;
+      if (isAnyYandexContextItem(first)) {
+        const yPath = yandexPathOfContextItem(first);
+        if (yPath === '/') return;
+        try {
+          const published = await yandexDisk.publish(yPath);
+          const link = published?.publicUrl;
+          if (!link) throw new Error(t('yandexLinkFailed'));
+          await navigator.clipboard?.writeText(link);
+          setFeedback('success', t('yandexLinkCopied'));
+        } catch (err) {
+          setFeedback('error', err instanceof Error && err.message ? err.message : t('yandexLinkFailed'));
+        }
+        return;
+      }
       if ((first.kind === 'space' || first.kind === 'album') && first.id) {
         void openAlbumShareById(first.id);
       } else if (first.kind === 'folder' && first.id) {
@@ -7347,11 +7873,21 @@ export default defineComponent({
         source: 'explorer',
         items: eligible.map((i) => {
           if (isYandexFolderContextItem(i)) {
-            const yPath = normalizeYandexAlbumPath(i.id || i.key.replace(/^yandex-folder:/, '') || '/');
+            const yPath = yandexPathOfContextItem(i);
             return {
               key: `yandex-folder:${yPath}`,
               id: yPath,
               kind: 'yandex-folder',
+              name: i.name,
+              path: yPath,
+            };
+          }
+          if (isYandexFileContextItem(i)) {
+            const yPath = yandexPathOfContextItem(i);
+            return {
+              key: `yandex:${yPath}`,
+              id: yPath,
+              kind: 'yandex-file',
               name: i.name,
               path: yPath,
             };
@@ -7372,14 +7908,22 @@ export default defineComponent({
 
     const onCtxMenuToggleFavorite = (items: readonly ExplorerContextMenuItem[]) => {
       for (const item of items) {
+        const favKey = favoriteKeyOfContextItem(item);
         if (item.id && item.name && item.kind) {
-          rememberedFavoriteMeta[item.key] = { id: item.id, name: item.name, kind: item.kind };
+          rememberedFavoriteMeta[favKey] = { id: item.id, name: item.name, kind: item.kind };
         }
-        layoutPrefs.toggleFavorite(item.key);
+        layoutPrefs.toggleFavorite(favKey);
       }
     };
 
     const onCtxMenuMove = (items: readonly ExplorerContextMenuItem[]) => {
+      if (items.length && items.every(isAnyYandexContextItem)) {
+        const paths = [...new Set(items.map(yandexPathOfContextItem))];
+        if (paths.length) {
+          openYandexTransferModal(paths, { allowYandexMove: !paths.includes('/') });
+        }
+        return;
+      }
       const keys = items.map((i) => i.key).filter((k) => !k.startsWith('folder:') && !k.startsWith('space:') && !k.startsWith('album:'));
       if (keys.length) {
         selectedKeys.value = keys;
@@ -7391,6 +7935,41 @@ export default defineComponent({
     };
 
     const onCtxMenuRename = async (item: ExplorerContextMenuItem) => {
+      if (isAnyYandexContextItem(item)) {
+        const yPath = yandexPathOfContextItem(item);
+        if (yPath === '/') return;
+        const currentName = item.name || yPath.split('/').filter(Boolean).pop() || '';
+        const nextName = (await promptDialog({
+          title: t('rename'),
+          value: currentName,
+          confirmLabel: t('save'),
+          cancelLabel: t('cancel'),
+        }))?.trim();
+        if (!nextName || nextName === currentName) return;
+        if (nextName.includes('/')) {
+          await alertDialog({ title: t('rename'), message: t('yandexBadName') });
+          return;
+        }
+        try {
+          const outcome = await yandexDisk.rename(yPath, nextName);
+          await settleYandexOutcome(outcome);
+          invalidateYandexMediaLibrary();
+          yandexRefreshKey.value += 1;
+          void gallerySidebarRef.value?.refreshYandex?.(yandexParentPath(yPath));
+          const renamedPath = normalizeYandexAlbumPath(outcome.path || joinYandexPath(yandexParentPath(yPath), nextName));
+          if (galleryYandexPath.value === yPath || galleryYandexPath.value?.startsWith(`${yPath}/`)) {
+            galleryYandexPath.value = renamedPath + galleryYandexPath.value.slice(yPath.length);
+          }
+          if (activeSection.value.kind === 'yandex' && (activeSection.value.path === yPath || activeSection.value.path.startsWith(`${yPath}/`))) {
+            openYandexPath(renamedPath + activeSection.value.path.slice(yPath.length));
+          }
+          refreshGalleryView({ clearSelection: false, invalidateFolders: false });
+          setFeedback('success', t('folderRenamedTo').replace('{name}', nextName));
+        } catch (err) {
+          setFeedback('error', err instanceof Error && err.message ? err.message : t('driveRenameFailedMessage'));
+        }
+        return;
+      }
       if (!item.id) return;
       if (item.kind === 'folder') {
         const f = allFolderSummaries.value.find((x) => x.id === item.id);
@@ -7444,7 +8023,19 @@ export default defineComponent({
       }
     };
 
-    const onCtxMenuDownload = (items: readonly ExplorerContextMenuItem[]) => {
+    const onCtxMenuDownload = async (items: readonly ExplorerContextMenuItem[]) => {
+      if (items.length && items.every(isAnyYandexContextItem)) {
+        for (const item of items) {
+          const yPath = yandexPathOfContextItem(item);
+          try {
+            const { href } = await yandexDisk.downloadLink(yPath);
+            downloadYandexLink(href, item.name || (yPath === '/' ? 'yandex-disk' : yPath.split('/').pop()));
+          } catch (err) {
+            setFeedback('error', err instanceof Error && err.message ? err.message : t('driveDownloadLinkFailed'));
+          }
+        }
+        return;
+      }
       selectedKeys.value = items.map((i) => i.key);
       void bulkDownload();
     };
@@ -7456,6 +8047,47 @@ export default defineComponent({
     };
 
     const onCtxMenuDelete = async (items: readonly ExplorerContextMenuItem[]) => {
+      if (items.length && items.every(isAnyYandexContextItem)) {
+        const deletable = items.filter((i) => yandexPathOfContextItem(i) !== '/');
+        if (!deletable.length) return;
+        const confirmed = await confirmDialog({
+          title: deletable.length === 1
+            ? t('yandexDeleteTitle').replace('{name}', deletable[0]!.name || yandexPathOfContextItem(deletable[0]!))
+            : t('bulkDeleteTitle').replace('{n}', String(deletable.length)),
+          confirmLabel: t('delete'),
+          cancelLabel: t('cancel'),
+          danger: true,
+        });
+        if (!confirmed) return;
+        const deletedPaths: string[] = [];
+        try {
+          for (const item of deletable) {
+            const yPath = yandexPathOfContextItem(item);
+            await settleYandexOutcome(await yandexDisk.remove(yPath));
+            deletedPaths.push(yPath);
+          }
+          invalidateYandexMediaLibrary();
+          yandexRefreshKey.value += 1;
+          void gallerySidebarRef.value?.refreshYandex?.(yandexParentPath(deletedPaths[0]!));
+          if (
+            galleryYandexPath.value
+            && deletedPaths.some((p) => galleryYandexPath.value === p || galleryYandexPath.value!.startsWith(`${p}/`))
+          ) {
+            galleryYandexPath.value = '/';
+          }
+          if (
+            activeSection.value.kind === 'yandex'
+            && deletedPaths.some((p) => activeSection.value.kind === 'yandex' && (activeSection.value.path === p || activeSection.value.path.startsWith(`${p}/`)))
+          ) {
+            openYandexPath(yandexParentPath(deletedPaths[0]!));
+          }
+          refreshGalleryView({ clearSelection: true, invalidateFolders: false });
+          setFeedback('success', t('bulkDeleted').replace('{n}', String(deletedPaths.length)));
+        } catch (err) {
+          setFeedback('error', err instanceof Error && err.message ? err.message : t('driveMoveToTrashFailedMessage'));
+        }
+        return;
+      }
       if (items.length === 1 && items[0]!.kind === 'folder' && items[0]!.id) {
         const f = allFolderSummaries.value.find((x) => x.id === items[0]!.id);
         if (f) void deleteFolder(f);
@@ -7514,17 +8146,22 @@ export default defineComponent({
       }
     };
 
-    const openAddSelectionToAlbum = () => {
-      const firstAlbum = allSpaces.value[0];
-      if (!firstAlbum) return;
-      if (activeFolder.value) {
-        void onDropGroupToAlbum(firstAlbum.id, {
-          source: 'explorer',
-          items: [{ key: `folder:${activeFolder.value.id}`, id: activeFolder.value.id, kind: 'folder', folderId: activeFolder.value.id }],
-          keys: [`folder:${activeFolder.value.id}`],
-          count: 1,
-        });
-      }
+    const openAddSelectionToAlbum = (event?: MouseEvent) => {
+      const resolved = selectedKeys.value
+        .map((k) => resolveContextMenuItem(k))
+        .filter((item): item is ExplorerContextMenuItem => Boolean(item));
+      const candidates = resolved.length
+        ? resolved
+        : (activeFolder.value
+            ? [{ key: `folder:${activeFolder.value.id}`, id: activeFolder.value.id, kind: 'folder', name: activeFolder.value.name }]
+            : []);
+      const eligible = candidates.filter(isAlbumEligibleContextItem);
+      if (!eligible.length) return;
+      const anchorEl = (event?.currentTarget as HTMLElement | null) ?? null;
+      const rect = anchorEl?.getBoundingClientRect?.();
+      const x = rect ? Math.round(rect.left) : Math.round((typeof window !== 'undefined' ? window.innerWidth : 1280) / 2);
+      const y = rect ? Math.round(rect.bottom + 6) : Math.round((typeof window !== 'undefined' ? window.innerHeight : 800) / 2);
+      openContextMenuForItems(x, y, eligible);
     };
 
     // Global Escape hierarchy in Files mode (DrivePhotos owns Gallery Escape)
@@ -7538,6 +8175,11 @@ export default defineComponent({
       }
       if (subfolderModal.value.open) {
         closeSubfolderModal();
+        event.preventDefault();
+        return;
+      }
+      if (yandexTransferModal.value) {
+        closeYandexTransferModal();
         event.preventDefault();
         return;
       }
@@ -7695,7 +8337,7 @@ export default defineComponent({
 
     // Gallery mode state & handlers
     const galleryViewRef = ref<InstanceType<typeof DrivePhotos> | null>(null);
-    const gallerySidebarRef = ref<{ invalidateFolderFilesCache?: () => void } | null>(null);
+    const gallerySidebarRef = ref<{ invalidateFolderFilesCache?: () => void; refreshYandex?: (path?: string) => Promise<void> } | null>(null);
     const galleryRefreshKey = ref(0);
     const refreshGalleryView = (opts?: { clearSelection?: boolean; invalidateFolders?: boolean }) => {
       const view = galleryViewRef.value as { refresh?: (options?: { clearSelection?: boolean; invalidateFolders?: boolean }) => void } | null;
@@ -8018,8 +8660,26 @@ export default defineComponent({
       }
     };
 
-    const onGalleryDropFolder = async (folderId: string | null, fileIds: string[], folderIds: string[] = []) => {
-      if (!fileIds.length && !folderIds.length) return;
+    const onGalleryDropFolder = async (
+      folderId: string | null,
+      fileIds: string[],
+      folderIds: string[] = [],
+      yandexPaths: string[] = [],
+    ) => {
+      const qspaceFileIds: string[] = [];
+      const yandexImportPaths = new Set<string>();
+      for (const id of fileIds) {
+        if (id.startsWith('yandex:')) {
+          const p = id.slice('yandex:'.length);
+          if (p) yandexImportPaths.add(normalizeYandexAlbumPath(p));
+        } else if (id) {
+          qspaceFileIds.push(id);
+        }
+      }
+      for (const rawPath of yandexPaths) {
+        if (rawPath) yandexImportPaths.add(normalizeYandexAlbumPath(rawPath));
+      }
+      if (!qspaceFileIds.length && !folderIds.length && !yandexImportPaths.size) return;
       const targetName = folderId === null
         ? t('explorerHomeFolder')
         : (allFolderSummaries.value.find((f) => f.id === folderId)?.name
@@ -8027,7 +8687,7 @@ export default defineComponent({
           || t('explorerHomeFolder'));
       let moved = 0;
       let lastErr: unknown = null;
-      for (const fileId of fileIds) {
+      for (const fileId of qspaceFileIds) {
         try {
           await driveApi.moveFile(fileId, folderId);
           moved += 1;
@@ -8046,8 +8706,21 @@ export default defineComponent({
           lastErr = err;
         }
       }
+      if (yandexImportPaths.size > 0) {
+        try {
+          const imported = await yandexDisk.importToQspace([...yandexImportPaths], folderId);
+          const count = (imported?.importedFiles ?? 0) + (imported?.importedFolders ?? 0);
+          moved += count > 0 ? count : yandexImportPaths.size;
+        } catch (err) {
+          lastErr = err;
+        }
+      }
       if (moved > 0) {
-        setFeedback('success', t('bulkMovedTo').replace('{folder}', targetName).replace('{n}', String(moved)));
+        if (folderId) expandTree(folderId);
+        const tpl = yandexImportPaths.size > 0 && !qspaceFileIds.length && !folderIds.length
+          ? t('yandexImportedToFolder')
+          : t('bulkMovedTo');
+        setFeedback('success', tpl.replace('{folder}', targetName).replace('{n}', String(moved)));
         refreshGalleryView({ clearSelection: true, invalidateFolders: true });
         sidebarDriveFiles.forget();
         folderFilesRefreshKey.value += 1;
@@ -8243,6 +8916,12 @@ export default defineComponent({
       yandexRefreshKey,
       yandexPath,
       yandexMove,
+      yandexTransferModal,
+      openYandexTransferModal,
+      closeYandexTransferModal,
+      switchYandexTransferToYandex,
+      confirmYandexTransferToQspace,
+      onDrivePhotosMoveYandexItems,
       yandexFiles,
       openYandexPath,
       openYandexMove,
@@ -8452,6 +9131,7 @@ export default defineComponent({
       onCtxMenuEmptyRefresh,
       onTreeContextMenu,
       onCtxMenuOpen,
+      onCtxMenuCreateItem,
       onCtxMenuShare,
       onCtxMenuAddToAlbum,
       onCtxMenuToggleFavorite,

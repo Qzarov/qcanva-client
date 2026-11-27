@@ -88,6 +88,39 @@ export type SpaceFeed = {
   typeCounts?: Partial<Record<SpaceFeedType, number>>;
 };
 
+export type SpaceResourceRef = {
+  kind: string;
+  id: string;
+};
+
+export type SpaceItemsInput =
+  | readonly string[]
+  | {
+      fileIds?: readonly string[];
+      yandexPaths?: readonly string[];
+      resources?: readonly SpaceResourceRef[];
+    };
+
+function normalizeSpaceItemsBody(input: SpaceItemsInput): {
+  fileIds?: string[];
+  yandexPaths?: string[];
+  resources?: SpaceResourceRef[];
+} {
+  if (Array.isArray(input)) {
+    return { fileIds: [...input] };
+  }
+  const obj = input as Exclude<SpaceItemsInput, readonly string[]>;
+  const body: {
+    fileIds?: string[];
+    yandexPaths?: string[];
+    resources?: SpaceResourceRef[];
+  } = {};
+  if (obj.fileIds !== undefined) body.fileIds = [...obj.fileIds];
+  if (obj.yandexPaths !== undefined) body.yandexPaths = [...obj.yandexPaths];
+  if (obj.resources !== undefined) body.resources = [...obj.resources];
+  return body;
+}
+
 const json = (method: string, body?: unknown): RequestInit => ({ method, body: body === undefined ? undefined : JSON.stringify(body) });
 
 /** 204 has no JSON body: request() fails to parse it, which is success here. */
@@ -118,10 +151,10 @@ export const spacesApi = {
     request<SpaceDetails>(`/spaces/${encodeURIComponent(id)}/sources`, json('POST', { kind: 'yandex', path })),
   removeSource: (id: string, sourceId: string) =>
     noContent(request(`/spaces/${encodeURIComponent(id)}/sources/${encodeURIComponent(sourceId)}`, { method: 'DELETE' })),
-  addItems: (id: string, fileIds: readonly string[]) =>
-    request<{ added: number }>(`/spaces/${encodeURIComponent(id)}/items`, json('PUT', { fileIds })),
-  removeItems: (id: string, fileIds: readonly string[]) =>
-    request<{ removed: number }>(`/spaces/${encodeURIComponent(id)}/items`, json('DELETE', { fileIds })),
+  addItems: (id: string, input: SpaceItemsInput) =>
+    request<{ added: number }>(`/spaces/${encodeURIComponent(id)}/items`, json('PUT', normalizeSpaceItemsBody(input))),
+  removeItems: (id: string, input: SpaceItemsInput) =>
+    request<{ removed: number }>(`/spaces/${encodeURIComponent(id)}/items`, json('DELETE', normalizeSpaceItemsBody(input))),
   /** Each kind of file the feed's filters offer, with the extensions it takes. */
   feedTypes: () => request<{ types: Array<{ type: SpaceFeedType; extensions: string[] }> }>('/spaces/feed-types'),
   /**

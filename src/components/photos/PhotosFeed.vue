@@ -77,6 +77,9 @@ const props = withDefaults(defineProps<{
   externalItems?: ExternalFeedItem[] | null;
   supplementaryItems?: ExternalFeedItem[] | null;
   externalLoading?: boolean;
+  externalHasMore?: boolean;
+  externalLoadingMore?: boolean;
+  externalFeedKey?: string | null;
   selected: Set<string>;
   current: string | null;
 }>(), {
@@ -92,6 +95,9 @@ const props = withDefaults(defineProps<{
   externalItems: null,
   supplementaryItems: null,
   externalLoading: false,
+  externalHasMore: false,
+  externalLoadingMore: false,
+  externalFeedKey: null,
 });
 
 const emit = defineEmits<{
@@ -105,6 +111,7 @@ const emit = defineEmits<{
   (e: 'zoom', tileHeight: number): void;
   (e: 'summary', totalCount: number): void;
   (e: 'units-loaded'): void;
+  (e: 'reach-end'): void;
 }>();
 
 /** Thumbnail row height fallback per discrete tile preset, px. */
@@ -171,6 +178,9 @@ let keptAnchor: { anchor: Anchor; item: FeedItem | null } | null = null;
 let pending: { anchor: Anchor; units: Array<{ group: string; sub?: string }>; pages: number } | null = null;
 
 const isExternalMode = computed(() => props.externalItems !== null);
+const loadingMoreLabel = computed(() => (locale.value === 'ru' ? 'Подгрузка медиа…' : 'Loading more…'));
+let wasExternalReady = false;
+let reachEndGuardedKey = '';
 
 const rowHeight = computed(() => {
   if (props.tileHeight !== undefined && Number.isFinite(props.tileHeight)) {
@@ -499,7 +509,10 @@ function relayout(): void {
   });
   layout.value = next;
   rebuildIndexes(next);
-  if (next.rows.length === 0) return;
+  if (next.rows.length === 0) {
+    maybeEmitReachEnd();
+    return;
+  }
 
   if (pending) {
     resolvePending();
@@ -508,6 +521,28 @@ function relayout(): void {
     if (!hadRows) keptAnchor = null;
   }
   ensureLoaded();
+  maybeEmitReachEnd();
+}
+
+function resetReachEndGuard(): void {
+  reachEndGuardedKey = '';
+}
+
+function maybeEmitReachEnd(): void {
+  if (!props.externalHasMore || props.externalLoadingMore || props.externalLoading) return;
+  if (status.value !== 'ready') return;
+  const totalH = layout.value.totalHeight;
+  const emptyWithMore = totalH <= 0;
+  const nearBottom = totalH > 0 && scrollTop.value + viewportH.value >= totalH - 1200;
+  const shortFeed = totalH > 0 && viewportH.value > 0 && totalH <= viewportH.value + 400;
+  if (!emptyWithMore && !nearBottom && !shortFeed) return;
+  const itemCount = isExternalMode.value
+    ? (props.externalItems?.length ?? 0)
+    : (props.supplementaryItems?.length ?? 0);
+  const guardKey = `${props.externalFeedKey ?? ''}:${itemCount}:${Math.round(totalH)}`;
+  if (reachEndGuardedKey === guardKey) return;
+  reachEndGuardedKey = guardKey;
+  emit('reach-end');
 }
 
 // ----- loading -----
@@ -1050,10 +1085,18 @@ function applySupplementaryItems(emitSummary = true): void {
   relayout();
 }
 
-function syncExternalFeed(): void {
+function syncExternalFeed(preserveScroll = false): void {
   const raw = props.externalItems ?? [];
   const params = props.params;
   const built = buildClientBuckets(raw, params);
+
+  if (!preserveScroll) {
+    keptAnchor = null;
+    lastScrollTop = 0;
+    scrollTop.value = 0;
+    if (scroller.value) scroller.value.scrollTop = 0;
+    layout.value = { rows: [], totalHeight: 0, groupTops: new Map() };
+  }
 
   epoch++;
   wanted = new Map();
@@ -1070,6 +1113,7 @@ function syncExternalFeed(): void {
   failed.clear();
   pending = null;
   status.value = props.externalLoading && built.groups.length === 0 ? 'loading' : 'ready';
+  wasExternalReady = true;
   emit('summary', built.totalFiltered);
   relayout();
   emit('units-loaded');
@@ -1077,9 +1121,10 @@ function syncExternalFeed(): void {
 
 async function refresh(): Promise<void> {
   if (props.externalItems !== null) {
-    syncExternalFeed();
+    syncExternalFeed(wasExternalReady);
     return;
   }
+  wasExternalReady = false;
   const my = ++epoch;
   const old = layout.value;
   let anchor: Anchor | null = old.rows.length > 0 ? anchorAt(old.rows, lastScrollTop, STICKY_OFFSET) : null;
@@ -1175,6 +1220,7 @@ function onScroll(): void {
   scrollTop.value = lastScrollTop;
   onHeadroomScroll(lastScrollTop);
   if (jumpTimer === null) ensureLoaded();
+  maybeEmitReachEnd();
 }
 
 function onWheel(e: WheelEvent): void {
@@ -1568,13 +1614,26 @@ function onTileDragStart(e: DragEvent, item: FeedItem): void {
   const entries = ids
     .map((id) => byId.get(id) ?? (id === item.fileId ? item : null))
     .filter((x): x is FeedItem => Boolean(x))
-    .map((x) => ({
-      key: `photo:${x.fileId}`,
-      id: x.fileId,
-      kind: x.kind,
-      name: x.name,
-      folderId: x.folderId,
-    }));
+    .map((x) => {
+      if (x.fileId.startsWith('yandex:')) {
+        const yPath = x.fileId.slice('yandex:'.length);
+        return {
+          key: `yandex:${yPath}`,
+          id: x.fileId,
+          kind: 'yandex-file',
+          name: x.name,
+          path: yPath,
+          folderId: x.folderId,
+        };
+      }
+      return {
+        key: `photo:${x.fileId}`,
+        id: x.fileId,
+        kind: x.kind,
+        name: x.name,
+        folderId: x.folderId,
+      };
+    });
   if (entries.length === 0) return;
 
   dnd.startGroupDrag({ source: 'gallery', items: entries }, e);
@@ -1681,7 +1740,10 @@ function scheduleMeasure(): void {
 }
 
 watch(width, () => relayout());
-watch(viewportH, () => ensureLoaded());
+watch(viewportH, () => {
+  ensureLoaded();
+  maybeEmitReachEnd();
+});
 watch(() => [props.tile, props.tileHeight, props.aspectMode] as const, () => relayout());
 watch(
   () => [
@@ -1692,7 +1754,7 @@ watch(
     props.recentLimit,
   ] as const,
   () => {
-    if (isExternalMode.value) syncExternalFeed();
+    if (isExternalMode.value) syncExternalFeed(true);
     else if (props.supplementaryItems && props.supplementaryItems.length > 0) applySupplementaryItems(true);
     else relayout();
   },
@@ -1704,24 +1766,77 @@ watch(
   () => void refresh(),
 );
 watch(
-  () => props.externalItems,
-  () => {
+  () => props.externalFeedKey,
+  (next, prev) => {
+    if (next === prev || !isExternalMode.value) return;
+    wasExternalReady = false;
     externalThumbFailed.clear();
+    resetReachEndGuard();
+    syncExternalFeed(false);
+  },
+);
+watch(
+  () => props.externalItems,
+  (next, prev) => {
+    resetReachEndGuard();
+    if (next !== null) {
+      if (wasExternalReady && prev !== null) {
+        const present = new Set(next.map((i) => i.fileId));
+        for (const failedId of [...externalThumbFailed]) {
+          if (!present.has(failedId)) externalThumbFailed.delete(failedId);
+        }
+        syncExternalFeed(true);
+      } else {
+        externalThumbFailed.clear();
+        syncExternalFeed(false);
+      }
+      return;
+    }
+    wasExternalReady = false;
+    externalThumbFailed.clear();
+    keptAnchor = null;
+    pending = null;
+    lastScrollTop = 0;
+    scrollTop.value = 0;
+    if (scroller.value) scroller.value.scrollTop = 0;
+    groups.value = [];
+    items.value = new Map();
+    layout.value = { rows: [], totalHeight: 0, groupTops: new Map() };
+    rebuildIndexes(layout.value);
     void refresh();
   },
 );
 watch(
   () => props.supplementaryItems,
-  () => {
+  (next) => {
     if (isExternalMode.value) return;
-    externalThumbFailed.clear();
+    resetReachEndGuard();
+    if (next && next.length > 0) {
+      const present = new Set(next.map((i) => i.fileId));
+      for (const failedId of [...externalThumbFailed]) {
+        if (!present.has(failedId)) externalThumbFailed.delete(failedId);
+      }
+    } else {
+      externalThumbFailed.clear();
+    }
     applySupplementaryItems(true);
   },
 );
 watch(
   () => props.externalLoading,
   () => {
-    if (isExternalMode.value) syncExternalFeed();
+    if (isExternalMode.value) syncExternalFeed(wasExternalReady);
+  },
+);
+watch(
+  () => [props.externalHasMore, props.externalLoadingMore] as const,
+  ([hasMoreNow, loadingMoreNow], [, prevLoadingMore]) => {
+    if (prevLoadingMore && !loadingMoreNow) {
+      resetReachEndGuard();
+    }
+    if (hasMoreNow && !loadingMoreNow) {
+      maybeEmitReachEnd();
+    }
   },
 );
 watch(
@@ -2023,7 +2138,9 @@ onBeforeUnmount(() => {
                   'is-current': current === tl.item.fileId,
                   cur: current === tl.item.fileId,
                   vid: tl.item.kind === 'video',
-                  'is-dragging-group': dnd.activeDrag.value?.keys.includes(`photo:${tl.item.fileId}`),
+                  'is-dragging-group': dnd.activeDrag.value?.keys.includes(
+                    tl.item.fileId.startsWith('yandex:') ? tl.item.fileId : `photo:${tl.item.fileId}`,
+                  ),
                 }"
                 :data-file-id="tl.item.fileId"
                 draggable="true"
@@ -2087,12 +2204,26 @@ onBeforeUnmount(() => {
         </template>
       </div>
 
+      <div
+        v-if="props.externalLoadingMore"
+        class="pf-loading-more"
+        role="status"
+        aria-live="polite"
+        data-testid="photos-loading-more"
+      >
+        <span class="pf-loading-more-dot" aria-hidden="true"></span>
+        <span>{{ loadingMoreLabel }}</span>
+      </div>
+
       <div v-if="status === 'loading' && groups.length === 0" class="pf-state">{{ t('photosLoading') }}</div>
       <div v-else-if="status === 'error'" class="pf-state">
         <span>{{ t('photosLoadError') }}</span>
         <button type="button" class="pf-retry" @click="refresh()">{{ t('photosRetry') }}</button>
       </div>
-      <div v-else-if="status === 'ready' && (groups.length === 0 || layout.rows.length === 0)" class="pf-state">
+      <div
+        v-else-if="status === 'ready' && !props.externalLoadingMore && !props.externalHasMore && (groups.length === 0 || layout.rows.length === 0)"
+        class="pf-state"
+      >
         {{ t('photosFeedEmpty') }}
       </div>
     </div>
@@ -2456,6 +2587,37 @@ onBeforeUnmount(() => {
   background: color-mix(in srgb, var(--ui-brand) 14%, transparent);
   border-radius: 4px;
   pointer-events: none;
+}
+.pf-loading-more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 16px auto 8px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--ui-glass-border);
+  background: var(--ui-glass-tint), var(--ui-glass-bg);
+  backdrop-filter: blur(var(--ui-glass-blur, 14px)) saturate(1.18);
+  -webkit-backdrop-filter: blur(var(--ui-glass-blur, 14px)) saturate(1.18);
+  box-shadow: var(--ui-glass-inset-highlight);
+  color: var(--ui-text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  position: relative;
+  left: 50%;
+  transform: translateX(-50%);
+}
+.pf-loading-more-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ui-brand);
+  animation: pf-pulse 1.1s ease-in-out infinite;
+}
+@keyframes pf-pulse {
+  0%, 100% { opacity: 0.35; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1.1); }
 }
 .pf-state {
   position: absolute;

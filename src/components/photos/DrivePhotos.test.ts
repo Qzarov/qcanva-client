@@ -139,8 +139,8 @@ let extraFeedItems: FeedItem[] = [];
 
 const FeedStub = defineComponent({
   name: 'PhotosFeed',
-  props: ['params', 'captionOnTile', 'tile', 'tileHeight', 'aspectMode', 'folderFilterId', 'peopleFilter', 'recentLimit', 'selected', 'current', 'externalItems', 'externalLoading', 'supplementaryItems'],
-  emits: ['open', 'focus-photo', 'activate', 'toggle-select', 'set-selection', 'contextmenu', 'toggle-favorite', 'units-loaded'],
+  props: ['params', 'captionOnTile', 'tile', 'tileHeight', 'aspectMode', 'folderFilterId', 'peopleFilter', 'recentLimit', 'selected', 'current', 'externalItems', 'externalLoading', 'externalHasMore', 'externalLoadingMore', 'externalFeedKey', 'supplementaryItems'],
+  emits: ['open', 'focus-photo', 'activate', 'toggle-select', 'set-selection', 'contextmenu', 'toggle-favorite', 'units-loaded', 'reach-end'],
   setup(props, { emit, expose }) {
     const resolvedItems = (): FeedItem[] => {
       if (Array.isArray(props.externalItems)) return props.externalItems as FeedItem[];
@@ -168,11 +168,15 @@ const FeedStub = defineComponent({
           'data-period': (props.params as { period?: string }).period ?? '',
           'data-external-count': Array.isArray(props.externalItems) ? String(props.externalItems.length) : 'none',
           'data-external-loading': String(Boolean(props.externalLoading)),
+          'data-external-has-more': String(Boolean(props.externalHasMore)),
+          'data-external-loading-more': String(Boolean(props.externalLoadingMore)),
+          'data-external-feed-key': String(props.externalFeedKey ?? ''),
           'data-supplementary-count': Array.isArray(props.supplementaryItems) ? String(props.supplementaryItems.length) : 'none',
         },
         [
           h('button', { 'data-stub-select': '', onClick: () => emit('set-selection', ['f0', 'f1']) }, 'select'),
           h('button', { 'data-stub-units-loaded': '', onClick: () => emit('units-loaded') }, 'units'),
+          h('button', { 'data-stub-reach-end': '', onClick: () => emit('reach-end') }, 'reach-end'),
           ...resolvedItems().map((it) =>
             h(
               'button',
@@ -907,7 +911,8 @@ describe('DrivePhotos', () => {
     expect(w.find('[data-ctx-download]').exists()).toBe(true);
     expect(w.find('[data-ctx-properties]').exists()).toBe(true);
     expect(w.find('[data-ctx-delete]').exists()).toBe(true);
-    expect(w.find('[data-ctx-album]').exists()).toBe(false);
+    expect(w.find('[data-ctx-album]').exists()).toBe(true);
+    expect(w.find('[data-ctx-move]').exists()).toBe(true);
 
     await w.get('[data-ctx-properties]').trigger('click');
     const panel = w.get('[data-photo-panel]');
@@ -1042,5 +1047,133 @@ describe('DrivePhotos', () => {
     expect(yandexListMediaMock).toHaveBeenCalledWith('/Фотокамера');
     expect(w.get('[data-testid="feed-stub"]').attributes('data-supplementary-count')).toBe('1');
     expect(w.find('[data-file-id="yandex:/Фотокамера/alp.jpg"]').exists()).toBe(true);
+  });
+
+  it('Batch9 B-039 & B-041: paginated Yandex folder loading on reach-end, Yandex context menu add-to-album & move-yandex-items, and direct Yandex files in albums', async () => {
+    const { yandexDisk } = await import('../../api/yandexDisk');
+    const listPageSpy = vi.spyOn(yandexDisk, 'listMediaPage')
+      .mockResolvedValueOnce({
+        items: [
+          {
+            path: '/Фотокамера/p1.jpg',
+            name: 'p1.jpg',
+            type: 'file',
+            size: 1024,
+            mime: 'image/jpeg',
+            mediaType: 'image',
+            md5: 'm1',
+            createdAt: '2026-10-20T10:00:00Z',
+            modifiedAt: '2026-10-20T10:00:00Z',
+            publicUrl: null,
+            previewUrl: '/api/yandex-disk/preview?path=/Фотокамера/p1.jpg&size=L',
+          },
+        ],
+        offset: 0,
+        limit: 100,
+        hasMore: true,
+        nextCursor: 'cur-next-2',
+      })
+      .mockResolvedValueOnce({
+        items: [
+          {
+            path: '/Фотокамера/p2.jpg',
+            name: 'p2.jpg',
+            type: 'file',
+            size: 2048,
+            mime: 'image/jpeg',
+            mediaType: 'image',
+            md5: 'm2',
+            createdAt: '2026-10-19T10:00:00Z',
+            modifiedAt: '2026-10-19T10:00:00Z',
+            publicUrl: null,
+            previewUrl: '/api/yandex-disk/preview?path=/Фотокамера/p2.jpg&size=L',
+          },
+        ],
+        offset: 1,
+        limit: 100,
+        hasMore: false,
+        nextCursor: null,
+      });
+
+    spacesListMock.mockResolvedValue({
+      spaces: [
+        { id: 'alb-y1', name: 'Путешествия', role: 'owner', ownerId: 'u1', memberCount: 0, sourceCount: 0, updatedAt: '' },
+      ],
+    });
+    spacesAddItemsMock.mockResolvedValue({ added: 1 });
+
+    const w = mountIt({ externalYandexPath: '/Фотокамера' });
+    await flushPromises();
+
+    // Page 1 rendered immediately with hasMore=true
+    expect(listPageSpy).toHaveBeenNthCalledWith(
+      1,
+      '/Фотокамера',
+      expect.objectContaining({ limit: 100, signal: expect.any(AbortSignal) }),
+    );
+    expect(w.get('[data-testid="feed-stub"]').attributes('data-external-count')).toBe('1');
+    expect(w.get('[data-testid="feed-stub"]').attributes('data-external-has-more')).toBe('true');
+    expect(w.get('[data-testid="feed-stub"]').attributes('data-external-feed-key')).toBe('/Фотокамера');
+
+    // Emit reach-end -> loads page 2 via cursor and appends without losing page 1
+    await w.get('[data-stub-reach-end]').trigger('click');
+    await flushPromises();
+    expect(listPageSpy).toHaveBeenNthCalledWith(
+      2,
+      '/Фотокамера',
+      expect.objectContaining({ limit: 100, cursor: 'cur-next-2', signal: expect.any(AbortSignal) }),
+    );
+    expect(w.get('[data-testid="feed-stub"]').attributes('data-external-count')).toBe('2');
+    expect(w.get('[data-testid="feed-stub"]').attributes('data-external-has-more')).toBe('false');
+
+    // Context menu on Yandex item -> В альбом ▸ calls spacesApi.addItems(albumId, { yandexPaths })
+    await w.get('[data-file-id="yandex:/Фотокамера/p1.jpg"]').trigger('contextmenu');
+    await flushPromises();
+    await w.get('[data-ctx-album]').trigger('click');
+    await flushPromises();
+    const albumBtn = document.body.querySelector<HTMLButtonElement>('[data-gallery-ctx-album="alb-y1"]');
+    expect(albumBtn).not.toBeNull();
+    albumBtn!.click();
+    await flushPromises();
+    expect(spacesAddItemsMock).toHaveBeenCalledWith('alb-y1', { yandexPaths: ['/Фотокамера/p1.jpg'] });
+
+    // Context menu on Yandex item -> Переместить… emits move-yandex-items(['/Фотокамера/p1.jpg'])
+    await w.get('[data-file-id="yandex:/Фотокамера/p1.jpg"]').trigger('contextmenu');
+    await w.get('[data-ctx-move]').trigger('click');
+    expect(w.emitted('move-yandex-items')?.[0]).toEqual([['/Фотокамера/p1.jpg']]);
+
+    // Opening album with direct Yandex files (no Yandex folder source in details.sources) loads spacesApi.feed Yandex items
+    spacesGetMock.mockResolvedValueOnce({
+      id: 'alb-direct',
+      name: 'Direct Yandex',
+      sources: [],
+    });
+    spacesFeedMock.mockResolvedValueOnce({
+      items: [
+        {
+          key: 'y:src-direct:/Фотокамера/p2.jpg',
+          sourceId: 'src-direct',
+          origin: 'yandex',
+          kind: 'file',
+          id: null,
+          path: '/Фотокамера/p2.jpg',
+          name: 'p2.jpg',
+          mime: 'image/jpeg',
+          mediaType: 'image',
+          size: 2048,
+          updatedAt: '2026-10-19T10:00:00Z',
+          addedBy: { id: 'u1', name: 'User' },
+          previewUrl: '/api/yandex-disk/preview?path=/Фотокамера/p2.jpg&size=L',
+        },
+      ],
+      offset: 0,
+      limit: 200,
+      nextOffset: null,
+    });
+    await w.setProps({ externalYandexPath: null, externalAlbumId: 'alb-direct' });
+    await flushPromises();
+    expect(w.find('[data-file-id="yandex:/Фотокамера/p2.jpg"]').exists()).toBe(true);
+
+    listPageSpy.mockRestore();
   });
 });

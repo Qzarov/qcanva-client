@@ -17,6 +17,8 @@ const renditionMock = vi.hoisted(() => vi.fn());
 const resourceFoldersListMock = vi.hoisted(() => vi.fn());
 const getFolderItemsMock = vi.hoisted(() => vi.fn());
 const spacesListMock = vi.hoisted(() => vi.fn());
+const spacesAddItemsMock = vi.hoisted(() => vi.fn());
+const spacesAddYandexFolderMock = vi.hoisted(() => vi.fn());
 const yandexStatusMock = vi.hoisted(() => vi.fn());
 const yandexListMock = vi.hoisted(() => vi.fn());
 
@@ -66,6 +68,8 @@ vi.mock('../../api/drive', async (importOriginal) => {
 vi.mock('../../api/spaces', () => ({
   spacesApi: {
     list: spacesListMock,
+    addItems: spacesAddItemsMock,
+    addYandexFolder: spacesAddYandexFolderMock,
   },
 }));
 
@@ -468,5 +472,95 @@ describe('macOS Photos Gallery (T-021)', () => {
       if (origH) Object.defineProperty(HTMLElement.prototype, 'clientHeight', origH);
       else delete (HTMLElement.prototype as unknown as Record<string, unknown>).clientHeight;
     }
+  });
+
+  it('Batch9 B-041: GallerySidebar supports draggable Yandex files, dropping Yandex files/folders onto Q Space folders & Albums, and refreshYandex()', async () => {
+    const { default: GallerySidebar } = await import('./GallerySidebar.vue');
+    const { resetYandexDiskStatus, useYandexDisk } = await import('../../composables/useYandexDisk');
+    resetYandexDiskStatus();
+    spacesAddItemsMock.mockReset().mockResolvedValue({ added: 1 });
+    spacesAddYandexFolderMock.mockReset().mockResolvedValue({});
+
+    useYandexDisk().status.value = {
+      enabled: true,
+      connected: true,
+      reconnectRequired: false,
+      login: 'vlad',
+      displayName: 'Vlad',
+      email: null,
+      avatarUrl: null,
+    };
+    yandexStatusMock.mockResolvedValue(useYandexDisk().status.value);
+    yandexListMock.mockImplementation(async (path: string) => {
+      if (path === '/') {
+        return {
+          path: '/',
+          total: 2,
+          items: [
+            { path: '/Фотокамера', name: 'Фотокамера', type: 'dir', size: null, mime: null, mediaType: null, md5: null, createdAt: null, modifiedAt: null, publicUrl: null, previewUrl: null },
+            { path: '/root.jpg', name: 'root.jpg', type: 'file', size: 1000, mime: 'image/jpeg', mediaType: 'image', md5: 'm1', createdAt: null, modifiedAt: null, publicUrl: null, previewUrl: null },
+          ],
+        };
+      }
+      return { path, total: 0, items: [] };
+    });
+
+    useExplorerLayoutPrefs().setShowFilesInTree(true);
+
+    wrapper = mount(GallerySidebar, {
+      attachTo: document.body,
+      props: {
+        activeSection: 'library',
+        folders: [
+          { id: 'f-own', name: 'Личное', parentId: null, role: 'owner' },
+          { id: 'f-ro', name: 'Чужое', parentId: null, role: 'read', shared: true },
+        ],
+        albums: [
+          { id: 'alb-1', name: 'Отпуск', count: 1, bytes: 0, createdAt: '', addedAt: '', coverFileIds: [] },
+        ],
+      },
+    });
+    await flushPromises();
+
+    // Expand Yandex root to show folder and draggable Yandex file row
+    await wrapper.get('[data-gallery-yandex-toggle="/"]').trigger('click');
+    await flushPromises();
+    const yFileRow = wrapper.get('[data-gallery-yandex-file="/root.jpg"]');
+    expect(yFileRow.attributes('draggable')).toBe('true');
+
+    // 1. Drag Yandex file onto Q Space writable folder -> emits drop-folder('f-own', [], [], ['/root.jpg'])
+    await yFileRow.trigger('dragstart');
+    expect(useExplorerGroupDnd().activeDrag.value?.items[0]).toMatchObject({
+      kind: 'yandex-file',
+      path: '/root.jpg',
+    });
+    await wrapper.get('[data-gallery-folder="f-own"]').trigger('drop');
+    expect(wrapper.emitted('drop-folder')?.[0]).toEqual(['f-own', [], [], ['/root.jpg']]);
+
+    // 2. Drag Yandex folder onto Q Space Домашняя -> emits drop-folder(null, [], [], ['/Фотокамера'])
+    await wrapper.get('[data-gallery-yandex="/Фотокамера"]').trigger('dragstart');
+    await wrapper.get('[data-gallery-tree-root="home"]').trigger('drop');
+    expect(wrapper.emitted('drop-folder')?.[1]).toEqual([null, [], [], ['/Фотокамера']]);
+
+    // 3. Drag Yandex file onto read-only Q Space folder -> blocked (no emit)
+    await wrapper.get('[data-gallery-tree-root="shared"] .gs-caret-btn').trigger('click');
+    await nextTick();
+    await yFileRow.trigger('dragstart');
+    await wrapper.get('[data-gallery-folder="f-ro"]').trigger('drop');
+    expect(wrapper.emitted('drop-folder')).toHaveLength(2);
+
+    // 4. Drag Yandex file onto Album -> calls spacesApi.addItems('alb-1', { yandexPaths: ['/root.jpg'] }) & emits album-sources-changed
+    await yFileRow.trigger('dragstart');
+    await wrapper.get('[data-gallery-album="alb-1"]').trigger('drop');
+    await flushPromises();
+    expect(spacesAddItemsMock).toHaveBeenCalledWith('alb-1', { yandexPaths: ['/root.jpg'] });
+    expect(wrapper.emitted('album-sources-changed')?.[0]).toEqual(['alb-1']);
+
+    // 5. Exposed refreshYandex('/Фотокамера') refreshes node and parent via yandexDisk.list
+    const callsBefore = yandexListMock.mock.calls.length;
+    await (wrapper.vm as unknown as { refreshYandex: (p?: string) => Promise<void> }).refreshYandex('/Фотокамера');
+    expect(yandexListMock.mock.calls.length).toBeGreaterThan(callsBefore);
+
+    resetYandexDiskStatus();
   });
 });

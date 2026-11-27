@@ -1249,4 +1249,181 @@ describe('PhotosFeed', () => {
     ydStatusMod.resetYandexDiskStatus();
     prefsMod.resetExplorerLayoutPrefs(true);
   });
+
+  it('Batch9 B-039: PhotosFeed preserves scroll position when externalItems pages append, emits reach-end near bottom, renders loading indicator, and resets scroll on externalFeedKey change', async () => {
+    const mkYandexFeedItem = (idx: number): FeedItem & { previewSrc: string; noReferrer: boolean } => ({
+      fileId: `yandex:/Фотокамера/p${idx}.jpg`,
+      hash: `ym-${idx}`,
+      name: `p${idx}.jpg`,
+      mime: 'image/jpeg',
+      kind: 'photo',
+      processed: false,
+      takenAt: `2026-10-${String(Math.max(1, 28 - (idx % 25))).padStart(2, '0')}T10:00:00.000Z`,
+      localTakenAt: `2026-10-${String(Math.max(1, 28 - (idx % 25))).padStart(2, '0')}T10:00:00.000Z`,
+      width: 1200,
+      height: 800,
+      durationSec: null,
+      bytes: 2048,
+      folderId: '/Фотокамера',
+      favorite: false,
+      albumIds: [],
+      thumbhash: null,
+      share: null,
+      previewSrc: `/api/yandex-disk/preview?path=/Фотокамера/p${idx}.jpg`,
+      noReferrer: true,
+    });
+
+    const Feed = await load();
+    const page1 = Array.from({ length: 40 }, (_, i) => mkYandexFeedItem(i + 1));
+    const page2 = Array.from({ length: 20 }, (_, i) => mkYandexFeedItem(i + 41));
+
+    const w = mountFeed(Feed, {
+      externalItems: page1,
+      externalHasMore: true,
+      externalLoadingMore: false,
+      externalFeedKey: '/Фотокамера',
+    });
+    await flushPromises();
+
+    const scrollerEl = w.get('.pf-scroller').element as HTMLElement;
+    const sizerEl = w.get('.pf-sizer').element as HTMLElement;
+    const totalH1 = Number.parseFloat(sizerEl.style.height);
+    expect(totalH1).toBeGreaterThan(800);
+
+    // Scroll down near the bottom to trigger reach-end
+    const targetScroll = Math.max(400, totalH1 - 900);
+    scrollerEl.scrollTop = targetScroll;
+    await w.get('.pf-scroller').trigger('scroll');
+    await flushPromises();
+    expect(w.emitted('reach-end')?.length).toBe(1);
+
+    // While externalLoadingMore is true: glass pill renders and scroll does not spam reach-end
+    await w.setProps({ externalLoadingMore: true });
+    await flushPromises();
+    expect(w.find('[data-testid="photos-loading-more"]').exists()).toBe(true);
+    await w.get('.pf-scroller').trigger('scroll');
+    expect(w.emitted('reach-end')?.length).toBe(1);
+
+    // Append page 2 under the same externalFeedKey -> scrollTop MUST NOT reset to 0!
+    await w.setProps({
+      externalItems: [...page1, ...page2],
+      externalLoadingMore: false,
+      externalHasMore: false,
+    });
+    await flushPromises();
+    expect(w.find('[data-testid="photos-loading-more"]').exists()).toBe(false);
+    expect(scrollerEl.scrollTop).toBeGreaterThan(0);
+    expect(Number.parseFloat(sizerEl.style.height)).toBeGreaterThan(totalH1);
+
+    // Dragging a Yandex tile populates kind: 'yandex-file' and exact path on GroupDragEntry
+    const { useExplorerGroupDnd, resetExplorerGroupDnd } = await import('../../composables/useExplorerGroupDnd');
+    resetExplorerGroupDnd();
+    const firstTile = w.find('[data-file-id^="yandex:"]');
+    expect(firstTile.exists()).toBe(true);
+    const tileFileId = firstTile.attributes('data-file-id')!;
+    await firstTile.trigger('dragstart');
+    const dragPayload = useExplorerGroupDnd().activeDrag.value;
+    expect(dragPayload?.items[0]).toMatchObject({
+      kind: 'yandex-file',
+      path: tileFileId.slice('yandex:'.length),
+      id: tileFileId,
+    });
+    resetExplorerGroupDnd();
+
+    // Switching externalFeedKey to another folder resets scrollTop to 0
+    await w.setProps({
+      externalFeedKey: '/Общая',
+      externalItems: [mkYandexFeedItem(99)],
+    });
+    await flushPromises();
+    expect(scrollerEl.scrollTop).toBe(0);
+
+    // Exiting Yandex external mode back to Q Space (externalItems: null) clears stale Yandex rows and resets scrollTop to 0
+    summaryMock.mockResolvedValueOnce({ groups: [{ key: '2026-10', count: 1 }] });
+    itemsMock.mockResolvedValueOnce({ items: [mkItem(0)], nextCursor: null });
+    scrollerEl.scrollTop = 300;
+    await w.get('.pf-scroller').trigger('scroll');
+    await w.setProps({
+      externalItems: null,
+      externalFeedKey: null,
+      externalHasMore: false,
+      externalLoadingMore: false,
+    });
+    await flushPromises();
+    expect(scrollerEl.scrollTop).toBe(0);
+    expect(w.find('[data-file-id^="yandex:"]').exists()).toBe(false);
+    expect(w.find('[data-file-id="f0"]').exists()).toBe(true);
+    w.unmount();
+
+    // Empty page 1 with externalHasMore=true (deeply nested folder hitting MAX_EMPTY_HOPS) still emits reach-end instead of stalling
+    const wEmpty = mountFeed(Feed, {
+      externalItems: [],
+      externalLoading: false,
+      externalHasMore: true,
+      externalLoadingMore: false,
+      externalFeedKey: '/DeepNested',
+    });
+    await flushPromises();
+    expect(wEmpty.emitted('reach-end')?.length).toBe(1);
+    expect(wEmpty.find('.pf-state').exists()).toBe(false);
+    wEmpty.unmount();
+  });
+
+  it('Batch9 B-039: useYandexMediaLibrary loads page 1 via listMediaPage and appends page 2 via loadMore()', async () => {
+    const clientMod = await import('../../api/client');
+    const ydApiMod = await import('../../api/yandexDisk');
+    const ydStatusMod = await import('../../composables/useYandexDisk');
+    const libMod = await import('../../composables/useYandexMediaLibrary');
+
+    ydStatusMod.resetYandexDiskStatus();
+    libMod.resetYandexMediaLibraryForTests();
+
+    const authSpy = vi.spyOn(clientMod, 'isAuthenticated').mockReturnValue(true);
+    const statusSpy = vi.spyOn(ydApiMod.yandexDisk, 'status').mockResolvedValue({
+      enabled: true,
+      connected: true,
+      reconnectRequired: false,
+      login: 'user',
+      displayName: 'User',
+    });
+    const listPageSpy = vi.spyOn(ydApiMod.yandexDisk, 'listMediaPage')
+      .mockResolvedValueOnce({
+        items: [
+          { path: '/Фотокамера/p1.jpg', name: 'p1.jpg', type: 'file', size: 100, mime: 'image/jpeg', mediaType: 'image', md5: 'm1', createdAt: null, modifiedAt: '2026-10-20T10:00:00Z', publicUrl: null, previewUrl: null },
+        ],
+        offset: 0,
+        limit: 120,
+        hasMore: true,
+        nextCursor: 'cur-2',
+      })
+      .mockResolvedValueOnce({
+        items: [
+          { path: '/Фотокамера/p1.jpg', name: 'p1.jpg', type: 'file', size: 100, mime: 'image/jpeg', mediaType: 'image', md5: 'm1', createdAt: null, modifiedAt: '2026-10-20T10:00:00Z', publicUrl: null, previewUrl: null },
+          { path: '/Фотокамера/p2.jpg', name: 'p2.jpg', type: 'file', size: 200, mime: 'image/jpeg', mediaType: 'image', md5: 'm2', createdAt: null, modifiedAt: '2026-10-19T10:00:00Z', publicUrl: null, previewUrl: null },
+        ],
+        offset: 1,
+        limit: 120,
+        hasMore: false,
+        nextCursor: null,
+      });
+
+    const lib = libMod.useYandexMediaLibrary();
+    await lib.ensureLoaded();
+    expect(listPageSpy).toHaveBeenNthCalledWith(1, '/', { limit: 120 });
+    expect(lib.items.value.map((i) => i.yandexPath)).toEqual(['/Фотокамера/p1.jpg']);
+    expect(lib.hasMore.value).toBe(true);
+    expect(lib.loading.value).toBe(false);
+
+    await lib.loadMore();
+    expect(listPageSpy).toHaveBeenNthCalledWith(2, '/', { limit: 120, cursor: 'cur-2' });
+    expect(lib.items.value.map((i) => i.yandexPath)).toEqual(['/Фотокамера/p1.jpg', '/Фотокамера/p2.jpg']);
+    expect(lib.hasMore.value).toBe(false);
+    expect(lib.loadingMore.value).toBe(false);
+
+    authSpy.mockRestore();
+    statusSpy.mockRestore();
+    listPageSpy.mockRestore();
+    libMod.resetYandexMediaLibraryForTests();
+    ydStatusMod.resetYandexDiskStatus();
+  });
 });

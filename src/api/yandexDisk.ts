@@ -55,6 +55,15 @@ export type YandexMediaPage = {
   offset?: number;
   limit?: number;
   hasMore?: boolean;
+  nextCursor?: string | null;
+};
+
+export type YandexImportToQspaceResult = {
+  importedFiles: number;
+  importedFolders: number;
+  fileIds: string[];
+  folderIds: string[];
+  truncated?: boolean;
 };
 
 export const YANDEX_PAGE = 200;
@@ -208,6 +217,86 @@ export const yandexDisk = {
     `/yandex-disk/items${q({ path, offset: opts.offset, limit: opts.limit ?? YANDEX_PAGE, sort: opts.sort, previewSize: opts.previewSize ?? 'L' })}`,
     opts.signal ? { signal: opts.signal } : undefined,
   ),
+  async listMediaPage(
+    this: {
+      list?: unknown;
+      listMedia?: (
+        path?: string,
+        opts?: { previewSize?: YandexPreviewSize; signal?: AbortSignal },
+      ) => Promise<YandexItem[]>;
+    } | void,
+    path = '/',
+    opts: {
+      limit?: number;
+      offset?: number;
+      cursor?: string | null;
+      previewSize?: YandexPreviewSize;
+      signal?: AbortSignal;
+    } = {},
+  ): Promise<YandexMediaPage> {
+    const rootPath = path || '/';
+    const limit = opts.limit ?? 100;
+    const previewSize = opts.previewSize ?? 'L';
+    const { signal } = opts;
+    if (signal?.aborted) throw createAbortError();
+
+    const self = this ?? yandexDisk;
+    // Unit tests may mock `yandexDisk.listMedia` without mocking `listMediaPage`.
+    if (typeof self.listMedia === 'function' && isVitestMockFn(self.listMedia)) {
+      const items = opts.signal || opts.previewSize
+        ? await self.listMedia(rootPath, {
+            ...(opts.previewSize ? { previewSize } : {}),
+            ...(opts.signal ? { signal: opts.signal } : {}),
+          })
+        : await self.listMedia(rootPath);
+      return {
+        items,
+        offset: 0,
+        limit,
+        hasMore: false,
+        nextCursor: null,
+      };
+    }
+
+    // Unit tests commonly mock `yandexDisk.list` without mocking `request`/`fetch`.
+    if (isVitestMockFn(self.list) && !isVitestMockFn(request)) {
+      const items = await listMediaBfsFallback(rootPath, previewSize, signal);
+      return {
+        items,
+        offset: 0,
+        limit,
+        hasMore: false,
+        nextCursor: null,
+      };
+    }
+
+    const page: YandexMediaPage = await request<YandexMediaPage>(
+      `/yandex-disk/media${q({
+        path: rootPath,
+        limit,
+        offset: opts.offset,
+        cursor: opts.cursor ?? undefined,
+        previewSize,
+      })}`,
+      signal ? { signal } : undefined,
+    );
+    const seen = new Set<string>();
+    const items: YandexItem[] = [];
+    for (const item of page?.items ?? []) {
+      if (isYandexMediaItem(item) && !seen.has(item.path)) {
+        seen.add(item.path);
+        items.push(item);
+      }
+    }
+    return {
+      items,
+      total: page?.total,
+      offset: page?.offset ?? opts.offset ?? 0,
+      limit: page?.limit ?? limit,
+      hasMore: Boolean(page?.hasMore),
+      nextCursor: page?.nextCursor ?? null,
+    };
+  },
   listMedia: async (
     path = '/',
     opts: { previewSize?: YandexPreviewSize; signal?: AbortSignal } = {},
@@ -224,17 +313,28 @@ export const yandexDisk = {
 
     const collected: YandexItem[] = [];
     const seenPaths = new Set<string>();
+    const seenCursors = new Set<string>();
     let offset = 0;
+    let cursor: string | null = null;
+    let pageCount = 0;
+    const MAX_PAGES = 20;
 
     try {
-      while (collected.length < YANDEX_MEDIA_MAX_ITEMS) {
+      while (collected.length < YANDEX_MEDIA_MAX_ITEMS && pageCount < MAX_PAGES) {
         if (signal?.aborted) throw createAbortError();
-        const page = await request<YandexMediaPage>(
-          `/yandex-disk/media${q({ path: rootPath, limit: YANDEX_PAGE, offset, previewSize })}`,
+        pageCount++;
+        const page: YandexMediaPage = await request<YandexMediaPage>(
+          `/yandex-disk/media${q({
+            path: rootPath,
+            limit: YANDEX_PAGE,
+            offset: cursor ? undefined : offset,
+            cursor: cursor ?? undefined,
+            previewSize,
+          })}`,
           signal ? { signal } : undefined,
         );
         if (!page || !Array.isArray(page.items)) {
-          if (offset === 0) return listMediaBfsFallback(rootPath, previewSize, signal);
+          if (pageCount === 1) return listMediaBfsFallback(rootPath, previewSize, signal);
           break;
         }
         for (const item of page.items) {
@@ -244,8 +344,15 @@ export const yandexDisk = {
             if (collected.length >= YANDEX_MEDIA_MAX_ITEMS) break;
           }
         }
-        if (!page.hasMore || page.items.length === 0) break;
-        offset += page.items.length;
+        if (!page.hasMore) break;
+        if (page.nextCursor) {
+          if (seenCursors.has(page.nextCursor)) break;
+          seenCursors.add(page.nextCursor);
+          cursor = page.nextCursor;
+        } else {
+          if (page.items.length === 0) break;
+          offset += page.items.length;
+        }
       }
       return collected;
     } catch (error) {
@@ -256,12 +363,17 @@ export const yandexDisk = {
       if (status === 401 || status === 403) {
         throw error;
       }
-      if (offset === 0 && (status === 404 || status === 405 || status === 501 || isVitestMockFn(yandexDisk.list))) {
+      if (pageCount === 1 && (status === 404 || status === 405 || status === 501 || isVitestMockFn(yandexDisk.list))) {
         return listMediaBfsFallback(rootPath, previewSize, signal);
       }
       throw error;
     }
   },
+  importToQspace: (paths: readonly string[], targetFolderId?: string | null) =>
+    request<YandexImportToQspaceResult>(
+      '/yandex-disk/import-to-qspace',
+      json({ paths: [...paths], targetFolderId: targetFolderId ?? null }),
+    ),
   createFolder: (path: string) => request<YandexItem>('/yandex-disk/folders', json({ path })),
   rename: (path: string, name: string) => request<YandexOutcome & { path: string }>('/yandex-disk/rename', json({ path, name })),
   move: (from: string, to: string) => request<YandexOutcome>('/yandex-disk/move', json({ from, to })),

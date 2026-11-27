@@ -113,7 +113,7 @@ const emit = defineEmits<{
   (e: 'open-trash'): void;
   (e: 'drop-favorites', fileIds: string[]): void;
   (e: 'drop-album', albumId: string, fileIds: string[], folderIds: string[]): void;
-  (e: 'drop-folder', folderId: string | null, fileIds: string[], folderIds: string[]): void;
+  (e: 'drop-folder', folderId: string | null, fileIds: string[], folderIds: string[], yandexPaths?: string[]): void;
   (e: 'folder-contextmenu', payload: { event: MouseEvent; folderId: string }): void;
   (e: 'yandex-contextmenu', payload: { event: MouseEvent; path: string; name: string }): void;
   (e: 'album-sources-changed', albumId: string): void;
@@ -717,6 +717,28 @@ async function readYandexNode(path: string): Promise<void> {
   }
 }
 
+async function refreshYandex(path?: string): Promise<void> {
+  if (!yandexStatus.value?.connected) return;
+  if (typeof path === 'string' && path.trim().length > 0) {
+    const norm = normalizeYandexPath(path);
+    const targets = new Set<string>([norm]);
+    if (norm !== '/') {
+      const parent = yandexParentPath(norm);
+      if (yandexNodes[parent] || parent === '/') {
+        targets.add(parent);
+      }
+    }
+    await Promise.all([...targets].map((p) => readYandexNode(p)));
+    return;
+  }
+  const cachedPaths = Object.keys(yandexNodes);
+  if (cachedPaths.length === 0) {
+    await readYandexNode('/');
+    return;
+  }
+  await Promise.all(cachedPaths.map((p) => readYandexNode(p)));
+}
+
 async function toggleYandexPath(path: string): Promise<void> {
   if (isYandexPathExpanded(path)) {
     const prefix = path === '/' ? '/' : `${path}/`;
@@ -928,10 +950,20 @@ function extractDroppedItems(e: DragEvent): {
   const yandexFilePaths: string[] = [];
   for (const it of payload.items) {
     if (!it.id && !it.path) continue;
-    if (it.kind === 'yandex-folder' || it.key?.startsWith('yandex-folder:')) {
+    if (
+      it.kind === 'yandex-folder'
+      || it.kind === 'yandex-dir'
+      || it.kind === 'yandex-root'
+      || it.key?.startsWith('yandex-folder:')
+    ) {
       const p = it.path || it.id;
       if (p && !yandexFolderPaths.includes(p)) yandexFolderPaths.push(p);
-    } else if (it.kind === 'yandex-file' || it.id?.startsWith('yandex:') || it.key?.startsWith('yandex-file:')) {
+    } else if (
+      it.kind === 'yandex-file'
+      || it.id?.startsWith('yandex:')
+      || it.key?.startsWith('yandex-file:')
+      || it.key?.startsWith('yandex:')
+    ) {
       const p = it.path || (it.id?.startsWith('yandex:') ? it.id.slice('yandex:'.length) : it.id);
       if (p && !yandexFilePaths.includes(p)) yandexFilePaths.push(p);
     } else if (it.kind === 'folder' || it.key?.startsWith('folder:')) {
@@ -950,9 +982,6 @@ function canDropOnFolder(targetFolderId: string | null, e?: DragEvent): boolean 
   }
   const payload = dnd.activeDrag.value ?? (e ? dnd.readGroupDragFromEvent(e) : null);
   if (!payload || payload.items.length === 0) return true;
-  if (payload.items.every((it) => it.kind === 'yandex-folder' || it.kind === 'yandex-file' || it.id?.startsWith('yandex:'))) {
-    return false;
-  }
   if (targetFolderId !== null) {
     for (const it of payload.items) {
       if (it.kind === 'folder' || it.key?.startsWith('folder:')) {
@@ -961,6 +990,14 @@ function canDropOnFolder(targetFolderId: string | null, e?: DragEvent): boolean 
     }
   }
   return true;
+}
+
+function canDropOnAlbum(albumId: string, e?: DragEvent): boolean {
+  const alb = albumsList.value.find((a) => a.id === albumId);
+  if (alb && alb.role === 'viewer') return false;
+  const payload = dnd.activeDrag.value ?? (e ? dnd.readGroupDragFromEvent(e) : null);
+  if (!payload || payload.items.length === 0) return true;
+  return payload.items.some((it) => Boolean(it.id || it.path));
 }
 
 function canDropOnYandex(targetPath: string, e?: DragEvent): boolean {
@@ -1008,6 +1045,11 @@ function onFavDrop(e: DragEvent): void {
 }
 
 function onAlbumDragOver(e: DragEvent, albumId: string): void {
+  if (!canDropOnAlbum(albumId, e)) {
+    if (isDropActive('album', albumId)) dnd.setGroupDropTarget(null);
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'none';
+    return;
+  }
   e.preventDefault();
   if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
   dnd.setGroupDropTarget({ kind: 'album', id: albumId });
@@ -1019,16 +1061,26 @@ function onAlbumDragLeave(e: DragEvent, albumId: string): void {
 }
 
 async function onAlbumDrop(e: DragEvent, albumId: string): Promise<void> {
-  const { fileIds, folderIds, yandexFolderPaths } = extractDroppedItems(e);
+  const { fileIds, folderIds, yandexFolderPaths, yandexFilePaths } = extractDroppedItems(e);
   dnd.endGroupDrag();
-  if (yandexFolderPaths.length > 0) {
+  if (!canDropOnAlbum(albumId, e)) return;
+  if (yandexFolderPaths.length > 0 || yandexFilePaths.length > 0) {
     let added = 0;
+    let hadError = false;
     for (const path of yandexFolderPaths) {
       try {
         await spacesApi.addYandexFolder(albumId, path);
         added++;
       } catch {
-        // continue adding remaining paths
+        hadError = true;
+      }
+    }
+    if (yandexFilePaths.length > 0) {
+      try {
+        const res = await spacesApi.addItems(albumId, { yandexPaths: yandexFilePaths });
+        added += typeof res?.added === 'number' ? res.added : yandexFilePaths.length;
+      } catch {
+        hadError = true;
       }
     }
     const albumName = albumsList.value.find((a) => a.id === albumId)?.name ?? '';
@@ -1039,8 +1091,10 @@ async function onAlbumDrop(e: DragEvent, albumId: string): Promise<void> {
         t('photosAddedToAlbumToast').replace('{n}', String(added)).replace('{album}', albumName),
         'success',
       );
-    } else {
+    } else if (hadError) {
       toast.show(t('spaceActionFailed'), 'error');
+    } else {
+      toast.show(t('photosAlreadyInAlbumToast').replace('{album}', albumName), 'info');
     }
   }
   if (fileIds.length > 0 || folderIds.length > 0) emit('drop-album', albumId, fileIds, folderIds);
@@ -1073,6 +1127,24 @@ function onYandexFolderDragStart(e: DragEvent, item: YandexItem): void {
           key: `yandex-folder:${item.path}`,
           id: item.path,
           kind: 'yandex-folder',
+          name: item.name,
+          path: item.path,
+        },
+      ],
+    },
+    e,
+  );
+}
+
+function onYandexFileDragStart(e: DragEvent, item: YandexItem): void {
+  dnd.startGroupDrag(
+    {
+      source: 'tree',
+      items: [
+        {
+          key: `yandex:${item.path}`,
+          id: item.path,
+          kind: 'yandex-file',
           name: item.name,
           path: item.path,
         },
@@ -1148,6 +1220,11 @@ async function onYandexDrop(e: DragEvent, targetPath: string): Promise<void> {
 }
 
 function onHomeDragOver(e: DragEvent): void {
+  if (!canDropOnFolder(null, e)) {
+    if (isDropActive('folder', 'root')) dnd.setGroupDropTarget(null);
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'none';
+    return;
+  }
   e.preventDefault();
   if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
   dnd.setGroupDropTarget({ kind: 'folder', id: 'root' });
@@ -1167,9 +1244,14 @@ function onHomeDragLeave(e: DragEvent): void {
 }
 
 function onHomeDrop(e: DragEvent): void {
-  const { fileIds, folderIds } = extractDroppedItems(e);
+  const { fileIds, folderIds, yandexFolderPaths, yandexFilePaths } = extractDroppedItems(e);
   dnd.endGroupDrag();
-  if (fileIds.length > 0 || folderIds.length > 0) emit('drop-folder', null, fileIds, folderIds);
+  const yandexPaths = [...new Set([...yandexFolderPaths, ...yandexFilePaths])];
+  if (yandexPaths.length > 0) {
+    emit('drop-folder', null, fileIds, folderIds, yandexPaths);
+  } else if (fileIds.length > 0 || folderIds.length > 0) {
+    emit('drop-folder', null, fileIds, folderIds);
+  }
 }
 
 function onFolderDragStart(e: DragEvent, folder: GalleryStorageFolder): void {
@@ -1219,12 +1301,15 @@ function onFolderDragLeave(e: DragEvent, folderId: string): void {
 }
 
 function onFolderDrop(e: DragEvent, folderId: string): void {
-  const { fileIds, folderIds } = extractDroppedItems(e);
+  const { fileIds, folderIds, yandexFolderPaths, yandexFilePaths } = extractDroppedItems(e);
   dnd.endGroupDrag();
   const target = folderMap.value.get(folderId);
   if (target && (target.role === 'read' || target.shared)) return;
   const validFolderIds = folderIds.filter((fid) => !isDescendantOrSelf(folderId, fid));
-  if (fileIds.length > 0 || validFolderIds.length > 0) {
+  const yandexPaths = [...new Set([...yandexFolderPaths, ...yandexFilePaths])];
+  if (yandexPaths.length > 0) {
+    emit('drop-folder', folderId, fileIds, validFolderIds, yandexPaths);
+  } else if (fileIds.length > 0 || validFolderIds.length > 0) {
     emit('drop-folder', folderId, fileIds, validFolderIds);
   }
 }
@@ -1518,7 +1603,7 @@ async function ctxLeaveAlbum(): Promise<void> {
   }
 }
 
-defineExpose({ invalidateFolderFilesCache });
+defineExpose({ invalidateFolderFilesCache, refreshYandex });
 
 onBeforeUnmount(() => {
   alive = false;
@@ -1975,6 +2060,9 @@ onBeforeUnmount(() => {
               :style="rowIndent(yrow.depth)"
               :data-gallery-yandex-file="yrow.path"
               :title="yrow.item.name || t('untitled')"
+              draggable="true"
+              @dragstart="onYandexFileDragStart($event, yrow.item)"
+              @dragend="onFolderDragEnd"
               @click="emit('select-file', `yandex:${yrow.path}`, yrow.parentPath)"
             >
               <span class="gs-caret-spacer" aria-hidden="true"></span>

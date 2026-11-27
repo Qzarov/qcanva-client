@@ -1987,16 +1987,17 @@ describe('Gallery UX v2 & B-009/B-011/B-014 regressions', () => {
     expect(img.exists()).toBe(true);
     expect(img.attributes('referrerpolicy')).toBe('no-referrer');
 
-    // Right-click menu in Yandex mode shows Yandex actions including favorite, and hides Q Space-only album
+    // Right-click menu in Yandex mode shows Yandex actions including favorite, album, and move
     await photoTile.trigger('contextmenu');
     await nextTick();
     expect(dp.find('[data-ctx-open]').exists()).toBe(true);
     expect(dp.find('[data-ctx-favorite]').exists()).toBe(true);
+    expect(dp.find('[data-ctx-album]').exists()).toBe(true);
+    expect(dp.find('[data-ctx-move]').exists()).toBe(true);
     expect(dp.find('[data-ctx-show-folder]').exists()).toBe(true);
     expect(dp.find('[data-ctx-download]').exists()).toBe(true);
     expect(dp.find('[data-ctx-properties]').exists()).toBe(true);
     expect(dp.find('[data-ctx-delete]').exists()).toBe(true);
-    expect(dp.find('[data-ctx-album]').exists()).toBe(false);
 
     // Свойства opens PhotoPanel directly in fallbackMode WITHOUT calling photosApi.details
     detailsMock.mockClear();

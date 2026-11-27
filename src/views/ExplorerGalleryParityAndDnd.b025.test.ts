@@ -427,7 +427,7 @@ describe('B-025..B-028 Explorer/Gallery parity, PhotoViewer unification, focus t
     await flushPromises();
     expect(resourceFolders.moveFolder).not.toHaveBeenCalled();
 
-    // onDropGroupToAlbum with a standalone canvas inside folder-qdisk MUST NOT attach its parent folder!
+    // onDropGroupToAlbum with a standalone canvas inside folder-qdisk adds the canvas resource and MUST NOT attach its parent folder!
     vi.mocked(spacesApi.addQspaceFolder).mockClear();
     vi.mocked(spacesApi.addItems).mockClear();
     await vm.onDropGroupToAlbum('alb-2', {
@@ -438,7 +438,9 @@ describe('B-025..B-028 Explorer/Gallery parity, PhotoViewer unification, focus t
     });
     await flushPromises();
     expect(spacesApi.addQspaceFolder).not.toHaveBeenCalled();
-    expect(spacesApi.addItems).not.toHaveBeenCalled();
+    expect(spacesApi.addItems).toHaveBeenCalledWith('alb-2', {
+      resources: [{ kind: 'canvas', id: 'c1' }],
+    });
 
     // Folder -> Album works cleanly
     await vm.onDropGroupToAlbum('alb-2', {

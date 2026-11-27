@@ -121,9 +121,9 @@
               @dblclick.stop="emit('navigate', folder.path)"
               @keydown.enter.prevent="emit('navigate', folder.path)"
               @contextmenu.prevent.stop="openItemContextMenu($event, folder)"
-              @dragstart="onSubfolderDragStart($event, folder)"
-              @drag="onSubfolderDragMove"
-              @dragend="onSubfolderDragEnd"
+              @dragstart="onItemDragStart($event, folder)"
+              @drag="onItemDragMove"
+              @dragend="onItemDragEnd"
             >
               <span class="subfolder-card-icon" aria-hidden="true">▤</span>
               <span class="subfolder-card-name">{{ folder.name }}</span>
@@ -149,6 +149,7 @@
               :class="{ 'has-preview': withPicture(file) || Boolean(previewOf(file)), 'is-markdown-doc': isMarkdown(file) }"
               role="button"
               tabindex="0"
+              draggable="true"
               :data-yandex-file="file.path"
               :data-file-kind="isMarkdown(file) ? 'markdown' : undefined"
               :data-select-key="keyOf(file)"
@@ -159,6 +160,9 @@
               @dblclick.stop="onFileDblClick($event, file)"
               @keydown.enter="onFileEnter($event, file)"
               @contextmenu.prevent.stop="openItemContextMenu($event, file)"
+              @dragstart="onItemDragStart($event, file)"
+              @drag="onItemDragMove"
+              @dragend="onItemDragEnd"
             >
               <div class="card-title card-title-with-icon">
                 <span class="folder-file-kind" aria-hidden="true">
@@ -212,6 +216,8 @@
       :x="ctxMenu.x"
       :y="ctxMenu.y"
       :items="ctxMenu.items"
+      :can-create="ctxCanCreate"
+      :create-options="yandexCreateOptions"
       :can-share="ctxCanShare"
       :can-album="ctxCanAddToAlbum"
       :albums="editableAlbums"
@@ -223,6 +229,7 @@
       :can-delete="true"
       @close="ctxMenu.open = false"
       @open="onCtxOpen"
+      @create-item="onCtxCreateItem"
       @share="onCtxShare"
       @add-to-album="onCtxAddToAlbum"
       @toggle-favorite="onCtxToggleFavorite"
@@ -242,6 +249,7 @@ import {
   isYandexReconnectError,
   joinYandexPath,
   settleYandexOutcome,
+  uploadYandexFile,
   yandexDisk,
   yandexParentPath,
   yandexPreviewUrl,
@@ -264,7 +272,10 @@ import FilePlaceholder from './FilePlaceholder.vue';
 import { fileInfo, formatFileDateTime, nameParts } from '../../dashboard/file-info';
 import { selectRange, toggleSelection } from '../../dashboard/selection';
 import DashboardViewToggle from './DashboardViewToggle.vue';
-import ExplorerContextMenu, { type ExplorerContextMenuItem } from './ExplorerContextMenu.vue';
+import ExplorerContextMenu, {
+  type ExplorerContextMenuCreateOption,
+  type ExplorerContextMenuItem,
+} from './ExplorerContextMenu.vue';
 
 type SortMode = 'updated-desc' | 'updated-asc' | 'title-asc' | 'title-desc';
 type ViewMode = 'grid' | 'list';
@@ -353,31 +364,32 @@ function onItemClick(event: MouseEvent, item: YandexItem): void {
   commitSelection([key]);
 }
 
-function onSubfolderDragStart(event: DragEvent, folder: YandexItem): void {
-  const key = keyOf(folder);
-  const dirs = effectiveSelectedKeys.value.includes(key) && effectiveSelectedKeys.value.length > 1
-    ? shownFolders.value.filter((candidate) => effectiveSelectedKeys.value.includes(keyOf(candidate)))
-    : [folder];
-  const targets = dirs.length ? dirs : [folder];
+function onItemDragStart(event: DragEvent, item: YandexItem): void {
+  const key = keyOf(item);
+  const pool = [...shownFolders.value, ...shownFiles.value];
+  const selected = effectiveSelectedKeys.value.includes(key) && effectiveSelectedKeys.value.length > 1
+    ? pool.filter((candidate) => effectiveSelectedKeys.value.includes(keyOf(candidate)))
+    : [item];
+  const targets = selected.length ? selected : [item];
   dnd.startGroupDrag({
     source: 'explorer',
-    items: targets.map((dir) => ({
-      key: `yandex-folder:${dir.path}`,
-      id: dir.path,
-      kind: 'yandex-folder',
-      name: dir.name,
-      path: dir.path,
+    items: targets.map((entry) => ({
+      key: entry.type === 'dir' ? `yandex-folder:${entry.path}` : `yandex:${entry.path}`,
+      id: entry.path,
+      kind: entry.type === 'dir' ? 'yandex-folder' : 'yandex-file',
+      name: entry.name,
+      path: entry.path,
     })),
   }, event);
 }
 
-function onSubfolderDragMove(event: DragEvent): void {
+function onItemDragMove(event: DragEvent): void {
   if (event.clientX !== 0 || event.clientY !== 0) {
     dnd.updateGroupDragPosition(event.clientX, event.clientY);
   }
 }
 
-function onSubfolderDragEnd(): void {
+function onItemDragEnd(): void {
   dnd.endGroupDrag();
 }
 
@@ -598,9 +610,14 @@ const ctxMenu = reactive<{
   raw: [],
 });
 
+const ctxCanCreate = computed(() => ctxMenu.raw.length === 1 && ctxMenu.raw[0]?.type === 'dir');
+const yandexCreateOptions = computed<ExplorerContextMenuCreateOption[]>(() => [
+  { id: 'folder', label: t('createOptionFolder'), icon: 'folder' },
+  { id: 'markdown', label: t('createOptionMarkdown'), icon: 'markdown' },
+]);
 const ctxCanShare = computed(() => ctxMenu.raw.length === 1 && ctxMenu.raw[0]?.type === 'file');
 const ctxCanDownload = computed(() => ctxMenu.raw.length > 0 && ctxMenu.raw.every((item) => item.type === 'file'));
-const ctxCanAddToAlbum = computed(() => ctxMenu.raw.some((item) => item.type === 'dir'));
+const ctxCanAddToAlbum = computed(() => ctxMenu.raw.length > 0);
 const ctxCanFavorite = computed(() => ctxMenu.raw.length > 0 && ctxMenu.raw.every((item) => isMedia(item)));
 const ctxAllFavorite = computed(() =>
   ctxMenu.raw.length > 0 && ctxMenu.raw.every((item) => layoutPrefs.isFavorite(keyOf(item))),
@@ -651,16 +668,28 @@ function onCtxOpen(entry: ExplorerContextMenuItem): void {
   else open(found);
 }
 
+function onCtxCreateItem(kind: string, entries: ReadonlyArray<ExplorerContextMenuItem>): void {
+  const found = findCtxRaw(entries[0]);
+  const targetPath = found && found.type === 'dir' ? found.path : props.path;
+  if (kind === 'folder') {
+    void createFolderAt(targetPath);
+  } else if (kind === 'markdown') {
+    void createMarkdownAt(targetPath);
+  }
+}
+
 function onCtxShare(entries: ReadonlyArray<ExplorerContextMenuItem>): void {
   const found = findCtxRaw(entries[0]);
   if (found) void copyLink(found);
 }
 
 async function onCtxAddToAlbum(albumId: string | undefined, entries: ReadonlyArray<ExplorerContextMenuItem>): Promise<void> {
-  const dirs = entries
+  const resolved = entries
     .map((entry) => findCtxRaw(entry))
-    .filter((item): item is YandexItem => Boolean(item && item.type === 'dir'));
-  if (!dirs.length) return;
+    .filter((item): item is YandexItem => Boolean(item));
+  const dirs = resolved.filter((item) => item.type === 'dir');
+  const files = resolved.filter((item) => item.type !== 'dir');
+  if (!dirs.length && !files.length) return;
   let targetAlbumId = albumId;
   if (!targetAlbumId) {
     const name = (await promptDialog({
@@ -681,6 +710,9 @@ async function onCtxAddToAlbum(albumId: string | undefined, entries: ReadonlyArr
   try {
     for (const dir of dirs) {
       await spacesApi.addYandexFolder(targetAlbumId, dir.path);
+    }
+    if (files.length) {
+      await spacesApi.addItems(targetAlbumId, { yandexPaths: files.map((f) => f.path) });
     }
     await loadSpaces(true);
     emit('feedback', 'success', t('explorerAddToAlbum'));
@@ -807,7 +839,7 @@ async function copyLink(file: YandexItem) {
   }
 }
 
-async function createFolder() {
+async function createFolderAt(targetPath: string) {
   menu.value = '';
   const name = (await promptDialog({
     title: t('driveNewFolderTitle'),
@@ -821,13 +853,44 @@ async function createFolder() {
     return;
   }
   try {
-    await yandexDisk.createFolder(joinYandexPath(props.path, name));
+    await yandexDisk.createFolder(joinYandexPath(targetPath, name));
     invalidateYandexMediaLibrary();
     await load();
     emit('changed');
   } catch (err) {
     failed(err, (err as { status?: number })?.status === 409 ? t('yandexAlreadyExists') : t('yandexLoadFailed'));
   }
+}
+
+async function createMarkdownAt(targetPath: string) {
+  menu.value = '';
+  const rawName = (await promptDialog({
+    title: t('createMarkdownTitle'),
+    placeholder: t('createMarkdownPlaceholder'),
+    confirmLabel: t('create'),
+    cancelLabel: t('cancel'),
+  }))?.trim();
+  if (!rawName) return;
+  if (rawName.includes('/')) {
+    await alertDialog({ title: t('createMarkdownTitle'), message: t('yandexBadName') });
+    return;
+  }
+  const fileName = /\.md$/i.test(rawName) ? rawName : `${rawName}.md`;
+  const baseName = fileName.replace(/\.md$/i, '') || t('untitled');
+  const file = new File([`# ${baseName}\n`], fileName, { type: 'text/markdown' });
+  try {
+    await uploadYandexFile(joinYandexPath(targetPath, fileName), file).promise;
+    invalidateYandexMediaLibrary();
+    await load();
+    emit('changed');
+    emit('feedback', 'success', t('documentCreated'));
+  } catch (err) {
+    failed(err, (err as { status?: number })?.status === 409 ? t('yandexAlreadyExists') : t('yandexLoadFailed'));
+  }
+}
+
+async function createFolder() {
+  await createFolderAt(props.path);
 }
 
 // ----- uploading: the dashboard's upload panel shows the progress

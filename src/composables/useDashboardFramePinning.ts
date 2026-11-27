@@ -8,8 +8,10 @@ const DEFAULT_FRAME_SELECTORS = [
 
 export function useDashboardFramePinning(selectors = DEFAULT_FRAME_SELECTORS) {
   let frameBoxes: HTMLElement[] = [];
+  let pinTimer: ReturnType<typeof setTimeout> | null = null;
 
   const pinFrame = () => {
+    if (typeof window === 'undefined') return;
     for (const box of frameBoxes) {
       if (box.scrollTop || box.scrollLeft) {
         box.scrollTop = 0;
@@ -20,12 +22,19 @@ export function useDashboardFramePinning(selectors = DEFAULT_FRAME_SELECTORS) {
   };
 
   const pinFrameUnlessTyping = () => {
+    if (typeof document === 'undefined' || typeof window === 'undefined') return;
     const active = document.activeElement as HTMLElement | null;
     if (active?.matches('input, textarea, select, [contenteditable="true"]')) return;
     pinFrame();
   };
 
-  const pinFrameAfterTyping = () => { setTimeout(pinFrameUnlessTyping, 50); };
+  const pinFrameAfterTyping = () => {
+    if (pinTimer !== null) clearTimeout(pinTimer);
+    pinTimer = setTimeout(() => {
+      pinTimer = null;
+      pinFrameUnlessTyping();
+    }, 50);
+  };
 
   onMounted(() => {
     frameBoxes = selectors
@@ -38,6 +47,10 @@ export function useDashboardFramePinning(selectors = DEFAULT_FRAME_SELECTORS) {
   });
 
   onBeforeUnmount(() => {
+    if (pinTimer !== null) {
+      clearTimeout(pinTimer);
+      pinTimer = null;
+    }
     for (const box of frameBoxes) box.removeEventListener('scroll', pinFrameUnlessTyping);
     window.removeEventListener('scroll', pinFrameUnlessTyping);
     document.removeEventListener('focusout', pinFrameAfterTyping);

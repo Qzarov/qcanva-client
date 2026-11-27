@@ -7,6 +7,7 @@ vi.mock('./client', async (importOriginal) => {
 });
 
 import { ApiError, request } from './client';
+import { spacesApi } from './spaces';
 import {
   isYandexReconnectError,
   joinYandexPath,
@@ -105,5 +106,131 @@ describe('Yandex Disk calls', () => {
     const defaultUrl = new URL(opened[1]!.url, 'http://x');
     expect(defaultUrl.searchParams.get('path')).toBe('/notes.md');
     expect(defaultUrl.searchParams.get('overwrite')).toBeNull();
+  });
+
+  it('listMediaPage queries /yandex-disk/media with cursor, limit, previewSize and returns nextCursor/hasMore', async () => {
+    mockedRequest.mockResolvedValueOnce({
+      items: [
+        { path: '/Фотокамера/a.jpg', name: 'a.jpg', type: 'file', size: 100, mime: 'image/jpeg', mediaType: 'image', md5: 'm1', createdAt: null, modifiedAt: null, publicUrl: null, previewUrl: null },
+        { path: '/Фотокамера/a.jpg', name: 'a.jpg', type: 'file', size: 100, mime: 'image/jpeg', mediaType: 'image', md5: 'm1', createdAt: null, modifiedAt: null, publicUrl: null, previewUrl: null },
+        { path: '/Фотокамера/doc.pdf', name: 'doc.pdf', type: 'file', size: 100, mime: 'application/pdf', mediaType: 'document', md5: 'm2', createdAt: null, modifiedAt: null, publicUrl: null, previewUrl: null },
+      ],
+      offset: 0,
+      limit: 100,
+      hasMore: true,
+      nextCursor: 'cur-2',
+    });
+
+    const page = await yandexDisk.listMediaPage('/Фотокамера', { cursor: 'cur-1', limit: 100 });
+    const url = new URL(mockedRequest.mock.calls[0]![0] as string, 'http://x');
+    expect(url.pathname).toBe('/yandex-disk/media');
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      path: '/Фотокамера',
+      limit: '100',
+      cursor: 'cur-1',
+      previewSize: 'L',
+    });
+    expect(page.items.map((i) => i.path)).toEqual(['/Фотокамера/a.jpg']);
+    expect(page.hasMore).toBe(true);
+    expect(page.nextCursor).toBe('cur-2');
+  });
+
+  it('listMedia follows nextCursor across pages and falls back to offset when nextCursor is absent', async () => {
+    mockedRequest
+      .mockResolvedValueOnce({
+        items: [{ path: '/p1.jpg', name: 'p1.jpg', type: 'file', size: 10, mime: 'image/jpeg', mediaType: 'image', md5: null, createdAt: null, modifiedAt: null, publicUrl: null, previewUrl: null }],
+        hasMore: true,
+        nextCursor: 'c2',
+      })
+      .mockResolvedValueOnce({
+        items: [{ path: '/p2.jpg', name: 'p2.jpg', type: 'file', size: 10, mime: 'image/jpeg', mediaType: 'image', md5: null, createdAt: null, modifiedAt: null, publicUrl: null, previewUrl: null }],
+        hasMore: false,
+        nextCursor: null,
+      });
+
+    const items = await yandexDisk.listMedia('/Фотокамера');
+    expect(items.map((i) => i.path)).toEqual(['/p1.jpg', '/p2.jpg']);
+    expect(mockedRequest).toHaveBeenCalledTimes(2);
+    const secondUrl = new URL(mockedRequest.mock.calls[1]![0] as string, 'http://x');
+    expect(secondUrl.searchParams.get('cursor')).toBe('c2');
+    expect(secondUrl.searchParams.get('offset')).toBeNull();
+  });
+
+  it('importToQspace posts paths and targetFolderId to /yandex-disk/import-to-qspace', async () => {
+    mockedRequest.mockResolvedValueOnce({
+      importedFiles: 2,
+      importedFolders: 1,
+      fileIds: ['f1', 'f2'],
+      folderIds: ['d1'],
+      truncated: false,
+    });
+
+    const res = await yandexDisk.importToQspace(['/Фотокамера/a.jpg', '/Отпуск'], 'folder-1');
+    expect(mockedRequest).toHaveBeenCalledWith(
+      '/yandex-disk/import-to-qspace',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ paths: ['/Фотокамера/a.jpg', '/Отпуск'], targetFolderId: 'folder-1' }),
+      }),
+    );
+    expect(res.importedFiles).toBe(2);
+
+    mockedRequest.mockResolvedValueOnce({ importedFiles: 1, importedFolders: 0, fileIds: ['f3'], folderIds: [] });
+    await yandexDisk.importToQspace(['/a.jpg']);
+    expect(mockedRequest).toHaveBeenLastCalledWith(
+      '/yandex-disk/import-to-qspace',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ paths: ['/a.jpg'], targetFolderId: null }),
+      }),
+    );
+  });
+
+  it('spacesApi.addItems and removeItems preserve array compat and support yandexPaths + resources objects', async () => {
+    mockedRequest.mockResolvedValue({ added: 2, removed: 2 });
+
+    await spacesApi.addItems('sp-1', ['f1', 'f2']);
+    expect(mockedRequest).toHaveBeenLastCalledWith(
+      '/spaces/sp-1/items',
+      expect.objectContaining({ method: 'PUT', body: JSON.stringify({ fileIds: ['f1', 'f2'] }) }),
+    );
+
+    await spacesApi.addItems('sp-1', {
+      fileIds: ['f1'],
+      yandexPaths: ['/Фотокамера/a.jpg'],
+      resources: [{ kind: 'canvas', id: 'c-1' }],
+    });
+    expect(mockedRequest).toHaveBeenLastCalledWith(
+      '/spaces/sp-1/items',
+      expect.objectContaining({
+        method: 'PUT',
+        body: JSON.stringify({
+          fileIds: ['f1'],
+          yandexPaths: ['/Фотокамера/a.jpg'],
+          resources: [{ kind: 'canvas', id: 'c-1' }],
+        }),
+      }),
+    );
+
+    await spacesApi.removeItems('sp-1', ['f1']);
+    expect(mockedRequest).toHaveBeenLastCalledWith(
+      '/spaces/sp-1/items',
+      expect.objectContaining({ method: 'DELETE', body: JSON.stringify({ fileIds: ['f1'] }) }),
+    );
+
+    await spacesApi.removeItems('sp-1', {
+      yandexPaths: ['/Фотокамера/a.jpg'],
+      resources: [{ kind: 'text-document', id: 'td-1' }],
+    });
+    expect(mockedRequest).toHaveBeenLastCalledWith(
+      '/spaces/sp-1/items',
+      expect.objectContaining({
+        method: 'DELETE',
+        body: JSON.stringify({
+          yandexPaths: ['/Фотокамера/a.jpg'],
+          resources: [{ kind: 'text-document', id: 'td-1' }],
+        }),
+      }),
+    );
   });
 });
