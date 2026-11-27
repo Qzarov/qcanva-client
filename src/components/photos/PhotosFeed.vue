@@ -228,6 +228,11 @@ const storageFolderMap = computed(() => {
   }
   return paths;
 });
+const storageFoldersSig = computed(() =>
+  (props.storageFolders ?? [])
+    .map((f) => (f ? `${f.id}\0${f.parentId ?? ''}\0${f.name}` : ''))
+    .join('\n'),
+);
 
 /** Anchor that survives a transition through an empty layout (hidden tab, zero width). */
 let keptAnchor: { anchor: Anchor; item: FeedItem | null } | null = null;
@@ -1623,9 +1628,7 @@ function tileLabel(item: FeedItem): string {
 const retriedThumbs = new Set<string>();
 
 function markTileImgLoaded(fileId: string): void {
-  if (loadedTileImgIds.has(fileId)) {
-    loadedTileImgIds.delete(fileId);
-  }
+  if (loadedTileImgIds.has(fileId)) return;
   loadedTileImgIds.add(fileId);
   while (loadedTileImgIds.size > MAX_LOADED_TILE_IMG_IDS) {
     const oldest = loadedTileImgIds.values().next().value;
@@ -1652,7 +1655,6 @@ function tileThumbSrc(item: FeedItem): string | null {
   if (!url) return null;
   if (isGatedExternalPreviewUrl(url)) {
     if (loadedExternalThumbs.has(url)) {
-      touchLoadedExternalThumb(url);
       return url;
     }
     if (activeExternalThumbs.has(url)) {
@@ -1668,17 +1670,20 @@ function tileNoReferrer(item: FeedItem): boolean {
 }
 
 function setTileImgRef(item: FeedItem, el: HTMLImageElement | null): void {
+  if (el === null) {
+    externalImgEls.delete(item.fileId);
+    return;
+  }
   const url = (item as ExternalFeedItem).previewSrc;
   if (isGatedExternalPreviewUrl(url)) {
-    if (el) {
+    const prev = externalImgEls.get(item.fileId);
+    if (!prev || prev.el !== el || prev.url !== url) {
       externalImgEls.set(item.fileId, { url, el });
-    } else {
-      externalImgEls.delete(item.fileId);
     }
   } else {
     externalImgEls.delete(item.fileId);
   }
-  if (el && el.complete && el.naturalWidth > 0) {
+  if (!loadedTileImgIds.has(item.fileId) && el.complete && el.naturalWidth > 0) {
     markTileImgLoaded(item.fileId);
     if (isGatedExternalPreviewUrl(url)) {
       touchLoadedExternalThumb(url);
@@ -2172,7 +2177,8 @@ watch(
 watch(collapsedShares, () => relayout());
 watch(locale, () => relayout());
 watch(visible, () => syncVisibleExternalThumbs(), { immediate: true });
-watch(storageFolderMap, () => {
+watch(storageFoldersSig, (next, prev) => {
+  if (next === prev) return;
   if (isExternalMode.value) {
     if (wasExternalReady) syncExternalFeed(true);
     return;

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
+import { onUpdated } from 'vue';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FeedGroup, FeedItem, FeedParams } from '../../api/photos';
 
@@ -1870,5 +1871,109 @@ describe('PhotosFeed', () => {
     expect(w.text()).toContain('Здесь пока пусто');
 
     w.unmount();
+  });
+
+  it('does not enter an infinite render loop when img.complete && naturalWidth > 0', async () => {
+    const origComplete = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'complete');
+    const origNaturalWidth = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'naturalWidth');
+
+    Object.defineProperty(HTMLImageElement.prototype, 'complete', { configurable: true, get: () => true });
+    Object.defineProperty(HTMLImageElement.prototype, 'naturalWidth', { configurable: true, get: () => 200 });
+
+    try {
+      const qspaceItem = mkItem(1, { fileId: 'f-qs-1', hash: 'h-qs-1', name: 'qs1.jpg' });
+      const externalGatedItem = {
+        ...mkItem(2, {
+          fileId: 'yd:/Photo/gate.jpg',
+          hash: 'h-yd-1',
+          name: 'gate.jpg',
+          processed: false,
+        }),
+        previewSrc: '/api/yandex-disk/preview?path=/Photo/gate.jpg',
+        noReferrer: true,
+      };
+      const externalDirectItem = {
+        ...mkItem(3, {
+          fileId: 'ext:/Photo/direct.jpg',
+          hash: 'h-ext-1',
+          name: 'direct.jpg',
+          processed: false,
+        }),
+        previewSrc: 'https://cdn.example/direct.jpg',
+      };
+
+      summaryMock.mockResolvedValue({
+        groups: [{ key: '2026-10', count: 1 }],
+      });
+      itemsMock.mockResolvedValue({ items: [qspaceItem], nextCursor: null });
+
+      const Feed = await load();
+      let renderCount = 0;
+      let updateCount = 0;
+      const rawFeed = Feed as unknown as {
+        setup?: (p: Record<string, unknown>, ctx: unknown) => unknown;
+        render?: (...args: unknown[]) => unknown;
+      };
+      const FeedWithCounters = {
+        ...rawFeed,
+        setup(p: Record<string, unknown>, ctx: unknown) {
+          onUpdated(() => {
+            updateCount++;
+          });
+          const res = rawFeed.setup?.(p, ctx);
+          if (typeof res === 'function') {
+            return (...args: unknown[]) => {
+              renderCount++;
+              return (res as (...a: unknown[]) => unknown)(...args);
+            };
+          }
+          return res;
+        },
+        ...(typeof rawFeed.render === 'function'
+          ? {
+              render(this: unknown, ...args: unknown[]) {
+                renderCount++;
+                return rawFeed.render!.apply(this, args);
+              },
+            }
+          : {}),
+      };
+
+      const w = mountFeed(FeedWithCounters as Awaited<ReturnType<typeof load>>, {
+        supplementaryItems: [externalGatedItem, externalDirectItem],
+        storageFolders: [{ id: 'fld-1', name: 'Travel', parentId: null }],
+      });
+      await settle();
+
+      const imgs = w.findAll('img.pf-img');
+      expect(imgs).toHaveLength(3);
+      for (const img of imgs) {
+        expect(img.classes()).toContain('is-loaded');
+      }
+
+      const updatesAfterLoad = updateCount;
+      const rendersAfterLoad = renderCount;
+      expect(updatesAfterLoad).toBeLessThanOrEqual(5);
+      expect(rendersAfterLoad).toBeLessThanOrEqual(10);
+
+      // Extra settle ticks must produce zero additional renders/updates.
+      await settle();
+      expect(updateCount).toBe(updatesAfterLoad);
+      expect(renderCount).toBe(rendersAfterLoad);
+
+      // Re-rendering with a new storageFolders array of identical folder descriptors must not trigger extra updates.
+      await w.setProps({
+        storageFolders: [{ id: 'fld-1', name: 'Travel', parentId: null }],
+      });
+      await settle();
+      expect(updateCount - updatesAfterLoad).toBeLessThanOrEqual(1);
+
+      w.unmount();
+    } finally {
+      if (origComplete) Object.defineProperty(HTMLImageElement.prototype, 'complete', origComplete);
+      else delete (HTMLImageElement.prototype as unknown as Record<string, unknown>).complete;
+      if (origNaturalWidth) Object.defineProperty(HTMLImageElement.prototype, 'naturalWidth', origNaturalWidth);
+      else delete (HTMLImageElement.prototype as unknown as Record<string, unknown>).naturalWidth;
+    }
   });
 });
