@@ -17,10 +17,9 @@
     :data-selected="selectedKeys?.includes('drive-file:' + file.id) || undefined"
     v-file-info="infoOf(file)"
     :aria-label="`${isMarkdown(file) ? t('openDocument') : t('folderFileDownload')}: ${file.name}`"
-    @click="open(file)"
-    @dblclick.stop="open(file)"
-    @keydown.enter.prevent="open(file)"
-    @keydown.space.prevent="open(file)"
+    @click="onCardClick($event, file)"
+    @dblclick.stop="onCardDblClick($event, file)"
+    @keydown.enter.prevent="onCardEnter($event, file)"
     @contextmenu.prevent.stop="emit('contextmenu', $event, file)"
     @dragstart="onFileDragStart($event, file)"
     @drag="onFileDragMove"
@@ -50,7 +49,7 @@
         alt=""
         decoding="async"
         data-folder-file-preview
-        @error="dropPreview(file.id)"
+        @error="dropPreview(file)"
       />
       <FilePlaceholder v-else :name="file.name" :kind="isVideo(file) ? 'video' : isImage(file) ? 'picture' : 'file'" />
       <span v-if="isVideo(file) && previews[file.id]" class="folder-file-play" data-folder-file-play><Play :size="14" aria-hidden="true" /></span>
@@ -91,7 +90,8 @@ import {
   type DriveItem,
   type DriveThumbLink,
 } from '../../api/drive';
-import { isBrowserImage, isMarkdownFile, isPictureFile, isVideoFile, hasCardPicture } from '../../dashboard/thumb-kinds';
+import { invalidateRenditionToken, renditionUrl } from '../../api/photos';
+import { isMarkdownFile, isPictureFile, isVideoFile, hasCardPicture } from '../../dashboard/thumb-kinds';
 import { alertDialog } from '../../composables/appDialog';
 import { vFileInfo } from '../../directives/fileInfo';
 import ResourceIcon from '../ResourceIcon.vue';
@@ -124,11 +124,12 @@ const emit = defineEmits<{
   /** The files shown, for the dashboard's actions on what is ticked. */
   files: [files: DriveItem[]];
   'toggle-select': [key: string];
+  'select-item': [file: DriveItem, event: MouseEvent];
   /** The card pictures found so far, for the full-screen viewer. */
   previews: [previews: Readonly<Record<string, string>>];
-  /** A picture or a video was clicked: the dashboard shows it full screen. */
+  /** A picture or a video was opened: the dashboard shows it full screen. */
   'open-image': [file: DriveItem];
-  /** A Markdown file was clicked: the dashboard opens it as a document. */
+  /** A Markdown file was opened: the dashboard opens it as a document. */
   'open-markdown': [file: DriveItem];
   'contextmenu': [event: MouseEvent, file: DriveItem];
 }>();
@@ -142,10 +143,6 @@ let mediaCancelled = false;
 
 /** Files of a folder shown here; the rest are a link away, in the Drive. */
 const PAGE = 200;
-/** A picture larger than this is not fetched just for a preview. */
-const PREVIEW_MAX_BYTES = 15 * 1024 * 1024;
-/** Previews fetched at once: a folder of photos must not fire hundreds of requests. */
-const PREVIEW_CONCURRENCY = 4;
 
 const files = ref<DriveItem[]>([]);
 const hasMore = ref(false);
@@ -218,19 +215,23 @@ async function load(folderId: string) {
   }
 }
 
-// ----- previews: a signed link per picture, asked for once the card is on screen
+// ----- previews: unified media renditions for photo/video, drive thumbs for docs/unindexed
 const previews = reactive<Record<string, string>>({});
-const queue: DriveItem[] = [];
 const requested = new Set<string>();
-let running = 0;
+const renditionTried = new Set<string>();
+const renditionActive = new Set<string>();
+const renditionRetried = new Set<string>();
 let observer: IntersectionObserver | null = null;
 const observed = new Map<Element, DriveItem>();
 
 function resetPreviews() {
   for (const key of Object.keys(previews)) delete previews[key];
-  queue.length = 0;
+  pictureless.clear();
   waiting.clear();
   retries.clear();
+  renditionTried.clear();
+  renditionActive.clear();
+  renditionRetried.clear();
   if (batchTimer) clearTimeout(batchTimer);
   if (retryTimer) clearTimeout(retryTimer);
   batchTimer = null;
@@ -248,31 +249,16 @@ function resetPreviews() {
 
 /** Every picture, video, PDF, EPUB and text file: the hub makes card pictures for them. */
 const wantsPreview = (file: DriveItem) => withPicture(file);
-/** No card picture from the hub: a picture the browser shows as it is, if not too big. */
-const canShowOriginal = (file: DriveItem) => isBrowserImage(file) && (file.sizeBytes ?? 0) <= PREVIEW_MAX_BYTES;
+const isSha256Hex = (hash?: string | null): hash is string =>
+  typeof hash === 'string' && /^[0-9a-f]{64}$/i.test(hash);
+const canUseMediaRendition = (file: DriveItem) =>
+  isMedia(file)
+  && Boolean(file.hash)
+  && file.mediaProcessed !== false
+  && (file.mediaProcessed === true || isSha256Hex(file.hash));
 
-// The original, by its download link: the fallback when the hub has no card picture.
-function pump() {
-  while (running < PREVIEW_CONCURRENCY && queue.length) {
-    const file = queue.shift()!;
-    const forLoad = loadId;
-    running += 1;
-    driveApi.getDownloadLink(file.id)
-      .then(({ url }) => { if (forLoad === loadId) previews[file.id] = resolveDownloadUrl(url); })
-      .catch(() => { if (forLoad === loadId) pictureless.add(file.id); /* no copy on the hub, or no access: the drawn one stays */ })
-      .finally(() => { running -= 1; pump(); });
-  }
-}
 /** Files known to have no picture (not just one on its way): their drawn one is short. */
 const pictureless = reactive(new Set<string>());
-function showOriginal(file: DriveItem) {
-  if (!canShowOriginal(file)) {
-    pictureless.add(file.id);
-    return;
-  }
-  queue.push(file);
-  pump();
-}
 
 // Card pictures from the hub, asked for in batches of what came on screen.
 const THUMB_BATCH_DELAY_MS = 120;
@@ -282,7 +268,7 @@ const waiting = new Map<string, DriveItem>();
 const retries = new Map<string, number>();
 let batchTimer: ReturnType<typeof setTimeout> | null = null;
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
-/** An older hub without card pictures: back to the originals for good. */
+/** An older hub without card pictures: fall back to clean file-type icon placeholders. */
 let hubThumbs = true;
 
 function scheduleBatch(delay = THUMB_BATCH_DELAY_MS) {
@@ -296,7 +282,7 @@ async function flushThumbs() {
   if (!batch.length) return;
   const forLoad = loadId;
   if (!hubThumbs) {
-    batch.forEach(showOriginal);
+    batch.forEach((file) => pictureless.add(file.id));
     return;
   }
   let links: Record<string, DriveThumbLink>;
@@ -310,7 +296,7 @@ async function flushThumbs() {
     }
     if (mediaCancelled) return;
     if ((error as { status?: number } | null)?.status === 404) hubThumbs = false;
-    batch.forEach(showOriginal);
+    batch.forEach((file) => pictureless.add(file.id));
     return;
   }
   if (forLoad !== loadId) return;
@@ -321,9 +307,7 @@ async function flushThumbs() {
     else if (link?.status === 'pending' && (retries.get(file.id) ?? 0) < THUMB_RETRIES) {
       retries.set(file.id, (retries.get(file.id) ?? 0) + 1);
       again.push(file);
-      // Meanwhile the original, where the browser shows it (a PDF has none: its square waits).
-      if (!previews[file.id] && canShowOriginal(file)) showOriginal(file);
-    } else if (!previews[file.id]) showOriginal(file);
+    } else if (!previews[file.id]) pictureless.add(file.id);
   }
   if (mediaCancelled) return;
   if (again.length) {
@@ -371,6 +355,29 @@ async function flushThumbs() {
 function requestPreview(file: DriveItem) {
   if (requested.has(file.id) || !wantsPreview(file)) return;
   requested.add(file.id);
+  if (canUseMediaRendition(file) && !renditionTried.has(file.id)) {
+    renditionTried.add(file.id);
+    renditionActive.add(file.id);
+    const forLoad = loadId;
+    void renditionUrl(file.hash!, 'thumbnail')
+      .then((url) => {
+        if (forLoad !== loadId) return;
+        if (url) {
+          previews[file.id] = url;
+          return;
+        }
+        renditionActive.delete(file.id);
+        waiting.set(file.id, file);
+        scheduleBatch();
+      })
+      .catch(() => {
+        if (forLoad !== loadId) return;
+        renditionActive.delete(file.id);
+        waiting.set(file.id, file);
+        scheduleBatch();
+      });
+    return;
+  }
   waiting.set(file.id, file);
   scheduleBatch();
 }
@@ -394,9 +401,38 @@ function watchVisible(el: Element | null, file: DriveItem) {
   observer.observe(el);
 }
 
-function dropPreview(id: string) {
-  delete previews[id];
-  pictureless.add(id);
+function dropPreview(file: DriveItem) {
+  delete previews[file.id];
+  if (renditionActive.has(file.id)) {
+    if (file.hash && !renditionRetried.has(file.id)) {
+      renditionRetried.add(file.id);
+      invalidateRenditionToken(file.hash);
+      const forLoad = loadId;
+      void renditionUrl(file.hash, 'thumbnail')
+        .then((url) => {
+          if (forLoad !== loadId) return;
+          if (url) {
+            previews[file.id] = url;
+            return;
+          }
+          renditionActive.delete(file.id);
+          waiting.set(file.id, file);
+          scheduleBatch(0);
+        })
+        .catch(() => {
+          if (forLoad !== loadId) return;
+          renditionActive.delete(file.id);
+          waiting.set(file.id, file);
+          scheduleBatch(0);
+        });
+      return;
+    }
+    renditionActive.delete(file.id);
+    waiting.set(file.id, file);
+    scheduleBatch(0);
+    return;
+  }
+  pictureless.add(file.id);
 }
 
 watch(previews, (value) => emit('previews', { ...value }), { deep: true });
@@ -437,6 +473,21 @@ function open(file: DriveItem) {
   if (isImage(file) || isVideo(file)) emit('open-image', file);
   else if (isMarkdown(file)) emit('open-markdown', file);
   else void download(file);
+}
+
+function onCardClick(event: MouseEvent, file: DriveItem) {
+  if ((event.target as HTMLElement | null)?.closest('.card-manage, .card-menu')) return;
+  emit('select-item', file, event);
+}
+
+function onCardDblClick(event: MouseEvent, file: DriveItem) {
+  if ((event.target as HTMLElement | null)?.closest('.card-manage, .card-menu')) return;
+  open(file);
+}
+
+function onCardEnter(event: KeyboardEvent, file: DriveItem) {
+  if ((event.target as HTMLElement | null)?.closest('.card-manage, .card-menu, button')) return;
+  open(file);
 }
 
 function openFromMenu(file: DriveItem) {

@@ -143,6 +143,7 @@
               class="tree-row"
               :class="{
                 active: row.active,
+                'is-album-related': Boolean(row.albumRelated && !row.active),
                 'kbd-focus': treeFocusKey === row.key,
                 'tree-selected': treeSelectedKeys.has(row.key),
                 'drag-over': isDropHighlight(row),
@@ -157,6 +158,7 @@
               :data-tree-key="row.key"
               :data-tree-kind="row.kind"
               :data-dashboard-folder="row.kind === 'folder' ? row.folderId : undefined"
+              :data-album-related="row.albumRelated && !row.active ? 'true' : undefined"
               :data-dashboard-section="row.sectionKind"
               :data-home-link="row.key === 'qspace:home' ? '' : undefined"
               :data-space="row.key === 'clouds:yandex' ? 'yandex' : undefined"
@@ -446,6 +448,7 @@ interface TreeRow {
   expandable: boolean;
   expanded: boolean;
   active: boolean;
+  albumRelated?: boolean;
   draggable: boolean;
   disabled?: boolean;
   soon?: boolean;
@@ -478,6 +481,8 @@ const props = withDefaults(defineProps<{
   folders: readonly DashboardSidebarNavItem[];
   /** Unpruned folder list (all depths) so Albums tree expands own/shared subfolders even when Q Space folders are collapsed. */
   allFolders?: readonly { id: string; name: string; parentId: string | null; hasChildren?: boolean }[];
+  /** Folder IDs belonging to the currently selected Album (dim highlight + exclusive auto-expand). */
+  albumRelatedFolderIds?: ReadonlySet<string> | null;
   admin?: boolean;
   spaces?: boolean;
   yandexRefreshKey?: number;
@@ -491,6 +496,7 @@ const props = withDefaults(defineProps<{
   widthState: 'expanded',
   collapsed: undefined,
   androidApp: false,
+  albumRelatedFolderIds: null,
   admin: false,
   spaces: true,
   yandexRefreshKey: 0,
@@ -867,6 +873,55 @@ function folderAncestors(folderId: string): Set<string> {
   return chain;
 }
 
+function computeAlbumRelatedAncestors(ids: ReadonlySet<string> | null | undefined): Set<string> {
+  const ancestors = new Set<string>();
+  if (!ids || ids.size === 0) return ancestors;
+  for (const fid of ids) {
+    let cur = albumLocalFolderLookup.value.get(fid) ?? folderLookup.value.get(fid);
+    const visited = new Set<string>([fid]);
+    while (cur?.parentId && !visited.has(cur.parentId)) {
+      visited.add(cur.parentId);
+      ancestors.add(cur.parentId);
+      cur = albumLocalFolderLookup.value.get(cur.parentId) ?? folderLookup.value.get(cur.parentId);
+    }
+  }
+  return ancestors;
+}
+
+function applyAlbumRelatedExpansion(ids: ReadonlySet<string> | null | undefined): void {
+  if (props.activeSection.kind !== 'space') return;
+  const keepAncestors = computeAlbumRelatedAncestors(ids);
+  if (ids && ids.size > 0) {
+    const roots = new Set(openRoots.value);
+    roots.add('root:qspace');
+    roots.add('qspace:home');
+    openRoots.value = roots;
+  }
+  for (const folder of folderLookup.value.values()) {
+    const shouldExpand = keepAncestors.has(folder.id);
+    const exp = isFolderExpanded(folder);
+    if (exp && !shouldExpand) {
+      localFolderOverrides[folder.id] = false;
+      if (folder.expanded) emit('toggle-folder', folder.id);
+    } else if (!exp && shouldExpand) {
+      localFolderOverrides[folder.id] = true;
+      if (!folder.expanded) emit('toggle-folder', folder.id);
+    }
+  }
+}
+
+watch(
+  [
+    () => (props.activeSection.kind === 'space' ? props.activeSection.spaceId : null),
+    () => props.albumRelatedFolderIds,
+  ],
+  ([spaceId, relatedIds]) => {
+    if (!spaceId) return;
+    applyAlbumRelatedExpansion(relatedIds);
+  },
+  { immediate: true },
+);
+
 const activeOwnedFolderId = computed<string | null>(() => {
   if (props.activeSection.kind !== 'folder') return null;
   const f = folderLookup.value.get(props.activeSection.folderId);
@@ -936,15 +991,19 @@ watch(() => props.activeSection, (next, prev) => {
   }
 
   // Q Space folder accordion
-  const keepFolders = next.kind === 'folder' ? folderAncestors(next.folderId) : new Set<string>();
-  for (const folder of folderLookup.value.values()) {
-    const exp = isFolderExpanded(folder);
-    if (exp && !keepFolders.has(folder.id)) {
-      localFolderOverrides[folder.id] = false;
-      if (folder.expanded) emit('toggle-folder', folder.id);
-    } else if (next.kind === 'folder' && keepFolders.has(folder.id) && folder.id !== next.folderId && !exp) {
-      localFolderOverrides[folder.id] = true;
-      if (!folder.expanded) emit('toggle-folder', folder.id);
+  if (next.kind === 'space') {
+    applyAlbumRelatedExpansion(props.albumRelatedFolderIds);
+  } else {
+    const keepFolders = next.kind === 'folder' ? folderAncestors(next.folderId) : new Set<string>();
+    for (const folder of folderLookup.value.values()) {
+      const exp = isFolderExpanded(folder);
+      if (exp && !keepFolders.has(folder.id)) {
+        localFolderOverrides[folder.id] = false;
+        if (folder.expanded) emit('toggle-folder', folder.id);
+      } else if (next.kind === 'folder' && keepFolders.has(folder.id) && folder.id !== next.folderId && !exp) {
+        localFolderOverrides[folder.id] = true;
+        if (!folder.expanded) emit('toggle-folder', folder.id);
+      }
     }
   }
   if (next.kind === 'folder' || next.kind === 'home') {
@@ -1296,6 +1355,8 @@ function appendQspaceFolderRows(rows: TreeRow[], parentRowKey: string, baseDepth
         ? Boolean(folder.hasChildren || subSubFolders.length > 0 || files.length > 0 || childMore.has(folder.id))
         : Boolean(folder.hasChildren || subSubFolders.length > 0);
       const expanded = expandable && isFolderExpanded(folder);
+      const active = isSectionActive({ kind: 'folder', folderId: folder.id });
+      const albumRelated = Boolean(!active && props.albumRelatedFolderIds?.has(folder.id));
       rows.push({
         key: fKey,
         parentKey,
@@ -1304,7 +1365,8 @@ function appendQspaceFolderRows(rows: TreeRow[], parentRowKey: string, baseDepth
         depth,
         expandable,
         expanded,
-        active: isSectionActive({ kind: 'folder', folderId: folder.id }),
+        active,
+        albumRelated,
         draggable: folder.draggable,
         folderId: folder.id,
         folderItem: folder,
@@ -2248,3 +2310,12 @@ defineExpose({
   hasTreeSelection,
 });
 </script>
+
+<style scoped>
+.tree-row.is-album-related:not(.active),
+.dashboard-sidebar.explorer-sidebar .tree-row.dashboard-sidebar-folder.is-album-related:not(.active) {
+  background: color-mix(in srgb, var(--color-brands, #44cf6e) 7%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-brands, #44cf6e) 20%, transparent);
+  color: var(--ui-text-secondary, var(--ui-text));
+}
+</style>

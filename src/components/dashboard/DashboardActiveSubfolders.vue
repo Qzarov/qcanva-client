@@ -13,6 +13,8 @@
       }"
       :draggable="isOwner || undefined"
       @click="onSubfolderClick($event, child.id)"
+      @dblclick.stop="emit('select', child.id)"
+      @keydown.enter.prevent="emit('select', child.id)"
       @contextmenu.prevent.stop="emit('contextmenu', $event, child)"
       @dragstart="onSubfolderDragStart($event, child)"
       @drag="onSubfolderDragMove"
@@ -58,6 +60,7 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{
   select: [id: string];
+  'select-item': [id: string, event: MouseEvent];
   reset: [];
   add: [];
   contextmenu: [event: MouseEvent, folder: SubfolderItem];
@@ -69,8 +72,7 @@ const dnd = useExplorerGroupDnd();
 const dropTargetFolderId = ref<string | null>(null);
 
 function onSubfolderClick(event: MouseEvent, folderId: string): void {
-  if (event.metaKey || event.ctrlKey || event.shiftKey) return;
-  emit('select', folderId);
+  emit('select-item', folderId, event);
 }
 
 function singleFolderEntry(child: { id: string; name: string }): GroupDragEntry {

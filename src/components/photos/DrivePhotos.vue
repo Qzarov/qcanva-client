@@ -25,6 +25,17 @@
         </button>
 
         <button
+          v-if="isYandexMode"
+          type="button"
+          class="dp-crumb-pill"
+          data-testid="gallery-yandex-crumb"
+          @click="clearYandexPath"
+        >
+          <ChevronLeft :size="14" aria-hidden="true" />
+          <span>{{ yandexScopeName }}</span>
+        </button>
+
+        <button
           v-if="effectiveAlbumId"
           type="button"
           class="dp-crumb-pill"
@@ -197,7 +208,12 @@
           class="dp-float-sort"
           :class="{ 'is-headroom-hidden': isTopChromeHidden }"
         >
-          <PhotosViewBar :hidden="false" :force-visible="true" @menu-open="sortMenuOpen = $event" />
+          <PhotosViewBar
+            :hidden="false"
+            :force-visible="true"
+            :inside-album="Boolean(effectiveAlbumId)"
+            @menu-open="sortMenuOpen = $event"
+          />
         </div>
 
         <!-- Search: flat semantic CLIP/hybrid relevance grid -->
@@ -245,22 +261,24 @@
         <!-- Continuous edge-to-edge photo wall -->
         <PhotosFeed
           v-else
-          :key="effectiveAlbumId ?? 'feed'"
+          :key="isYandexMode ? 'yandex' : (effectiveAlbumId ?? 'feed')"
           ref="feedRef"
           class="dp-feed"
           :params="feedParams"
-          :caption-on-tile="view.captionOnTile.value"
+          :caption-on-tile="effectiveCaptionOnTile"
           :tile="view.state.value.tile"
           :tile-height="prefs.photoTileH.value"
           :aspect-mode="prefs.galleryAspectMode.value"
-          :folder-filter-id="externalFolderId"
-          :folder-filter-ids="effectiveAllowedFolderIds"
-          :folder-include-root="externalFolderId === 'root'"
+          :folder-filter-id="isYandexMode ? null : externalFolderId"
+          :folder-filter-ids="isYandexMode ? null : effectiveAllowedFolderIds"
+          :folder-include-root="isYandexMode ? false : externalFolderId === 'root'"
           :people-filter="selectedPeople"
           :recent-limit="activeSection === 'recent' ? 24 : null"
           :headroom-hidden="isTopChromeHidden"
           :selected="selected"
           :current="currentId"
+          :external-items="isYandexMode ? yandexFeedItems : null"
+          :external-loading="isYandexMode ? yandexLoading : false"
           @open="onOpen"
           @focus-photo="onFeedFocusPhoto"
           @activate="onActivate"
@@ -291,8 +309,10 @@
             <PhotoPanel
               :key="panelEpoch"
               :file-id="panelId ?? ''"
+              :item="panelItem"
+              :can-favorite="!isPanelItemYandex"
               :selected-items="selectedFeedItems"
-              :hide-open-folder="hideInternalTabs"
+              :hide-open-folder="hideInternalTabs || isPanelItemYandex"
               @close="closePanel"
               @open-folder="onOpenFolder"
               @open-album="onOpenAlbum"
@@ -323,99 +343,140 @@
         @mousedown="markPointerInsideCtx"
         @focusout="onCtxFocusOut"
       >
-        <button type="button" role="menuitem" class="dp-ctx-item" data-ctx-favorite @click="ctxToggleFavorite">
-          <Heart :size="14" aria-hidden="true" />
-          <span>
-            {{ ctxAllFavorite ? t('explorerRemoveFromFavorites') : t('explorerAddToFavorites') }}
-            <template v-if="ctxTargetIds.length > 1">({{ ctxTargetIds.length }})</template>
-          </span>
-        </button>
+        <template v-if="ctxIsYandex">
+          <button type="button" role="menuitem" class="dp-ctx-item" data-ctx-open @click="ctxOpenViewer">
+            <Eye :size="14" aria-hidden="true" />
+            <span>{{ t('photosOpen') }}</span>
+          </button>
 
-        <button type="button" role="menuitem" class="dp-ctx-item" data-ctx-share @click="ctxShare">
-          <Share2 :size="14" aria-hidden="true" />
-          <span>
-            {{ t('galleryShare') }}
-            <template v-if="ctxTargetIds.length > 1">({{ ctxTargetIds.length }})</template>
-          </span>
-        </button>
-
-        <div class="dp-ctx-sep" role="separator"></div>
-
-        <div class="dp-ctx-album-wrap">
           <button
-            ref="ctxAlbumTriggerEl"
+            v-if="ctxShowFolderTarget"
             type="button"
             role="menuitem"
-            aria-haspopup="menu"
-            :aria-expanded="ctxAlbumsOpen"
             class="dp-ctx-item"
-            :class="{ 'is-submenu-open': ctxAlbumsOpen }"
-            data-ctx-album
-            @pointerenter="onCtxAlbumTriggerPointerEnter"
-            @mouseenter="onCtxAlbumTriggerEnter"
-            @mouseleave="scheduleCloseCtxAlbums"
-            @focusin="cancelCloseCtxAlbums"
-            @keydown="onCtxAlbumTriggerKeydown"
-            @pointerdown="onCtxAlbumTriggerPointerDown"
-            @click="onCtxAlbumTriggerClick"
+            data-ctx-show-folder
+            @click="ctxShowFolder"
           >
-            <FolderPlus :size="14" aria-hidden="true" />
-            <span>{{ t('explorerAddToAlbum') }}</span>
-            <ChevronRight :size="13" class="dp-ctx-chevron" aria-hidden="true" />
+            <FolderOpen :size="14" aria-hidden="true" />
+            <span>{{ t('photosShowFolder') }}</span>
           </button>
-        </div>
 
-        <button
-          v-if="effectiveAlbumId"
-          type="button"
-          role="menuitem"
-          class="dp-ctx-item"
-          data-ctx-remove-album
-          @click="ctxRemoveFromAlbum"
-        >
-          <X :size="14" aria-hidden="true" />
-          <span>{{ t('photosSelRemoveFromAlbum') }}</span>
-        </button>
+          <button type="button" role="menuitem" class="dp-ctx-item" data-ctx-download @click="ctxDownload">
+            <Download :size="14" aria-hidden="true" />
+            <span>{{ t('photosDownload') }}</span>
+          </button>
 
-        <button
-          v-if="ctxShowFolderTarget"
-          type="button"
-          role="menuitem"
-          class="dp-ctx-item"
-          data-ctx-show-folder
-          @click="ctxShowFolder"
-        >
-          <FolderOpen :size="14" aria-hidden="true" />
-          <span>{{ t('photosShowFolder') }}</span>
-        </button>
+          <button type="button" role="menuitem" class="dp-ctx-item" data-ctx-properties @click="ctxOpenProperties">
+            <Info :size="14" aria-hidden="true" />
+            <span>{{ t('fileProperties') }}</span>
+          </button>
 
-        <button type="button" role="menuitem" class="dp-ctx-item" data-ctx-move @click="ctxOpenMove">
-          <FolderInput :size="14" aria-hidden="true" />
-          <span>
-            {{ t('photosMoveAction') }}
-            <template v-if="ctxTargetIds.length > 1">({{ ctxTargetIds.length }})</template>…
-          </span>
-        </button>
+          <div class="dp-ctx-sep" role="separator"></div>
 
-        <button type="button" role="menuitem" class="dp-ctx-item" data-ctx-download @click="ctxDownload">
-          <Download :size="14" aria-hidden="true" />
-          <span>{{ t('photosDownload') }}</span>
-        </button>
+          <button type="button" role="menuitem" class="dp-ctx-item dp-ctx-danger" data-ctx-delete @click="ctxDelete">
+            <Trash2 :size="14" aria-hidden="true" />
+            <span>
+              {{ t('delete') }}
+              <template v-if="ctxTargetIds.length > 1">({{ ctxTargetIds.length }})</template>
+            </span>
+          </button>
+        </template>
 
-        <button type="button" role="menuitem" class="dp-ctx-item" data-ctx-properties @click="ctxOpenProperties">
-          <Info :size="14" aria-hidden="true" />
-          <span>{{ t('fileProperties') }}</span>
-        </button>
+        <template v-else>
+          <button type="button" role="menuitem" class="dp-ctx-item" data-ctx-favorite @click="ctxToggleFavorite">
+            <Heart :size="14" aria-hidden="true" />
+            <span>
+              {{ ctxAllFavorite ? t('explorerRemoveFromFavorites') : t('explorerAddToFavorites') }}
+              <template v-if="ctxTargetIds.length > 1">({{ ctxTargetIds.length }})</template>
+            </span>
+          </button>
 
-        <div class="dp-ctx-sep" role="separator"></div>
+          <button type="button" role="menuitem" class="dp-ctx-item" data-ctx-share @click="ctxShare">
+            <Share2 :size="14" aria-hidden="true" />
+            <span>
+              {{ t('galleryShare') }}
+              <template v-if="ctxTargetIds.length > 1">({{ ctxTargetIds.length }})</template>
+            </span>
+          </button>
 
-        <button type="button" role="menuitem" class="dp-ctx-item dp-ctx-danger" data-ctx-delete @click="ctxDelete">
-          <Trash2 :size="14" aria-hidden="true" />
-          <span>
-            {{ t('delete') }}
-            <template v-if="ctxTargetIds.length > 1">({{ ctxTargetIds.length }})</template>
-          </span>
-        </button>
+          <div class="dp-ctx-sep" role="separator"></div>
+
+          <div class="dp-ctx-album-wrap">
+            <button
+              ref="ctxAlbumTriggerEl"
+              type="button"
+              role="menuitem"
+              aria-haspopup="menu"
+              :aria-expanded="ctxAlbumsOpen"
+              class="dp-ctx-item"
+              :class="{ 'is-submenu-open': ctxAlbumsOpen }"
+              data-ctx-album
+              @pointerenter="onCtxAlbumTriggerPointerEnter"
+              @mouseenter="onCtxAlbumTriggerEnter"
+              @mouseleave="scheduleCloseCtxAlbums"
+              @focusin="cancelCloseCtxAlbums"
+              @keydown="onCtxAlbumTriggerKeydown"
+              @pointerdown="onCtxAlbumTriggerPointerDown"
+              @click="onCtxAlbumTriggerClick"
+            >
+              <FolderPlus :size="14" aria-hidden="true" />
+              <span>{{ t('explorerAddToAlbum') }}</span>
+              <ChevronRight :size="13" class="dp-ctx-chevron" aria-hidden="true" />
+            </button>
+          </div>
+
+          <button
+            v-if="effectiveAlbumId"
+            type="button"
+            role="menuitem"
+            class="dp-ctx-item"
+            data-ctx-remove-album
+            @click="ctxRemoveFromAlbum"
+          >
+            <X :size="14" aria-hidden="true" />
+            <span>{{ t('photosSelRemoveFromAlbum') }}</span>
+          </button>
+
+          <button
+            v-if="ctxShowFolderTarget"
+            type="button"
+            role="menuitem"
+            class="dp-ctx-item"
+            data-ctx-show-folder
+            @click="ctxShowFolder"
+          >
+            <FolderOpen :size="14" aria-hidden="true" />
+            <span>{{ t('photosShowFolder') }}</span>
+          </button>
+
+          <button type="button" role="menuitem" class="dp-ctx-item" data-ctx-move @click="ctxOpenMove">
+            <FolderInput :size="14" aria-hidden="true" />
+            <span>
+              {{ t('photosMoveAction') }}
+              <template v-if="ctxTargetIds.length > 1">({{ ctxTargetIds.length }})</template>…
+            </span>
+          </button>
+
+          <button type="button" role="menuitem" class="dp-ctx-item" data-ctx-download @click="ctxDownload">
+            <Download :size="14" aria-hidden="true" />
+            <span>{{ t('photosDownload') }}</span>
+          </button>
+
+          <button type="button" role="menuitem" class="dp-ctx-item" data-ctx-properties @click="ctxOpenProperties">
+            <Info :size="14" aria-hidden="true" />
+            <span>{{ t('fileProperties') }}</span>
+          </button>
+
+          <div class="dp-ctx-sep" role="separator"></div>
+
+          <button type="button" role="menuitem" class="dp-ctx-item dp-ctx-danger" data-ctx-delete @click="ctxDelete">
+            <Trash2 :size="14" aria-hidden="true" />
+            <span>
+              {{ t('delete') }}
+              <template v-if="ctxTargetIds.length > 1">({{ ctxTargetIds.length }})</template>
+            </span>
+          </button>
+        </template>
       </div>
     </Transition>
 
@@ -479,6 +540,10 @@
       :total="viewer!.items.length"
       :has-prev="viewer!.index > 0"
       :has-next="viewer!.index < viewer!.items.length - 1"
+      :can-favorite="!isViewerItemYandex"
+      :can-share="!isViewerItemYandex || Boolean(viewerItemPublicUrl)"
+      :can-delete="true"
+      :can-info="true"
       @close="viewer = null"
       @prev="stepViewer(-1)"
       @next="stepViewer(1)"
@@ -545,6 +610,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
+  Eye,
   FolderInput,
   FolderOpen,
   FolderPlus,
@@ -562,8 +628,25 @@ import {
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 import { resourceFolders, type ResourceFolderSummary } from '../../api/client';
 import { downloadDriveFile, driveApi, resolveDownloadUrl } from '../../api/drive';
-import { isPhotosMock, isSearchUnavailable, photosApi, type Album, type FeedItem, type FeedPeriod } from '../../api/photos';
+import {
+  isPhotosMock,
+  isSearchUnavailable,
+  photosApi,
+  type Album,
+  type FeedItem,
+  type FeedPeriod,
+  type SortKey,
+} from '../../api/photos';
 import { spacesApi } from '../../api/spaces';
+import {
+  downloadYandexLink,
+  settleYandexOutcome,
+  yandexDisk,
+  yandexParentPath,
+  yandexPreviewUrl,
+  type YandexItem,
+} from '../../api/yandexDisk';
+import { confirmDialog } from '../../composables/appDialog';
 import {
   GALLERY_TILE_MAX_H,
   GALLERY_TILE_MIN_H,
@@ -586,7 +669,7 @@ import PhotoPanel from './PhotoPanel.vue';
 import PhotosFeed from './PhotosFeed.vue';
 import PhotosSearchGrid from './PhotosSearchGrid.vue';
 import PhotosViewBar from './PhotosViewBar.vue';
-import PhotoViewer from './PhotoViewer.vue';
+import PhotoViewer, { type ViewerMediaItem } from './PhotoViewer.vue';
 import {
   invalidateGalleryFolderFilesCache,
   type GallerySection,
@@ -601,6 +684,7 @@ const props = withDefaults(defineProps<{
   externalAlbumId?: string | null;
   externalAlbumMembersCount?: number | null;
   externalFolderId?: string | null;
+  externalYandexPath?: string | null;
   folders?: readonly GalleryStorageFolder[];
   hideInternalTabs?: boolean;
   showSidebarExpand?: boolean;
@@ -610,6 +694,7 @@ const props = withDefaults(defineProps<{
   externalAlbumId: null,
   externalAlbumMembersCount: null,
   externalFolderId: null,
+  externalYandexPath: null,
   folders: undefined,
   hideInternalTabs: false,
   showSidebarExpand: false,
@@ -630,6 +715,7 @@ const emit = defineEmits<{
   (e: 'share-album', id: string): void;
   (e: 'share-photos', ids: string[]): void;
   (e: 'select-album', albumId: string): void;
+  (e: 'select-yandex-path', path: string | null): void;
   (e: 'clear-album'): void;
   (e: 'open-trash'): void;
   (e: 'expand-sidebar'): void;
@@ -762,7 +848,7 @@ const effectiveAllowedFolderIds = computed<ReadonlySet<string> | null>(() => {
 
 const selected = shallowRef<Set<string>>(new Set());
 const focusedId = ref<string | null>(null);
-const focusedItemCache = ref<FeedItem | null>(null);
+const focusedItemCache = ref<ViewerMediaItem | null>(null);
 let preserveFocusForShowFolder = false;
 const panelOpen = ref(false);
 const panelId = ref<string | null>(null);
@@ -770,12 +856,142 @@ const panelEpoch = ref(0);
 const panelWidth = ref(PANEL_DEFAULT_W);
 const panelDragging = ref(false);
 const sortMenuOpen = ref(false);
-const viewer = shallowRef<{ items: FeedItem[]; index: number } | null>(null);
-const viewerItem = computed(() => viewer.value?.items[viewer.value.index] ?? null);
+const viewer = shallowRef<{ items: ViewerMediaItem[]; index: number } | null>(null);
+const viewerItem = computed<ViewerMediaItem | null>(() => viewer.value?.items[viewer.value.index] ?? null);
 const currentId = computed(() => viewerItem.value?.fileId ?? focusedId.value ?? panelId.value);
 
-const feedParams = computed(() => (
-  effectiveAlbumId.value ? { ...view.feedParams.value, albumId: effectiveAlbumId.value } : view.feedParams.value
+// ----- Yandex Disk Media Mode -----
+type YandexViewerMediaItem = ViewerMediaItem & {
+  yandexPath: string;
+  folderName: string;
+  publicUrl?: string | null;
+};
+
+const YANDEX_ID_PREFIX = 'yandex:';
+const isYandexFileId = (fileId: string | null | undefined): boolean =>
+  typeof fileId === 'string' && fileId.startsWith(YANDEX_ID_PREFIX);
+const yandexPathFromFileId = (fileId: string): string =>
+  fileId.startsWith(YANDEX_ID_PREFIX) ? fileId.slice(YANDEX_ID_PREFIX.length) : fileId;
+
+const isYandexMode = computed(() => props.externalYandexPath !== null && props.externalYandexPath !== undefined);
+
+function yandexFolderDisplayName(path: string): string {
+  if (!path || path === '/') return t('yandexDisk');
+  return path.split('/').filter(Boolean).pop() || t('yandexDisk');
+}
+
+const yandexScopeName = computed(() =>
+  props.externalYandexPath !== null && props.externalYandexPath !== undefined
+    ? yandexFolderDisplayName(props.externalYandexPath)
+    : '',
+);
+
+function yandexItemToViewerMedia(item: YandexItem): YandexViewerMediaItem {
+  const isVideo = item.mediaType === 'video' || Boolean(item.mime?.toLowerCase().startsWith('video/'));
+  const parentPath = yandexParentPath(item.path);
+  const takenAt = item.modifiedAt || item.createdAt || new Date().toISOString();
+  const folderLabel = yandexFolderDisplayName(parentPath);
+  return {
+    fileId: `${YANDEX_ID_PREFIX}${item.path}`,
+    hash: item.md5 || `${YANDEX_ID_PREFIX}${item.path}`,
+    name: item.name,
+    mime: item.mime || (isVideo ? 'video/mp4' : 'image/jpeg'),
+    kind: isVideo ? 'video' : 'photo',
+    processed: false,
+    takenAt,
+    localTakenAt: takenAt,
+    width: null,
+    height: null,
+    durationSec: null,
+    bytes: item.size ?? 0,
+    folderId: parentPath,
+    favorite: false,
+    albumIds: [],
+    thumbhash: null,
+    share: null,
+    previewSrc: yandexPreviewUrl(item),
+    noReferrer: true,
+    sizeBytes: item.size ?? undefined,
+    mimeType: item.mime || undefined,
+    folderName: folderLabel,
+    yandexPath: item.path,
+    publicUrl: item.publicUrl,
+    resolveOriginalUrl: async () => (await yandexDisk.downloadLink(item.path)).href,
+    downloadAction: async () => {
+      const { href } = await yandexDisk.downloadLink(item.path);
+      downloadYandexLink(href, item.name);
+    },
+  };
+}
+
+const yandexRawItems = shallowRef<YandexItem[]>([]);
+const yandexLoading = ref(false);
+let yandexAbort: AbortController | null = null;
+let yandexLoadSeq = 0;
+
+const yandexFeedItems = computed<YandexViewerMediaItem[]>(() =>
+  yandexRawItems.value.map(yandexItemToViewerMedia),
+);
+
+async function loadYandexMedia(path: string): Promise<void> {
+  yandexAbort?.abort();
+  const controller = new AbortController();
+  yandexAbort = controller;
+  const seq = ++yandexLoadSeq;
+  yandexLoading.value = true;
+  try {
+    const list = await yandexDisk.listMedia(path, { signal: controller.signal });
+    if (seq !== yandexLoadSeq || controller.signal.aborted) return;
+    yandexRawItems.value = list;
+  } catch (err) {
+    if (seq !== yandexLoadSeq || controller.signal.aborted) return;
+    yandexRawItems.value = [];
+    if ((err as { name?: string })?.name !== 'AbortError') {
+      toast.show(t('yandexLoadFailed'), 'error');
+    }
+  } finally {
+    if (seq === yandexLoadSeq) {
+      yandexLoading.value = false;
+    }
+  }
+}
+
+function clearYandexPath(): void {
+  searchScopeMode.value = 'current';
+  clearSelection();
+  emit('select-yandex-path', null);
+}
+
+const isViewerItemYandex = computed(() => isYandexFileId(viewerItem.value?.fileId));
+const viewerItemPublicUrl = computed(() => (viewerItem.value as YandexViewerMediaItem | null)?.publicUrl ?? null);
+
+const panelItem = computed<ViewerMediaItem | null>(() => {
+  const id = panelId.value;
+  if (!id) return null;
+  const found = findLoadedItem(id);
+  if (found) return found;
+  if (focusedItemCache.value?.fileId === id) return focusedItemCache.value;
+  return null;
+});
+const isPanelItemYandex = computed(() => isYandexFileId(panelId.value) || isYandexFileId(panelItem.value?.fileId));
+
+const feedParams = computed(() => {
+  const base = view.feedParams.value;
+  if (!effectiveAlbumId.value) return base;
+  const filteredSort = base.sort.filter((s) => s.key !== 'album');
+  const filteredLevels = base.levels.filter((k) => k !== 'album');
+  return {
+    ...base,
+    sort: filteredSort,
+    levels: filteredLevels.length > 0 ? filteredLevels : (['date'] as SortKey[]),
+    albumId: effectiveAlbumId.value,
+  };
+});
+
+const effectiveCaptionOnTile = computed(() => (
+  effectiveAlbumId.value
+    ? view.captionOnTile.value.filter((k) => k !== 'album')
+    : view.captionOnTile.value
 ));
 
 // ----- search (unified S2 inline search + live CLIP/hybrid POST /api/photos/search) -----
@@ -796,6 +1012,7 @@ const SUGGESTED_TAGS_EN = ['nature', 'mountains', 'sea', 'portrait', 'architectu
 const suggestedTags = computed<string[]>(() => [...(locale.value === 'ru' ? SUGGESTED_TAGS_RU : SUGGESTED_TAGS_EN)]);
 
 const scopeLabel = computed<string>(() => {
+  if (isYandexMode.value) return yandexScopeName.value;
   if (effectiveAlbumId.value) return albumName.value || effectiveAlbumId.value;
   if (props.externalFolderId) return folderName.value || homeFolderLabel.value;
   return t('galleryLibrary');
@@ -832,10 +1049,21 @@ function itemMatchesScope(item: FeedItem): boolean {
   return true;
 }
 
-const scopedSearchItems = computed<FeedItem[]>(() => searchItems.value.filter(itemMatchesScope));
+const isYandexScopedSearch = computed(() => isYandexMode.value && searchScopeMode.value === 'current');
+
+const scopedSearchItems = computed<ViewerMediaItem[]>(() => {
+  if (isYandexScopedSearch.value) {
+    const q = searchQuery.value.trim().toLowerCase();
+    if (!q) return yandexFeedItems.value;
+    return yandexFeedItems.value.filter(
+      (it) => it.name.toLowerCase().includes(q) || it.yandexPath.toLowerCase().includes(q),
+    );
+  }
+  return searchItems.value.filter(itemMatchesScope);
+});
 
 const inlineSearchAlbums = computed<InlineSearchAlbum[]>(() => {
-  if (searchScopeMode.value === 'current' && props.externalFolderId) return [];
+  if (searchScopeMode.value === 'current' && (props.externalFolderId || isYandexMode.value)) return [];
   return spaces.value.map((s) => ({
     id: s.id,
     name: s.name,
@@ -846,9 +1074,11 @@ const inlineSearchAlbums = computed<InlineSearchAlbum[]>(() => {
 const inlineSearchFolders = computed<InlineSearchFolder[]>(() => []);
 
 const inlineSearchItems = computed<InlineSearchItem[]>(() => {
-  const src = searchActive.value
+  const src: FeedItem[] = searchActive.value
     ? scopedSearchItems.value
-    : (feedRef.value?.orderedItems() ?? []).filter(itemMatchesScope);
+    : isYandexScopedSearch.value
+      ? yandexFeedItems.value
+      : (feedRef.value?.orderedItems() ?? []).filter(itemMatchesScope);
   return src.slice(0, 20).map((it) => ({
     id: it.fileId,
     title: it.name,
@@ -870,6 +1100,14 @@ function cancelSearchTimer(): void {
 }
 
 async function runSearch(q: string, more = false): Promise<void> {
+  if (isYandexScopedSearch.value) {
+    searchGen++;
+    searchError.value = '';
+    searchLoading.value = false;
+    searchCursor.value = null;
+    searchItems.value = [];
+    return;
+  }
   const gen = ++searchGen;
   searchError.value = '';
   searchLoading.value = true;
@@ -971,6 +1209,10 @@ watch(
   },
 );
 
+watch(searchScopeMode, () => {
+  if (searchActive.value) void runSearch(searchQuery.value);
+});
+
 // ----- people & sections -----
 const selectedPeople = ref<string[]>([]);
 
@@ -980,6 +1222,7 @@ const showPeopleGrid = computed(
     && selectedPeople.value.length === 0
     && !effectiveAlbumId.value
     && !props.externalFolderId
+    && !isYandexMode.value
     && !searchActive.value,
 );
 
@@ -1067,6 +1310,32 @@ watch(
     const localMatch = allStorageFolders.value.find((f) => f.id === id);
     if (localMatch?.name) folderName.value = localMatch.name;
     void loadFolderName(id);
+  },
+  { immediate: true },
+);
+
+watch(
+  () => props.externalYandexPath,
+  (path) => {
+    searchScopeMode.value = 'current';
+    prefs.setHeadroomHidden(false);
+    clearSearch();
+    clearSelection();
+    viewer.value = null;
+    if (!preserveFocusForShowFolder) {
+      focusedId.value = null;
+      focusedItemCache.value = null;
+    }
+    if (path !== null && path !== undefined) {
+      yandexRawItems.value = [];
+      void loadYandexMedia(path);
+    } else {
+      yandexAbort?.abort();
+      yandexAbort = null;
+      yandexLoadSeq++;
+      yandexRawItems.value = [];
+      yandexLoading.value = false;
+    }
   },
   { immediate: true },
 );
@@ -1502,7 +1771,9 @@ function onFeedContextMenu(e: MouseEvent, item: FeedItem): void {
   ctxAlbumsLoaded = false;
   ctxAlbumsLoading = false;
   ctxMenu.value = { x: Math.max(8, x), y: Math.max(8, y), item, targets };
-  void preloadCtxAlbums();
+  if (!isYandexFileId(item.fileId) && !targets.some(isYandexFileId)) {
+    void preloadCtxAlbums();
+  }
   attachCtxListeners();
   void nextTick(() => {
     ctxMenuEl.value?.focus({ preventScroll: true });
@@ -1510,6 +1781,9 @@ function onFeedContextMenu(e: MouseEvent, item: FeedItem): void {
 }
 
 const ctxTargetIds = computed(() => ctxMenu.value?.targets ?? []);
+const ctxIsYandex = computed(() =>
+  Boolean(ctxMenu.value && (isYandexFileId(ctxMenu.value.item.fileId) || ctxMenu.value.targets.some(isYandexFileId))),
+);
 const ctxSingleItemAlbumIds = computed<ReadonlySet<string>>(() => {
   if (!ctxMenu.value || ctxMenu.value.targets.length !== 1) return new Set();
   const item = findLoadedItem(ctxMenu.value.targets[0]!) ?? ctxMenu.value.item;
@@ -1528,6 +1802,11 @@ const ctxShowFolderTarget = computed<string | null>(() => {
     .filter((x): x is FeedItem => Boolean(x));
   if (items.length !== ids.length) return null;
   const resolveTarget = (item: FeedItem): string | null => {
+    if (isYandexFileId(item.fileId)) {
+      return typeof item.folderId === 'string' && item.folderId.length > 0
+        ? item.folderId
+        : yandexParentPath(yandexPathFromFileId(item.fileId));
+    }
     if (typeof item.folderId === 'string' && item.folderId.length > 0) return item.folderId;
     if (!item.share) return 'root';
     return null;
@@ -1538,14 +1817,15 @@ const ctxShowFolderTarget = computed<string | null>(() => {
 });
 
 async function setFavoriteForIds(ids: string[], nextFav: boolean): Promise<void> {
-  if (ids.length === 0) return;
-  for (const id of ids) {
+  const qspaceIds = ids.filter((id) => !isYandexFileId(id));
+  if (qspaceIds.length === 0) return;
+  for (const id of qspaceIds) {
     feedRef.value?.patchItem(id, { favorite: nextFav });
     if (searchItems.value.some((i) => i.fileId === id)) {
       searchItems.value = searchItems.value.map((i) => (i.fileId === id ? { ...i, favorite: nextFav } : i));
     }
   }
-  await Promise.allSettled(ids.map((id) => photosApi.edit(id, { favorite: nextFav })));
+  await Promise.allSettled(qspaceIds.map((id) => photosApi.edit(id, { favorite: nextFav })));
   if (view.state.value.filter === 'fav') {
     void feedRef.value?.refresh();
   }
@@ -1553,6 +1833,7 @@ async function setFavoriteForIds(ids: string[], nextFav: boolean): Promise<void>
 }
 
 async function toggleSingleFavorite(item: FeedItem): Promise<void> {
+  if (isYandexFileId(item.fileId)) return;
   await setFavoriteForIds([item.fileId], !item.favorite);
 }
 
@@ -1562,7 +1843,21 @@ async function toggleFavoriteAction(): Promise<void> {
   await setFavoriteForIds(ids, !allTargetsFavorite.value);
 }
 
-async function shareSingleItem(item: FeedItem): Promise<void> {
+async function shareSingleItem(item: ViewerMediaItem): Promise<void> {
+  if (isYandexFileId(item.fileId)) {
+    const publicUrl = (item as YandexViewerMediaItem).publicUrl;
+    if (publicUrl) {
+      try {
+        if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(publicUrl);
+        }
+        toast.show(t('yandexLinkCopied'), 'success');
+      } catch {
+        toast.show(item.name, 'info');
+      }
+    }
+    return;
+  }
   try {
     const res = await driveApi.getDownloadLink(item.fileId);
     const fullUrl = resolveDownloadUrl(res.url);
@@ -1706,12 +2001,34 @@ async function ctxRemoveFromAlbum(): Promise<void> {
   }
 }
 
+function ctxOpenViewer(): void {
+  const item = ctxMenu.value?.item ?? null;
+  closeCtxMenu();
+  if (item) onActivate(item);
+}
+
 function ctxShowFolder(): void {
   const folderId = ctxShowFolderTarget.value;
   const item = ctxMenu.value?.item ?? null;
   const fileId = item?.fileId ?? ctxTargetIds.value[0] ?? '';
+  const isYandex = ctxIsYandex.value;
   closeCtxMenu();
   if (!folderId) return;
+  if (isYandex) {
+    preserveFocusForShowFolder = true;
+    searchTypeFilter.value = 'all';
+    clearSearch();
+    if (fileId) {
+      focusedId.value = fileId;
+      if (item) focusedItemCache.value = item;
+    }
+    emit('select-yandex-path', folderId);
+    void nextTick(() => {
+      preserveFocusForShowFolder = false;
+      if (fileId) focusTile(fileId);
+    });
+    return;
+  }
   preserveFocusForShowFolder = true;
   searchTypeFilter.value = 'all';
   clearSearch();
@@ -1737,9 +2054,22 @@ function ctxOpenMove(): void {
   actions.openMove();
 }
 
-async function downloadFeedItems(items: readonly FeedItem[]): Promise<void> {
+async function downloadFeedItems(items: readonly ViewerMediaItem[]): Promise<void> {
   if (items.length === 0) return;
-  const results = await Promise.allSettled(items.map((it) => downloadDriveFile(it.fileId, it.name)));
+  const results = await Promise.allSettled(
+    items.map(async (it) => {
+      if (it.downloadAction) {
+        await it.downloadAction();
+        return;
+      }
+      if (isYandexFileId(it.fileId)) {
+        const { href } = await yandexDisk.downloadLink(yandexPathFromFileId(it.fileId));
+        downloadYandexLink(href, it.name);
+        return;
+      }
+      await downloadDriveFile(it.fileId, it.name);
+    }),
+  );
   if (results.some((r) => r.status === 'rejected')) {
     toast.show(t('photosDownloadError'), 'error');
   }
@@ -1751,7 +2081,7 @@ async function ctxDownload(): Promise<void> {
   closeCtxMenu();
   const targets = ids
     .map((id) => findLoadedItem(id) ?? (fallbackItem?.fileId === id ? fallbackItem : undefined))
-    .filter((x): x is FeedItem => Boolean(x));
+    .filter((x): x is ViewerMediaItem => Boolean(x));
   if (targets.length === 0 && fallbackItem) targets.push(fallbackItem);
   await downloadFeedItems(targets);
 }
@@ -1768,8 +2098,58 @@ function ctxOpenProperties(): void {
   panelOpen.value = true;
 }
 
+async function deleteYandexIds(ids: string[]): Promise<boolean> {
+  const yandexPaths = ids.filter(isYandexFileId).map(yandexPathFromFileId);
+  if (yandexPaths.length === 0) return false;
+  const title = yandexPaths.length === 1
+    ? fmt('yandexDeleteTitle', { name: findLoadedItem(ids[0]!)?.name ?? yandexPaths[0]!.split('/').pop() ?? yandexPaths[0]! })
+    : fmt('bulkDeleteTitle', { n: yandexPaths.length });
+  const confirmed = await confirmDialog({
+    title,
+    confirmLabel: t('delete'),
+    cancelLabel: t('cancel'),
+    danger: true,
+  });
+  if (!confirmed) return false;
+
+  const removedPaths = new Set<string>();
+  let failed = false;
+  for (const path of yandexPaths) {
+    try {
+      const outcome = await yandexDisk.remove(path);
+      if (outcome && outcome.status === 'pending') {
+        await settleYandexOutcome(outcome);
+      }
+      removedPaths.add(path);
+    } catch {
+      failed = true;
+    }
+  }
+  if (removedPaths.size > 0) {
+    yandexRawItems.value = yandexRawItems.value.filter((it) => !removedPaths.has(it.path));
+    clearSelection();
+    const removedIds = new Set([...removedPaths].map((p) => `${YANDEX_ID_PREFIX}${p}`));
+    if (focusedId.value && removedIds.has(focusedId.value)) {
+      focusedId.value = null;
+      focusedItemCache.value = null;
+    }
+    if (panelId.value && removedIds.has(panelId.value)) panelId.value = null;
+    if (props.externalYandexPath) {
+      void loadYandexMedia(props.externalYandexPath);
+    }
+  }
+  if (failed) {
+    toast.show(t('yandexOperationFailed'), 'error');
+  }
+  return removedPaths.size > 0;
+}
+
 async function deleteFileIds(ids: string[]): Promise<void> {
   if (ids.length === 0) return;
+  if (ids.some(isYandexFileId)) {
+    await deleteYandexIds(ids);
+    return;
+  }
   await Promise.allSettled(ids.map((id) => driveApi.trashFile(id)));
   clearSelection();
   if (focusedId.value && ids.includes(focusedId.value)) {
@@ -1787,11 +2167,33 @@ async function deleteFileIds(ids: string[]): Promise<void> {
 }
 
 const deletingViewerIds = new Set<string>();
-async function onViewerDelete(item: FeedItem): Promise<void> {
+async function onViewerDelete(item: ViewerMediaItem): Promise<void> {
   if (!item?.fileId || deletingViewerIds.has(item.fileId)) return;
   deletingViewerIds.add(item.fileId);
+  const isYandex = isYandexFileId(item.fileId);
+  if (isYandex) {
+    const confirmed = await confirmDialog({
+      title: fmt('yandexDeleteTitle', { name: item.name }),
+      confirmLabel: t('delete'),
+      cancelLabel: t('cancel'),
+      danger: true,
+    });
+    if (!confirmed) {
+      deletingViewerIds.delete(item.fileId);
+      return;
+    }
+  }
   try {
-    await driveApi.trashFile(item.fileId);
+    if (isYandex) {
+      const path = yandexPathFromFileId(item.fileId);
+      const outcome = await yandexDisk.remove(path);
+      if (outcome && outcome.status === 'pending') {
+        await settleYandexOutcome(outcome);
+      }
+      yandexRawItems.value = yandexRawItems.value.filter((it) => it.path !== path);
+    } else {
+      await driveApi.trashFile(item.fileId);
+    }
   } catch (err) {
     deletingViewerIds.delete(item.fileId);
     toast.show(err instanceof Error && err.message ? err.message : t('photosPanelSaveError'), 'error');
@@ -1799,9 +2201,11 @@ async function onViewerDelete(item: FeedItem): Promise<void> {
   }
   deletingViewerIds.delete(item.fileId);
 
-  feedRef.value?.removeItems?.([item.fileId]);
-  if (searchItems.value.some((i) => i.fileId === item.fileId)) {
-    searchItems.value = searchItems.value.filter((i) => i.fileId !== item.fileId);
+  if (!isYandex) {
+    feedRef.value?.removeItems?.([item.fileId]);
+    if (searchItems.value.some((i) => i.fileId === item.fileId)) {
+      searchItems.value = searchItems.value.filter((i) => i.fileId !== item.fileId);
+    }
   }
   if (selected.value.has(item.fileId)) {
     onToggleSelect([item.fileId], false);
@@ -1824,12 +2228,16 @@ async function onViewerDelete(item: FeedItem): Promise<void> {
       focusedId.value = nextItem.fileId;
       focusedItemCache.value = nextItem;
       if (panelOpen.value && panelId.value) panelId.value = nextItem.fileId;
-      emit('focus-photo', nextItem);
+      emitFocusPhoto(nextItem);
       maybeLoadMoreForViewer(nextIndex, nextItems);
     }
   }
 
-  void refreshSidebarCounts();
+  if (isYandex && props.externalYandexPath) {
+    void loadYandexMedia(props.externalYandexPath);
+  } else {
+    void refreshSidebarCounts();
+  }
 }
 
 async function ctxDelete(): Promise<void> {
@@ -1912,8 +2320,11 @@ onMounted(() => {
 
 // ----- panel (resizable) and viewer -----
 
-function shownItems(): FeedItem[] {
-  return searchActive.value ? scopedSearchItems.value : (feedRef.value?.orderedItems() ?? []);
+function shownItems(): ViewerMediaItem[] {
+  if (searchActive.value) return scopedSearchItems.value;
+  const fromFeed = (feedRef.value?.orderedItems() ?? []) as ViewerMediaItem[];
+  if (isYandexMode.value && fromFeed.length === 0) return yandexFeedItems.value;
+  return fromFeed;
 }
 
 const selectedFeedItems = computed<FeedItem[]>(() => {
@@ -1941,7 +2352,11 @@ async function refreshSidebarCounts(): Promise<void> {
     Array.isArray(res?.groups) ? res.groups.reduce((s, g) => s + g.count, 0) : undefined;
 
   const isAllSection =
-    props.activeSection === 'library' && !effectiveAlbumId.value && !props.externalFolderId && selectedPeople.value.length === 0;
+    props.activeSection === 'library'
+    && !effectiveAlbumId.value
+    && !props.externalFolderId
+    && !isYandexMode.value
+    && selectedPeople.value.length === 0;
 
   let libraryTotal = isAllSection ? lastFeedTotal : undefined;
   if (libraryTotal === undefined && typeof photosApi?.summary === 'function') {
@@ -2065,10 +2480,15 @@ function onPanelSashDown(e: PointerEvent): void {
   window.addEventListener('pointercancel', onUp);
 }
 
+function emitFocusPhoto(item: FeedItem): void {
+  if (effectiveAlbumId.value || isYandexFileId(item.fileId)) return;
+  emit('focus-photo', item);
+}
+
 function onOpen(item: FeedItem): void {
   focusedId.value = item.fileId;
   focusedItemCache.value = item;
-  emit('focus-photo', item);
+  emitFocusPhoto(item);
   if (panelOpen.value) {
     panelId.value = item.fileId;
   }
@@ -2078,11 +2498,12 @@ function onFeedFocusPhoto(item: FeedItem): void {
   if (focusedId.value === item.fileId && focusedItemCache.value?.fileId === item.fileId) return;
   focusedId.value = item.fileId;
   focusedItemCache.value = item;
-  emit('focus-photo', item);
+  emitFocusPhoto(item);
 }
 
-function maybeLoadMoreForViewer(index: number, items: FeedItem[]): void {
+function maybeLoadMoreForViewer(index: number, items: ViewerMediaItem[]): void {
   if (index < items.length - 5) return;
+  if (isYandexMode.value) return;
   if (searchActive.value) {
     if (searchCursor.value !== null) loadMoreSearch();
     return;
@@ -2099,13 +2520,13 @@ function maybeLoadMoreForViewer(index: number, items: FeedItem[]): void {
   });
 }
 
-function onActivate(item: FeedItem): void {
+function onActivate(item: ViewerMediaItem): void {
   const items = shownItems();
   const index = items.findIndex((i) => i.fileId === item.fileId);
   if (index < 0) return;
   focusedId.value = item.fileId;
   focusedItemCache.value = item;
-  emit('focus-photo', item);
+  emitFocusPhoto(item);
   if (panelOpen.value) panelId.value = item.fileId;
   viewer.value = { items, index };
   maybeLoadMoreForViewer(index, items);
@@ -2121,7 +2542,7 @@ function stepViewer(delta: number): void {
   focusedId.value = next.fileId;
   focusedItemCache.value = next;
   if (panelOpen.value && panelId.value) panelId.value = next.fileId;
-  emit('focus-photo', next);
+  emitFocusPhoto(next);
   maybeLoadMoreForViewer(index, v.items);
 }
 
@@ -2133,7 +2554,7 @@ function jumpViewer(index: number): void {
   focusedId.value = next.fileId;
   focusedItemCache.value = next;
   if (panelOpen.value && panelId.value) panelId.value = next.fileId;
-  emit('focus-photo', next);
+  emitFocusPhoto(next);
   maybeLoadMoreForViewer(index, v.items);
 }
 
@@ -2165,7 +2586,7 @@ function focusSearch(): void {
 
 function getActiveFocusTransfer(): GalleryFocusTransfer | null {
   const primaryId = focusedId.value ?? (selected.value.size > 0 ? [...selected.value][0]! : null);
-  if (!primaryId) return null;
+  if (!primaryId || isYandexFileId(primaryId)) return null;
   const item = findLoadedItem(primaryId)
     ?? (focusedItemCache.value?.fileId === primaryId ? focusedItemCache.value : null);
   const resolvedFolderId = item ? item.folderId : (folderOf(primaryId) ?? null);
@@ -2195,7 +2616,11 @@ function refresh(opts?: { clearSelection?: boolean; invalidateFolders?: boolean 
   if (opts?.invalidateFolders !== false) {
     invalidateGalleryFolderFilesCache();
   }
-  void feedRef.value?.refresh();
+  if (isYandexMode.value && props.externalYandexPath !== null && props.externalYandexPath !== undefined) {
+    void loadYandexMedia(props.externalYandexPath);
+  } else {
+    void feedRef.value?.refresh();
+  }
   void refreshSidebarCounts();
   if (searchActive.value && searchQuery.value) {
     void runSearch(searchQuery.value);
@@ -2255,6 +2680,9 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', onWindowKeydown);
   cancelSearchTimer();
   searchGen++;
+  yandexAbort?.abort();
+  yandexAbort = null;
+  yandexLoadSeq++;
   prefs.setHeadroomHidden(false);
 });
 </script>

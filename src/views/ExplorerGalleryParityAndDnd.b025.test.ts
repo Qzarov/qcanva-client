@@ -276,6 +276,11 @@ describe('B-025..B-028 Explorer/Gallery parity, PhotoViewer unification, focus t
     const firstPhotoCard = wrapper.get('[data-folder-file="photo-1"]');
     await firstPhotoCard.trigger('click');
     await nextTick();
+    expect(vm.selectedKeys).toEqual(['drive-file:photo-1']);
+    expect(wrapper.find('[data-photo-viewer-stub]').exists()).toBe(false);
+
+    await firstPhotoCard.trigger('dblclick');
+    await nextTick();
 
     const viewer = wrapper.find('[data-photo-viewer-stub]');
     expect(viewer.exists()).toBe(true);
@@ -286,7 +291,7 @@ describe('B-025..B-028 Explorer/Gallery parity, PhotoViewer unification, focus t
     expect(vm.mediaViewer.items.map((it: any) => it.fileId)).toEqual(['video-1', 'photo-2', 'photo-1']);
   });
 
-  it('2) Медиа -> Файлы focus transfer opens the highlighted photo on plain single-click, double-click, and Enter', async () => {
+  it('2) Медиа -> Файлы focus transfer keeps photo selected on 1st click and opens on double-click and Enter', async () => {
     galleryFocusTransferMock.mockReturnValue({
       fileId: 'photo-2',
       folderId: 'folder-qdisk',
@@ -308,14 +313,13 @@ describe('B-025..B-028 Explorer/Gallery parity, PhotoViewer unification, focus t
     expect(vm.activeSection).toEqual({ kind: 'folder', folderId: 'folder-qdisk' });
     expect(vm.selectedKeys).toEqual(['drive-file:photo-2']);
 
-    // a) Plain single-click opens PhotoViewer immediately (not swallowed by selection capture!)
+    // a) Plain single-click keeps photo-2 selected without opening PhotoViewer
     await wrapper.get('[data-folder-file="photo-2"]').trigger('click');
     await nextTick();
-    expect(wrapper.find('[data-photo-viewer-stub]').exists()).toBe(true);
-    expect(wrapper.get('[data-photo-viewer-stub]').attributes('data-item-id')).toBe('photo-2');
+    expect(vm.selectedKeys).toEqual(['drive-file:photo-2']);
+    expect(wrapper.find('[data-photo-viewer-stub]').exists()).toBe(false);
 
-    // Close viewer and verify double-click opens even in multi-select mode (2+ selected)
-    vm.mediaViewer = null;
+    // b) Double-click opens PhotoViewer immediately (even in multi-select mode!)
     vm.selectedKeys = ['drive-file:photo-1', 'drive-file:photo-2'];
     await nextTick();
     await wrapper.get('[data-folder-file="photo-2"]').trigger('dblclick');

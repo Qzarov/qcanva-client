@@ -396,6 +396,12 @@ async function load(): Promise<void> {
   details.value = null;
   fallbackMode.value = false;
   menuOpen.value = false;
+  if (fileId.startsWith('yandex:') && props.item) {
+    fallbackMode.value = true;
+    loading.value = false;
+    void loadFallbackPreview(props.item, true);
+    return;
+  }
   try {
     const d = await photosApi.details(fileId);
     if (my !== request) return;

@@ -25,6 +25,11 @@ const feedPatch = vi.hoisted(() => vi.fn());
 const feedLoadMore = vi.hoisted(() => vi.fn(async () => false));
 const getDownloadLinkMock = vi.hoisted(() => vi.fn());
 const downloadDriveFileMock = vi.hoisted(() => vi.fn());
+const yandexListMediaMock = vi.hoisted(() => vi.fn());
+const yandexDownloadLinkMock = vi.hoisted(() => vi.fn());
+const yandexRemoveMock = vi.hoisted(() => vi.fn());
+const downloadYandexLinkMock = vi.hoisted(() => vi.fn());
+const confirmDialogMock = vi.hoisted(() => vi.fn());
 
 vi.mock('../../api/client', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../api/client')>();
@@ -77,6 +82,28 @@ vi.mock('../../api/drive', async (importOriginal) => {
   };
 });
 
+vi.mock('../../api/yandexDisk', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../api/yandexDisk')>();
+  return {
+    ...actual,
+    downloadYandexLink: downloadYandexLinkMock,
+    yandexDisk: {
+      ...actual.yandexDisk,
+      listMedia: yandexListMediaMock,
+      downloadLink: yandexDownloadLinkMock,
+      remove: yandexRemoveMock,
+    },
+  };
+});
+
+vi.mock('../../composables/appDialog', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../composables/appDialog')>();
+  return {
+    ...actual,
+    confirmDialog: confirmDialogMock,
+  };
+});
+
 function mkItem(i: number, over: Partial<FeedItem> = {}): FeedItem {
   return {
     fileId: `f${i}`,
@@ -105,11 +132,13 @@ let extraFeedItems: FeedItem[] = [];
 
 const FeedStub = defineComponent({
   name: 'PhotosFeed',
-  props: ['params', 'captionOnTile', 'tile', 'tileHeight', 'aspectMode', 'folderFilterId', 'peopleFilter', 'recentLimit', 'selected', 'current'],
+  props: ['params', 'captionOnTile', 'tile', 'tileHeight', 'aspectMode', 'folderFilterId', 'peopleFilter', 'recentLimit', 'selected', 'current', 'externalItems', 'externalLoading'],
   emits: ['open', 'focus-photo', 'activate', 'toggle-select', 'set-selection', 'contextmenu', 'toggle-favorite', 'units-loaded'],
   setup(props, { emit, expose }) {
+    const resolvedItems = (): FeedItem[] =>
+      Array.isArray(props.externalItems) ? (props.externalItems as FeedItem[]) : [...feedItems, ...extraFeedItems];
     expose({
-      orderedItems: () => [...feedItems, ...extraFeedItems],
+      orderedItems: resolvedItems,
       refresh: feedRefresh,
       refreshAlbums: feedRefreshAlbums,
       patchItem: feedPatch,
@@ -121,14 +150,19 @@ const FeedStub = defineComponent({
         {
           'data-testid': 'feed-stub',
           'data-album': (props.params as { albumId?: string }).albumId ?? '',
+          'data-levels': JSON.stringify((props.params as { levels?: string[] }).levels ?? []),
+          'data-sort': JSON.stringify((props.params as { sort?: unknown[] }).sort ?? []),
+          'data-captions': JSON.stringify(props.captionOnTile ?? []),
           'data-aspect': props.aspectMode,
           'data-tile-h': String(props.tileHeight),
           'data-period': (props.params as { period?: string }).period ?? '',
+          'data-external-count': Array.isArray(props.externalItems) ? String(props.externalItems.length) : 'none',
+          'data-external-loading': String(Boolean(props.externalLoading)),
         },
         [
           h('button', { 'data-stub-select': '', onClick: () => emit('set-selection', ['f0', 'f1']) }, 'select'),
           h('button', { 'data-stub-units-loaded': '', onClick: () => emit('units-loaded') }, 'units'),
-          ...[...feedItems, ...extraFeedItems].map((it) =>
+          ...resolvedItems().map((it) =>
             h(
               'button',
               {
@@ -152,13 +186,15 @@ const FeedStub = defineComponent({
 
 const PanelStub = defineComponent({
   name: 'PhotoPanel',
-  props: ['fileId', 'selectedItems', 'hideOpenFolder'],
+  props: ['fileId', 'item', 'canFavorite', 'selectedItems', 'hideOpenFolder'],
   emits: ['close', 'open-folder', 'open-album', 'group-favorite', 'group-share', 'group-album', 'group-download', 'group-delete', 'changed'],
   setup(props, { emit }) {
     return () =>
       h('aside', {
         'data-photo-panel': '',
         'data-panel-file': props.fileId as string,
+        'data-panel-has-item': String(Boolean(props.item)),
+        'data-panel-can-fav': String(props.canFavorite ?? true),
         'data-panel-selected-count': String((props.selectedItems as FeedItem[] | undefined)?.length ?? 0),
       }, [
         h('button', { 'data-stub-folder': '', onClick: () => emit('open-folder', 'fold1') }, 'folder'),
@@ -181,15 +217,27 @@ const PickerStub = defineComponent({
   setup: (p) => () => h('div', { 'data-testid': 'picker-stub', 'data-excl': JSON.stringify(p.excludeIds), 'data-root': String(p.excludeRoot) }, p.title as string),
 });
 
-const ViewBarStub = defineComponent({ name: 'PhotosViewBar', setup: () => () => h('div', { 'data-testid': 'viewbar-stub' }) });
+const ViewBarStub = defineComponent({
+  name: 'PhotosViewBar',
+  props: ['hidden', 'forceVisible', 'insideAlbum'],
+  setup: (p) => () => h('div', { 'data-testid': 'viewbar-stub', 'data-inside-album': String(Boolean(p.insideAlbum)) }),
+});
 const ViewerStub = defineComponent({
   name: 'PhotoViewer',
-  props: ['item', 'items', 'index', 'total', 'hasPrev', 'hasNext'],
-  emits: ['next', 'prev', 'jump', 'close'],
+  props: ['item', 'items', 'index', 'total', 'hasPrev', 'hasNext', 'canFavorite', 'canShare', 'canDelete', 'canInfo'],
+  emits: ['next', 'prev', 'jump', 'close', 'delete'],
   setup: (p, { emit }) => () =>
     h(
       'div',
-      { 'data-testid': 'viewer-stub', 'data-total': String(p.total), onClick: () => emit('next') },
+      {
+        'data-testid': 'viewer-stub',
+        'data-total': String(p.total),
+        'data-can-fav': String(p.canFavorite ?? true),
+        'data-can-share': String(p.canShare ?? true),
+        'data-can-del': String(p.canDelete ?? true),
+        'data-can-info': String(p.canInfo ?? true),
+        onClick: () => emit('next'),
+      },
       `${(p.item as FeedItem).fileId}`,
     ),
 });
@@ -238,6 +286,11 @@ describe('DrivePhotos', () => {
     });
     spacesGetMock.mockReset().mockResolvedValue({ id: 'alb1', name: 'Алтай' });
     spacesAddItemsMock.mockReset().mockResolvedValue({ added: 2 });
+    yandexListMediaMock.mockReset().mockResolvedValue([]);
+    yandexDownloadLinkMock.mockReset().mockResolvedValue({ href: 'https://downloader.disk.yandex.ru/file' });
+    yandexRemoveMock.mockReset().mockResolvedValue({ status: 'done' });
+    downloadYandexLinkMock.mockReset();
+    confirmDialogMock.mockReset().mockResolvedValue(true);
   });
 
   afterEach(() => {
@@ -729,5 +782,125 @@ describe('DrivePhotos', () => {
     await flushPromises();
     expect(spacesAddItemsMock).toHaveBeenCalledWith('alb1', ['f0']);
     expect(feedRefreshAlbums).toHaveBeenCalled();
+  });
+
+  it('Batch7 Item 4: strips album grouping/sort/captions when inside an album, passes insideAlbum to PhotosViewBar, and does not emit focus-photo inside album', async () => {
+    const view = usePhotosView();
+    view.setSort([{ key: 'album', desc: false, sub: 'name' }, { key: 'date', desc: true }]);
+    view.toggleCaption('album');
+    view.toggleCaption('folder');
+
+    const w = mountIt({ externalAlbumId: 'alb1' });
+    await flushPromises();
+
+    expect(w.get('[data-testid="viewbar-stub"]').attributes('data-inside-album')).toBe('true');
+    const feed = w.get('[data-testid="feed-stub"]');
+    expect(JSON.parse(feed.attributes('data-levels')!)).not.toContain('album');
+    expect(JSON.parse(feed.attributes('data-sort')!).some((s: { key: string }) => s.key === 'album')).toBe(false);
+    expect(JSON.parse(feed.attributes('data-captions')!)).not.toContain('album');
+
+    // Focusing a tile inside an album does not emit focus-photo (keeps album-related folder highlights intact)
+    await w.get('[data-file-id="f0"]').trigger('click');
+    expect(w.emitted('focus-photo')).toBeUndefined();
+
+    // Outside an album, insideAlbum is false and album sort/caption remain active
+    await w.setProps({ externalAlbumId: null });
+    await flushPromises();
+    expect(w.get('[data-testid="viewbar-stub"]').attributes('data-inside-album')).toBe('false');
+    expect(JSON.parse(w.get('[data-testid="feed-stub"]').attributes('data-levels')!)).toContain('album');
+  });
+
+  it('Batch7 Item 7: externalYandexPath loads yandexDisk.listMedia, feeds PhotosFeed externalItems, filters local search, configures PhotoViewer/PhotoPanel, and handles Yandex context menu', async () => {
+    yandexListMediaMock.mockResolvedValue([
+      {
+        path: '/Фотокамера/sea.jpg',
+        name: 'sea.jpg',
+        type: 'file',
+        size: 2048,
+        mime: 'image/jpeg',
+        mediaType: 'image',
+        md5: 'md5-sea',
+        createdAt: '2026-10-15T09:00:00Z',
+        modifiedAt: '2026-10-15T09:00:00Z',
+        publicUrl: null,
+        previewUrl: '/api/yandex-disk/preview?path=/Фотокамера/sea.jpg&size=L',
+      },
+      {
+        path: '/Фотокамера/mountain.mp4',
+        name: 'mountain.mp4',
+        type: 'file',
+        size: 4096,
+        mime: 'video/mp4',
+        mediaType: 'video',
+        md5: 'md5-mnt',
+        createdAt: '2026-10-16T09:00:00Z',
+        modifiedAt: '2026-10-16T09:00:00Z',
+        publicUrl: 'https://disk.yandex.ru/i/abc',
+        previewUrl: '/api/yandex-disk/preview?path=/Фотокамера/mountain.mp4&size=L',
+      },
+    ]);
+
+    const w = mountIt({ externalYandexPath: '/' });
+    await flushPromises();
+
+    expect(yandexListMediaMock).toHaveBeenCalledWith('/', expect.objectContaining({ signal: expect.any(AbortSignal) }));
+    expect(w.get('[data-testid="gallery-yandex-crumb"]').text()).toContain('Яндекс Диск');
+    expect(w.get('[data-s2-scope-pill]').text()).toContain('в: Яндекс Диск');
+    expect(w.get('[data-testid="feed-stub"]').attributes('data-external-count')).toBe('2');
+
+    // Local Yandex search filters without hitting photosApi.search
+    await typeQuery(w, 'sea');
+    expect(searchMock).not.toHaveBeenCalled();
+    expect(w.findAll('[data-testid="photos-search-grid"] [data-file-id]').map((n) => n.attributes('data-file-id'))).toEqual([
+      'yandex:/Фотокамера/sea.jpg',
+    ]);
+    await w.get('[data-s2-clear]').trigger('click');
+    await flushPromises();
+
+    // Double-click opens PhotoViewer with canFavorite=false, canShare=false (for private item), canDelete=true, canInfo=true
+    await w.get('[data-file-id="yandex:/Фотокамера/sea.jpg"]').trigger('dblclick');
+    const viewer = w.get('[data-testid="viewer-stub"]');
+    expect(viewer.text()).toBe('yandex:/Фотокамера/sea.jpg');
+    expect(viewer.attributes('data-can-fav')).toBe('false');
+    expect(viewer.attributes('data-can-share')).toBe('false');
+    expect(viewer.attributes('data-can-del')).toBe('true');
+    expect(viewer.attributes('data-can-info')).toBe('true');
+    w.getComponent(ViewerStub).vm.$emit('close');
+    await flushPromises();
+
+    // Right-click menu on Yandex tile: Свойства opens PhotoPanel with :item and canFavorite=false
+    await w.get('[data-file-id="yandex:/Фотокамера/sea.jpg"]').trigger('contextmenu');
+    expect(w.find('[data-ctx-open]').exists()).toBe(true);
+    expect(w.find('[data-ctx-show-folder]').exists()).toBe(true);
+    expect(w.find('[data-ctx-download]').exists()).toBe(true);
+    expect(w.find('[data-ctx-properties]').exists()).toBe(true);
+    expect(w.find('[data-ctx-delete]').exists()).toBe(true);
+    expect(w.find('[data-ctx-favorite]').exists()).toBe(false);
+    expect(w.find('[data-ctx-album]').exists()).toBe(false);
+
+    await w.get('[data-ctx-properties]').trigger('click');
+    const panel = w.get('[data-photo-panel]');
+    expect(panel.attributes('data-panel-file')).toBe('yandex:/Фотокамера/sea.jpg');
+    expect(panel.attributes('data-panel-has-item')).toBe('true');
+    expect(panel.attributes('data-panel-can-fav')).toBe('false');
+
+    // Download calls yandexDisk.downloadLink + downloadYandexLink
+    await w.get('[data-file-id="yandex:/Фотокамера/sea.jpg"]').trigger('contextmenu');
+    await w.get('[data-ctx-download]').trigger('click');
+    await flushPromises();
+    expect(yandexDownloadLinkMock).toHaveBeenCalledWith('/Фотокамера/sea.jpg');
+    expect(downloadYandexLinkMock).toHaveBeenCalledWith('https://downloader.disk.yandex.ru/file', 'sea.jpg');
+
+    // Показать папку emits select-yandex-path('/Фотокамера') staying in Медиа
+    await w.get('[data-file-id="yandex:/Фотокамера/sea.jpg"]').trigger('contextmenu');
+    await w.get('[data-ctx-show-folder]').trigger('click');
+    expect(w.emitted('select-yandex-path')?.[0]).toEqual(['/Фотокамера']);
+
+    // Delete confirms and calls yandexDisk.remove('/Фотокамера/sea.jpg')
+    await w.get('[data-file-id="yandex:/Фотокамера/sea.jpg"]').trigger('contextmenu');
+    await w.get('[data-ctx-delete]').trigger('click');
+    await flushPromises();
+    expect(confirmDialogMock).toHaveBeenCalled();
+    expect(yandexRemoveMock).toHaveBeenCalledWith('/Фотокамера/sea.jpg');
   });
 });

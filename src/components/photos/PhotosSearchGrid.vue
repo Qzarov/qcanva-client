@@ -5,9 +5,14 @@ import { formatDragCountLabel, useExplorerGroupDnd } from '../../composables/use
 import { useI18n } from '../../composables/useI18n';
 import { formatDuration } from './groupTitle';
 
+type SearchGridItem = FeedItem & {
+  previewSrc?: string | null;
+  noReferrer?: boolean;
+};
+
 /** Search results: a flat grid in relevance order. No groups, no scrubber. */
 const props = defineProps<{
-  items: FeedItem[];
+  items: SearchGridItem[];
   tile: 's' | 'm' | 'l';
   current: string | null;
   selected?: ReadonlySet<string>;
@@ -32,11 +37,27 @@ const FILL_MARGIN = 8;
 
 const root = ref<HTMLElement | null>(null);
 const thumbs = shallowReactive(new Map<string, string | null>());
+const failedExternalThumbs = shallowReactive(new Set<string>());
 const requested = new Set<string>();
 let alive = true;
 
-function requestThumb(item: FeedItem): void {
-  if (!item.processed || requested.has(item.hash)) return;
+function thumbSrcFor(item: SearchGridItem): string | null {
+  if (item.previewSrc && !failedExternalThumbs.has(item.fileId)) {
+    return item.previewSrc;
+  }
+  return thumbs.get(item.hash) ?? null;
+}
+
+function onImgError(item: SearchGridItem): void {
+  if (item.previewSrc && !failedExternalThumbs.has(item.fileId)) {
+    failedExternalThumbs.add(item.fileId);
+    return;
+  }
+  thumbs.set(item.hash, null);
+}
+
+function requestThumb(item: SearchGridItem): void {
+  if (item.previewSrc || !item.processed || requested.has(item.hash)) return;
   requested.add(item.hash);
   renditionUrl(item.hash, 'thumbnail')
     .then((u) => {
@@ -175,14 +196,15 @@ onBeforeUnmount(() => {
           @dragend="onTileDragEnd"
         >
           <img
-            v-if="thumbs.get(item.hash)"
+            v-if="thumbSrcFor(item)"
             class="sg-img"
-            :src="thumbs.get(item.hash)!"
+            :src="thumbSrcFor(item)!"
+            :referrerpolicy="item.noReferrer ? 'no-referrer' : undefined"
             alt=""
             draggable="false"
             decoding="async"
             loading="lazy"
-            @error="thumbs.set(item.hash, null)"
+            @error="onImgError(item)"
           />
           <span v-else class="sg-nothumb" :title="t('photosThumbUnavailable')"></span>
           <span v-if="item.favorite" class="sg-fav" :title="t('photosFavorite')">♥</span>

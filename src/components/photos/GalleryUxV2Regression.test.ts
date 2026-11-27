@@ -40,6 +40,7 @@ const spacesListMock = vi.hoisted(() => vi.fn());
 const spacesGetMock = vi.hoisted(() => vi.fn());
 const spacesCreateMock = vi.hoisted(() => vi.fn());
 const spacesAddItemsMock = vi.hoisted(() => vi.fn());
+const spacesAddYandexFolderMock = vi.hoisted(() => vi.fn());
 const spacesRenameMock = vi.hoisted(() => vi.fn());
 const spacesRemoveMock = vi.hoisted(() => vi.fn());
 const spacesRemoveMemberMock = vi.hoisted(() => vi.fn());
@@ -53,6 +54,10 @@ const getDownloadLinkMock = vi.hoisted(() => vi.fn());
 const resourceFoldersListMock = vi.hoisted(() => vi.fn());
 const yandexStatusMock = vi.hoisted(() => vi.fn());
 const yandexListMock = vi.hoisted(() => vi.fn());
+const yandexListMediaMock = vi.hoisted(() => vi.fn());
+const yandexMoveMock = vi.hoisted(() => vi.fn());
+const yandexRemoveMock = vi.hoisted(() => vi.fn());
+const yandexDownloadLinkMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@capacitor/core', () => ({
   Capacitor: {
@@ -165,6 +170,7 @@ vi.mock('../../api/spaces', () => ({
     list: spacesListMock,
     get: spacesGetMock,
     addItems: spacesAddItemsMock,
+    addYandexFolder: spacesAddYandexFolderMock,
     create: spacesCreateMock,
     rename: spacesRenameMock,
     remove: spacesRemoveMock,
@@ -188,10 +194,15 @@ vi.mock('../../api/yandexDisk', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../api/yandexDisk')>();
   return {
     ...actual,
+    downloadYandexLink: vi.fn(),
     yandexDisk: {
       ...actual.yandexDisk,
       status: yandexStatusMock,
       list: yandexListMock,
+      listMedia: yandexListMediaMock,
+      move: yandexMoveMock,
+      remove: yandexRemoveMock,
+      downloadLink: yandexDownloadLinkMock,
     },
   };
 });
@@ -322,6 +333,7 @@ describe('Gallery UX v2 & B-009/B-011/B-014 regressions', () => {
       updatedAt: '2026-11-26T10:00:00Z',
     });
     spacesAddItemsMock.mockReset().mockResolvedValue({ added: 2 });
+    spacesAddYandexFolderMock.mockReset().mockResolvedValue({});
     spacesRenameMock.mockReset().mockResolvedValue({ id: 'alb-1', name: 'Renamed' });
     spacesRemoveMock.mockReset().mockResolvedValue(undefined);
     spacesRemoveMemberMock.mockReset().mockResolvedValue(undefined);
@@ -335,6 +347,10 @@ describe('Gallery UX v2 & B-009/B-011/B-014 regressions', () => {
     resourceFoldersListMock.mockReset().mockResolvedValue({ own: [], shared: [] });
     yandexStatusMock.mockReset().mockResolvedValue({ enabled: true, connected: false, reconnectRequired: false, login: null, displayName: null });
     yandexListMock.mockReset().mockResolvedValue({ path: '/', total: 0, items: [] });
+    yandexListMediaMock.mockReset().mockResolvedValue([]);
+    yandexMoveMock.mockReset().mockResolvedValue({ status: 'done' });
+    yandexRemoveMock.mockReset().mockResolvedValue({ status: 'done' });
+    yandexDownloadLinkMock.mockReset().mockResolvedValue({ href: 'https://downloader.disk.yandex.ru/file' });
     dashboardRoute.query = {};
   });
 
@@ -1741,5 +1757,281 @@ describe('Gallery UX v2 & B-009/B-011/B-014 regressions', () => {
     expect(treeNames).not.toContain('public');
     expect(treeNames).not.toContain('Clouds');
     sb.unmount();
+  });
+
+  it('Batch7 Item 5 (B-031): Album selection dims albumRelatedFolderIds (.is-album-related, NOT .active), auto-expands ONLY their ancestor chains, and collapses unrelated branches on album switch', async () => {
+    expect(gallerySidebarSource).toContain('.gs-row-wrap.is-album-related');
+    expect(gallerySidebarSource).toContain('7%, transparent');
+    expect(gallerySidebarSource).toContain('20%, transparent');
+
+    const sb = mount(GallerySidebar, {
+      attachTo: document.body,
+      props: {
+        activeSection: 'library',
+        activeAlbumId: null as string | null,
+        albumRelatedFolderIds: null as ReadonlySet<string> | null,
+        folders: [
+          { id: 'f-parent', name: 'Путешествия', parentId: null, role: 'owner' },
+          { id: 'f-child', name: 'Алтай', parentId: 'f-parent', role: 'owner' },
+          { id: 'f-leaf', name: '2026', parentId: 'f-child', role: 'owner' },
+          { id: 'f-other', name: 'Работа', parentId: null, role: 'owner' },
+          { id: 'f-other-child', name: 'Скрины', parentId: 'f-other', role: 'owner' },
+          { id: 'f-shared-root', name: 'Общая папка', parentId: null, role: 'read' },
+          { id: 'f-shared-leaf', name: 'От друзей', parentId: 'f-shared-root', role: 'read' },
+        ],
+        albums: [
+          { id: 'alb-1', name: 'Отпуск', count: 4, bytes: 0, createdAt: '', addedAt: '', coverFileIds: [] },
+          { id: 'alb-2', name: 'Офис', count: 2, bytes: 0, createdAt: '', addedAt: '', coverFileIds: [] },
+          { id: 'alb-3', name: 'Пустой', count: 0, bytes: 0, createdAt: '', addedAt: '', coverFileIds: [] },
+        ],
+      },
+    });
+    await settle();
+
+    // Manually expand unrelated branch f-other first
+    await sb.get('[data-gallery-folder="f-other"] .gs-caret-btn').trigger('click');
+    await nextTick();
+    expect(sb.find('[data-gallery-folder="f-other-child"]').exists()).toBe(true);
+
+    // Select Album 1 with related folders in both own (f-leaf) and shared (f-shared-leaf) subtrees
+    await sb.setProps({
+      activeAlbumId: 'alb-1',
+      albumRelatedFolderIds: new Set(['f-leaf', 'f-shared-leaf']),
+    });
+    await nextTick();
+
+    expect(sb.get('[data-gallery-album="alb-1"]').classes()).toContain('active');
+    expect(sb.find('[data-gallery-folder="f-leaf"]').exists()).toBe(true);
+    expect(sb.find('[data-gallery-folder="f-shared-leaf"]').exists()).toBe(true);
+    // Unrelated branch f-other was collapsed cleanly
+    expect(sb.find('[data-gallery-folder="f-other-child"]').exists()).toBe(false);
+
+    // Dim .is-album-related (NOT .active) on related folders
+    const leafRow = sb.get('[data-gallery-folder="f-leaf"]');
+    expect(leafRow.classes()).toContain('is-album-related');
+    expect(leafRow.classes()).not.toContain('active');
+
+    const sharedLeafRow = sb.get('[data-gallery-folder="f-shared-leaf"]');
+    expect(sharedLeafRow.classes()).toContain('is-album-related');
+    expect(sharedLeafRow.classes()).not.toContain('active');
+
+    // Switch to Album 2 -> expands ONLY f-other -> f-other-child and collapses Album 1's branches
+    await sb.setProps({
+      activeAlbumId: 'alb-2',
+      albumRelatedFolderIds: new Set(['f-other-child']),
+    });
+    await nextTick();
+
+    expect(sb.find('[data-gallery-folder="f-other-child"]').exists()).toBe(true);
+    expect(sb.get('[data-gallery-folder="f-other-child"]').classes()).toContain('is-album-related');
+    expect(sb.get('[data-gallery-folder="f-other-child"]').classes()).not.toContain('active');
+    expect(sb.find('[data-gallery-folder="f-leaf"]').exists()).toBe(false);
+    expect(sb.find('[data-gallery-folder="f-shared-leaf"]').exists()).toBe(false);
+
+    // Switch to Album 3 with empty albumRelatedFolderIds -> collapses all folders cleanly
+    await sb.setProps({
+      activeAlbumId: 'alb-3',
+      albumRelatedFolderIds: new Set(),
+    });
+    await nextTick();
+    expect(sb.find('[data-gallery-folder="f-other-child"]').exists()).toBe(false);
+    expect(sb.find('[data-gallery-folder="f-leaf"]').exists()).toBe(false);
+
+    sb.unmount();
+  });
+
+  it('Batch7 Item 7 (B-033): GallerySidebar renders recursive Yandex Disk tree with honest chevrons, DnD to album & Yandex folder, and auto-expands activeYandexPath', async () => {
+    yandexStatusMock.mockResolvedValue({
+      enabled: true,
+      connected: true,
+      reconnectRequired: false,
+      login: 'vlad',
+      displayName: 'Vlad',
+    });
+    yandexListMock.mockImplementation(async (path: string) => {
+      if (path === '/') {
+        return {
+          path: '/',
+          total: 2,
+          items: [
+            { path: '/Фотокамера', name: 'Фотокамера', type: 'dir', size: null, mime: null, mediaType: null, md5: null, createdAt: null, modifiedAt: null, publicUrl: null, previewUrl: null },
+            { path: '/Пустая', name: 'Пустая', type: 'dir', size: null, mime: null, mediaType: null, md5: null, createdAt: null, modifiedAt: null, publicUrl: null, previewUrl: null },
+          ],
+        };
+      }
+      if (path === '/Фотокамера') {
+        return {
+          path: '/Фотокамера',
+          total: 2,
+          items: [
+            { path: '/Фотокамера/2026', name: '2026', type: 'dir', size: null, mime: null, mediaType: null, md5: null, createdAt: null, modifiedAt: null, publicUrl: null, previewUrl: null },
+            { path: '/Фотокамера/a.jpg', name: 'a.jpg', type: 'file', size: 1200, mime: 'image/jpeg', mediaType: 'image', md5: 'm1', createdAt: '2026-10-01T10:00:00Z', modifiedAt: '2026-10-01T10:00:00Z', publicUrl: null, previewUrl: '/api/yandex-disk/preview?path=/Фотокамера/a.jpg&size=L' },
+          ],
+        };
+      }
+      return { path, total: 0, items: [] };
+    });
+
+    const sb = mount(GallerySidebar, {
+      attachTo: document.body,
+      props: {
+        activeSection: 'library',
+        activeYandexPath: null as string | null,
+        folders: [],
+        albums: [{ id: 'alb-1', name: 'Отпуск', count: 0, bytes: 0, createdAt: '', addedAt: '', coverFileIds: [] }],
+      },
+    });
+    await settle();
+
+    // Root Yandex row exists and clicking selects '/'
+    const rootRow = sb.get('[data-gallery-yandex-root]');
+    await rootRow.get('.gs-row-main').trigger('click');
+    expect(sb.emitted('select-yandex')?.[0]).toEqual(['/']);
+
+    // Expand root Yandex -> shows Фотокамера (with chevron) & Пустая (no chevron after probe)
+    await sb.get('[data-gallery-yandex-toggle="/"]').trigger('click');
+    await settle();
+    expect(sb.find('[data-gallery-yandex="/Фотокамера"]').exists()).toBe(true);
+    expect(sb.find('[data-gallery-yandex="/Пустая"]').exists()).toBe(true);
+    expect(sb.find('[data-gallery-yandex-toggle="/Фотокамера"]').exists()).toBe(true);
+    expect(sb.find('[data-gallery-yandex-toggle="/Пустая"]').exists()).toBe(false);
+
+    // Expand nested /Фотокамера -> shows /Фотокамера/2026
+    await sb.get('[data-gallery-yandex-toggle="/Фотокамера"]').trigger('click');
+    await settle();
+    expect(sb.find('[data-gallery-yandex="/Фотокамера/2026"]').exists()).toBe(true);
+
+    // Clicking nested subfolder selects it
+    await sb.get('[data-gallery-yandex="/Фотокамера/2026"] .gs-row-main').trigger('click');
+    expect(sb.emitted('select-yandex')?.[1]).toEqual(['/Фотокамера/2026']);
+
+    // Dragging Yandex folder onto Album calls spacesApi.addYandexFolder
+    await sb.get('[data-gallery-yandex="/Фотокамера"]').trigger('dragstart');
+    await sb.get('[data-gallery-album="alb-1"]').trigger('drop');
+    await settle();
+    expect(spacesAddYandexFolderMock).toHaveBeenCalledWith('alb-1', '/Фотокамера');
+
+    // Dragging Yandex photo onto Yandex subfolder calls yandexDisk.move
+    const dnd = useExplorerGroupDnd();
+    dnd.startGroupDrag({
+      source: 'gallery',
+      items: [{ key: 'photo:yandex:/Фотокамера/a.jpg', id: 'yandex:/Фотокамера/a.jpg', kind: 'photo', name: 'a.jpg' }],
+    });
+    await sb.get('[data-gallery-yandex="/Фотокамера/2026"]').trigger('drop');
+    await settle();
+    expect(yandexMoveMock).toHaveBeenCalledWith('/Фотокамера/a.jpg', '/Фотокамера/2026/a.jpg');
+    sb.unmount();
+
+    // Auto-expand when activeYandexPath is set on a fresh sidebar
+    const sb2 = mount(GallerySidebar, {
+      attachTo: document.body,
+      props: {
+        activeSection: 'library',
+        activeYandexPath: '/Фотокамера/2026',
+        folders: [],
+        albums: [],
+      },
+    });
+    await settle();
+    expect(sb2.find('[data-gallery-yandex="/Фотокамера/2026"]').exists()).toBe(true);
+    expect(sb2.get('[data-gallery-yandex="/Фотокамера/2026"]').classes()).toContain('active');
+    sb2.unmount();
+  });
+
+  it('Batch7 Item 7 (B-033): DrivePhotos + PhotosFeed render Yandex Disk media inside Медиа with previewSrc, noReferrer, crumb, scope pill, and Yandex context menu', async () => {
+    yandexListMediaMock.mockResolvedValue([
+      {
+        path: '/Фотокамера/sunset.jpg',
+        name: 'sunset.jpg',
+        type: 'file',
+        size: 4096,
+        mime: 'image/jpeg',
+        mediaType: 'image',
+        md5: 'ym1',
+        createdAt: '2026-10-20T12:00:00Z',
+        modifiedAt: '2026-10-20T12:00:00Z',
+        publicUrl: null,
+        previewUrl: '/api/yandex-disk/preview?path=/Фотокамера/sunset.jpg&size=L',
+      },
+      {
+        path: '/Фотокамера/clip.mp4',
+        name: 'clip.mp4',
+        type: 'file',
+        size: 8192,
+        mime: 'video/mp4',
+        mediaType: 'video',
+        md5: 'ym2',
+        createdAt: '2026-10-21T12:00:00Z',
+        modifiedAt: '2026-10-21T12:00:00Z',
+        publicUrl: null,
+        previewUrl: '/api/yandex-disk/preview?path=/Фотокамера/clip.mp4&size=L',
+      },
+    ]);
+
+    const dp = mountDrivePhotos({ externalYandexPath: '/Фотокамера' });
+    await settle();
+
+    expect(yandexListMediaMock).toHaveBeenCalledWith('/Фотокамера', expect.objectContaining({ signal: expect.any(AbortSignal) }));
+    expect(dp.get('[data-testid="gallery-yandex-crumb"]').text()).toContain('Фотокамера');
+    expect(dp.get('[data-s2-scope-pill]').text()).toContain('в: Фотокамера');
+
+    // Both Yandex photo and video render inside PhotosFeed without leaving Медиа
+    const photoTile = dp.get('[data-file-id="yandex:/Фотокамера/sunset.jpg"]');
+    expect(dp.find('[data-file-id="yandex:/Фотокамера/clip.mp4"]').exists()).toBe(true);
+    const img = photoTile.find('img');
+    expect(img.exists()).toBe(true);
+    expect(img.attributes('referrerpolicy')).toBe('no-referrer');
+
+    // Right-click menu in Yandex mode shows Yandex actions and hides Q Space-only favorite/album
+    await photoTile.trigger('contextmenu');
+    await nextTick();
+    expect(dp.find('[data-ctx-open]').exists()).toBe(true);
+    expect(dp.find('[data-ctx-show-folder]').exists()).toBe(true);
+    expect(dp.find('[data-ctx-download]').exists()).toBe(true);
+    expect(dp.find('[data-ctx-properties]').exists()).toBe(true);
+    expect(dp.find('[data-ctx-delete]').exists()).toBe(true);
+    expect(dp.find('[data-ctx-favorite]').exists()).toBe(false);
+    expect(dp.find('[data-ctx-album]').exists()).toBe(false);
+
+    // Свойства opens PhotoPanel directly in fallbackMode WITHOUT calling photosApi.details
+    detailsMock.mockClear();
+    await dp.get('[data-ctx-properties]').trigger('click');
+    await settle();
+    expect(detailsMock).not.toHaveBeenCalled();
+    const panel = dp.get('[data-photo-panel]');
+    expect(panel.get('[data-panel-title]').text()).toContain('sunset.jpg');
+    const panelImg = panel.find('[data-panel-preview] img');
+    expect(panelImg.exists()).toBe(true);
+    expect(panelImg.attributes('referrerpolicy')).toBe('no-referrer');
+    await panel.get('[data-panel-close]').trigger('click');
+    await nextTick();
+
+    // Yandex scoped search renders real previewSrc thumbnails in PhotosSearchGrid with no-referrer
+    const searchInput = dp.get('[data-s2-input]');
+    await searchInput.setValue('sunset');
+    await searchInput.trigger('keydown', { key: 'Enter' });
+    await settle();
+    const sgTile = dp.get('[data-testid="photos-search-grid"] [data-file-id="yandex:/Фотокамера/sunset.jpg"]');
+    const sgImg = sgTile.find('img.sg-img');
+    expect(sgImg.exists()).toBe(true);
+    expect(sgImg.attributes('src')).toContain('/api/yandex-disk/preview');
+    expect(sgImg.attributes('referrerpolicy')).toBe('no-referrer');
+    await sgImg.trigger('error');
+    await nextTick();
+    expect(sgTile.find('.sg-nothumb').exists()).toBe(true);
+    await dp.get('[data-s2-clear]').trigger('click');
+    await settle();
+
+    // Показать папку stays in Медиа via select-yandex-path
+    await dp.get('[data-file-id="yandex:/Фотокамера/sunset.jpg"]').trigger('contextmenu');
+    await nextTick();
+    await dp.get('[data-ctx-show-folder]').trigger('click');
+    await nextTick();
+    expect(dp.emitted('select-yandex-path')?.[0]).toEqual(['/Фотокамера']);
+
+    // Crumb exits back to Медиатека
+    await dp.get('[data-testid="gallery-yandex-crumb"]').trigger('click');
+    expect(dp.emitted('select-yandex-path')?.[1]).toEqual([null]);
+    dp.unmount();
   });
 });

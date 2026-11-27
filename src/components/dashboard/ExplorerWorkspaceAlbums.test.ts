@@ -731,8 +731,10 @@ describe('DashboardSpace (T-018 Albums redesign)', () => {
     expect(wrapper.get('[data-explorer-context-menu] [data-ctx-action="refresh"]').text()).toContain('Обновить');
     expect(wrapper.find('[data-explorer-context-menu] [data-ctx-action="add"]').exists()).toBe(false);
 
-    // Click attached folder tile -> emits navigate-space-folder { folderId: 'folder-1' }
+    // 1st click selects attached folder tile; dblclick emits navigate-space-folder { folderId: 'folder-1' }
     await wrapper.get('[data-space-folder="folder-1"]').trigger('click');
+    expect(wrapper.emitted('navigate-space-folder')).toBeUndefined();
+    await wrapper.get('[data-space-folder="folder-1"]').trigger('dblclick');
     expect(lastOf(wrapper.emitted('navigate-space-folder'))).toEqual([{ folderId: 'folder-1', yandexSourceId: null, yandexSubpath: null }]);
 
     // Drill into 1st-level folder -> breadcrumbs trimmed (NO "Личное"), shows 2nd-level subfolder "Белуха"
@@ -746,7 +748,7 @@ describe('DashboardSpace (T-018 Albums redesign)', () => {
     expect(wrapper.find('[data-space-item="q:file:inside-src"]').exists()).toBe(true);
 
     // Drill into 2nd-level subfolder -> breadcrumbs show Album › Горы › Белуха and photo inside
-    await wrapper.get('[data-space-folder="sub-2"]').trigger('click');
+    await wrapper.get('[data-space-folder="sub-2"]').trigger('dblclick');
     expect(lastOf(wrapper.emitted('navigate-space-folder'))).toEqual([{ folderId: 'sub-2', yandexSourceId: null, yandexSubpath: null }]);
     await wrapper.setProps({ activeFolderId: 'sub-2' });
     await flushPromises();

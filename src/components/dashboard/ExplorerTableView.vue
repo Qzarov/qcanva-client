@@ -76,13 +76,15 @@
         v-if="!hideAlbums"
         type="button"
         class="col-sort-btn col-hide-sm"
-        :class="{ active: activeSortCol === 'albums' }"
-        :data-sort-active="activeSortCol === 'albums' ? activeSortDir : undefined"
+        :class="{ active: !disableAlbumSort && activeSortCol === 'albums', 'is-disabled': disableAlbumSort }"
+        :disabled="disableAlbumSort"
+        :aria-disabled="disableAlbumSort ? 'true' : undefined"
+        :data-sort-active="!disableAlbumSort && activeSortCol === 'albums' ? activeSortDir : undefined"
         data-sort-col="albums"
-        @click="toggleSort('albums')"
+        @click="!disableAlbumSort && toggleSort('albums')"
       >
         <span>{{ t('explorerColAlbums') }}</span>
-        <span v-if="activeSortCol === 'albums'" class="exp-sort-arrow" aria-hidden="true">{{ sortArrow }}</span>
+        <span v-if="!disableAlbumSort && activeSortCol === 'albums'" class="exp-sort-arrow" aria-hidden="true">{{ sortArrow }}</span>
       </button>
     </div>
 
@@ -205,6 +207,7 @@ const props = withDefaults(defineProps<{
   selectedKeys?: ReadonlyArray<string>;
   hideSource?: boolean;
   hideAlbums?: boolean;
+  disableAlbumSort?: boolean;
   sortCol?: ExplorerSortCol;
   sortDir?: ExplorerSortDir;
   externalSortMode?: ExplorerExternalSortMode;
@@ -215,6 +218,7 @@ const props = withDefaults(defineProps<{
 }>(), {
   hideSource: false,
   hideAlbums: false,
+  disableAlbumSort: false,
   dragSource: 'explorer',
   allowEmptyContextMenu: false,
 });
@@ -247,9 +251,28 @@ const anchorIdx = ref<number>(-1);
 const focusIdx = ref<number>(-1);
 const dragOverKey = ref<string | null>(null);
 
-const activeSortCol = computed(() => props.sortCol ?? internalSortCol.value);
+const activeSortCol = computed<ExplorerSortCol>(() => {
+  const col = props.sortCol ?? internalSortCol.value;
+  if (props.disableAlbumSort && col === 'albums') return 'updatedAt';
+  return col;
+});
 const activeSortDir = computed(() => props.sortDir ?? internalSortDir.value);
 const sortArrow = computed(() => (activeSortDir.value === 'asc' ? '▲' : '▼'));
+
+watch(
+  [() => props.disableAlbumSort, () => props.sortCol, internalSortCol],
+  ([disabled, extCol, intCol]) => {
+    if (!disabled) return;
+    if (intCol === 'albums') {
+      internalSortCol.value = 'updatedAt';
+      internalSortDir.value = 'desc';
+    }
+    if (extCol === 'albums') {
+      emit('update:sort', 'updatedAt', 'desc');
+    }
+  },
+  { immediate: true },
+);
 
 function applyExternalSortMode(mode?: ExplorerExternalSortMode): void {
   if (!mode) return;
@@ -351,6 +374,7 @@ const sortedRows = computed(() => {
 });
 
 function toggleSort(col: ExplorerSortCol): void {
+  if (col === 'albums' && props.disableAlbumSort) return;
   let nextDir: ExplorerSortDir = 'asc';
   if (activeSortCol.value === col) {
     nextDir = activeSortDir.value === 'asc' ? 'desc' : 'asc';
@@ -625,9 +649,14 @@ function onRowDrop(event: DragEvent, row: ExplorerTableRow): void {
   white-space: nowrap;
   min-width: 0;
 }
-.col-sort-btn:hover {
+.col-sort-btn:hover:not(:disabled) {
   color: var(--ui-text);
   background: var(--ui-glass-btn-bg, var(--ui-surface-subtle));
+}
+.col-sort-btn:disabled,
+.col-sort-btn.is-disabled {
+  cursor: default;
+  opacity: 0.72;
 }
 .col-sort-btn.active {
   color: var(--ui-glass-accent-text, var(--color-brands));

@@ -27,6 +27,7 @@
         :android-app="isAndroidApp"
         :folders="sidebarFolders"
         :all-folders="sidebarAllFolders"
+        :album-related-folder-ids="activeSection.kind === 'space' ? activeAlbumRelatedFolderIds : null"
         :spaces="isLoggedIn"
         :yandex-refresh-key="yandexRefreshKey"
         :incoming-access-requests-count="incomingRequests.length"
@@ -64,6 +65,8 @@
             :active-section="(gallerySection as GallerySection)"
             :active-album-id="galleryAlbumId"
             :active-folder-id="galleryFolderId"
+            :active-yandex-path="galleryYandexPath"
+            :album-related-folder-ids="galleryAlbumId ? activeAlbumRelatedFolderIds : null"
             :highlighted-folder-id="galleryHighlightFolderId"
             :highlighted-file-id="galleryHighlightFileId"
             :folders="galleryStorageFolders"
@@ -72,7 +75,7 @@
             @select-album="onGallerySelectAlbum"
             @select-folder="onGallerySelectFolder"
             @select-file="onGallerySelectFile"
-            @select-yandex="openYandexPath"
+            @select-yandex="onGallerySelectYandex"
             @create-album="createSpace"
             @share-album="openAlbumShareById"
             @open-trash="onGalleryOpenTrash"
@@ -338,7 +341,10 @@
             type="button"
             class="subfolder-card"
             :data-favorite-tile="fav.key"
-            @click="openFavoriteTile(fav)"
+            :data-select-key="fav.key"
+            :data-selected="selectedKeys.includes(fav.key) || undefined"
+            @dblclick.stop="openFavoriteTile(fav)"
+            @keydown.enter.prevent="openFavoriteTile(fav)"
             @contextmenu.prevent.stop="onFavoriteTileContextMenu($event, fav)"
           >
             <span class="subfolder-card-icon" aria-hidden="true">
@@ -431,7 +437,10 @@
           class="subfolder-card"
           :class="{ 'subfolder-card-zero-match': folder.zeroMatch, 'is-drop-target': recentFolderDropTargetId === folder.id }"
           :data-recent-folder-tile="folder.id"
-          @click="selectFolder(folder.id)"
+          :data-select-key="'folder:' + folder.id"
+          :data-selected="selectedKeys.includes('folder:' + folder.id) || undefined"
+          @dblclick.stop="selectFolder(folder.id)"
+          @keydown.enter.prevent="selectFolder(folder.id)"
           @contextmenu.prevent.stop="onGridFolderContextMenu($event, folder)"
           @dragover="onRecentFolderDragOver($event, folder.id)"
           @dragleave="onRecentFolderDragLeave($event, folder.id)"
@@ -463,7 +472,10 @@
             type="button"
             class="subfolder-card"
             :data-recent-space-tile="space.id"
-            @click="selectDashboardSection({ kind: 'space', spaceId: space.id })"
+            :data-select-key="'space:' + space.id"
+            :data-selected="selectedKeys.includes('space:' + space.id) || undefined"
+            @dblclick.stop="selectDashboardSection({ kind: 'space', spaceId: space.id })"
+            @keydown.enter.prevent="selectDashboardSection({ kind: 'space', spaceId: space.id })"
             @contextmenu.prevent.stop="onSpaceTileContextMenu($event, space)"
           >
             <span class="subfolder-card-icon" aria-hidden="true"><UsersRound :size="13" /></span>
@@ -822,6 +834,7 @@
           :external-album-id="galleryAlbumId"
           :external-album-members-count="galleryAlbumMembersCount"
           :external-folder-id="galleryFolderId"
+          :external-yandex-path="galleryYandexPath"
           :folders="galleryStorageFolders"
           :hide-internal-tabs="true"
           :show-sidebar-expand="showSidebarExpand"
@@ -829,6 +842,7 @@
           @focus-photo="onGalleryFocusPhoto"
           @clear-album="onGalleryClearAlbum"
           @select-album="onGallerySelectAlbum"
+          @select-yandex-path="onGallerySelectYandexPath"
           @share-album="openAlbumShareById"
           @share-photos="onGallerySharePhotos"
           @open-trash="onGalleryOpenTrash"
@@ -3758,14 +3772,19 @@ export default defineComponent({
       }
     });
     // After a reload, whatever no longer exists drops out.
-    watch([itemsBySelectionKey, driveFilesByKey, yandexFilesByKey, spaceItemsByKey, allFolderSummaries, transferredExplorerKeys], ([items, files, yandex, spaceItems, folders]) => {
+    watch([itemsBySelectionKey, driveFilesByKey, yandexFilesByKey, spaceItemsByKey, allFolderSummaries, allSpaces, transferredExplorerKeys], ([items, files, yandex, spaceItems, folders, spaces]) => {
       const folderIds = new Set(folders.map((f) => f.id));
+      const spaceIds = new Set(spaces.map((s) => s.id));
       const known = (key: string) =>
         items.has(key)
         || files.has(key)
         || yandex.has(key)
         || spaceItems.has(key)
         || (key.startsWith('folder:') && folderIds.has(key.slice('folder:'.length)))
+        || (key.startsWith('space:') && spaceIds.has(key.slice('space:'.length)))
+        || (key.startsWith('album:') && spaceIds.has(key.slice('album:'.length)))
+        || (activeSection.value.kind === 'yandex' && key.startsWith('yandex:'))
+        || (activeSection.value.kind === 'space' && (key.startsWith('folder:') || key.startsWith('src-q:') || key.startsWith('src-y:') || key.startsWith('y-dir:')))
         || Boolean(pendingExplorerSelectionKeys.value?.includes(key))
         || Boolean(transferredExplorerKeys.value?.has(key));
       if (selectedKeys.value.some((key) => !known(key))) {
@@ -3814,16 +3833,13 @@ export default defineComponent({
       }
       if (!isLoggedIn) return;
       const target = event.target as HTMLElement | null;
-      // ExplorerTableView owns its own Click / Ctrl+Click / Shift+Click / double-click semantics.
-      if (target?.closest('[data-explorer-table]')) return;
+      // ExplorerTableView, DashboardSpace, and DashboardYandexDisk own their own Click / Ctrl+Click / Shift+Click / double-click semantics.
+      if (target?.closest('[data-explorer-table], [data-space-view], [data-yandex-view]')) return;
       const card = target?.closest<HTMLElement>('[data-select-key]');
       if (!card) return;
       const onBox = Boolean(target?.closest('[data-select-box]'));
-      const withModifier = event.metaKey || event.ctrlKey || event.shiftKey;
-      // Only active multi-select mode (2+ items) intercepts plain clicks; a single highlighted item (e.g. after Media -> Files focus transfer) opens normally on click.
-      if (!onBox && !withModifier && selectedKeys.value.length < 2) return;
-      // The card's own menu and rename field keep working.
-      if (!onBox && target?.closest('.card-manage, .card-menu, .card-title-input')) return;
+      // The card's own menu, pin, share button, and rename field keep working.
+      if (!onBox && target?.closest('.card-manage, .card-menu, .card-pin, .card-title-input, .space-overview-share-btn')) return;
       event.preventDefault();
       event.stopPropagation();
       const key = card.dataset.selectKey!;
@@ -3832,8 +3848,11 @@ export default defineComponent({
         const anchor = selectionAnchor && onScreen.includes(selectionAnchor) ? selectionAnchor : onScreen[0] || key;
         selectionAnchor = anchor;
         selectedKeys.value = selectRange(selectedKeys.value, onScreen, anchor, key);
-      } else {
+      } else if (onBox || event.metaKey || event.ctrlKey) {
         toggleSelected(key);
+      } else {
+        selectedKeys.value = [key];
+        selectionAnchor = key;
       }
     };
     // Android's Back clears the selection before it leaves the folder.
@@ -5685,10 +5704,24 @@ export default defineComponent({
 
     const onSwitchSidebarMode = (mode: ExplorerSidebarMode) => {
       if (mode === 'media') {
+        if (activeSection.value.kind === 'yandex') {
+          galleryYandexPath.value = activeSection.value.path;
+          galleryAlbumId.value = null;
+          galleryFolderId.value = null;
+          galleryHighlightFolderId.value = null;
+          galleryHighlightFileId.value = null;
+          galleryFocusedPhoto.value = null;
+          gallerySection.value = 'library';
+        }
         selectDashboardSection({ kind: 'gallery' });
         return;
       }
       if (activeSection.value.kind === 'gallery') {
+        if (galleryYandexPath.value !== null) {
+          openYandexPath(galleryYandexPath.value);
+          mobileSidebarOpen.value = false;
+          return;
+        }
         const view = galleryViewRef.value as { getActiveFocusTransfer?: () => GalleryFocusTransfer | null } | null;
         const transfer: GalleryFocusTransfer | null = typeof view?.getActiveFocusTransfer === 'function'
           ? view.getActiveFocusTransfer()
@@ -7418,7 +7451,15 @@ export default defineComponent({
 
     const onExplorerEnterKeydown = (event: KeyboardEvent) => {
       if (event.key !== 'Enter' || event.defaultPrevented) return;
-      if (!isLoggedIn || activeSection.value.kind === 'gallery' || mediaViewer.value) return;
+      if (
+        !isLoggedIn
+        || activeSection.value.kind === 'gallery'
+        || activeSection.value.kind === 'space'
+        || activeSection.value.kind === 'yandex'
+        || mediaViewer.value
+      ) {
+        return;
+      }
       if (selectedKeys.value.length !== 1) return;
       if (explorerCtxMenu.value.open || addDialog.value.open || folderModal.value.open || renameFolderModal.value.open || subfolderModal.value.open || folderParentModal.value.open) return;
       const target = event.target instanceof Element ? event.target : null;
@@ -7457,7 +7498,90 @@ export default defineComponent({
     };
     const galleryHighlightFolderId = ref<string | null>(null);
     const galleryHighlightFileId = ref<string | null>(null);
+    const galleryYandexPath = ref<string | null>(null);
     const gallerySidebarCounts = ref<GallerySidebarCounts>({});
+    const activeAlbumRelatedFolderIds = ref<Set<string>>(new Set());
+
+    const activeAlbumIdForTree = computed<string | null>(() => {
+      if (activeSection.value.kind === 'gallery') return galleryAlbumId.value;
+      if (activeSection.value.kind === 'space') return activeSection.value.spaceId;
+      return null;
+    });
+
+    const computeFolderAncestorsForTree = (folderIds: ReadonlySet<string>): string[] => {
+      if (!folderIds.size) return [];
+      const parentById = new Map<string, string | null>();
+      for (const f of allFolderSummaries.value) parentById.set(f.id, f.parentId ?? null);
+      for (const f of allResourceFolders.value) {
+        if (!parentById.has(f.id)) parentById.set(f.id, f.parentId ?? null);
+      }
+      const ancestors = new Set<string>();
+      for (const fid of folderIds) {
+        const visited = new Set<string>([fid]);
+        let parentId = parentById.get(fid) ?? null;
+        while (parentId && !visited.has(parentId)) {
+          visited.add(parentId);
+          ancestors.add(parentId);
+          parentId = parentById.get(parentId) ?? null;
+        }
+      }
+      return [...ancestors];
+    };
+
+    let albumRelatedFoldersSeq = 0;
+    watch(activeAlbumIdForTree, async (albumId) => {
+      const seq = ++albumRelatedFoldersSeq;
+      activeAlbumRelatedFolderIds.value = new Set();
+      if (!albumId) {
+        return;
+      }
+      const ids = new Set<string>();
+      let hasItemFolderIds = false;
+      try {
+        if (typeof spacesApi.get === 'function') {
+          const details = await spacesApi.get(albumId);
+          if (seq !== albumRelatedFoldersSeq) return;
+          for (const src of details?.sources ?? []) {
+            if (src.kind === 'qspace' && src.folderId) {
+              ids.add(src.folderId);
+            }
+          }
+          if (Array.isArray(details?.itemFolderIds)) {
+            hasItemFolderIds = true;
+            for (const fid of details.itemFolderIds) {
+              if (fid) ids.add(fid);
+            }
+          }
+        }
+      } catch {
+        // Non-fatal: fall through to photosApi.summary discovery if available.
+      }
+      if (!hasItemFolderIds && typeof photosApi?.summary === 'function') {
+        try {
+          const summary = await photosApi.summary({
+            sort: [{ key: 'folder', desc: false, sub: 'name' }],
+            levels: ['folder'],
+            period: 'month',
+            filter: 'all',
+            shared: true,
+            albumId,
+          });
+          if (seq !== albumRelatedFoldersSeq) return;
+          for (const group of summary?.groups ?? []) {
+            if (group.key && group.key !== 'none' && group.key !== 'root') {
+              ids.add(group.key);
+            }
+          }
+        } catch {
+          // Non-fatal: keep whatever sources gave us.
+        }
+      }
+      if (seq !== albumRelatedFoldersSeq) return;
+      activeAlbumRelatedFolderIds.value = ids;
+      if (activeSection.value.kind === 'space' && activeSection.value.spaceId === albumId) {
+        expandedTreeIds.value = computeFolderAncestorsForTree(ids);
+      }
+    }, { immediate: true });
 
     const galleryAlbumMembersCount = computed<number | null>(() => {
       if (!galleryAlbumId.value) return null;
@@ -7478,6 +7602,9 @@ export default defineComponent({
       gallerySection.value = section;
       galleryAlbumId.value = null;
       galleryFolderId.value = null;
+      galleryYandexPath.value = null;
+      galleryHighlightFolderId.value = null;
+      galleryHighlightFileId.value = null;
       galleryFocusedPhoto.value = null;
     };
 
@@ -7485,18 +7612,44 @@ export default defineComponent({
       gallerySection.value = 'trash';
       galleryAlbumId.value = null;
       galleryFolderId.value = null;
+      galleryYandexPath.value = null;
+      galleryHighlightFolderId.value = null;
+      galleryHighlightFileId.value = null;
       galleryFocusedPhoto.value = null;
     };
 
     const onGallerySelectAlbum = (albumId: string) => {
       galleryAlbumId.value = albumId;
       galleryFolderId.value = null;
+      galleryYandexPath.value = null;
+      galleryHighlightFolderId.value = null;
+      galleryHighlightFileId.value = null;
       gallerySection.value = 'library';
       galleryFocusedPhoto.value = null;
     };
 
     const onGalleryClearAlbum = () => {
       galleryAlbumId.value = null;
+    };
+
+    const onGallerySelectYandex = (path: string) => {
+      galleryYandexPath.value = path;
+      galleryAlbumId.value = null;
+      galleryFolderId.value = null;
+      galleryHighlightFolderId.value = null;
+      galleryHighlightFileId.value = null;
+      gallerySection.value = 'library';
+      galleryFocusedPhoto.value = null;
+    };
+
+    const onGallerySelectYandexPath = (path: string | null) => {
+      galleryYandexPath.value = path;
+      if (path !== null) {
+        galleryAlbumId.value = null;
+        galleryFolderId.value = null;
+        galleryHighlightFolderId.value = null;
+        galleryHighlightFileId.value = null;
+      }
     };
 
     const onGallerySharePhotos = async (fileIds: string[]) => {
@@ -7519,6 +7672,9 @@ export default defineComponent({
     const onGallerySelectFolder = (folderId: string) => {
       galleryFolderId.value = folderId;
       galleryAlbumId.value = null;
+      galleryYandexPath.value = null;
+      galleryHighlightFolderId.value = null;
+      galleryHighlightFileId.value = null;
       gallerySection.value = 'library';
       galleryFocusedPhoto.value = null;
     };
@@ -7526,6 +7682,7 @@ export default defineComponent({
     const onGalleryShowFolder = (folderId: string, fileId: string) => {
       gallerySection.value = 'library';
       galleryAlbumId.value = null;
+      galleryYandexPath.value = null;
       galleryFolderId.value = folderId;
       galleryHighlightFolderId.value = folderId === 'root' ? null : folderId;
       galleryHighlightFileId.value = fileId || null;
@@ -7537,6 +7694,7 @@ export default defineComponent({
     };
 
     const onGallerySelectFile = (fileId: string, folderId: string | null) => {
+      galleryYandexPath.value = null;
       if (folderId) galleryFolderId.value = folderId;
       galleryHighlightFolderId.value = folderId;
       galleryHighlightFileId.value = fileId;
@@ -7547,7 +7705,11 @@ export default defineComponent({
 
     const onGalleryFocusPhoto = (item: PhotoFeedItem) => {
       galleryFocusedPhoto.value = item;
-      galleryHighlightFolderId.value = item.folderId ?? null;
+      if (!galleryAlbumId.value) {
+        galleryHighlightFolderId.value = item.folderId ?? null;
+      } else {
+        galleryHighlightFolderId.value = null;
+      }
       galleryHighlightFileId.value = item.fileId;
     };
 
@@ -8050,6 +8212,8 @@ export default defineComponent({
       galleryAlbumMembersCount,
       gallerySidebarCounts,
       galleryFolderId,
+      galleryYandexPath,
+      activeAlbumRelatedFolderIds,
       galleryHighlightFolderId,
       galleryHighlightFileId,
       galleryStorageFolders,
@@ -8057,6 +8221,8 @@ export default defineComponent({
       onGalleryOpenTrash,
       onGallerySelectAlbum,
       onGalleryClearAlbum,
+      onGallerySelectYandex,
+      onGallerySelectYandexPath,
       onGallerySharePhotos,
       onGallerySelectFolder,
       onGalleryShowFolder,

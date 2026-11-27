@@ -2,7 +2,7 @@
 import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { recentResources, textDocuments } from '../api/client';
+import { textDocuments } from '../api/client';
 import { driveApi } from '../api/drive';
 import { spacesApi } from '../api/spaces';
 import { confirmDialog, promptDialog } from '../composables/appDialog';
@@ -606,29 +606,35 @@ describe('B-023: Album header members pill, Album ПКМ menu, and Editor return
     expect(peekDashboardReturnOrigin()).toBeNull();
   });
 
-  it('records return origin when clicking native .card-open-link on Text/HTML doc cards in Folder Grid and clears stale origin on manual navigation', async () => {
+  it('records return origin when double-clicking Text/HTML doc cards in Folder Grid (1st click selects only) and clears stale origin on manual navigation', async () => {
     const w1 = mountDashboard();
     await flushPromises();
     (w1.vm as any).selectFolder('folder-child');
     await flushPromises();
     await nextTick();
 
-    const docLink = w1.get('[data-dashboard-view="folder"] a.card-open-link[href="/docs/t1"]');
-    await docLink.trigger('click');
-    expect(peekDashboardReturnOrigin()?.section).toEqual({ kind: 'folder', folderId: 'folder-child' });
-    expect(recentResources.markOpened).not.toHaveBeenCalled();
+    // No single-click native <a> overlay on cards (Item 3)
+    expect(w1.find('[data-dashboard-view="folder"] a.card-open-link').exists()).toBe(false);
 
-    // Simulating Ctrl+click (new tab) followed by manual navigation in current tab clears stale pending origin
+    const docCard = w1.get('[data-dashboard-view="folder"] [data-select-key="text-document:t1"]');
+    await docCard.trigger('click');
+    expect((w1.vm as any).selectedKeys).toEqual(['text-document:t1']);
+    expect(peekDashboardReturnOrigin()).toBeNull();
+
+    await docCard.trigger('dblclick');
+    expect(peekDashboardReturnOrigin()?.section).toEqual({ kind: 'folder', folderId: 'folder-child' });
+
+    // Manual navigation in current tab clears stale pending origin
     (w1.vm as any).selectFolder('folder-home');
     await nextTick();
     expect(peekDashboardReturnOrigin()).toBeNull();
 
-    // Now click HTML doc .card-open-link in folder-child and remount -> restores folder-child!
+    // Now double-click HTML doc card in folder-child and remount -> restores folder-child!
     (w1.vm as any).selectFolder('folder-child');
     await flushPromises();
     await nextTick();
-    const htmlLink = w1.get('[data-dashboard-view="folder"] a.card-open-link[href="/edit/html/h1"]');
-    await htmlLink.trigger('click');
+    const htmlCard = w1.get('[data-dashboard-view="folder"] [data-select-key="html-document:h1"]');
+    await htmlCard.trigger('dblclick');
     expect(peekDashboardReturnOrigin()?.section).toEqual({ kind: 'folder', folderId: 'folder-child' });
     w1.unmount();
 

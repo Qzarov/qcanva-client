@@ -130,6 +130,7 @@
           v-else-if="isTableView"
           :rows="tableRows"
           :selected-keys="effectiveSelectedKeys"
+          :disable-album-sort="true"
           :external-sort-mode="props.sortMode"
           :external-sort-seq="props.externalSortSeq"
           :allow-empty-context-menu="true"
@@ -151,8 +152,12 @@
               class="subfolder-card"
               :class="{ 'is-drop-target': dropTargetFolderKey === folder.key }"
               :data-space-folder="folder.id"
+              :data-select-key="folder.key"
+              :data-selected="effectiveSelectedKeys.includes(folder.key) || undefined"
               :draggable="Boolean(folder.folderId) || undefined"
-              @click="enterSpaceFolder(folder)"
+              @click="onFolderTileClick($event, folder)"
+              @dblclick.stop="enterSpaceFolder(folder)"
+              @keydown.enter.prevent="enterSpaceFolder(folder)"
               @contextmenu.prevent.stop="openFolderContextMenu($event, folder)"
               @dragstart="onSpaceFolderDragStart($event, folder)"
               @drag="onFeedDragMove"
@@ -182,7 +187,8 @@
               :data-select-key="selectKeyOf(item)"
               :data-selected="isSelected(item) || undefined"
               @click="onTileClick($event, item)"
-              @keydown.enter.prevent="open(item)"
+              @dblclick.stop="onTileDblClick($event, item)"
+              @keydown.enter="onTileEnter($event, item)"
               @contextmenu.prevent.stop="openItemContextMenu($event, item)"
               @dragstart="onFeedDragStart($event, item)"
               @drag="onFeedDragMove"
@@ -212,7 +218,8 @@
               :data-selected="isSelected(item) || undefined"
               v-file-info="infoOf(item)"
               @click="onTileClick($event, item)"
-              @keydown.enter.prevent="open(item)"
+              @dblclick.stop="onTileDblClick($event, item)"
+              @keydown.enter="onTileEnter($event, item)"
               @contextmenu.prevent.stop="openItemContextMenu($event, item)"
               @dragstart="onFeedDragStart($event, item)"
               @drag="onFeedDragMove"
@@ -233,7 +240,7 @@
                 <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
               </div>
               <span v-if="withPicture(item)" class="folder-file-thumb" :class="{ 'is-empty': !previewOf(item), 'is-pictureless': !previewOf(item) && pictureless(item) }" aria-hidden="true">
-                <img v-if="previewOf(item)" :src="previewOf(item)!" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" data-space-preview @error="broken.add(item.key)" />
+                <img v-if="previewOf(item)" :src="previewOf(item)!" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" data-space-preview @error="onPreviewError(item)" />
                 <FilePlaceholder v-else :name="item.name" :kind="isVideo(item) ? 'video' : isPicture(item) ? 'picture' : 'file'" />
                 <span v-if="isVideo(item) && previewOf(item)" class="folder-file-play"><Play :size="14" aria-hidden="true" /></span>
               </span>
@@ -352,6 +359,7 @@ import SpaceFilterDialog from './SpaceFilterDialog.vue';
 
 import { LAYOUT, matchesMedia } from '../../composables/layoutMedia';
 import { downloadDriveFile, driveApi, getFileExtension, resolveDownloadUrl, type DriveItem } from '../../api/drive';
+import { invalidateRenditionToken, renditionUrl } from '../../api/photos';
 import { downloadYandexLink } from '../../api/yandexDisk';
 import { confirmDialog, promptDialog } from '../../composables/appDialog';
 import { useExplorerGroupDnd, type GroupDragEntry, type GroupDragPayload } from '../../composables/useExplorerGroupDnd';
@@ -903,6 +911,9 @@ function mapDriveItemToSpaceFeedItem(it: DriveItem, sourceId: string | null): Sp
     owner: { id: it.ownerId, name: null },
     addedBy: { id: it.ownerId, name: null },
     previewUrl: null,
+    hash: it.hash ?? null,
+    mediaProcessed: it.mediaProcessed,
+    folderId: it.parentId ?? null,
   };
 }
 
@@ -1164,11 +1175,26 @@ async function loadMore() {
 }
 
 let previewTimer: ReturnType<typeof setTimeout> | null = null;
-async function loadPreviews(list: SpaceFeedItem[], retry = true) {
+const renditionActive = new Set<string>();
+const renditionRetried = new Set<string>();
+const renditionFailed = new Set<string>();
+const isSha256Hex = (hash?: string | null): hash is string =>
+  typeof hash === 'string' && /^[0-9a-f]{64}$/i.test(hash);
+const canUseMediaRendition = (item: SpaceFeedItem) =>
+  item.origin === 'qspace'
+  && item.kind === 'file'
+  && (isPicture(item) || isVideo(item))
+  && Boolean(item.hash)
+  && item.mediaProcessed !== false
+  && (item.mediaProcessed === true || isSha256Hex(item.hash));
+
+async function loadThumbLinks(list: SpaceFeedItem[], retry = true) {
   const wanted = list.filter((item) => item.origin === 'qspace' && withPicture(item) && item.id && !previews[item.key]);
   if (!wanted.length) return;
+  const forLoad = loadId;
   try {
     const response = await driveApi.getThumbLinks(wanted.map((item) => item.id!));
+    if (forLoad !== loadId) return;
     const links = response?.links ?? {};
     const pending: SpaceFeedItem[] = [];
     for (const item of wanted) {
@@ -1177,10 +1203,84 @@ async function loadPreviews(list: SpaceFeedItem[], retry = true) {
       else if (link?.status === 'pending' && retry) pending.push(item);
       else noPicture.add(item.key);
     }
-    if (pending.length && retry) previewTimer = setTimeout(() => void loadPreviews(pending, false), 5000);
+    if (pending.length && retry) previewTimer = setTimeout(() => void loadThumbLinks(pending, false), 5000);
   } catch {
     /* fallback placeholder stays */
   }
+}
+
+async function loadPreviews(list: SpaceFeedItem[], retry = true) {
+  const wanted = list.filter((item) => item.origin === 'qspace' && withPicture(item) && item.id && !previews[item.key]);
+  if (!wanted.length) return;
+  const viaRendition: SpaceFeedItem[] = [];
+  const viaThumbLinks: SpaceFeedItem[] = [];
+  for (const item of wanted) {
+    if (canUseMediaRendition(item) && !renditionFailed.has(item.key)) {
+      viaRendition.push(item);
+    } else {
+      viaThumbLinks.push(item);
+    }
+  }
+  const forLoad = loadId;
+  if (viaRendition.length) {
+    void Promise.all(
+      viaRendition.map(async (item) => {
+        try {
+          const url = await renditionUrl(item.hash!, 'thumbnail');
+          if (forLoad !== loadId) return;
+          if (url) {
+            renditionActive.add(item.key);
+            previews[item.key] = url;
+            return;
+          }
+          renditionFailed.add(item.key);
+          void loadThumbLinks([item], retry);
+        } catch {
+          if (forLoad !== loadId) return;
+          renditionFailed.add(item.key);
+          void loadThumbLinks([item], retry);
+        }
+      }),
+    );
+  }
+  if (viaThumbLinks.length) {
+    await loadThumbLinks(viaThumbLinks, retry);
+  }
+}
+
+function onPreviewError(item: SpaceFeedItem): void {
+  if (renditionActive.has(item.key)) {
+    if (item.hash && !renditionRetried.has(item.key)) {
+      renditionRetried.add(item.key);
+      invalidateRenditionToken(item.hash);
+      delete previews[item.key];
+      const forLoad = loadId;
+      void renditionUrl(item.hash, 'thumbnail')
+        .then((url) => {
+          if (forLoad !== loadId) return;
+          if (url) {
+            previews[item.key] = url;
+            return;
+          }
+          renditionActive.delete(item.key);
+          renditionFailed.add(item.key);
+          void loadThumbLinks([item], false);
+        })
+        .catch(() => {
+          if (forLoad !== loadId) return;
+          renditionActive.delete(item.key);
+          renditionFailed.add(item.key);
+          void loadThumbLinks([item], false);
+        });
+      return;
+    }
+    renditionActive.delete(item.key);
+    renditionFailed.add(item.key);
+    delete previews[item.key];
+    void loadThumbLinks([item], false);
+    return;
+  }
+  broken.add(item.key);
 }
 
 watch(() => props.spaceId, () => {
@@ -1207,6 +1307,9 @@ watch(() => props.spaceId, () => {
   for (const key of Object.keys(previews)) delete previews[key];
   broken.clear();
   noPicture.clear();
+  renditionActive.clear();
+  renditionRetried.clear();
+  renditionFailed.clear();
   void load().then(() => {
     if (inQspaceFolder.value && props.activeFolderId) void loadQspaceFolder(props.activeFolderId);
     else if (inYandexFolder.value && props.activeYandexSourceId) {
@@ -1491,12 +1594,15 @@ function onBodyContextMenu(event: MouseEvent): void {
   openEmptyContextMenu(event);
 }
 
-function onTileClick(event: MouseEvent, item: SpaceFeedItem): void {
-  const key = selectKeyOf(item);
+function allVisibleSelectableKeys(): string[] {
+  return [...visibleFolders.value.map((f) => f.key), ...shown.value.map(selectKeyOf)];
+}
+
+function selectByClick(event: MouseEvent, key: string): void {
   if (event.shiftKey) {
     event.preventDefault();
     event.stopPropagation();
-    const onScreen = shown.value.map(selectKeyOf);
+    const onScreen = allVisibleSelectableKeys();
     const anchor = selectionAnchorKey.value || effectiveSelectedKeys.value[effectiveSelectedKeys.value.length - 1] || key;
     if (!selectionAnchorKey.value) selectionAnchorKey.value = anchor;
     onTableSelection(selectRange(effectiveSelectedKeys.value, onScreen, anchor, key));
@@ -1509,6 +1615,27 @@ function onTileClick(event: MouseEvent, item: SpaceFeedItem): void {
     onTableSelection(toggleSelection(effectiveSelectedKeys.value, key));
     return;
   }
+  selectionAnchorKey.value = key;
+  onTableSelection([key]);
+}
+
+function onFolderTileClick(event: MouseEvent, folder: SpaceFolderEntry): void {
+  selectByClick(event, folder.key);
+}
+
+function onTileClick(event: MouseEvent, item: SpaceFeedItem): void {
+  if ((event.target as HTMLElement | null)?.closest('.card-manage, .card-menu')) return;
+  selectByClick(event, selectKeyOf(item));
+}
+
+function onTileDblClick(event: MouseEvent, item: SpaceFeedItem): void {
+  if ((event.target as HTMLElement | null)?.closest('.card-manage, .card-menu')) return;
+  void open(item);
+}
+
+function onTileEnter(event: KeyboardEvent, item: SpaceFeedItem): void {
+  if ((event.target as HTMLElement | null)?.closest('.card-manage, .card-menu, button, a, input, textarea')) return;
+  event.preventDefault();
   void open(item);
 }
 
@@ -1830,7 +1957,40 @@ async function onMembersChanged(next: SpaceDetails | null) {
 }
 
 function onWindowKeydown(event: KeyboardEvent): void {
-  if (event.key !== 'Escape' || event.defaultPrevented) return;
+  if (event.defaultPrevented) return;
+  if (event.key === 'Enter') {
+    if (
+      isTableView.value
+      || effectiveSelectedKeys.value.length !== 1
+      || ctxMenu.open
+      || addDialogOpen.value
+      || membersOpen.value
+      || qspaceOpen.value
+      || yandexOpen.value
+      || propertiesFile.value
+      || filterMenuOpen.value
+    ) {
+      return;
+    }
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest('input, textarea, select, [contenteditable="true"], [role="dialog"], [data-explorer-context-menu], [data-explorer-table], .canvas-card, .subfolder-card, button, a')) {
+      return;
+    }
+    const key = effectiveSelectedKeys.value[0]!;
+    const folder = visibleFolders.value.find((f) => f.key === key);
+    if (folder) {
+      event.preventDefault();
+      enterSpaceFolder(folder);
+      return;
+    }
+    const item = shown.value.find((i) => selectKeyOf(i) === key);
+    if (item) {
+      event.preventDefault();
+      void open(item);
+    }
+    return;
+  }
+  if (event.key !== 'Escape') return;
   if (
     ctxMenu.open
     || addDialogOpen.value

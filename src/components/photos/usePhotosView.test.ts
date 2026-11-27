@@ -35,12 +35,12 @@ describe('usePhotosView', () => {
 
   it('defaults match spec', async () => {
     const { usePhotosView, defaultPhotosViewState } = await load();
-    const { state, levels, feedParams } = usePhotosView();
+    const { state, globalDesc, levels, feedParams } = usePhotosView();
 
     expect(state.value).toEqual(defaultPhotosViewState());
     expect(state.value).toEqual({
       sort: [],
-      dirs: { date: true, folder: false, album: false, size: true },
+      dirs: { date: true, folder: true, album: true, size: true },
       subs: { folder: 'name', album: 'name' },
       period: 'month',
       filter: 'all',
@@ -49,6 +49,7 @@ describe('usePhotosView', () => {
       tile: 'm',
       collapsedShares: [],
     });
+    expect(globalDesc.value).toBe(true);
     expect(levels.value).toEqual(['date']);
     expect(feedParams.value).toEqual({
       sort: [],
@@ -110,7 +111,7 @@ describe('usePhotosView', () => {
     toggleSortKey('album');
     expect(state.value.sort[state.value.sort.length - 1]).toEqual({
       key: 'album',
-      desc: false,
+      desc: true,
       sub: 'name',
     });
     expect(state.value.captions).toContain('album');
@@ -155,19 +156,24 @@ describe('usePhotosView', () => {
     expect(state.value.sort.every((s) => s.desc === false)).toBe(true);
   });
 
-  it('toggleDir flips only the given key', async () => {
+  it('toggleGlobalDir and toggleDir keep all keys synchronized to one global direction', async () => {
     const { usePhotosView } = await load();
-    const { state, toggleDir, toggleSortKey } = usePhotosView();
+    const { state, globalDesc, toggleGlobalDir, toggleDir, toggleSortKey } = usePhotosView();
 
     toggleSortKey('date');
     toggleSortKey('folder');
-    toggleDir('date');
-    expect(state.value.sort.find((s) => s.key === 'date')?.desc).toBe(false);
-    expect(state.value.sort.find((s) => s.key === 'folder')?.desc).toBe(false);
+    expect(globalDesc.value).toBe(true);
+    expect(state.value.sort.every((s) => s.desc === true)).toBe(true);
+
+    toggleGlobalDir();
+    expect(globalDesc.value).toBe(false);
+    expect(state.value.dirs).toEqual({ date: false, folder: false, album: false, size: false });
+    expect(state.value.sort.every((s) => s.desc === false)).toBe(true);
 
     toggleDir('folder');
-    expect(state.value.sort.find((s) => s.key === 'date')?.desc).toBe(false);
-    expect(state.value.sort.find((s) => s.key === 'folder')?.desc).toBe(true);
+    expect(globalDesc.value).toBe(true);
+    expect(state.value.dirs).toEqual({ date: true, folder: true, album: true, size: true });
+    expect(state.value.sort.every((s) => s.desc === true)).toBe(true);
   });
 
   it('cycleSub order', async () => {
@@ -295,7 +301,7 @@ describe('usePhotosView', () => {
     expect(state.value.filter).toBe('all');
     expect(state.value.tile).toBe('m');
     expect(state.value.shared).toBe(true);
-    expect(state.value.sort).toEqual([{ key: 'folder', desc: false, sub: 'name' }]);
+    expect(state.value.sort).toEqual([{ key: 'folder', desc: true, sub: 'name' }]);
     expect(state.value.captions).toEqual(['folder']);
     expect(state.value.collapsedShares).toEqual(['share-1']);
     expect('extraKey' in (state.value as Record<string, unknown>)).toBe(false);
@@ -400,20 +406,20 @@ describe('usePhotosView', () => {
     );
   });
 
-  it('toggle off then on keeps direction and sub', async () => {
+  it('toggle off then on keeps global direction and sub', async () => {
     const { usePhotosView } = await load();
-    const { state, toggleSortKey, toggleDir, cycleSub } = usePhotosView();
+    const { state, toggleSortKey, toggleGlobalDir, cycleSub } = usePhotosView();
 
     toggleSortKey('folder');
-    toggleDir('folder');
+    toggleGlobalDir();
     cycleSub('folder');
     toggleSortKey('folder');
     expect(state.value.sort.some((s) => s.key === 'folder')).toBe(false);
-    expect(state.value.dirs.folder).toBe(true);
+    expect(state.value.dirs.folder).toBe(false);
     expect(state.value.subs.folder).toBe('size');
 
     toggleSortKey('folder');
-    expect(state.value.sort[state.value.sort.length - 1]).toEqual({ key: 'folder', desc: true, sub: 'size' });
+    expect(state.value.sort[state.value.sort.length - 1]).toEqual({ key: 'folder', desc: false, sub: 'size' });
   });
 
   it('setAllDirs reaches inactive keys', async () => {
@@ -471,11 +477,11 @@ describe('usePhotosView', () => {
     );
     const { usePhotosView } = await load();
     const { state } = usePhotosView();
-    expect(state.value.dirs).toEqual({ date: true, folder: false, album: false, size: true });
+    expect(state.value.dirs).toEqual({ date: true, folder: true, album: true, size: true });
     expect(state.value.subs).toEqual({ folder: 'name', album: 'name' });
     expect(state.value.sort).toEqual([
       { key: 'size', desc: true },
-      { key: 'album', desc: false, sub: 'name' },
+      { key: 'album', desc: true, sub: 'name' },
     ]);
     expect(state.value.period).toBe('day');
   });

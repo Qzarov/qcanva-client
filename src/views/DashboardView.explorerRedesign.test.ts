@@ -1550,13 +1550,16 @@ describe('DashboardView T-021 + T-018 Explorer Redesign Integration', () => {
     expect(wrapper.get('.dashboard-shell').classes()).not.toContain('dashboard-list-view');
     expect(wrapper.find('[data-dashboard-view="space"] [data-space-folder="folder-home"]').exists()).toBe(true);
 
-    // Enter 1st-level folder inside Album, then 2nd-level subfolder "Грузия" — stays in { kind: 'space' }
+    // Enter 1st-level folder inside Album, then 2nd-level subfolder "Грузия" — 1st click selects, dblclick enters and stays in { kind: 'space' }
     await wrapper.get('[data-space-folder="folder-home"]').trigger('click');
+    await nextTick();
+    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'space', spaceId: 'alb-1' });
+    await wrapper.get('[data-space-folder="folder-home"]').trigger('dblclick');
     await flushPromises();
     expect((wrapper.vm as any).activeSection).toEqual({ kind: 'space', spaceId: 'alb-1', folderId: 'folder-home' });
     expect((wrapper.vm as any).s2ScopeLabel).toBe('Семья / Поездки');
 
-    await wrapper.get('[data-space-folder="folder-child"]').trigger('click');
+    await wrapper.get('[data-space-folder="folder-child"]').trigger('dblclick');
     await flushPromises();
     expect((wrapper.vm as any).activeSection).toEqual({ kind: 'space', spaceId: 'alb-1', folderId: 'folder-child' });
     expect((wrapper.vm as any).s2ScopeLabel).toBe('Семья / Грузия');

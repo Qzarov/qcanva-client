@@ -36,7 +36,13 @@ import { getCurrentUser, resourceFolders, type ResourceFolderSummary } from '../
 import { driveApi, type DriveItem } from '../../api/drive';
 import { photosApi, renditionUrl, type Album } from '../../api/photos';
 import { spacesApi, type SpaceRole, type SpaceSummary } from '../../api/spaces';
-import { yandexDisk, type YandexItem } from '../../api/yandexDisk';
+import {
+  joinYandexPath,
+  settleYandexOutcome,
+  yandexDisk,
+  yandexParentPath,
+  type YandexItem,
+} from '../../api/yandexDisk';
 import { confirmDialog, promptDialog } from '../../composables/appDialog';
 import { useExplorerGroupDnd } from '../../composables/useExplorerGroupDnd';
 import { useExplorerLayoutPrefs } from '../../composables/useExplorerLayoutPrefs';
@@ -71,6 +77,7 @@ const props = withDefaults(defineProps<{
   activeSpaceId?: string | null;
   activeFolderId?: string | null;
   activeYandexPath?: string | null;
+  albumRelatedFolderIds?: ReadonlySet<string> | null;
   highlightedFolderId?: string | null;
   highlightedFileId?: string | null;
   folders?: readonly GalleryStorageFolder[];
@@ -83,6 +90,7 @@ const props = withDefaults(defineProps<{
   activeSpaceId: null,
   activeFolderId: null,
   activeYandexPath: null,
+  albumRelatedFolderIds: null,
   highlightedFolderId: null,
   highlightedFileId: null,
   folders: undefined,
@@ -311,6 +319,54 @@ function scrollActiveFolderIntoView(id: string): void {
   });
 }
 
+/** Exclusive auto-expand for album-related folders: expand ONLY their ancestor chains and collapse all others. */
+function syncAlbumRelatedExpansion(): void {
+  if (!effectiveActiveAlbumId.value) return;
+  const related = props.albumRelatedFolderIds;
+  if (!related || related.size === 0) {
+    expandedFolders.value = new Set();
+    return;
+  }
+
+  let needHome = false;
+  let needShared = false;
+  const ancestors = new Set<string>();
+
+  for (const fid of related) {
+    if (fid === 'root') {
+      needHome = true;
+      continue;
+    }
+    let cur = folderMap.value.get(fid);
+    if (!cur) continue;
+    if (cur.role === 'read' || cur.shared) needShared = true;
+    else needHome = true;
+    const guard = new Set<string>();
+    while (cur?.parentId && !guard.has(cur.parentId)) {
+      guard.add(cur.parentId);
+      ancestors.add(cur.parentId);
+      cur = folderMap.value.get(cur.parentId);
+      if (cur) {
+        if (cur.role === 'read' || cur.shared) needShared = true;
+        else needHome = true;
+      }
+    }
+  }
+
+  if (needHome || needShared) {
+    const nextGroups = new Set(openGroups.value);
+    nextGroups.add('qspace');
+    if (needHome) nextGroups.add('home');
+    if (needShared) nextGroups.add('shared');
+    openGroups.value = nextGroups;
+  }
+
+  expandedFolders.value = ancestors;
+  if (showFilesInTree.value) {
+    for (const id of ancestors) void ensureFolderFiles(id);
+  }
+}
+
 watch(
   () => props.activeFolderId,
   (id) => {
@@ -318,8 +374,20 @@ watch(
       ensureFolderGroupOpen(id);
       collapseUnrelatedFolders(id, true);
       scrollActiveFolderIntoView(id);
+    } else if (effectiveActiveAlbumId.value) {
+      syncAlbumRelatedExpansion();
     } else if (!props.highlightedFolderId) {
       collapseUnrelatedFolders(null, false);
+    }
+  },
+  { immediate: true },
+);
+
+watch(
+  [effectiveActiveAlbumId, () => props.albumRelatedFolderIds],
+  ([albId]) => {
+    if (albId && !props.activeFolderId) {
+      syncAlbumRelatedExpansion();
     }
   },
   { immediate: true },
@@ -330,6 +398,8 @@ watch(
   (id) => {
     if (id) {
       collapseUnrelatedFolders(id, showFilesInTree.value || id === props.activeFolderId);
+    } else if (effectiveActiveAlbumId.value && !props.activeFolderId) {
+      syncAlbumRelatedExpansion();
     } else if (!props.activeFolderId) {
       collapseUnrelatedFolders(null, false);
     }
@@ -341,6 +411,8 @@ watch(allFolders, () => {
   if (props.activeFolderId) {
     ensureFolderGroupOpen(props.activeFolderId);
     collapseUnrelatedFolders(props.activeFolderId, true);
+  } else if (effectiveActiveAlbumId.value) {
+    syncAlbumRelatedExpansion();
   } else if (props.highlightedFolderId) {
     collapseUnrelatedFolders(props.highlightedFolderId, showFilesInTree.value || props.highlightedFolderId === props.activeFolderId);
   }
@@ -460,29 +532,192 @@ const qspaceVisibleRows = computed<QspaceRenderRow[]>(() => {
   return rows;
 });
 
-// ----- Yandex Disk (Clouds) -----
-const yandexExpanded = ref(false);
-const yandexDirs = ref<YandexItem[]>([]);
-const yandexLoading = ref(false);
-const yandexLoaded = ref(false);
+// ----- Yandex Disk (Clouds — full recursive expandable tree) -----
+const YANDEX_TREE_CHILD_LIMIT = 100;
+type YandexTreeNode = { items: YandexItem[] | null; total: number; loading: boolean };
+const yandexNodes = reactive<Record<string, YandexTreeNode>>({});
+const yandexExpandedPaths = ref<Set<string>>(new Set());
 
-async function toggleYandexRoot(): Promise<void> {
-  yandexExpanded.value = !yandexExpanded.value;
-  if (yandexExpanded.value && !yandexLoaded.value && !yandexLoading.value) {
-    yandexLoading.value = true;
-    try {
-      const listing = await yandexDisk.list('/', { limit: 30, sort: 'name' });
-      if (alive) {
-        yandexDirs.value = (listing.items ?? []).filter((it) => it.type === 'dir');
-        yandexLoaded.value = true;
-        if (yandexDirs.value.length === 0) yandexExpanded.value = false;
+const isYandexPathExpanded = (path: string): boolean => yandexExpandedPaths.value.has(path);
+
+function isYandexMediaItem(item: YandexItem): boolean {
+  if (item.type !== 'file') return false;
+  if (item.mediaType === 'image' || item.mediaType === 'video') return true;
+  const mime = (item.mime ?? '').toLowerCase();
+  return mime.startsWith('image/') || mime.startsWith('video/');
+}
+
+function isYandexVideoItem(item: YandexItem): boolean {
+  return item.mediaType === 'video' || Boolean(item.mime?.toLowerCase().startsWith('video/'));
+}
+
+function yandexNodeHasChildren(path: string): boolean {
+  if (!yandexStatus.value?.connected) return false;
+  const node = yandexNodes[path];
+  if (!node?.items) return true;
+  if (showFilesInTree.value) {
+    return node.items.some((i) => i.type === 'dir' || isYandexMediaItem(i));
+  }
+  return node.items.some((i) => i.type === 'dir');
+}
+
+async function readYandexNode(path: string): Promise<void> {
+  if (!yandexNodes[path]) {
+    yandexNodes[path] = { items: null, total: 0, loading: false };
+  }
+  const node = yandexNodes[path]!;
+  if (node.loading) return;
+  node.loading = true;
+  try {
+    const listing = await yandexDisk.list(path, { limit: YANDEX_TREE_CHILD_LIMIT, sort: 'name' });
+    if (!alive) return;
+    node.items = [...(listing.items ?? [])].sort((a, b) => {
+      const dirDiff = Number(b.type === 'dir') - Number(a.type === 'dir');
+      if (dirDiff !== 0) return dirDiff;
+      return (a.name || '').localeCompare(b.name || '', locale.value, { sensitivity: 'base' });
+    });
+    node.total = listing.total ?? node.items.length;
+  } catch (err) {
+    noteYandexError(err);
+    if (alive) {
+      node.items = [];
+      node.total = 0;
+    }
+  } finally {
+    node.loading = false;
+  }
+}
+
+async function toggleYandexPath(path: string): Promise<void> {
+  if (isYandexPathExpanded(path)) {
+    const prefix = path === '/' ? '/' : `${path}/`;
+    const next = new Set<string>();
+    for (const p of yandexExpandedPaths.value) {
+      if (p !== path && !(path === '/' ? p.startsWith('/') : p.startsWith(prefix))) {
+        next.add(p);
       }
-    } catch (err) {
-      noteYandexError(err);
-    } finally {
-      yandexLoading.value = false;
+    }
+    yandexExpandedPaths.value = next;
+    return;
+  }
+  if (!yandexNodes[path]?.items && !yandexNodes[path]?.loading) {
+    await readYandexNode(path);
+  }
+  if (!alive) return;
+  if (!yandexNodeHasChildren(path)) return;
+  const next = new Set(yandexExpandedPaths.value);
+  next.add(path);
+  yandexExpandedPaths.value = next;
+
+  const dirs = (yandexNodes[path]?.items ?? [])
+    .filter((i) => i.type === 'dir')
+    .slice(0, 30);
+  for (const dir of dirs) {
+    if (!yandexNodes[dir.path]?.items && !yandexNodes[dir.path]?.loading) {
+      void readYandexNode(dir.path);
     }
   }
+}
+
+async function expandYandexAncestors(path: string): Promise<void> {
+  if (!openGroups.value.has('clouds')) {
+    const nextGroups = new Set(openGroups.value);
+    nextGroups.add('clouds');
+    openGroups.value = nextGroups;
+  }
+  if (!yandexStatus.value?.connected) return;
+  const parts = path.split('/').filter(Boolean);
+  const ancestors: string[] = ['/'];
+  for (let i = 0; i < parts.length - 1; i++) {
+    ancestors.push(`/${parts.slice(0, i + 1).join('/')}`);
+  }
+  const nextExp = new Set(yandexExpandedPaths.value);
+  for (const anc of ancestors) {
+    if (!yandexNodes[anc]?.items && !yandexNodes[anc]?.loading) {
+      await readYandexNode(anc);
+    }
+    if (!alive) return;
+    if (yandexNodeHasChildren(anc)) {
+      nextExp.add(anc);
+    }
+  }
+  yandexExpandedPaths.value = nextExp;
+
+  const lastAnc = ancestors[ancestors.length - 1]!;
+  const siblingDirs = (yandexNodes[lastAnc]?.items ?? []).filter((i) => i.type === 'dir').slice(0, 30);
+  for (const dir of siblingDirs) {
+    if (!yandexNodes[dir.path]?.items && !yandexNodes[dir.path]?.loading) {
+      void readYandexNode(dir.path);
+    }
+  }
+}
+
+watch(
+  [() => props.activeYandexPath, () => yandexStatus.value?.connected],
+  ([path, connected]) => {
+    if (path && connected) {
+      void expandYandexAncestors(path);
+    } else if (path && !openGroups.value.has('clouds')) {
+      const nextGroups = new Set(openGroups.value);
+      nextGroups.add('clouds');
+      openGroups.value = nextGroups;
+    }
+  },
+  { immediate: true },
+);
+
+type YandexTreeRow =
+  | { kind: 'dir'; key: string; item: YandexItem; path: string; depth: number; expanded: boolean; hasChildren: boolean }
+  | { kind: 'file'; key: string; item: YandexItem; path: string; parentPath: string; depth: number };
+
+const yandexRootExpandable = computed(() => yandexNodeHasChildren('/'));
+const yandexRootExpanded = computed(() => yandexRootExpandable.value && isYandexPathExpanded('/'));
+
+const yandexTreeRows = computed<YandexTreeRow[]>(() => {
+  if (!yandexRootExpanded.value) return [];
+  const rows: YandexTreeRow[] = [];
+  const walk = (parentPath: string, depth: number, visited: Set<string>) => {
+    const node = yandexNodes[parentPath];
+    if (!node?.items) return;
+    const dirs = node.items.filter((i) => i.type === 'dir');
+    const files = showFilesInTree.value ? node.items.filter(isYandexMediaItem) : [];
+    for (const dir of dirs) {
+      if (visited.has(dir.path)) continue;
+      const hasChildren = yandexNodeHasChildren(dir.path);
+      const expanded = hasChildren && isYandexPathExpanded(dir.path);
+      rows.push({
+        kind: 'dir',
+        key: `yd:${dir.path}`,
+        item: dir,
+        path: dir.path,
+        depth,
+        expanded,
+        hasChildren,
+      });
+      if (expanded) {
+        const nextVisited = new Set(visited);
+        nextVisited.add(dir.path);
+        walk(dir.path, depth + 1, nextVisited);
+      }
+    }
+    for (const file of files) {
+      rows.push({
+        kind: 'file',
+        key: `yf:${file.path}`,
+        item: file,
+        path: file.path,
+        parentPath,
+        depth,
+      });
+    }
+  };
+  walk('/', 2, new Set(['/']));
+  return rows;
+});
+
+function onSelectYandex(path: string): void {
+  collapseUnrelatedFolders(null, false);
+  emit('select-yandex', path);
 }
 
 // ----- Group DnD Helpers -----
@@ -510,20 +745,35 @@ function isDescendantOrSelf(targetFolderId: string, draggedFolderId: string): bo
   return false;
 }
 
-function extractDroppedItems(e: DragEvent): { fileIds: string[]; folderIds: string[] } {
+function extractDroppedItems(e: DragEvent): {
+  fileIds: string[];
+  folderIds: string[];
+  yandexFolderPaths: string[];
+  yandexFilePaths: string[];
+} {
   const payload = dnd.readGroupDragFromEvent(e);
-  if (!payload || payload.items.length === 0) return { fileIds: [], folderIds: [] };
+  if (!payload || payload.items.length === 0) {
+    return { fileIds: [], folderIds: [], yandexFolderPaths: [], yandexFilePaths: [] };
+  }
   const fileIds: string[] = [];
   const folderIds: string[] = [];
+  const yandexFolderPaths: string[] = [];
+  const yandexFilePaths: string[] = [];
   for (const it of payload.items) {
-    if (!it.id) continue;
-    if (it.kind === 'folder' || it.key?.startsWith('folder:')) {
-      if (!folderIds.includes(it.id)) folderIds.push(it.id);
+    if (!it.id && !it.path) continue;
+    if (it.kind === 'yandex-folder' || it.key?.startsWith('yandex-folder:')) {
+      const p = it.path || it.id;
+      if (p && !yandexFolderPaths.includes(p)) yandexFolderPaths.push(p);
+    } else if (it.kind === 'yandex-file' || it.id?.startsWith('yandex:') || it.key?.startsWith('yandex-file:')) {
+      const p = it.path || (it.id?.startsWith('yandex:') ? it.id.slice('yandex:'.length) : it.id);
+      if (p && !yandexFilePaths.includes(p)) yandexFilePaths.push(p);
+    } else if (it.kind === 'folder' || it.key?.startsWith('folder:')) {
+      if (it.id && !folderIds.includes(it.id)) folderIds.push(it.id);
     } else {
-      if (!fileIds.includes(it.id)) fileIds.push(it.id);
+      if (it.id && !fileIds.includes(it.id)) fileIds.push(it.id);
     }
   }
-  return { fileIds, folderIds };
+  return { fileIds, folderIds, yandexFolderPaths, yandexFilePaths };
 }
 
 function canDropOnFolder(targetFolderId: string | null, e?: DragEvent): boolean {
@@ -533,6 +783,9 @@ function canDropOnFolder(targetFolderId: string | null, e?: DragEvent): boolean 
   }
   const payload = dnd.activeDrag.value ?? (e ? dnd.readGroupDragFromEvent(e) : null);
   if (!payload || payload.items.length === 0) return true;
+  if (payload.items.every((it) => it.kind === 'yandex-folder' || it.kind === 'yandex-file' || it.id?.startsWith('yandex:'))) {
+    return false;
+  }
   if (targetFolderId !== null) {
     for (const it of payload.items) {
       if (it.kind === 'folder' || it.key?.startsWith('folder:')) {
@@ -543,13 +796,25 @@ function canDropOnFolder(targetFolderId: string | null, e?: DragEvent): boolean 
   return true;
 }
 
+function canDropOnYandex(targetPath: string, e?: DragEvent): boolean {
+  const payload = dnd.activeDrag.value ?? (e ? dnd.readGroupDragFromEvent(e) : null);
+  if (!payload || payload.items.length === 0) return false;
+  return payload.items.some((it) => {
+    if (it.kind === 'yandex-file' || it.id?.startsWith('yandex:') || it.key?.startsWith('yandex-file:')) {
+      const srcPath = it.path || (it.id?.startsWith('yandex:') ? it.id.slice('yandex:'.length) : it.id);
+      return Boolean(srcPath && yandexParentPath(srcPath) !== targetPath);
+    }
+    return false;
+  });
+}
+
 function isLeavingRow(e: DragEvent): boolean {
   const current = e.currentTarget as HTMLElement | null;
   const related = e.relatedTarget as Node | null;
   return !(current && related && current.contains(related));
 }
 
-function isDropActive(kind: 'favorites' | 'album' | 'folder', id: string): boolean {
+function isDropActive(kind: 'favorites' | 'album' | 'folder' | 'yandex', id: string): boolean {
   const target = dnd.dropTarget.value;
   return Boolean(target && target.kind === kind && target.id === id);
 }
@@ -579,10 +844,108 @@ function onAlbumDragLeave(e: DragEvent, albumId: string): void {
   if (isDropActive('album', albumId)) dnd.setGroupDropTarget(null);
 }
 
-function onAlbumDrop(e: DragEvent, albumId: string): void {
-  const { fileIds, folderIds } = extractDroppedItems(e);
+async function onAlbumDrop(e: DragEvent, albumId: string): Promise<void> {
+  const { fileIds, folderIds, yandexFolderPaths } = extractDroppedItems(e);
   dnd.endGroupDrag();
+  if (yandexFolderPaths.length > 0) {
+    let added = 0;
+    for (const path of yandexFolderPaths) {
+      try {
+        await spacesApi.addYandexFolder(albumId, path);
+        added++;
+      } catch {
+        // continue adding remaining paths
+      }
+    }
+    const albumName = albumsList.value.find((a) => a.id === albumId)?.name ?? '';
+    if (added > 0) {
+      void loadSpaces(true);
+      toast.show(
+        t('photosAddedToAlbumToast').replace('{n}', String(added)).replace('{album}', albumName),
+        'success',
+      );
+    } else {
+      toast.show(t('spaceActionFailed'), 'error');
+    }
+  }
   if (fileIds.length > 0 || folderIds.length > 0) emit('drop-album', albumId, fileIds, folderIds);
+}
+
+function onYandexFolderDragStart(e: DragEvent, item: YandexItem): void {
+  dnd.startGroupDrag(
+    {
+      source: 'tree',
+      items: [
+        {
+          key: `yandex-folder:${item.path}`,
+          id: item.path,
+          kind: 'yandex-folder',
+          name: item.name,
+          path: item.path,
+        },
+      ],
+    },
+    e,
+  );
+}
+
+function onYandexDragOver(e: DragEvent, targetPath: string): void {
+  if (!canDropOnYandex(targetPath, e)) {
+    if (isDropActive('yandex', targetPath)) dnd.setGroupDropTarget(null);
+    return;
+  }
+  e.preventDefault();
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+  dnd.setGroupDropTarget({ kind: 'yandex', id: targetPath });
+  if (yandexNodeHasChildren(targetPath) && !isYandexPathExpanded(targetPath)) {
+    dnd.scheduleSpringExpand(`yandex:${targetPath}`, () => {
+      if (!isYandexPathExpanded(targetPath)) void toggleYandexPath(targetPath);
+    });
+  }
+}
+
+function onYandexDragLeave(e: DragEvent, targetPath: string): void {
+  if (!isLeavingRow(e)) return;
+  if (isDropActive('yandex', targetPath)) dnd.setGroupDropTarget(null);
+  dnd.cancelSpringExpand();
+}
+
+async function onYandexDrop(e: DragEvent, targetPath: string): Promise<void> {
+  const { yandexFilePaths } = extractDroppedItems(e);
+  dnd.endGroupDrag();
+  const valid = yandexFilePaths.filter((p) => yandexParentPath(p) !== targetPath);
+  if (valid.length === 0) return;
+  const affectedParents = new Set<string>([targetPath]);
+  let moved = 0;
+  for (const fromPath of valid) {
+    const fileName = fromPath.split('/').filter(Boolean).pop();
+    if (!fileName) continue;
+    const toPath = joinYandexPath(targetPath, fileName);
+    affectedParents.add(yandexParentPath(fromPath));
+    try {
+      const outcome = await yandexDisk.move(fromPath, toPath);
+      if (outcome && outcome.status === 'pending') {
+        await settleYandexOutcome(outcome);
+      }
+      moved++;
+    } catch (err) {
+      noteYandexError(err);
+    }
+  }
+  for (const p of affectedParents) {
+    if (yandexNodes[p]) {
+      void readYandexNode(p);
+    }
+  }
+  if (moved > 0) {
+    const folderLabel = targetPath === '/' ? t('yandexDisk') : (targetPath.split('/').filter(Boolean).pop() ?? targetPath);
+    toast.show(
+      t('bulkMovedTo').replace('{folder}', folderLabel).replace('{n}', String(moved)),
+      'success',
+    );
+  } else {
+    toast.show(t('yandexOperationFailed'), 'error');
+  }
 }
 
 function onHomeDragOver(e: DragEvent): void {
@@ -685,7 +1048,9 @@ function onSelectTrash(): void {
 }
 
 function onSelectAlbum(albumId: string): void {
-  collapseUnrelatedFolders(null, false);
+  if (albumId !== effectiveActiveAlbumId.value) {
+    collapseUnrelatedFolders(null, false);
+  }
   emit('select-album', albumId);
 }
 
@@ -1165,6 +1530,7 @@ onBeforeUnmount(() => {
           class="gs-row-wrap gs-tree-row"
           :class="{
             active: activeFolderId === 'root',
+            'is-album-related': activeFolderId !== 'root' && Boolean(albumRelatedFolderIds?.has('root')),
             'drag-over': isDropActive('folder', 'root'),
             'drop-over': isDropActive('folder', 'root'),
           }"
@@ -1205,7 +1571,8 @@ onBeforeUnmount(() => {
           class="gs-row-wrap gs-tree-row"
           :class="{
             active: activeFolderId === row.folder.id,
-            'is-highlighted': highlightedFolderId === row.folder.id,
+            'is-album-related': activeFolderId !== row.folder.id && Boolean(albumRelatedFolderIds?.has(row.folder.id)),
+            'is-highlighted': activeFolderId !== row.folder.id && highlightedFolderId === row.folder.id,
             'drag-over': isDropActive('folder', row.folder.id),
             'drop-over': isDropActive('folder', row.folder.id),
           }"
@@ -1299,20 +1666,30 @@ onBeforeUnmount(() => {
         <template v-if="yandexStatus?.enabled">
           <div
             role="treeitem"
-            :aria-expanded="yandexStatus.connected && (!yandexLoaded || yandexDirs.length > 0) ? yandexExpanded : undefined"
+            :aria-expanded="yandexRootExpandable ? yandexRootExpanded : undefined"
             class="gs-row-wrap gs-tree-row"
-            :class="{ active: activeYandexPath === '/' }"
+            :class="{
+              active: activeYandexPath === '/',
+              'drag-over': isDropActive('yandex', '/'),
+              'drop-over': isDropActive('yandex', '/'),
+            }"
             :style="rowIndent(1)"
+            data-gallery-yandex-root
             data-gallery-yandex="/"
+            @dragenter="onYandexDragOver($event, '/')"
+            @dragover="onYandexDragOver($event, '/')"
+            @dragleave="onYandexDragLeave($event, '/')"
+            @drop.prevent="onYandexDrop($event, '/')"
           >
             <button
-              v-if="yandexStatus.connected && (!yandexLoaded || yandexDirs.length > 0)"
+              v-if="yandexRootExpandable"
               type="button"
               class="gs-caret-btn"
-              :aria-label="yandexExpanded ? t('collapseSubfolders') : t('expandSubfolders')"
-              @click.stop="toggleYandexRoot"
+              data-gallery-yandex-toggle="/"
+              :aria-label="yandexRootExpanded ? t('collapseSubfolders') : t('expandSubfolders')"
+              @click.stop="toggleYandexPath('/')"
             >
-              <ChevronDown v-if="yandexExpanded" :size="13" aria-hidden="true" />
+              <ChevronDown v-if="yandexRootExpanded" :size="13" aria-hidden="true" />
               <ChevronRight v-else :size="13" aria-hidden="true" />
             </button>
             <span v-else class="gs-caret-spacer" aria-hidden="true"></span>
@@ -1320,33 +1697,73 @@ onBeforeUnmount(() => {
               type="button"
               class="gs-row gs-row-main"
               :aria-current="activeYandexPath === '/' ? 'page' : undefined"
-              @click="emit('select-yandex', '/')"
+              @click="onSelectYandex('/')"
             >
               <span class="gs-icon" aria-hidden="true"><Cloud :size="15" /></span>
               <span class="gs-name">{{ t('yandexDisk') }}</span>
             </button>
           </div>
-          <template v-if="yandexExpanded">
+          <template v-for="yrow in yandexTreeRows" :key="yrow.key">
             <div
-              v-for="dir in yandexDirs"
-              :key="`yd:${dir.path}`"
+              v-if="yrow.kind === 'dir'"
               role="treeitem"
+              :aria-expanded="yrow.hasChildren ? yrow.expanded : undefined"
               class="gs-row-wrap gs-tree-row"
-              :class="{ active: activeYandexPath === dir.path }"
-              :style="rowIndent(2)"
-              :data-gallery-yandex="dir.path"
+              :class="{
+                active: activeYandexPath === yrow.path,
+                'drag-over': isDropActive('yandex', yrow.path),
+                'drop-over': isDropActive('yandex', yrow.path),
+              }"
+              :style="rowIndent(yrow.depth)"
+              :data-gallery-yandex="yrow.path"
+              draggable="true"
+              @dragstart="onYandexFolderDragStart($event, yrow.item)"
+              @dragend="onFolderDragEnd"
+              @dragenter="onYandexDragOver($event, yrow.path)"
+              @dragover="onYandexDragOver($event, yrow.path)"
+              @dragleave="onYandexDragLeave($event, yrow.path)"
+              @drop.prevent="onYandexDrop($event, yrow.path)"
             >
-              <span class="gs-caret-spacer" aria-hidden="true"></span>
+              <button
+                v-if="yrow.hasChildren"
+                type="button"
+                class="gs-caret-btn"
+                :data-gallery-yandex-toggle="yrow.path"
+                :aria-label="yrow.expanded ? t('collapseSubfolders') : t('expandSubfolders')"
+                @click.stop="toggleYandexPath(yrow.path)"
+              >
+                <ChevronDown v-if="yrow.expanded" :size="13" aria-hidden="true" />
+                <ChevronRight v-else :size="13" aria-hidden="true" />
+              </button>
+              <span v-else class="gs-caret-spacer" aria-hidden="true"></span>
               <button
                 type="button"
                 class="gs-row gs-row-main"
-                :aria-current="activeYandexPath === dir.path ? 'page' : undefined"
-                @click="emit('select-yandex', dir.path)"
+                :aria-current="activeYandexPath === yrow.path ? 'page' : undefined"
+                :title="compact ? (yrow.item.name || t('untitled')) : undefined"
+                @click="onSelectYandex(yrow.path)"
               >
                 <span class="gs-icon" aria-hidden="true"><Folder :size="15" /></span>
-                <span class="gs-name">{{ dir.name || t('untitled') }}</span>
+                <span class="gs-name">{{ yrow.item.name || t('untitled') }}</span>
               </button>
             </div>
+            <button
+              v-else
+              type="button"
+              role="treeitem"
+              class="gs-row gs-tree-row gs-file-row"
+              :style="rowIndent(yrow.depth)"
+              :data-gallery-yandex-file="yrow.path"
+              :title="yrow.item.name || t('untitled')"
+              @click="onSelectYandex(yrow.parentPath)"
+            >
+              <span class="gs-caret-spacer" aria-hidden="true"></span>
+              <span class="gs-icon" aria-hidden="true">
+                <Video v-if="isYandexVideoItem(yrow.item)" :size="14" />
+                <ImageIcon v-else :size="14" />
+              </span>
+              <span class="gs-name">{{ yrow.item.name || t('untitled') }}</span>
+            </button>
           </template>
         </template>
 
@@ -1536,10 +1953,15 @@ onBeforeUnmount(() => {
   color: var(--ui-text);
   box-shadow: var(--ui-glass-inset-highlight);
 }
+.gs-row-wrap.is-album-related {
+  background: color-mix(in srgb, var(--color-brands, #44cf6e) 7%, transparent);
+  border-color: color-mix(in srgb, var(--color-brands, #44cf6e) 20%, transparent);
+  color: var(--ui-text-secondary);
+}
 .gs-row.is-highlighted,
 .gs-row-wrap.is-highlighted {
-  background: var(--ui-glass-accent-bg);
-  border-color: var(--ui-glass-accent-border);
+  background: color-mix(in srgb, var(--color-brands, #44cf6e) 11%, transparent);
+  border-color: color-mix(in srgb, var(--color-brands, #44cf6e) 28%, transparent);
   color: var(--ui-text);
 }
 .gs-row.active,

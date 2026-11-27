@@ -346,11 +346,16 @@ describe('dashboard sidebar navigation', () => {
     expect(card.find('.badge-owner').exists()).toBe(false);
   });
 
-  it('opens a folder from a tile on the Recent page', async () => {
+  it('selects a folder tile on 1st click and opens it on dblclick on the Recent page', async () => {
     const wrapper = mountDashboard();
     await flushPromises();
 
-    await wrapper.get('[data-recent-folder-tile="folder-b"]').trigger('click');
+    const tile = wrapper.get('[data-recent-folder-tile="folder-b"]');
+    await tile.trigger('click');
+    expect((wrapper.vm as any).selectedKeys).toEqual(['folder:folder-b']);
+    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'recent' });
+
+    await tile.trigger('dblclick');
 
     expect((wrapper.vm as any).activeSection).toEqual({ kind: 'folder', folderId: 'folder-b' });
   });
@@ -1006,7 +1011,7 @@ describe('dashboard sidebar navigation', () => {
     expect(wrapper.find('[data-explorer-table]').exists()).toBe(true);
 
     // A folder follows the same choice via the single Headroom view toggle (no duplicate toggle in folder heading).
-    await wrapper.get('[data-recent-folder-tile="folder-b"]').trigger('click');
+    await wrapper.get('[data-recent-folder-tile="folder-b"]').trigger('dblclick');
     expect(shell().classes()).not.toContain('dashboard-list-view');
     expect(wrapper.find('[data-dashboard-view="folder"] [data-explorer-table]').exists()).toBe(true);
     expect(wrapper.find('[data-dashboard-view="folder"] .folder-view-toggle').exists()).toBe(false);
@@ -1980,7 +1985,7 @@ describe('DashboardView groups', () => {
       expect(subfolderAt).toBeLessThan(itemAt);
     });
 
-    it('opens a subfolder when its card is clicked', async () => {
+    it('selects a subfolder on 1st click and opens it on dblclick', async () => {
       withNestedFolders();
       const wrapper = mountDashboard();
       await flushPromises();
@@ -1988,7 +1993,13 @@ describe('DashboardView groups', () => {
       vm.selectFolder('folder-b');
       await nextTick();
 
-      await wrapper.find('.subfolder-card').trigger('click');
+      const card = wrapper.find('.subfolder-card');
+      await card.trigger('click');
+      await nextTick();
+      expect(vm.selectedKeys).toEqual(['folder:folder-c']);
+      expect(vm.selectedFolderId).toBe('folder-b');
+
+      await card.trigger('dblclick');
       await nextTick();
 
       expect(vm.selectedFolderId).toBe('folder-c');

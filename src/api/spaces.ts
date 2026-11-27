@@ -45,6 +45,7 @@ export type SpaceDetails = {
   owner: { id: string; name: string | null; email: string };
   members: SpaceMember[];
   sources: SpaceSource[];
+  itemFolderIds?: string[];
   itemCount?: number;
   mediaCount?: number;
   coverFileIds?: string[];
@@ -73,6 +74,9 @@ export type SpaceFeedItem = {
   updatedAt: string | null;
   addedBy: { id: string; name: string | null };
   previewUrl: string | null;
+  hash?: string | null;
+  mediaProcessed?: boolean;
+  folderId?: string | null;
 };
 
 export type SpaceFeed = {

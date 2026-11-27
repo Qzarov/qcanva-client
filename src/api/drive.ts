@@ -63,6 +63,7 @@ export type DriveItem = Refine<
   deletedAt?: string | null; // нет в схеме хаба
   snippet?: string | null; // нет в схеме хаба
   hash?: string;
+  mediaProcessed?: boolean;
 };
 
 export type DriveItemsResponse = Override<

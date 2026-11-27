@@ -95,8 +95,10 @@ describe('DashboardActiveSubfolders B-001 & B-005', () => {
     await card1.trigger('click', { metaKey: true });
     expect(wrapper.emitted('select')).toBeUndefined();
 
-    // Plain click navigates
+    // Plain click selects (does NOT navigate); double-click navigates
     await card1.trigger('click');
+    expect(wrapper.emitted('select')).toBeUndefined();
+    await card1.trigger('dblclick');
     expect(wrapper.emitted('select')).toEqual([['f1']]);
 
     // Dragging selected subfolder calls startGroupDrag with all selected entries

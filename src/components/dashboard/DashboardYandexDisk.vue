@@ -114,7 +114,11 @@
               type="button"
               class="subfolder-card"
               :data-yandex-subfolder="folder.path"
-              @click="emit('navigate', folder.path)"
+              :data-select-key="keyOf(folder)"
+              :data-selected="effectiveSelectedKeys.includes(keyOf(folder)) || undefined"
+              @click="onItemClick($event, folder)"
+              @dblclick.stop="emit('navigate', folder.path)"
+              @keydown.enter.prevent="emit('navigate', folder.path)"
               @contextmenu.prevent.stop="openItemContextMenu($event, folder)"
             >
               <span class="subfolder-card-icon" aria-hidden="true">▤</span>
@@ -144,11 +148,12 @@
               :data-yandex-file="file.path"
               :data-file-kind="isMarkdown(file) ? 'markdown' : undefined"
               :data-select-key="keyOf(file)"
-              :data-selected="selectedKeys?.includes(keyOf(file)) || undefined"
+              :data-selected="effectiveSelectedKeys.includes(keyOf(file)) || undefined"
               v-file-info="infoOf(file)"
               :aria-label="`${isMarkdown(file) ? t('openDocument') : t('folderFileDownload')}: ${file.name}`"
-              @click="open(file)"
-              @keydown.enter.prevent="open(file)"
+              @click="onItemClick($event, file)"
+              @dblclick.stop="onFileDblClick($event, file)"
+              @keydown.enter="onFileEnter($event, file)"
               @contextmenu.prevent.stop="openItemContextMenu($event, file)"
             >
               <div class="card-title card-title-with-icon">
@@ -244,6 +249,7 @@ import { vFileInfo } from '../../directives/fileInfo';
 import ResourceIcon from '../ResourceIcon.vue';
 import FilePlaceholder from './FilePlaceholder.vue';
 import { fileInfo, formatFileDateTime, nameParts } from '../../dashboard/file-info';
+import { selectRange, toggleSelection } from '../../dashboard/selection';
 import DashboardViewToggle from './DashboardViewToggle.vue';
 import ExplorerContextMenu, { type ExplorerContextMenuItem } from './ExplorerContextMenu.vue';
 
@@ -290,6 +296,53 @@ const menu = ref('');
 const connecting = ref(false);
 const fileInput = ref<HTMLInputElement | null>(null);
 const brokenPreviews = reactive(new Set<string>());
+const localSelectedKeys = ref<string[]>([]);
+const selectionAnchorKey = ref('');
+const effectiveSelectedKeys = computed(() => props.selectedKeys ?? localSelectedKeys.value);
+
+function commitSelection(next: string[]): void {
+  const unique = [...new Set(next)];
+  localSelectedKeys.value = unique;
+  emit('update:selectedKeys', unique);
+}
+
+function allSelectableKeys(): string[] {
+  return [...shownFolders.value, ...shownFiles.value].map(keyOf);
+}
+
+function onItemClick(event: MouseEvent, item: YandexItem): void {
+  if ((event.target as HTMLElement | null)?.closest('.card-manage, .card-menu')) return;
+  const key = keyOf(item);
+  if (event.shiftKey) {
+    event.preventDefault();
+    event.stopPropagation();
+    const onScreen = allSelectableKeys();
+    const anchor = selectionAnchorKey.value || effectiveSelectedKeys.value[effectiveSelectedKeys.value.length - 1] || key;
+    if (!selectionAnchorKey.value) selectionAnchorKey.value = anchor;
+    commitSelection(selectRange(effectiveSelectedKeys.value, onScreen, anchor, key));
+    return;
+  }
+  if (event.ctrlKey || event.metaKey) {
+    event.preventDefault();
+    event.stopPropagation();
+    selectionAnchorKey.value = key;
+    commitSelection(toggleSelection(effectiveSelectedKeys.value, key));
+    return;
+  }
+  selectionAnchorKey.value = key;
+  commitSelection([key]);
+}
+
+function onFileDblClick(event: MouseEvent, file: YandexItem): void {
+  if ((event.target as HTMLElement | null)?.closest('.card-manage, .card-menu')) return;
+  open(file);
+}
+
+function onFileEnter(event: KeyboardEvent, file: YandexItem): void {
+  if ((event.target as HTMLElement | null)?.closest('.card-manage, .card-menu, button, a, input, textarea')) return;
+  event.preventDefault();
+  open(file);
+}
 
 const keyOf = (item: YandexItem) => `yandex:${item.path}`;
 const isMedia = (item: YandexItem) => item.mediaType === 'image' || item.mediaType === 'video';
@@ -499,11 +552,15 @@ function openItemContextMenu(event: MouseEvent, item: YandexItem): void {
   menu.value = '';
   const key = keyOf(item);
   let targetItems: YandexItem[];
-  if (item.type === 'file' && props.selectedKeys?.includes(key) && props.selectedKeys.length > 1) {
-    const selectedSet = new Set(props.selectedKeys);
+  if (item.type === 'file' && effectiveSelectedKeys.value.includes(key) && effectiveSelectedKeys.value.length > 1) {
+    const selectedSet = new Set(effectiveSelectedKeys.value);
     targetItems = shownFiles.value.filter((candidate) => selectedSet.has(keyOf(candidate)));
     if (!targetItems.length) targetItems = [item];
   } else {
+    if (!effectiveSelectedKeys.value.includes(key)) {
+      selectionAnchorKey.value = key;
+      commitSelection([key]);
+    }
     targetItems = [item];
   }
   ctxMenu.x = event.clientX;
@@ -693,7 +750,31 @@ function onDrop(event: DragEvent) {
 }
 
 function onWindowKeydown(event: KeyboardEvent) {
-  if (event.key !== 'Escape' || event.defaultPrevented) return;
+  if (event.defaultPrevented) return;
+  if (event.key === 'Enter') {
+    if (ctxMenu.open || effectiveSelectedKeys.value.length !== 1) return;
+    if (typeof document !== 'undefined' && document.querySelector('[role="dialog"], .modal-backdrop, .drive-properties-backdrop, [data-s2-popover]')) {
+      return;
+    }
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest('input, textarea, select, [contenteditable="true"], [role="dialog"], [data-explorer-context-menu], .canvas-card, .subfolder-card, button, a')) {
+      return;
+    }
+    const key = effectiveSelectedKeys.value[0]!;
+    const folder = shownFolders.value.find((f) => keyOf(f) === key);
+    if (folder) {
+      event.preventDefault();
+      emit('navigate', folder.path);
+      return;
+    }
+    const file = shownFiles.value.find((f) => keyOf(f) === key);
+    if (file) {
+      event.preventDefault();
+      open(file);
+    }
+    return;
+  }
+  if (event.key !== 'Escape') return;
   if (ctxMenu.open) return;
   if (typeof document !== 'undefined' && document.querySelector('[role="dialog"], .modal-backdrop, .drive-properties-backdrop, [data-s2-popover]')) {
     return;
@@ -704,8 +785,8 @@ function onWindowKeydown(event: KeyboardEvent) {
     return;
   }
   if (props.query?.trim()) return;
-  if (props.selectedKeys?.length) {
-    emit('update:selectedKeys', []);
+  if (effectiveSelectedKeys.value.length) {
+    commitSelection([]);
     event.preventDefault();
   }
 }

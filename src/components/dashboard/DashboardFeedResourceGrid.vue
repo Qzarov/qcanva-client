@@ -7,7 +7,9 @@
       :draggable="isLoggedIn || undefined"
       class="canvas-card"
       :class="{ 'is-dragging-group': Boolean(dnd.activeDrag.value?.keys.includes(selectionKey(item))) }"
-      @click="emit('open-canvas', item.slug || item.id)"
+      tabindex="0"
+      @dblclick="onCardDblClick($event, () => emit('open-canvas', item.slug || item.id))"
+      @keydown.enter.prevent="onCardEnter($event, () => emit('open-canvas', item.slug || item.id))"
       @contextmenu.prevent.stop="emit('contextmenu', $event, item)"
       @dragstart="onDragStart($event, item)"
       @drag="onDragMove"
@@ -44,7 +46,9 @@
       :draggable="isLoggedIn || undefined"
       class="canvas-card html-doc-card"
       :class="{ 'is-dragging-group': Boolean(dnd.activeDrag.value?.keys.includes(selectionKey(item))) }"
-      @click="emit('open-html', item.slug || item.id)"
+      tabindex="0"
+      @dblclick="onCardDblClick($event, () => emit('open-html', item.slug || item.id))"
+      @keydown.enter.prevent="onCardEnter($event, () => emit('open-html', item.slug || item.id))"
       @contextmenu.prevent.stop="emit('contextmenu', $event, item)"
       @dragstart="onDragStart($event, item)"
       @drag="onDragMove"
@@ -81,7 +85,9 @@
       :draggable="isLoggedIn || undefined"
       class="canvas-card html-doc-card"
       :class="{ 'is-dragging-group': Boolean(dnd.activeDrag.value?.keys.includes(selectionKey(item))) }"
-      @click="emit('open-text', item.slug || item.id)"
+      tabindex="0"
+      @dblclick="onCardDblClick($event, () => emit('open-text', item.slug || item.id))"
+      @keydown.enter.prevent="onCardEnter($event, () => emit('open-text', item.slug || item.id))"
       @contextmenu.prevent.stop="emit('contextmenu', $event, item)"
       @dragstart="onDragStart($event, item)"
       @drag="onDragMove"
@@ -151,6 +157,16 @@ const emit = defineEmits<{
 const { t } = useI18n();
 const dnd = useExplorerGroupDnd();
 const menuId = (item: any) => `${props.scope}:${item.type}:${item.id}`;
+
+function onCardDblClick(event: MouseEvent, openFn: () => void): void {
+  if ((event.target as HTMLElement | null)?.closest('.card-manage, .card-menu')) return;
+  openFn();
+}
+
+function onCardEnter(event: KeyboardEvent, openFn: () => void): void {
+  if ((event.target as HTMLElement | null)?.closest('button, a, input, textarea, .card-menu')) return;
+  openFn();
+}
 
 function toDragEntry(item: FeedResourceItem): GroupDragEntry {
   return {

@@ -214,20 +214,20 @@ describe('PhotosFeed', () => {
     w.unmount();
   });
 
-  it('calm interaction: single click focuses without checkmark; Ctrl+click / Shift+click triggers multi-select checkmarks (>=2); group pick selects whole group', async () => {
+  it('calm interaction: single click focuses without checkmark; selected.size >= 1 shows checkmarks; Ctrl+click adds current; group pick selects whole group', async () => {
     twoMonths();
     const Feed = await load();
     const w = mountFeed(Feed);
     await settle();
 
-    // Single click on f1: opens & focuses, NO green checkmark when selected.size < 2
+    // Single click on f1: opens & focuses, NO green checkmark when selected is empty
     await w.get('[data-file-id="f1"]').trigger('click');
     expect((w.emitted('open')![0]![0] as FeedItem).fileId).toBe('f1');
     expect((w.emitted('focus-photo')![0]![0] as FeedItem).fileId).toBe('f1');
     expect(w.find('[data-testid="tile-check"]').exists()).toBe(false);
 
-    // Selected size = 1 still shows NO green checkmark
-    await w.setProps({ selected: new Set(['f1']), current: 'f1' });
+    // Focused only (selected empty): shows is-current, NO is-checked, NO tile-check
+    await w.setProps({ selected: new Set<string>(), current: 'f1' });
     expect(w.get('[data-file-id="f1"]').classes()).toContain('is-current');
     expect(w.get('[data-file-id="f1"]').classes()).not.toContain('is-checked');
     expect(w.find('[data-testid="tile-check"]').exists()).toBe(false);
@@ -236,7 +236,12 @@ describe('PhotosFeed', () => {
     await w.get('[data-file-id="f2"]').trigger('click', { ctrlKey: true });
     expect(w.emitted('set-selection')![0]).toEqual([['f1', 'f2']]);
 
-    // When selected.size >= 2, green checkmarks appear on selected tiles
+    // Selected size = 1 (e.g. 1-item marquee) immediately shows green checkmark & border
+    await w.setProps({ selected: new Set(['f1']), current: 'f1' });
+    expect(w.get('[data-file-id="f1"]').classes()).toContain('is-checked');
+    expect(w.find('[data-testid="tile-check"]').exists()).toBe(true);
+
+    // When selected.size >= 2, green checkmarks appear on all selected tiles
     await w.setProps({ selected: new Set(['f1', 'f2']) });
     expect(w.get('[data-file-id="f1"]').classes()).toContain('is-checked');
     expect(w.get('[data-file-id="f2"]').classes()).toContain('is-checked');
@@ -828,5 +833,208 @@ describe('PhotosFeed', () => {
     expect((w.get('.pf-stick-inner').element as HTMLElement).style.transform).toBe('translateY(0px)');
 
     w.unmount();
+  });
+
+  it('supports two consecutive marquee drags starting below photos (1-item & multi-item), prevents native text selection, deduplicates emits, and suppresses dragstart', async () => {
+    twoMonths();
+    const Feed = await load();
+    const w = mountFeed(Feed);
+    await settle();
+
+    const sc = scroller(w);
+    const removeAllRanges = vi.fn();
+    const getSelectionSpy = vi.spyOn(window, 'getSelection').mockReturnValue({
+      removeAllRanges,
+    } as unknown as Selection);
+    const captureSpy = vi.fn();
+    (sc as unknown as { setPointerCapture?: (id: number) => void }).setPointerCapture = captureSpy;
+
+    // Position two tiles in the top area; drags start well below layout.totalHeight (y = 520)
+    const t0 = w.get('[data-file-id="f0"]').element as HTMLElement;
+    const t1 = w.get('[data-file-id="f1"]').element as HTMLElement;
+    t0.getBoundingClientRect = () =>
+      ({ left: 10, top: 60, right: 110, bottom: 160, width: 100, height: 100, x: 10, y: 60, toJSON() {} }) as DOMRect;
+    t1.getBoundingClientRect = () =>
+      ({ left: 120, top: 60, right: 220, bottom: 160, width: 100, height: 100, x: 120, y: 60, toJSON() {} }) as DOMRect;
+
+    // Drag 1: starts below photos -> selects 1 photo (f0)
+    const down1 = new MouseEvent('pointerdown', { button: 0, clientX: 50, clientY: 520, bubbles: true, cancelable: true });
+    sc.dispatchEvent(down1);
+    expect(down1.defaultPrevented).toBe(true);
+    expect(removeAllRanges).toHaveBeenCalled();
+
+    // Move multiple times over f0 -> deduplicated to a single emit(['f0'])
+    window.dispatchEvent(new MouseEvent('pointermove', { clientX: 60, clientY: 120, bubbles: true }));
+    window.dispatchEvent(new MouseEvent('pointermove', { clientX: 65, clientY: 115, bubbles: true }));
+    await settle();
+    expect(w.get('[data-testid="photos-feed"]').classes()).toContain('is-marquee');
+    expect(w.find('[data-testid="gallery-marquee"]').exists()).toBe(true);
+    expect(captureSpy).toHaveBeenCalledTimes(1);
+    expect(w.emitted('set-selection')).toEqual([[['f0']]]);
+
+    // Tile dragstart while marquee is active is suppressed
+    const dragEvt = new Event('dragstart', { bubbles: true, cancelable: true });
+    t0.dispatchEvent(dragEvt);
+    expect(dragEvt.defaultPrevented).toBe(true);
+
+    window.dispatchEvent(new MouseEvent('pointerup', { clientX: 65, clientY: 115, bubbles: true }));
+    await settle();
+    expect(w.get('[data-testid="photos-feed"]').classes()).not.toContain('is-marquee');
+    expect(w.find('[data-testid="gallery-marquee"]').exists()).toBe(false);
+
+    // Apply parent selection of 1 item -> immediately visible with green checkmark
+    await w.setProps({ selected: new Set(['f0']) });
+    expect(w.get('[data-file-id="f0"]').classes()).toContain('is-checked');
+    expect(w.find('[data-testid="tile-check"]').exists()).toBe(true);
+
+    // Drag 2 (consecutive): starts below photos again -> selects both f0 and f1
+    const down2 = new MouseEvent('pointerdown', { button: 0, clientX: 20, clientY: 540, bubbles: true, cancelable: true });
+    sc.dispatchEvent(down2);
+    expect(down2.defaultPrevented).toBe(true);
+
+    window.dispatchEvent(new MouseEvent('pointermove', { clientX: 200, clientY: 80, bubbles: true }));
+    await settle();
+    expect(w.find('[data-testid="gallery-marquee"]').exists()).toBe(true);
+    const emits = w.emitted('set-selection')!;
+    expect(emits[emits.length - 1]).toEqual([['f0', 'f1']]);
+
+    window.dispatchEvent(new MouseEvent('pointerup', { clientX: 200, clientY: 80, bubbles: true }));
+    await settle();
+    expect(w.find('[data-testid="gallery-marquee"]').exists()).toBe(false);
+
+    getSelectionSpy.mockRestore();
+    w.unmount();
+  });
+
+  it('renders externalItems client-side (Yandex mode) with previewSrc, noReferrer, client grouping/sorting/filtering, and natural aspect ratio on load', async () => {
+    const Feed = await load();
+    const extItems = [
+      {
+        ...mkItem(1, {
+          fileId: 'yd:/Фото/img1.jpg',
+          hash: 'yd1',
+          name: 'img1.jpg',
+          folderId: '/Фото',
+          width: null,
+          height: null,
+          bytes: 5_000_000,
+          localTakenAt: '2026-10-15T10:00:00.000Z',
+          takenAt: '2026-10-15T10:00:00.000Z',
+        }),
+        previewSrc: 'https://hub.example/api/yandex-disk/preview?path=/Фото/img1.jpg',
+        noReferrer: true,
+      },
+      {
+        ...mkItem(2, {
+          fileId: 'yd:/Видео/clip.mp4',
+          hash: 'yd2',
+          name: 'clip.mp4',
+          mime: 'video/mp4',
+          kind: 'video',
+          folderId: '/Видео',
+          width: null,
+          height: null,
+          bytes: 60_000_000,
+          localTakenAt: '2025-08-03T10:00:00.000Z',
+          takenAt: '2025-08-03T10:00:00.000Z',
+        }),
+        previewSrc: 'https://hub.example/api/yandex-disk/preview?path=/Видео/clip.mp4',
+        noReferrer: true,
+      },
+    ];
+
+    const w = mountFeed(Feed, {
+      externalItems: extItems,
+      externalLoading: false,
+      aspectMode: 'ratio',
+      params: params({ period: 'year', levels: ['date'], sort: [{ key: 'date', desc: true }] }),
+    });
+    await settle();
+
+    // No hub photosApi / renditionUrl calls in external mode
+    expect(summaryMock).not.toHaveBeenCalled();
+    expect(itemsMock).not.toHaveBeenCalled();
+    expect(renditionMock).not.toHaveBeenCalled();
+
+    const titles = w.findAll('.pgh-title').map((n) => n.text());
+    expect(titles).toEqual(['2026', '2025']);
+
+    const img1 = w.get('[data-file-id="yd:/Фото/img1.jpg"] img');
+    expect(img1.attributes('src')).toContain('/api/yandex-disk/preview?path=/Фото/img1.jpg');
+    expect(img1.attributes('referrerpolicy')).toBe('no-referrer');
+    // Favorites heart button is hidden on external (Yandex) tiles
+    expect(w.find('.pf-fav-btn').exists()).toBe(false);
+
+    // Simulate natural dimensions loading for a 2:1 wide image when width was null
+    const imgEl = img1.element as HTMLImageElement;
+    Object.defineProperty(imgEl, 'naturalWidth', { configurable: true, value: 1600 });
+    Object.defineProperty(imgEl, 'naturalHeight', { configurable: true, value: 800 });
+    const origRaf = window.requestAnimationFrame;
+    (window as unknown as { requestAnimationFrame?: unknown }).requestAnimationFrame = undefined;
+    try {
+      await img1.trigger('load');
+      await settle();
+    } finally {
+      window.requestAnimationFrame = origRaf;
+    }
+    const tileEl = w.get('[data-file-id="yd:/Фото/img1.jpg"]').element as HTMLElement;
+    const tileW = parseFloat(tileEl.style.width);
+    const tileH = parseFloat(tileEl.style.height);
+    expect(tileW / tileH).toBeCloseTo(2, 1);
+
+    // Filter to video only
+    await w.setProps({
+      params: params({ period: 'year', levels: ['date'], filter: 'video', sort: [{ key: 'date', desc: true }] }),
+    });
+    await settle();
+    expect(w.findAll('.pf-tile')).toHaveLength(1);
+    expect(w.get('.pf-tile').attributes('data-file-id')).toBe('yd:/Видео/clip.mp4');
+
+    // Group by folder
+    await w.setProps({
+      params: params({ period: 'month', levels: ['folder'], filter: 'all', sort: [{ key: 'folder', desc: false }] }),
+    });
+    await settle();
+    expect(w.findAll('.pgh-title').map((n) => n.text())).toEqual(['Видео', 'Фото']);
+
+    w.unmount();
+  });
+
+  it('yandexDisk.listMedia falls back to bounded BFS walk via yandexDisk.list and filters media items', async () => {
+    const { yandexDisk } = await import('../../api/yandexDisk');
+    const listSpy = vi.spyOn(yandexDisk, 'list').mockImplementation(async (dirPath: string) => {
+      if (dirPath === '/') {
+        return {
+          item: { path: '/', name: '', type: 'dir', size: null, mime: null, mediaType: null, md5: null, createdAt: null, modifiedAt: null, publicUrl: null, previewUrl: null },
+          items: [
+            { path: '/Фото', name: 'Фото', type: 'dir', size: null, mime: null, mediaType: null, md5: null, createdAt: null, modifiedAt: null, publicUrl: null, previewUrl: null },
+            { path: '/notes.txt', name: 'notes.txt', type: 'file', size: 100, mime: 'text/plain', mediaType: 'document', md5: null, createdAt: null, modifiedAt: null, publicUrl: null, previewUrl: null },
+            { path: '/root.jpg', name: 'root.jpg', type: 'file', size: 2048, mime: 'image/jpeg', mediaType: 'image', md5: null, createdAt: null, modifiedAt: null, publicUrl: null, previewUrl: '/api/yandex-disk/preview?path=/root.jpg' },
+          ],
+          total: 3,
+          offset: 0,
+          limit: 200,
+        };
+      }
+      return {
+        item: { path: '/Фото', name: 'Фото', type: 'dir', size: null, mime: null, mediaType: null, md5: null, createdAt: null, modifiedAt: null, publicUrl: null, previewUrl: null },
+        items: [
+          { path: '/Фото/clip.mp4', name: 'clip.mp4', type: 'file', size: 9000, mime: 'video/mp4', mediaType: 'video', md5: null, createdAt: null, modifiedAt: null, publicUrl: null, previewUrl: '/api/yandex-disk/preview?path=/Фото/clip.mp4' },
+        ],
+        total: 1,
+        offset: 0,
+        limit: 200,
+      };
+    });
+
+    const media = await yandexDisk.listMedia('/');
+    expect(media.map((m) => m.path)).toEqual(['/root.jpg', '/Фото/clip.mp4']);
+    expect(listSpy).toHaveBeenCalledWith('/', expect.objectContaining({ limit: 200, previewSize: 'L' }));
+    expect(listSpy).toHaveBeenCalledWith('/Фото', expect.objectContaining({ limit: 200, previewSize: 'L' }));
+
+    const ac = new AbortController();
+    ac.abort();
+    await expect(yandexDisk.listMedia('/', { signal: ac.signal })).rejects.toMatchObject({ name: 'AbortError' });
+    listSpy.mockRestore();
   });
 });

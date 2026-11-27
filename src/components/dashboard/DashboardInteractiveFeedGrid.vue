@@ -6,7 +6,9 @@
     :data-selected="isSelected(item) || undefined"
     class="canvas-card html-doc-card interactive-template-card"
     :data-template-resource="item.id"
-    @click="emit('open', item.id)"
+    tabindex="0"
+    @dblclick="onCardDblClick($event, item.id)"
+    @keydown.enter.prevent="onCardEnter($event, item.id)"
     @contextmenu.prevent.stop="emit('contextmenu', $event, item)"
   >
     <ResourceThumb kind="interactive-template" :id="item.id" :version="item.updatedAt" />
@@ -62,4 +64,14 @@ const emit = defineEmits<{
 }>();
 
 const menuId = (item: any) => `interactive-template:${item.id}`;
+
+function onCardDblClick(event: MouseEvent, id: string): void {
+  if ((event.target as HTMLElement | null)?.closest('.card-manage, .card-menu')) return;
+  emit('open', id);
+}
+
+function onCardEnter(event: KeyboardEvent, id: string): void {
+  if ((event.target as HTMLElement | null)?.closest('button, a, input, textarea, .card-menu')) return;
+  emit('open', id);
+}
 </script>

@@ -6,21 +6,17 @@
     :class="cardClasses"
     :data-folder-resource="folderResource"
     :draggable="isDraggable"
-    @click="emit('open')"
+    tabindex="0"
+    @click="onCardClick"
+    @dblclick="onCardDblClick"
+    @keydown.enter.prevent="onCardEnter"
     @contextmenu.prevent.stop="emit('contextmenu', $event)"
     @dragstart="onDragStart"
     @drag="onDragMove"
     @dragend="onDragEnd"
   >
     <ResourceThumb :kind="kind" :id="resource.id" :version="resource.updatedAt" />
-    <a
-      v-if="openHref"
-      class="card-open-link"
-      :href="openHref"
-      :aria-label="openLabel"
-      @click.stop="emit('open-link')"
-    ></a>
-    <div class="card-title card-title-with-icon" @dblclick.stop="renameable && emit('rename')">
+    <div class="card-title card-title-with-icon">
       <slot name="icon">
         <ResourceIcon :kind="kind" :template-type="resource.templateType" :data-resource-icon="kind" :aria-label="iconLabel" />
       </slot>
@@ -151,6 +147,7 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   open: [];
   'open-link': [];
+  select: [event: MouseEvent];
   rename: [];
   'toggle-select': [];
   'toggle-pin': [];
@@ -158,6 +155,25 @@ const emit = defineEmits<{
   'select-action': [action: DashboardResourceAction];
   'contextmenu': [event: MouseEvent];
 }>();
+
+function isInteractiveCardControl(target: EventTarget | null): boolean {
+  return Boolean((target as HTMLElement | null)?.closest('.card-manage, .card-menu, .card-pin, .card-title-input'));
+}
+
+function onCardClick(event: MouseEvent): void {
+  if (props.renaming || isInteractiveCardControl(event.target)) return;
+  emit('select', event);
+}
+
+function onCardDblClick(event: MouseEvent): void {
+  if (props.renaming || isInteractiveCardControl(event.target)) return;
+  emit('open');
+}
+
+function onCardEnter(event: KeyboardEvent): void {
+  if (props.renaming || (event.target as HTMLElement | null)?.closest('input, textarea, button, a, .card-menu')) return;
+  emit('open');
+}
 
 const dnd = useExplorerGroupDnd();
 const cardKey = computed(() => props.selectKey || `${props.kind}:${props.resource.id}`);

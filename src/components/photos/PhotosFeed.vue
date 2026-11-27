@@ -19,6 +19,7 @@ import {
   type FeedItem,
   type FeedParams,
   type SortKey,
+  type SortSpec,
 } from '../../api/photos';
 import { driveApi, formatFileSize } from '../../api/drive';
 import { useI18n } from '../../composables/useI18n';
@@ -56,6 +57,11 @@ import {
 import PhotosGroupHead from './PhotosGroupHead.vue';
 import PhotosScrubber, { type ScrubGroup } from './PhotosScrubber.vue';
 
+export type ExternalFeedItem = FeedItem & {
+  previewSrc?: string | null;
+  noReferrer?: boolean;
+};
+
 const props = withDefaults(defineProps<{
   params: FeedParams;
   captionOnTile: CaptionKey[];
@@ -68,6 +74,8 @@ const props = withDefaults(defineProps<{
   peopleFilter?: readonly string[];
   recentLimit?: number | null;
   headroomHidden?: boolean;
+  externalItems?: ExternalFeedItem[] | null;
+  externalLoading?: boolean;
   selected: Set<string>;
   current: string | null;
 }>(), {
@@ -80,6 +88,8 @@ const props = withDefaults(defineProps<{
   peopleFilter: () => [],
   recentLimit: null,
   headroomHidden: undefined,
+  externalItems: null,
+  externalLoading: false,
 });
 
 const emit = defineEmits<{
@@ -140,6 +150,9 @@ const groupTopList = shallowRef<Array<{ key: string; top: number; height: number
 
 const thumbs = shallowReactive(new Map<string, string | null>());
 const thumbRequested = new Set<string>();
+const externalThumbFailed = shallowReactive(new Set<string>());
+const naturalDims = shallowReactive(new Map<string, { width: number; height: number }>());
+let naturalRelayoutRaf = 0;
 const folderNames = shallowReactive(new Map<string, string>());
 const folderRequested = new Set<string>();
 const albumNames = shallowRef(new Map<string, string>());
@@ -149,6 +162,8 @@ let albumsRequested = false;
 let keptAnchor: { anchor: Anchor; item: FeedItem | null } | null = null;
 /** Anchor waiting for the units of a refetched feed to load. */
 let pending: { anchor: Anchor; units: Array<{ group: string; sub?: string }>; pages: number } | null = null;
+
+const isExternalMode = computed(() => props.externalItems !== null);
 
 const rowHeight = computed(() => {
   if (props.tileHeight !== undefined && Number.isFinite(props.tileHeight)) {
@@ -164,7 +179,7 @@ const resolvedAspectMode = computed<'square' | 'ratio'>(
   () => props.aspectMode ?? prefs.galleryAspectMode.value,
 );
 
-const hasMultiSelect = computed(() => props.selected.size >= 2);
+const hasMultiSelect = computed(() => props.selected.size >= 1);
 const collapsedShares = computed(() => new Set(view.state.value.collapsedShares));
 const level1 = computed<SortKey>(() => appliedParams.value.levels[0] ?? 'date');
 const level2 = computed<SortKey | undefined>(() => appliedParams.value.levels[1]);
@@ -174,6 +189,7 @@ const effectiveHeadroomHidden = computed(
 );
 
 const selectionAnchorId = ref<string | null>(null);
+const isMarqueeActive = ref(false);
 const marqueeRect = ref<{ left: number; top: number; width: number; height: number } | null>(null);
 let lastMarqueeTs = 0;
 let dragGhostEl: HTMLElement | null = null;
@@ -226,18 +242,26 @@ const hasActiveFolderFilter = computed(
   () => Boolean(props.folderFilterId) || Boolean(props.folderIncludeRoot) || Boolean(props.folderFilterIds && props.folderFilterIds.size > 0),
 );
 
+function withNaturalDimensions(item: FeedItem): FeedItem {
+  if (item.width && item.height) return item;
+  const dim = naturalDims.get(item.fileId);
+  if (!dim) return item;
+  return { ...item, processed: true, width: dim.width, height: dim.height };
+}
+
 const filteredItemsMap = computed(() => {
   const hasFilter = hasActiveFolderFilter.value || (props.peopleFilter?.length ?? 0) > 0 || (props.recentLimit ?? 0) > 0;
-  if (!hasFilter) return items.value;
+  const hasDims = naturalDims.size > 0;
+  if (!hasFilter && !hasDims) return items.value;
   const out = new Map<string, FeedItem[]>();
   let remaining = props.recentLimit && props.recentLimit > 0 ? props.recentLimit : Infinity;
   for (const [k, list] of items.value) {
-    let filtered = list.filter(itemMatchesExternalFilters);
+    let filtered = hasFilter ? list.filter(itemMatchesExternalFilters) : list;
     if (remaining !== Infinity) {
       filtered = filtered.slice(0, Math.max(0, remaining));
       remaining -= filtered.length;
     }
-    out.set(k, filtered);
+    out.set(k, hasDims ? filtered.map(withNaturalDimensions) : filtered);
   }
   return out;
 });
@@ -393,6 +417,7 @@ function relayout(): void {
 // ----- loading -----
 
 function loadUnit(group: string, sub?: string): Promise<void> {
+  if (isExternalMode.value) return Promise.resolve();
   const key = unitKey(group, sub);
   const running = inflight.get(key);
   if (running) return running;
@@ -492,6 +517,10 @@ function queueNextUnitPage(row: Row, bottom: number, next: Map<string, Task>): v
 }
 
 function ensureLoaded(): void {
+  if (isExternalMode.value) {
+    wanted = new Map();
+    return;
+  }
   const rows = visibleRows(layout.value.rows, lastScrollTop, viewportH.value, OVERSCAN);
   const bottom = lastScrollTop + viewportH.value + OVERSCAN;
   const next = new Map<string, Task>();
@@ -520,7 +549,12 @@ function ensureLoaded(): void {
   pump();
 }
 
+function hasExplicitPreview(item: FeedItem): boolean {
+  return 'previewSrc' in (item as ExternalFeedItem);
+}
+
 function requestThumb(item: FeedItem): void {
+  if (hasExplicitPreview(item)) return;
   if (!item.processed || thumbRequested.has(item.hash)) return;
   thumbRequested.add(item.hash);
   renditionUrl(item.hash, 'thumbnail')
@@ -622,7 +656,185 @@ function targetUnits(
   return [{ group: g.key }];
 }
 
+const SIZE_ORDER: Record<string, number> = { gt50: 0, '10to50': 1, '3to10': 2, lt3: 3 };
+
+function itemTimestamp(item: FeedItem): number {
+  const ts = Date.parse(item.localTakenAt ?? item.takenAt ?? '');
+  return Number.isNaN(ts) ? 0 : ts;
+}
+
+function externalItemGroupKeys(item: FeedItem, level: SortKey, period: FeedParams['period']): string[] {
+  const keys = groupKeysForItem(item, level, period);
+  if (keys.length > 0) return keys;
+  if (level === 'date') return ['unknown'];
+  return ['root'];
+}
+
+function externalFolderInfo(folderKey: string): { name: string; path: string[] } | undefined {
+  if (!folderKey || folderKey === 'root' || folderKey === '/') return undefined;
+  const parts = folderKey.split('/').filter(Boolean);
+  if (parts.length === 0) return undefined;
+  return { name: parts[parts.length - 1]!, path: parts };
+}
+
+function compareFeedItems(a: FeedItem, b: FeedItem, sort: SortSpec[]): number {
+  const specs: SortSpec[] = sort.length > 0 ? sort : [{ key: 'date', desc: true }];
+  for (const spec of specs) {
+    const dir = spec.desc ? -1 : 1;
+    let cmp = 0;
+    if (spec.key === 'date') {
+      cmp = itemTimestamp(a) - itemTimestamp(b);
+    } else if (spec.key === 'size') {
+      cmp = a.bytes - b.bytes;
+    } else if (spec.key === 'folder') {
+      cmp = (a.folderId ?? '').localeCompare(b.folderId ?? '');
+    } else if (spec.key === 'album') {
+      cmp = (a.albumIds[0] ?? '').localeCompare(b.albumIds[0] ?? '');
+    }
+    if (cmp !== 0) return cmp * dir;
+  }
+  const timeDiff = itemTimestamp(b) - itemTimestamp(a);
+  if (timeDiff !== 0) return timeDiff;
+  return a.name.localeCompare(b.name);
+}
+
+function sortExternalBucketEntries(
+  entries: Array<[string, FeedItem[]]>,
+  level: SortKey,
+  params: FeedParams,
+): Array<[string, FeedItem[]]> {
+  const spec = params.sort.find((s) => s.key === level);
+  const desc = spec ? spec.desc : (params.sort[0]?.desc ?? true);
+  const dir = desc ? -1 : 1;
+
+  return entries.sort(([keyA, listA], [keyB, listB]) => {
+    if (level === 'date') {
+      if (keyA === 'unknown' && keyB !== 'unknown') return 1;
+      if (keyB === 'unknown' && keyA !== 'unknown') return -1;
+      return keyA.localeCompare(keyB) * dir;
+    }
+    if (level === 'size') {
+      const rankA = SIZE_ORDER[keyA] ?? 99;
+      const rankB = SIZE_ORDER[keyB] ?? 99;
+      // SIZE_ORDER has largest first (gt50 = 0), so desc=true keeps rank ascending.
+      return desc ? rankA - rankB : rankB - rankA;
+    }
+    const sub = spec?.sub ?? 'name';
+    if (sub === 'size') {
+      const sumA = listA.reduce((s, it) => s + it.bytes, 0);
+      const sumB = listB.reduce((s, it) => s + it.bytes, 0);
+      if (sumA !== sumB) return (sumA - sumB) * dir;
+    } else if (sub === 'created' || sub === 'added') {
+      const maxA = listA.reduce((m, it) => Math.max(m, itemTimestamp(it)), 0);
+      const maxB = listB.reduce((m, it) => Math.max(m, itemTimestamp(it)), 0);
+      if (maxA !== maxB) return (maxA - maxB) * dir;
+    }
+    const nameA = externalFolderInfo(keyA)?.name ?? keyA;
+    const nameB = externalFolderInfo(keyB)?.name ?? keyB;
+    return nameA.localeCompare(nameB) * dir;
+  });
+}
+
+function syncExternalFeed(): void {
+  const raw = props.externalItems ?? [];
+  const params = props.params;
+  const filtered = raw.filter((item) => {
+    if (params.filter === 'photo' && item.kind !== 'photo') return false;
+    if (params.filter === 'video' && item.kind !== 'video') return false;
+    if (params.filter === 'fav' && !item.favorite) return false;
+    return itemMatchesExternalFilters(item);
+  });
+
+  // Populate folderNames for Yandex paths so tile captions work without driveApi.getFolder.
+  for (const item of filtered) {
+    if (item.folderId && !folderNames.has(item.folderId)) {
+      const info = externalFolderInfo(item.folderId);
+      if (info) folderNames.set(item.folderId, info.name);
+    }
+  }
+
+  const l1: SortKey = params.levels[0] ?? 'date';
+  const l2: SortKey | undefined = params.levels[1];
+  const topBuckets = new Map<string, FeedItem[]>();
+
+  for (const item of filtered) {
+    for (const k1 of externalItemGroupKeys(item, l1, params.period)) {
+      let bucket = topBuckets.get(k1);
+      if (!bucket) {
+        bucket = [];
+        topBuckets.set(k1, bucket);
+      }
+      bucket.push(item);
+    }
+  }
+
+  const sortedTop = sortExternalBucketEntries([...topBuckets.entries()], l1, params);
+  const nextGroups: FeedGroup[] = [];
+  const nextItems = new Map<string, FeedItem[]>();
+
+  for (const [k1, list1] of sortedTop) {
+    const folder1 = l1 === 'folder' ? externalFolderInfo(k1) : undefined;
+    if (l2) {
+      const subBuckets = new Map<string, FeedItem[]>();
+      for (const item of list1) {
+        for (const k2 of externalItemGroupKeys(item, l2, params.period)) {
+          let sb = subBuckets.get(k2);
+          if (!sb) {
+            sb = [];
+            subBuckets.set(k2, sb);
+          }
+          sb.push(item);
+        }
+      }
+      const sortedSubs = sortExternalBucketEntries([...subBuckets.entries()], l2, params);
+      const subGroups: FeedGroup[] = [];
+      for (const [k2, list2] of sortedSubs) {
+        const sortedList = [...list2].sort((a, b) => compareFeedItems(a, b, params.sort));
+        const folder2 = l2 === 'folder' ? externalFolderInfo(k2) : undefined;
+        subGroups.push({
+          key: k2,
+          count: sortedList.length,
+          ...(folder2 ? { folder: folder2 } : {}),
+        });
+        nextItems.set(unitKey(k1, k2), sortedList);
+      }
+      nextGroups.push({
+        key: k1,
+        count: list1.length,
+        ...(folder1 ? { folder: folder1 } : {}),
+        subs: subGroups,
+      });
+    } else {
+      const sortedList = [...list1].sort((a, b) => compareFeedItems(a, b, params.sort));
+      nextGroups.push({
+        key: k1,
+        count: sortedList.length,
+        ...(folder1 ? { folder: folder1 } : {}),
+      });
+      nextItems.set(k1, sortedList);
+    }
+  }
+
+  epoch++;
+  wanted = new Map();
+  appliedParams.value = params;
+  groups.value = nextGroups;
+  items.value = nextItems;
+  cursors.clear();
+  inflight.clear();
+  failed.clear();
+  pending = null;
+  status.value = props.externalLoading && nextGroups.length === 0 ? 'loading' : 'ready';
+  emit('summary', filtered.length);
+  relayout();
+  emit('units-loaded');
+}
+
 async function refresh(): Promise<void> {
+  if (props.externalItems !== null) {
+    syncExternalFeed();
+    return;
+  }
   const my = ++epoch;
   const old = layout.value;
   let anchor: Anchor | null = old.rows.length > 0 ? anchorAt(old.rows, lastScrollTop, STICKY_OFFSET) : null;
@@ -834,7 +1046,46 @@ function tileLabel(item: FeedItem): string {
 
 const retriedThumbs = new Set<string>();
 
+function tileThumbSrc(item: FeedItem): string | null {
+  const ext = item as ExternalFeedItem;
+  if ('previewSrc' in ext) {
+    if (externalThumbFailed.has(item.fileId)) return null;
+    return ext.previewSrc || null;
+  }
+  return thumbs.get(item.hash) ?? null;
+}
+
+function tileNoReferrer(item: FeedItem): boolean {
+  return Boolean((item as ExternalFeedItem).noReferrer);
+}
+
+function scheduleNaturalRelayout(): void {
+  if (typeof requestAnimationFrame !== 'function') {
+    relayout();
+    return;
+  }
+  if (naturalRelayoutRaf) return;
+  naturalRelayoutRaf = requestAnimationFrame(() => {
+    naturalRelayoutRaf = 0;
+    relayout();
+  });
+}
+
+function onThumbLoad(e: Event, item: FeedItem): void {
+  if (item.width && item.height) return;
+  const img = e.target as HTMLImageElement | null;
+  if (!img || !img.naturalWidth || !img.naturalHeight) return;
+  const prev = naturalDims.get(item.fileId);
+  if (prev && prev.width === img.naturalWidth && prev.height === img.naturalHeight) return;
+  naturalDims.set(item.fileId, { width: img.naturalWidth, height: img.naturalHeight });
+  scheduleNaturalRelayout();
+}
+
 function onThumbError(item: FeedItem): void {
+  if (hasExplicitPreview(item)) {
+    externalThumbFailed.add(item.fileId);
+    return;
+  }
   if (!item.processed || retriedThumbs.has(item.hash)) {
     thumbs.set(item.hash, null);
     return;
@@ -951,7 +1202,7 @@ function onScrollerPointerDown(e: PointerEvent): void {
   if (e.button !== 0) return;
   const target = e.target as HTMLElement | null;
   if (!target) return;
-  // Clicking on an already multi-selected tile allows HTML5 Group DnD instead of marquee.
+  // Clicking on an already selected tile allows HTML5 Group DnD instead of marquee.
   if (hasMultiSelect.value && target.closest('.pf-tile.is-checked') && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
     return;
   }
@@ -961,17 +1212,40 @@ function onScrollerPointerDown(e: PointerEvent): void {
   if (!sc) return;
   stopMarquee?.();
   e.stopPropagation();
+
+  // Prevent browser native text selection on empty space / sizer / header background
+  // so Drag 1 never creates a text selection and Drag 2 never triggers pointercancel.
+  const onTile = Boolean(target.closest('.pf-tile'));
+  if (!onTile) {
+    e.preventDefault();
+    sc.focus?.({ preventScroll: true });
+  }
+  window.getSelection?.()?.removeAllRanges();
+
   const sx = e.clientX;
   const sy = e.clientY;
+  const pointerId = e.pointerId;
   const additive = e.shiftKey || e.ctrlKey || e.metaKey;
   const baseSelection = additive ? new Set(props.selected) : new Set<string>();
   let dragging = false;
+  let capturedPointerId: number | null = null;
+  let lastEmittedKey = [...props.selected].join('\0');
 
   const onMove = (ev: PointerEvent) => {
     const dx = ev.clientX - sx;
     const dy = ev.clientY - sy;
-    if (!dragging && Math.hypot(dx, dy) < 7) return;
-    dragging = true;
+    if (!dragging && Math.hypot(dx, dy) <= 4) return;
+    if (!dragging) {
+      dragging = true;
+      isMarqueeActive.value = true;
+      window.getSelection?.()?.removeAllRanges();
+      try {
+        sc.setPointerCapture?.(pointerId);
+        capturedPointerId = pointerId;
+      } catch {
+        // Ignore capture errors in jsdom or synthetic events
+      }
+    }
     const x1 = Math.min(sx, ev.clientX);
     const y1 = Math.min(sy, ev.clientY);
     const x2 = Math.max(sx, ev.clientX);
@@ -986,11 +1260,27 @@ function onScrollerPointerDown(e: PointerEvent): void {
         if (fid) next.add(fid);
       }
     });
-    emit('set-selection', [...next]);
+    const nextArr = [...next];
+    const nextKey = nextArr.join('\0');
+    if (nextKey !== lastEmittedKey) {
+      lastEmittedKey = nextKey;
+      emit('set-selection', nextArr);
+    }
   };
 
   const cleanup = () => {
     marqueeRect.value = null;
+    isMarqueeActive.value = false;
+    if (capturedPointerId !== null) {
+      try {
+        if (!sc.hasPointerCapture || sc.hasPointerCapture(capturedPointerId)) {
+          sc.releasePointerCapture?.(capturedPointerId);
+        }
+      } catch {
+        // Ignore release errors
+      }
+      capturedPointerId = null;
+    }
     window.removeEventListener('pointermove', onMove);
     window.removeEventListener('pointerup', onUp);
     window.removeEventListener('pointercancel', onUp);
@@ -1015,6 +1305,10 @@ function onScrollerPointerDown(e: PointerEvent): void {
 // ----- Group Drag-and-Drop -----
 
 function onTileDragStart(e: DragEvent, item: FeedItem): void {
+  if (isMarqueeActive.value) {
+    e.preventDefault();
+    return;
+  }
   const all = orderedItems();
   const byId = new Map(all.map((i) => [i.fileId, i]));
   const ids = props.selected.has(item.fileId) && props.selected.size >= 2
@@ -1146,13 +1440,29 @@ watch(
     props.peopleFilter?.join(','),
     props.recentLimit,
   ] as const,
-  () => relayout(),
+  () => {
+    if (isExternalMode.value) syncExternalFeed();
+    else relayout();
+  },
 );
 watch(collapsedShares, () => relayout());
 watch(locale, () => relayout());
 watch(
   () => JSON.stringify(props.params),
   () => void refresh(),
+);
+watch(
+  () => props.externalItems,
+  () => {
+    externalThumbFailed.clear();
+    void refresh();
+  },
+);
+watch(
+  () => props.externalLoading,
+  () => {
+    if (isExternalMode.value) syncExternalFeed();
+  },
 );
 watch(
   () => props.captionOnTile.includes('album'),
@@ -1273,6 +1583,7 @@ function refreshAlbums(): void {
 }
 
 async function loadMore(): Promise<boolean> {
+  if (isExternalMode.value) return false;
   const my = epoch;
   for (const g of groups.value) {
     const units: Array<{ group: string; sub?: string }> =
@@ -1303,6 +1614,10 @@ onBeforeUnmount(() => {
     cancelAnimationFrame(roRaf);
     roRaf = 0;
   }
+  if (naturalRelayoutRaf && typeof cancelAnimationFrame === 'function') {
+    cancelAnimationFrame(naturalRelayoutRaf);
+    naturalRelayoutRaf = 0;
+  }
   if (dragGhostEl) {
     dragGhostEl.remove();
     dragGhostEl = null;
@@ -1316,7 +1631,12 @@ onBeforeUnmount(() => {
 <template>
   <div
     class="pf"
-    :class="{ 'has-multi-select': hasMultiSelect, 'sel-on': hasMultiSelect, 'headroom-hidden': effectiveHeadroomHidden }"
+    :class="{
+      'has-multi-select': hasMultiSelect,
+      'sel-on': hasMultiSelect,
+      'is-marquee': isMarqueeActive,
+      'headroom-hidden': effectiveHeadroomHidden,
+    }"
     data-testid="photos-feed"
   >
     <div
@@ -1345,6 +1665,7 @@ onBeforeUnmount(() => {
     <div
       ref="scroller"
       class="pf-scroller"
+      tabindex="-1"
       @scroll.passive="onScroll"
       @wheel="onWheel"
       @touchstart.passive="cancelPending"
@@ -1419,18 +1740,20 @@ onBeforeUnmount(() => {
                 @dragend="onTileDragEnd"
               >
                 <img
-                  v-if="thumbs.get(tl.item.hash)"
+                  v-if="tileThumbSrc(tl.item)"
                   class="pf-img"
-                  :src="thumbs.get(tl.item.hash)!"
+                  :src="tileThumbSrc(tl.item)!"
+                  :referrerpolicy="tileNoReferrer(tl.item) ? 'no-referrer' : undefined"
                   alt=""
                   draggable="false"
                   decoding="async"
+                  @load="onThumbLoad($event, tl.item)"
                   @error="onThumbError(tl.item)"
                 />
                 <div
                   v-else
                   class="pf-nothumb"
-                  :title="thumbs.get(tl.item.hash) === null || !tl.item.processed ? t('photosThumbUnavailable') : undefined"
+                  :title="tileThumbSrc(tl.item) === null && (hasExplicitPreview(tl.item) || thumbs.get(tl.item.hash) === null || !tl.item.processed) ? t('photosThumbUnavailable') : undefined"
                 ></div>
                 <button
                   v-if="hasMultiSelect"
@@ -1446,6 +1769,7 @@ onBeforeUnmount(() => {
                   <span v-for="(part, i) in tileCaption(tl.item)" :key="i">{{ part }}</span>
                 </span>
                 <button
+                  v-if="!isExternalMode"
                   type="button"
                   class="pf-fav-btn"
                   :class="{ 'is-fav': tl.item.favorite, 'pf-fav': tl.item.favorite }"
@@ -1510,6 +1834,14 @@ onBeforeUnmount(() => {
   overflow-y: auto;
   padding: var(--dp-top-h, 50px) 4px 48px 2px;
   scrollbar-width: none;
+  user-select: none;
+  -webkit-user-select: none;
+  outline: none;
+}
+.pf.is-marquee,
+.pf.is-marquee * {
+  user-select: none;
+  -webkit-user-select: none;
 }
 .pf-scroller::-webkit-scrollbar {
   display: none;
