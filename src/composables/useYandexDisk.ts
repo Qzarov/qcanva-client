@@ -1,6 +1,7 @@
 import { ref } from 'vue';
-import { isAuthenticated } from '../api/client';
+import * as clientApi from '../api/client';
 import { isYandexReconnectError, yandexDisk, type YandexStatus } from '../api/yandexDisk';
+import { clearYandexMediaCache } from './useYandexMediaCache';
 
 /**
  * One status of the Yandex Disk connection for the whole app: the sidebar's
@@ -10,7 +11,7 @@ const status = ref<YandexStatus | null>(null);
 let loading: Promise<YandexStatus | null> | null = null;
 
 async function load(force = false): Promise<YandexStatus | null> {
-  if (!isAuthenticated()) return (status.value = null);
+  if (!clientApi.isAuthenticated()) return (status.value = null);
   if (loading && !force) return loading;
   if (status.value && !force) return status.value;
   // Through a resolved promise: a call that throws right away is caught below too.
@@ -26,7 +27,11 @@ async function load(force = false): Promise<YandexStatus | null> {
 /** A call failed with "connect again": reflect it without asking the hub. */
 function noteError(error: unknown) {
   if (!isYandexReconnectError(error) || !status.value) return;
+  const wasConnected = status.value.connected;
   status.value = { ...status.value, connected: false, reconnectRequired: (error as any)?.body?.code === 'yandex_reconnect_required' };
+  if (wasConnected) {
+    void clearYandexMediaCache();
+  }
 }
 
 export function useYandexDisk() {
@@ -37,4 +42,11 @@ export function useYandexDisk() {
 export function resetYandexDiskStatus() {
   status.value = null;
   loading = null;
+}
+
+if ('onAuthCleared' in clientApi && typeof clientApi.onAuthCleared === 'function') {
+  clientApi.onAuthCleared(() => {
+    status.value = null;
+    loading = null;
+  });
 }

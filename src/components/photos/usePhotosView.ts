@@ -42,7 +42,6 @@ const VALID_SORT_KEYS = new Set<string>(['date', 'folder', 'album', 'size']);
 const VALID_SUB_KEYS = new Set<string>(['name', 'size', 'created', 'added']);
 const VALID_CAPTION_KEYS = new Set<string>(['folder', 'album', 'size', 'access']);
 const VALID_PERIODS = new Set<string>(['day', 'month', 'year']);
-const VALID_FILTERS = new Set<string>(['all', 'photo', 'video', 'fav']);
 const VALID_TILES = new Set<string>(['s', 'm', 'l']);
 
 const SUB_CYCLE: Record<SubKey, SubKey> = {
@@ -190,10 +189,7 @@ export function normalizePhotosViewState(raw: unknown): PhotosViewState {
       ? (obj.period as FeedPeriod)
       : defaults.period;
 
-  const filter: PhotosViewState['filter'] =
-    typeof obj.filter === 'string' && VALID_FILTERS.has(obj.filter)
-      ? (obj.filter as PhotosViewState['filter'])
-      : defaults.filter;
+  const filter: PhotosViewState['filter'] = defaults.filter;
 
   const tile: PhotosViewState['tile'] =
     typeof obj.tile === 'string' && VALID_TILES.has(obj.tile)
@@ -311,9 +307,14 @@ function getStorage(): Storage | undefined {
   }
 }
 
+function toPersistedPhotosViewState(val: PhotosViewState): Omit<PhotosViewState, 'filter'> {
+  const { filter: _filter, ...rest } = val;
+  return rest;
+}
+
 function saveToLocalStorage(val: PhotosViewState): void {
   try {
-    getStorage()?.setItem(PHOTOS_VIEW_STORAGE_KEY, JSON.stringify(val));
+    getStorage()?.setItem(PHOTOS_VIEW_STORAGE_KEY, JSON.stringify(toPersistedPhotosViewState(val)));
   } catch {
     // Storage unavailable or quota exceeded, ignore
   }
@@ -326,7 +327,7 @@ function flushHubSave(): void {
   }
   let payload: unknown;
   try {
-    payload = JSON.parse(JSON.stringify(state.value));
+    payload = JSON.parse(JSON.stringify(toPersistedPhotosViewState(state.value)));
   } catch {
     return;
   }
@@ -386,8 +387,8 @@ function ensureInitialized(): void {
         // If the user already changed something meanwhile, ignore hub value (local change wins; PUT by debounce).
         if (hubValue != null && !touched) {
           const normalized = normalizePhotosViewState(hubValue);
-          state.value = normalized;
-          saveToLocalStorage(normalized);
+          state.value = { ...normalized, filter: state.value.filter };
+          saveToLocalStorage(state.value);
           // Do not call putPreference (no echo back)
         }
       })
@@ -496,7 +497,9 @@ function setPeriod(p: FeedPeriod): void {
 }
 
 function setFilter(f: PhotosViewState['filter']): void {
-  mutate((prev) => ({ ...prev, filter: f }));
+  ensureInitialized();
+  if (state.value.filter === f) return;
+  state.value = { ...state.value, filter: f };
 }
 
 function toggleCaption(c: CaptionKey): void {

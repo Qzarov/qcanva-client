@@ -1,3 +1,20 @@
+<script lang="ts">
+const MAX_LOADED_EXTERNAL_THUMBS = 2000;
+const loadedExternalThumbs = new Set<string>();
+
+function touchLoadedExternalThumb(url: string): void {
+  if (loadedExternalThumbs.has(url)) {
+    loadedExternalThumbs.delete(url);
+  }
+  loadedExternalThumbs.add(url);
+  while (loadedExternalThumbs.size > MAX_LOADED_EXTERNAL_THUMBS) {
+    const oldest = loadedExternalThumbs.values().next().value;
+    if (oldest === undefined) break;
+    loadedExternalThumbs.delete(oldest);
+  }
+}
+</script>
+
 <script setup lang="ts">
 import { Heart } from '@lucide/vue';
 import {
@@ -5,6 +22,7 @@ import {
   nextTick,
   onBeforeUnmount,
   onMounted,
+  reactive,
   ref,
   shallowReactive,
   shallowRef,
@@ -46,6 +64,7 @@ import {
   type Row,
 } from './photoGridLayout';
 import {
+  compareFolderHierarchy,
   dateGroupTitle,
   formatDuration,
   groupKeysForItem,
@@ -62,6 +81,12 @@ export type ExternalFeedItem = FeedItem & {
   noReferrer?: boolean;
 };
 
+export type StorageFolderEntry = {
+  id: string;
+  name: string;
+  parentId?: string | null;
+};
+
 const props = withDefaults(defineProps<{
   params: FeedParams;
   captionOnTile: CaptionKey[];
@@ -76,6 +101,8 @@ const props = withDefaults(defineProps<{
   headroomHidden?: boolean;
   externalItems?: ExternalFeedItem[] | null;
   supplementaryItems?: ExternalFeedItem[] | null;
+  supplementaryLoading?: boolean;
+  storageFolders?: readonly StorageFolderEntry[];
   externalLoading?: boolean;
   externalHasMore?: boolean;
   externalLoadingMore?: boolean;
@@ -94,6 +121,8 @@ const props = withDefaults(defineProps<{
   headroomHidden: undefined,
   externalItems: null,
   supplementaryItems: null,
+  supplementaryLoading: false,
+  storageFolders: () => [],
   externalLoading: false,
   externalHasMore: false,
   externalLoadingMore: false,
@@ -162,15 +191,43 @@ const unitEnd = new Map<string, number>();
 const h1Rows = shallowRef<Row[]>([]);
 const groupTopList = shallowRef<Array<{ key: string; top: number; height: number }>>([]);
 
+const MAX_EXTERNAL_THUMB_CONCURRENCY = 6;
+const MAX_LOADED_TILE_IMG_IDS = 4000;
+
 const thumbs = shallowReactive(new Map<string, string | null>());
 const thumbRequested = new Set<string>();
 const externalThumbFailed = shallowReactive(new Set<string>());
-const naturalDims = shallowReactive(new Map<string, { width: number; height: number }>());
-let naturalRelayoutRaf = 0;
+const activeExternalThumbs = reactive(new Set<string>());
+let externalThumbQueue: string[] = [];
+const externalImgEls = new Map<string, { url: string; el: HTMLImageElement }>();
+const loadedTileImgIds = reactive(new Set<string>());
 const folderNames = shallowReactive(new Map<string, string>());
 const folderRequested = new Set<string>();
 const albumNames = shallowRef(new Map<string, string>());
 let albumsRequested = false;
+
+const storageFolderMap = computed(() => {
+  const byId = new Map<string, StorageFolderEntry>();
+  for (const f of props.storageFolders ?? []) {
+    if (f && f.id) byId.set(f.id, f);
+  }
+  const paths = new Map<string, { name: string; path: string[] }>();
+  for (const [id, f] of byId) {
+    const segments: string[] = [];
+    const seen = new Set<string>();
+    let cur: StorageFolderEntry | undefined = f;
+    while (cur && !seen.has(cur.id)) {
+      seen.add(cur.id);
+      if (cur.name) segments.unshift(cur.name);
+      cur = cur.parentId ? byId.get(cur.parentId) : undefined;
+    }
+    const path = segments.length > 0 ? segments : (f.name ? [f.name] : []);
+    if (path.length > 0) {
+      paths.set(id, { name: path[path.length - 1]!, path });
+    }
+  }
+  return paths;
+});
 
 /** Anchor that survives a transition through an empty layout (hidden tab, zero width). */
 let keptAnchor: { anchor: Anchor; item: FeedItem | null } | null = null;
@@ -277,21 +334,10 @@ const hasActiveFolderFilter = computed(
   () => Boolean(props.folderFilterId) || Boolean(props.folderIncludeRoot) || Boolean(props.folderFilterIds && props.folderFilterIds.size > 0),
 );
 
-function withNaturalDimensions(item: FeedItem): FeedItem {
-  if (item.width && item.height) return item;
-  const dim = naturalDims.get(item.fileId);
-  if (!dim) return item;
-  if (hasExplicitPreview(item)) {
-    return { ...item, width: dim.width, height: dim.height };
-  }
-  return { ...item, processed: true, width: dim.width, height: dim.height };
-}
-
 const filteredItemsMap = computed(() => {
   const hasFilter = hasActiveFolderFilter.value || (props.peopleFilter?.length ?? 0) > 0 || (props.recentLimit ?? 0) > 0;
-  const hasDims = naturalDims.size > 0;
   const hasSupp = !isExternalMode.value && supplementaryByUnit.value.size > 0;
-  if (!hasFilter && !hasDims && !hasSupp) return items.value;
+  if (!hasFilter && !hasSupp) return items.value;
   const out = new Map<string, FeedItem[]>();
   let remaining = props.recentLimit && props.recentLimit > 0 ? props.recentLimit : Infinity;
 
@@ -356,7 +402,7 @@ const filteredItemsMap = computed(() => {
         filtered = filtered.slice(0, Math.max(0, remaining));
         remaining -= filtered.length;
       }
-      out.set(uk, hasDims ? filtered.map(withNaturalDimensions) : filtered);
+      out.set(uk, filtered);
     }
     return out;
   }
@@ -367,7 +413,7 @@ const filteredItemsMap = computed(() => {
       filtered = filtered.slice(0, Math.max(0, remaining));
       remaining -= filtered.length;
     }
-    out.set(k, hasDims ? filtered.map(withNaturalDimensions) : filtered);
+    out.set(k, filtered);
   }
   return out;
 });
@@ -386,7 +432,7 @@ function buildLayoutGroups(): LayoutGroup[] {
     const info = groupTitle(l1, g, p.period, locale.value);
     headInfo.set(g.key, info);
     unitCount.set(g.key, g.count);
-    if (g.folder) folderNames.set(g.key, info.title);
+    if (g.folder) folderNames.set(g.key, g.folder.name || info.title);
     const subs =
       l2 && g.subs && g.subs.length > 0
         ? g.subs.map((s) => {
@@ -394,7 +440,7 @@ function buildLayoutGroups(): LayoutGroup[] {
             const k = unitKey(g.key, s.key);
             headInfo.set(k, sInfo);
             unitCount.set(k, s.count);
-            if (s.folder) folderNames.set(s.key, sInfo.title);
+            if (s.folder) folderNames.set(s.key, s.folder.name || sInfo.title);
             return { key: s.key, title: sInfo.title, count: s.count };
           })
         : undefined;
@@ -497,9 +543,30 @@ function relayout(): void {
     }
   }
 
+  const layoutItems = new Map<string, FeedItem[]>();
+  const originalByProxy = new Map<FeedItem, FeedItem>();
+  const useRatioFallback = resolvedAspectMode.value === 'ratio';
+  for (const [k, list] of filteredItemsMap.value) {
+    if (!useRatioFallback) {
+      layoutItems.set(k, list);
+      continue;
+    }
+    let changed = false;
+    const mapped = list.map((it) => {
+      if (it.width == null || it.height == null || it.width <= 0 || it.height <= 0) {
+        changed = true;
+        const proxy: FeedItem = { ...it, width: 4, height: 3 };
+        originalByProxy.set(proxy, it);
+        return proxy;
+      }
+      return it;
+    });
+    layoutItems.set(k, changed ? mapped : list);
+  }
+
   const next = computeLayout({
     groups: buildLayoutGroups(),
-    items: filteredItemsMap.value,
+    items: layoutItems,
     width: width.value,
     rowHeight: rowHeight.value,
     gap: GALLERY_WALL_GAP,
@@ -507,6 +574,15 @@ function relayout(): void {
     aspectMode: resolvedAspectMode.value,
     overlayH1: isOverlayDateWall.value,
   });
+  if (originalByProxy.size > 0) {
+    for (const row of next.rows) {
+      if (row.kind !== 'tiles' || !row.tiles) continue;
+      for (const tl of row.tiles) {
+        const orig = originalByProxy.get(tl.item);
+        if (orig) tl.item = orig;
+      }
+    }
+  }
   layout.value = next;
   rebuildIndexes(next);
   if (next.rows.length === 0) {
@@ -708,6 +784,11 @@ function requestFolder(id: string): Promise<void> {
     folderNames.set(id, info?.name ?? t('yandexDisk'));
     return Promise.resolve();
   }
+  const fromStorage = storageFolderMap.value.get(id);
+  if (fromStorage) {
+    folderNames.set(id, fromStorage.name);
+    return Promise.resolve();
+  }
   if (folderNames.has(id) || folderRequested.has(id)) return Promise.resolve();
   folderRequested.add(id);
   return driveApi
@@ -815,15 +896,56 @@ function externalItemGroupKeys(item: FeedItem, level: SortKey, period: FeedParam
   return ['root'];
 }
 
-function externalFolderInfo(folderKey: string): { name: string; path: string[] } | undefined {
-  if (!folderKey || folderKey === 'root') return undefined;
+function resolveFolderInfo(
+  folderKey: string,
+  existing?: FeedGroup['folder'],
+): { name: string; path: string[] } | undefined {
+  if (!folderKey || folderKey === 'root') return existing;
   if (folderKey === '/') {
     const label = t('yandexDisk');
     return { name: label, path: [label] };
   }
-  const parts = folderKey.split('/').filter(Boolean);
-  if (parts.length === 0) return undefined;
-  return { name: parts[parts.length - 1]!, path: parts };
+  if (folderKey.startsWith('/')) {
+    const parts = folderKey.split('/').filter(Boolean);
+    if (parts.length === 0) return undefined;
+    return { name: parts[parts.length - 1]!, path: parts };
+  }
+  const fromStorage = storageFolderMap.value.get(folderKey);
+  const existingPath =
+    existing?.path && existing.path.length > 0
+      ? existing.path
+      : existing?.name
+        ? [existing.name]
+        : [];
+  if (fromStorage && (existingPath.length === 0 || fromStorage.path.length > existingPath.length)) {
+    return { name: fromStorage.name, path: fromStorage.path };
+  }
+  if (existing) {
+    return existing.path.length > 0 ? existing : { name: existing.name, path: [existing.name] };
+  }
+  if (fromStorage) {
+    return { name: fromStorage.name, path: fromStorage.path };
+  }
+  const cachedName = folderNames.get(folderKey);
+  if (cachedName) {
+    return { name: cachedName, path: [cachedName] };
+  }
+  return undefined;
+}
+
+function externalFolderInfo(folderKey: string): { name: string; path: string[] } | undefined {
+  return resolveFolderInfo(folderKey);
+}
+
+function folderPathForKey(key: string, existing?: FeedGroup['folder']): string[] {
+  if (!key || key === 'root') {
+    if (existing?.path && existing.path.length > 0) return existing.path;
+    if (existing?.name) return [existing.name];
+    return [t('photosFolderRoot')];
+  }
+  const info = resolveFolderInfo(key, existing);
+  if (info && info.path.length > 0) return info.path;
+  return [key];
 }
 
 function populateExternalFolderNames(list: readonly FeedItem[]): void {
@@ -835,6 +957,9 @@ function populateExternalFolderNames(list: readonly FeedItem[]): void {
     } else if (fid.startsWith('/')) {
       const info = externalFolderInfo(fid);
       if (info) folderNames.set(fid, info.name);
+    } else {
+      const fromStorage = storageFolderMap.value.get(fid);
+      if (fromStorage) folderNames.set(fid, fromStorage.name);
     }
   }
 }
@@ -849,7 +974,11 @@ function compareFeedItems(a: FeedItem, b: FeedItem, sort: SortSpec[]): number {
     } else if (spec.key === 'size') {
       cmp = a.bytes - b.bytes;
     } else if (spec.key === 'folder') {
-      cmp = (a.folderId ?? '').localeCompare(b.folderId ?? '');
+      const pathA = a.folderId ? folderPathForKey(a.folderId) : [];
+      const pathB = b.folderId ? folderPathForKey(b.folderId) : [];
+      const folderCmp = compareFolderHierarchy(pathA, pathB, spec.desc);
+      if (folderCmp !== 0) return folderCmp;
+      continue;
     } else if (spec.key === 'album') {
       cmp = (a.albumIds[0] ?? '').localeCompare(b.albumIds[0] ?? '');
     }
@@ -868,6 +997,43 @@ function sortExternalBucketEntries(
   const spec = params.sort.find((s) => s.key === level);
   const desc = spec ? spec.desc : (params.sort[0]?.desc ?? true);
   const dir = desc ? -1 : 1;
+
+  if (level === 'folder') {
+    const sub = spec?.sub ?? 'name';
+    const paths = new Map<string, string[]>();
+    const roots = new Map<string, string>();
+    const rootMetrics = new Map<string, number>();
+
+    for (const [key, list] of entries) {
+      const path = folderPathForKey(key);
+      paths.set(key, path);
+      const rk = (path[0] ?? key).toLocaleLowerCase();
+      roots.set(key, rk);
+      if (sub === 'size') {
+        const sum = list.reduce((s, it) => s + it.bytes, 0);
+        rootMetrics.set(rk, (rootMetrics.get(rk) ?? 0) + sum);
+      } else if (sub === 'created' || sub === 'added') {
+        const maxTs = list.reduce((m, it) => Math.max(m, itemTimestamp(it)), 0);
+        rootMetrics.set(rk, Math.max(rootMetrics.get(rk) ?? 0, maxTs));
+      }
+    }
+
+    return entries.sort(([keyA], [keyB]) => {
+      const pathA = paths.get(keyA) ?? folderPathForKey(keyA);
+      const pathB = paths.get(keyB) ?? folderPathForKey(keyB);
+      const rootA = roots.get(keyA) ?? (pathA[0] ?? keyA).toLocaleLowerCase();
+      const rootB = roots.get(keyB) ?? (pathB[0] ?? keyB).toLocaleLowerCase();
+      if (rootA === rootB) {
+        return compareFolderHierarchy(pathA, pathB, desc);
+      }
+      if (sub === 'size' || sub === 'created' || sub === 'added') {
+        const mA = rootMetrics.get(rootA) ?? 0;
+        const mB = rootMetrics.get(rootB) ?? 0;
+        if (mA !== mB) return (mA - mB) * dir;
+      }
+      return compareFolderHierarchy(pathA, pathB, desc);
+    });
+  }
 
   return entries.sort(([keyA, listA], [keyB, listB]) => {
     if (level === 'date') {
@@ -993,10 +1159,102 @@ function recordQSpaceUnits(list: readonly FeedGroup[]): void {
   }
 }
 
-function sortMergedGroups(list: FeedGroup[], level: SortKey, params: FeedParams): FeedGroup[] {
+function unitLoadedItems(groupKey: string, subKey?: string): FeedItem[] {
+  const uk = unitKey(groupKey, subKey);
+  const q = items.value.get(uk);
+  const s = supplementaryByUnit.value.get(uk);
+  if (q && s) return [...q, ...s];
+  return q ?? s ?? [];
+}
+
+function groupLoadedItems(g: FeedGroup, parentKey?: string): FeedItem[] {
+  if (parentKey !== undefined) {
+    return unitLoadedItems(parentKey, g.key);
+  }
+  if (g.subs && g.subs.length > 0) {
+    const all: FeedItem[] = [];
+    for (const s of g.subs) {
+      all.push(...unitLoadedItems(g.key, s.key));
+    }
+    return all;
+  }
+  return unitLoadedItems(g.key);
+}
+
+function enrichGroupFolder(g: FeedGroup, level: SortKey): FeedGroup {
+  if (level !== 'folder') return g;
+  const folder = resolveFolderInfo(g.key, g.folder);
+  return folder ? { ...g, folder } : g;
+}
+
+function sortMergedGroups(
+  list: FeedGroup[],
+  level: SortKey,
+  params: FeedParams,
+  parentKey?: string,
+): FeedGroup[] {
   const spec = params.sort.find((s) => s.key === level);
   const desc = spec ? spec.desc : (params.sort[0]?.desc ?? true);
   const dir = desc ? -1 : 1;
+
+  if (level === 'folder') {
+    const sub = spec?.sub ?? 'name';
+    const rootMetrics = new Map<string, { value: number; hasLoaded: boolean; minIndex: number }>();
+    const paths = new Map<FeedGroup, string[]>();
+    const roots = new Map<FeedGroup, string>();
+
+    list.forEach((g, idx) => {
+      const folder = resolveFolderInfo(g.key, g.folder);
+      if (folder) g.folder = folder;
+      const path = folderPathForKey(g.key, g.folder);
+      paths.set(g, path);
+      const rk = (path[0] ?? g.key).toLocaleLowerCase();
+      roots.set(g, rk);
+      let entry = rootMetrics.get(rk);
+      if (!entry) {
+        entry = { value: 0, hasLoaded: false, minIndex: idx };
+        rootMetrics.set(rk, entry);
+      }
+      if (sub === 'size' || sub === 'created' || sub === 'added') {
+        const loaded = groupLoadedItems(g, parentKey);
+        if (loaded.length > 0) {
+          entry.hasLoaded = true;
+          if (sub === 'size') {
+            for (const it of loaded) entry.value += it.bytes;
+          } else {
+            for (const it of loaded) entry.value = Math.max(entry.value, itemTimestamp(it));
+          }
+        }
+      }
+    });
+
+    const allRootsLoaded =
+      (sub === 'size' || sub === 'created' || sub === 'added') &&
+      rootMetrics.size > 0 &&
+      [...rootMetrics.values()].every((m) => m.hasLoaded);
+
+    return list.sort((a, b) => {
+      const pathA = paths.get(a) ?? folderPathForKey(a.key, a.folder);
+      const pathB = paths.get(b) ?? folderPathForKey(b.key, b.folder);
+      const rootA = roots.get(a) ?? (pathA[0] ?? a.key).toLocaleLowerCase();
+      const rootB = roots.get(b) ?? (pathB[0] ?? b.key).toLocaleLowerCase();
+      if (rootA === rootB) {
+        return compareFolderHierarchy(pathA, pathB, desc);
+      }
+      if (sub === 'size' || sub === 'created' || sub === 'added') {
+        const mA = rootMetrics.get(rootA);
+        const mB = rootMetrics.get(rootB);
+        if (allRootsLoaded) {
+          const vA = mA?.value ?? 0;
+          const vB = mB?.value ?? 0;
+          if (vA !== vB) return (vA - vB) * dir;
+        } else if (mA && mB && mA.minIndex !== mB.minIndex) {
+          return mA.minIndex - mB.minIndex;
+        }
+      }
+      return compareFolderHierarchy(pathA, pathB, desc);
+    });
+  }
 
   return list.sort((a, b) => {
     if (level === 'date') {
@@ -1020,27 +1278,46 @@ function mergeFeedGroups(
   supp: readonly FeedGroup[],
   params: FeedParams,
 ): FeedGroup[] {
-  if (supp.length === 0) return [...primary];
-  if (primary.length === 0) return [...supp];
-
   const l1: SortKey = params.levels[0] ?? 'date';
   const l2: SortKey | undefined = params.levels[1];
-  const byKey = new Map<string, FeedGroup>();
 
-  for (const g of primary) {
-    byKey.set(g.key, {
-      ...g,
-      ...(g.subs ? { subs: g.subs.map((s) => ({ ...s })) } : {}),
+  const cloneWithEnrichment = (source: readonly FeedGroup[]): FeedGroup[] =>
+    source.map((g) => {
+      const enriched = enrichGroupFolder(g, l1);
+      if (!l2 || !enriched.subs) {
+        return enriched === g ? { ...g } : enriched;
+      }
+      const subs = enriched.subs.map((s) => {
+        const es = enrichGroupFolder(s, l2);
+        return es === s ? { ...s } : es;
+      });
+      if (l2 === 'folder') {
+        sortMergedGroups(subs, l2, params, enriched.key);
+      }
+      return { ...enriched, subs };
     });
+
+  if (supp.length === 0) {
+    if (l1 !== 'folder' && l2 !== 'folder') return [...primary];
+    const cloned = cloneWithEnrichment(primary);
+    return l1 === 'folder' ? sortMergedGroups(cloned, l1, params) : cloned;
+  }
+  if (primary.length === 0) {
+    if (l1 !== 'folder' && l2 !== 'folder') return [...supp];
+    const cloned = cloneWithEnrichment(supp);
+    return l1 === 'folder' ? sortMergedGroups(cloned, l1, params) : cloned;
   }
 
-  for (const sg of supp) {
+  const byKey = new Map<string, FeedGroup>();
+
+  for (const g of cloneWithEnrichment(primary)) {
+    byKey.set(g.key, g);
+  }
+
+  for (const sg of cloneWithEnrichment(supp)) {
     const existing = byKey.get(sg.key);
     if (!existing) {
-      byKey.set(sg.key, {
-        ...sg,
-        ...(sg.subs ? { subs: sg.subs.map((s) => ({ ...s })) } : {}),
-      });
+      byKey.set(sg.key, sg);
       continue;
     }
     if (l2 && (existing.subs || sg.subs)) {
@@ -1052,19 +1329,21 @@ function mergeFeedGroups(
         const es = subMap.get(ss.key);
         if (es) {
           es.count += ss.count;
-          if (!es.folder && ss.folder) es.folder = ss.folder;
+          const mergedFolder = resolveFolderInfo(es.key, es.folder ?? ss.folder);
+          if (mergedFolder) es.folder = mergedFolder;
           if (!es.album && ss.album) es.album = ss.album;
         } else {
           subMap.set(ss.key, { ...ss });
         }
       }
-      const mergedSubs = sortMergedGroups([...subMap.values()], l2, params);
+      const mergedSubs = sortMergedGroups([...subMap.values()], l2, params, existing.key);
       existing.subs = mergedSubs;
       existing.count = mergedSubs.reduce((sum, s) => sum + s.count, 0);
     } else {
       existing.count += sg.count;
     }
-    if (!existing.folder && sg.folder) existing.folder = sg.folder;
+    const mergedFolder = resolveFolderInfo(existing.key, existing.folder ?? sg.folder);
+    if (mergedFolder) existing.folder = mergedFolder;
     if (!existing.album && sg.album) existing.album = sg.album;
   }
 
@@ -1150,9 +1429,9 @@ async function refresh(): Promise<void> {
     const supp = buildClientBuckets(props.supplementaryItems ?? [], params);
     supplementaryGroups.value = supp.groups;
     supplementaryByUnit.value = supp.itemsByUnit;
+    items.value = new Map();
     const mergedGroups = mergeFeedGroups(res.groups, supp.groups, params);
     groups.value = mergedGroups;
-    items.value = new Map();
     cursors.clear();
     inflight.clear();
     failed.clear();
@@ -1343,7 +1622,23 @@ function tileLabel(item: FeedItem): string {
 
 const retriedThumbs = new Set<string>();
 
-function tileThumbSrc(item: FeedItem): string | null {
+function markTileImgLoaded(fileId: string): void {
+  if (loadedTileImgIds.has(fileId)) {
+    loadedTileImgIds.delete(fileId);
+  }
+  loadedTileImgIds.add(fileId);
+  while (loadedTileImgIds.size > MAX_LOADED_TILE_IMG_IDS) {
+    const oldest = loadedTileImgIds.values().next().value;
+    if (oldest === undefined) break;
+    loadedTileImgIds.delete(oldest);
+  }
+}
+
+function isGatedExternalPreviewUrl(url: string | null | undefined): url is string {
+  return Boolean(url && url.includes('/yandex-disk/preview'));
+}
+
+function rawTileThumbSrc(item: FeedItem): string | null {
   const ext = item as ExternalFeedItem;
   if ('previewSrc' in ext) {
     if (externalThumbFailed.has(item.fileId)) return null;
@@ -1352,37 +1647,152 @@ function tileThumbSrc(item: FeedItem): string | null {
   return thumbs.get(item.hash) ?? null;
 }
 
+function tileThumbSrc(item: FeedItem): string | null {
+  const url = rawTileThumbSrc(item);
+  if (!url) return null;
+  if (isGatedExternalPreviewUrl(url)) {
+    if (loadedExternalThumbs.has(url)) {
+      touchLoadedExternalThumb(url);
+      return url;
+    }
+    if (activeExternalThumbs.has(url)) {
+      return url;
+    }
+    return null;
+  }
+  return url;
+}
+
 function tileNoReferrer(item: FeedItem): boolean {
   return Boolean((item as ExternalFeedItem).noReferrer);
 }
 
-function scheduleNaturalRelayout(): void {
-  if (typeof requestAnimationFrame !== 'function') {
-    relayout();
-    return;
+function setTileImgRef(item: FeedItem, el: HTMLImageElement | null): void {
+  const url = (item as ExternalFeedItem).previewSrc;
+  if (isGatedExternalPreviewUrl(url)) {
+    if (el) {
+      externalImgEls.set(item.fileId, { url, el });
+    } else {
+      externalImgEls.delete(item.fileId);
+    }
+  } else {
+    externalImgEls.delete(item.fileId);
   }
-  if (naturalRelayoutRaf) return;
-  naturalRelayoutRaf = requestAnimationFrame(() => {
-    naturalRelayoutRaf = 0;
-    relayout();
-  });
+  if (el && el.complete && el.naturalWidth > 0) {
+    markTileImgLoaded(item.fileId);
+    if (isGatedExternalPreviewUrl(url)) {
+      touchLoadedExternalThumb(url);
+      if (activeExternalThumbs.delete(url)) {
+        pumpExternalThumbQueue();
+      }
+    }
+  }
 }
 
-function onThumbLoad(e: Event, item: FeedItem): void {
-  if (item.width && item.height) return;
-  const img = e.target as HTMLImageElement | null;
-  if (!img || !img.naturalWidth || !img.naturalHeight) return;
-  const prev = naturalDims.get(item.fileId);
-  if (prev && prev.width === img.naturalWidth && prev.height === img.naturalHeight) return;
-  naturalDims.set(item.fileId, { width: img.naturalWidth, height: img.naturalHeight });
-  scheduleNaturalRelayout();
+function cancelExternalThumb(url: string): void {
+  activeExternalThumbs.delete(url);
+  for (const entry of externalImgEls.values()) {
+    if (entry.url === url) {
+      entry.el.removeAttribute('src');
+    }
+  }
+}
+
+function cancelAllExternalThumbs(): void {
+  externalThumbQueue = [];
+  for (const url of [...activeExternalThumbs]) {
+    cancelExternalThumb(url);
+  }
+  activeExternalThumbs.clear();
+}
+
+function pumpExternalThumbQueue(): void {
+  while (activeExternalThumbs.size < MAX_EXTERNAL_THUMB_CONCURRENCY && externalThumbQueue.length > 0) {
+    const nextUrl = externalThumbQueue.pop();
+    if (!nextUrl) continue;
+    if (loadedExternalThumbs.has(nextUrl) || activeExternalThumbs.has(nextUrl)) continue;
+    activeExternalThumbs.add(nextUrl);
+  }
+}
+
+function syncVisibleExternalThumbs(): void {
+  const visibleUrls = new Set<string>();
+  for (const row of visible.value) {
+    if (row.kind !== 'tiles' || !row.tiles) continue;
+    for (const tl of row.tiles) {
+      const url = rawTileThumbSrc(tl.item);
+      if (isGatedExternalPreviewUrl(url)) {
+        visibleUrls.add(url);
+      }
+    }
+  }
+
+  for (const url of [...activeExternalThumbs]) {
+    if (!visibleUrls.has(url)) {
+      cancelExternalThumb(url);
+    }
+  }
+
+  const queuedSet = new Set<string>();
+  const keptQueue: string[] = [];
+  for (const url of externalThumbQueue) {
+    if (
+      visibleUrls.has(url) &&
+      !loadedExternalThumbs.has(url) &&
+      !activeExternalThumbs.has(url) &&
+      !queuedSet.has(url)
+    ) {
+      queuedSet.add(url);
+      keptQueue.push(url);
+    }
+  }
+  externalThumbQueue = keptQueue;
+
+  const newlyVisible: string[] = [];
+  for (const url of visibleUrls) {
+    if (!loadedExternalThumbs.has(url) && !activeExternalThumbs.has(url) && !queuedSet.has(url)) {
+      queuedSet.add(url);
+      newlyVisible.push(url);
+    }
+  }
+  for (let i = newlyVisible.length - 1; i >= 0; i--) {
+    externalThumbQueue.push(newlyVisible[i]!);
+  }
+
+  pumpExternalThumbQueue();
+}
+
+function onThumbLoad(_e: Event, item: FeedItem): void {
+  markTileImgLoaded(item.fileId);
+  const url = rawTileThumbSrc(item);
+  if (isGatedExternalPreviewUrl(url)) {
+    touchLoadedExternalThumb(url);
+    if (activeExternalThumbs.delete(url)) {
+      pumpExternalThumbQueue();
+    }
+  }
 }
 
 function onThumbError(item: FeedItem): void {
   if (hasExplicitPreview(item)) {
+    const rawUrl = (item as ExternalFeedItem).previewSrc;
+    if (
+      isGatedExternalPreviewUrl(rawUrl) &&
+      !activeExternalThumbs.has(rawUrl) &&
+      !loadedExternalThumbs.has(rawUrl)
+    ) {
+      return;
+    }
+    loadedTileImgIds.delete(item.fileId);
     externalThumbFailed.add(item.fileId);
+    if (isGatedExternalPreviewUrl(rawUrl)) {
+      loadedExternalThumbs.delete(rawUrl);
+      activeExternalThumbs.delete(rawUrl);
+      pumpExternalThumbQueue();
+    }
     return;
   }
+  loadedTileImgIds.delete(item.fileId);
   if (!item.processed || retriedThumbs.has(item.hash)) {
     thumbs.set(item.hash, null);
     return;
@@ -1761,14 +2171,28 @@ watch(
 );
 watch(collapsedShares, () => relayout());
 watch(locale, () => relayout());
+watch(visible, () => syncVisibleExternalThumbs(), { immediate: true });
+watch(storageFolderMap, () => {
+  if (isExternalMode.value) {
+    if (wasExternalReady) syncExternalFeed(true);
+    return;
+  }
+  if (status.value === 'ready') {
+    applySupplementaryItems(false);
+  }
+});
 watch(
   () => JSON.stringify(props.params),
-  () => void refresh(),
+  () => {
+    cancelAllExternalThumbs();
+    void refresh();
+  },
 );
 watch(
   () => props.externalFeedKey,
   (next, prev) => {
     if (next === prev || !isExternalMode.value) return;
+    cancelAllExternalThumbs();
     wasExternalReady = false;
     externalThumbFailed.clear();
     resetReachEndGuard();
@@ -1787,11 +2211,13 @@ watch(
         }
         syncExternalFeed(true);
       } else {
+        cancelAllExternalThumbs();
         externalThumbFailed.clear();
         syncExternalFeed(false);
       }
       return;
     }
+    cancelAllExternalThumbs();
     wasExternalReady = false;
     externalThumbFailed.clear();
     keptAnchor = null;
@@ -1807,8 +2233,8 @@ watch(
   },
 );
 watch(
-  () => props.supplementaryItems,
-  (next) => {
+  () => [props.supplementaryItems, props.supplementaryLoading, props.supplementaryItems?.length ?? 0] as const,
+  ([next]) => {
     if (isExternalMode.value) return;
     resetReachEndGuard();
     if (next && next.length > 0) {
@@ -2026,14 +2452,12 @@ defineExpose({ orderedItems, refresh, refreshAlbums, patchItem, removeItems, loa
 onBeforeUnmount(() => {
   epoch++;
   stopMarquee?.();
+  cancelAllExternalThumbs();
+  externalImgEls.clear();
   if (jumpTimer !== null) clearTimeout(jumpTimer);
   if (roRaf && typeof cancelAnimationFrame === 'function') {
     cancelAnimationFrame(roRaf);
     roRaf = 0;
-  }
-  if (naturalRelayoutRaf && typeof cancelAnimationFrame === 'function') {
-    cancelAnimationFrame(naturalRelayoutRaf);
-    naturalRelayoutRaf = 0;
   }
   if (dragGhostEl) {
     dragGhostEl.remove();
@@ -2159,9 +2583,11 @@ onBeforeUnmount(() => {
                 @dragend="onTileDragEnd"
               >
                 <img
-                  v-if="tileThumbSrc(tl.item)"
+                  v-if="rawTileThumbSrc(tl.item)"
+                  :ref="(el) => setTileImgRef(tl.item, el as HTMLImageElement | null)"
                   class="pf-img"
-                  :src="tileThumbSrc(tl.item)!"
+                  :class="{ 'is-loaded': loadedTileImgIds.has(tl.item.fileId) }"
+                  :src="tileThumbSrc(tl.item) ?? undefined"
                   :referrerpolicy="tileNoReferrer(tl.item) ? 'no-referrer' : undefined"
                   alt=""
                   draggable="false"
@@ -2170,9 +2596,9 @@ onBeforeUnmount(() => {
                   @error="onThumbError(tl.item)"
                 />
                 <div
-                  v-else
+                  v-if="!loadedTileImgIds.has(tl.item.fileId)"
                   class="pf-nothumb"
-                  :title="tileThumbSrc(tl.item) === null && (hasExplicitPreview(tl.item) || thumbs.get(tl.item.hash) === null || !tl.item.processed) ? t('photosThumbUnavailable') : undefined"
+                  :title="rawTileThumbSrc(tl.item) === null && (hasExplicitPreview(tl.item) || thumbs.get(tl.item.hash) === null || !tl.item.processed) ? t('photosThumbUnavailable') : undefined"
                 ></div>
                 <button
                   v-if="hasMultiSelect"
@@ -2215,13 +2641,28 @@ onBeforeUnmount(() => {
         <span>{{ loadingMoreLabel }}</span>
       </div>
 
-      <div v-if="status === 'loading' && groups.length === 0" class="pf-state">{{ t('photosLoading') }}</div>
+      <div
+        v-if="status === 'loading' || (props.supplementaryLoading && groups.length === 0)"
+        class="pf-feed-skeleton"
+        data-testid="photos-feed-skeleton"
+        role="status"
+        :aria-label="t('photosLoading')"
+      >
+        <div v-for="rowIdx in 3" :key="rowIdx" class="pf-feed-skeleton-row">
+          <div
+            v-for="colIdx in 4"
+            :key="colIdx"
+            class="pf-feed-skeleton-tile"
+            :style="{ flex: `${((rowIdx + colIdx) % 3) + 1} 1 0%` }"
+          ></div>
+        </div>
+      </div>
       <div v-else-if="status === 'error'" class="pf-state">
         <span>{{ t('photosLoadError') }}</span>
         <button type="button" class="pf-retry" @click="refresh()">{{ t('photosRetry') }}</button>
       </div>
       <div
-        v-else-if="status === 'ready' && !props.externalLoadingMore && !props.externalHasMore && (groups.length === 0 || layout.rows.length === 0)"
+        v-else-if="status === 'ready' && !props.supplementaryLoading && !props.externalLoadingMore && !props.externalHasMore && (groups.length === 0 || layout.rows.length === 0)"
         class="pf-state"
       >
         {{ t('photosFeedEmpty') }}
@@ -2444,20 +2885,72 @@ onBeforeUnmount(() => {
   transform: scale(0.96);
 }
 .pf-img {
+  position: relative;
+  z-index: 1;
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
-  transition: transform 0.15s ease, filter 0.15s ease;
+  opacity: 0;
+  transition: opacity 180ms cubic-bezier(0.22, 1, 0.36, 1), transform 0.15s ease, filter 0.15s ease;
   pointer-events: none;
+}
+.pf-img.is-loaded {
+  opacity: 1;
 }
 .pf-tile:hover:not(.is-checked) .pf-img {
   filter: brightness(1.05);
 }
 .pf-nothumb {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
   width: 100%;
   height: 100%;
-  background: var(--ui-surface-subtle);
+  background: linear-gradient(
+    110deg,
+    var(--ui-surface-subtle, rgba(255, 255, 255, 0.04)) 25%,
+    color-mix(in srgb, var(--ui-surface-subtle, rgba(255, 255, 255, 0.04)) 72%, rgba(255, 255, 255, 0.12)) 50%,
+    var(--ui-surface-subtle, rgba(255, 255, 255, 0.04)) 75%
+  );
+  background-size: 200% 100%;
+  animation: pf-shimmer 1.6s ease-in-out infinite;
+}
+@keyframes pf-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.pf-feed-skeleton {
+  min-height: 420px;
+  padding: 12px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.pf-feed-skeleton-row {
+  display: flex;
+  gap: 4px;
+  height: 150px;
+}
+.pf-feed-skeleton-tile {
+  border-radius: 2px;
+  background: linear-gradient(
+    110deg,
+    var(--ui-surface-subtle, rgba(255, 255, 255, 0.04)) 25%,
+    color-mix(in srgb, var(--ui-surface-subtle, rgba(255, 255, 255, 0.04)) 72%, rgba(255, 255, 255, 0.12)) 50%,
+    var(--ui-surface-subtle, rgba(255, 255, 255, 0.04)) 75%
+  );
+  background-size: 200% 100%;
+  animation: pf-shimmer 1.6s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pf-img {
+    transition: none;
+  }
+  .pf-nothumb,
+  .pf-feed-skeleton-tile {
+    animation: none;
+  }
 }
 .pf-chk {
   position: absolute;
@@ -2551,6 +3044,7 @@ onBeforeUnmount(() => {
   position: absolute;
   right: 7px;
   bottom: 6px;
+  z-index: 3;
   padding: 1px 6px;
   border-radius: 6px;
   background: rgba(0, 0, 0, 0.6);
@@ -2563,6 +3057,7 @@ onBeforeUnmount(() => {
   left: 0;
   right: 0;
   bottom: 0;
+  z-index: 2;
   padding: 18px 9px 5px 44px;
   background: linear-gradient(transparent, rgba(0, 0, 0, 0.7));
   color: #fff;

@@ -9,6 +9,7 @@ import { resetExplorerLayoutPrefs, useExplorerLayoutPrefs } from '../../composab
 import { useI18n } from '../../composables/useI18n';
 import { resetSpaces } from '../../composables/useSpaces';
 import { resetYandexDiskStatus, useYandexDisk } from '../../composables/useYandexDisk';
+import { resetYandexMediaCacheForTests, setCachedYandexFolder, YANDEX_CACHE_REVALIDATE_MS } from '../../composables/useYandexMediaCache';
 import { resetYandexMediaLibraryForTests } from '../../composables/useYandexMediaLibrary';
 import DrivePhotos from './DrivePhotos.vue';
 import { usePhotosView } from './usePhotosView';
@@ -139,7 +140,7 @@ let extraFeedItems: FeedItem[] = [];
 
 const FeedStub = defineComponent({
   name: 'PhotosFeed',
-  props: ['params', 'captionOnTile', 'tile', 'tileHeight', 'aspectMode', 'folderFilterId', 'peopleFilter', 'recentLimit', 'selected', 'current', 'externalItems', 'externalLoading', 'externalHasMore', 'externalLoadingMore', 'externalFeedKey', 'supplementaryItems'],
+  props: ['params', 'captionOnTile', 'tile', 'tileHeight', 'aspectMode', 'folderFilterId', 'peopleFilter', 'recentLimit', 'selected', 'current', 'externalItems', 'externalLoading', 'externalHasMore', 'externalLoadingMore', 'externalFeedKey', 'supplementaryItems', 'supplementaryLoading', 'storageFolders'],
   emits: ['open', 'focus-photo', 'activate', 'toggle-select', 'set-selection', 'contextmenu', 'toggle-favorite', 'units-loaded', 'reach-end'],
   setup(props, { emit, expose }) {
     const resolvedItems = (): FeedItem[] => {
@@ -166,12 +167,15 @@ const FeedStub = defineComponent({
           'data-aspect': props.aspectMode,
           'data-tile-h': String(props.tileHeight),
           'data-period': (props.params as { period?: string }).period ?? '',
+          'data-filter': (props.params as { filter?: string }).filter ?? '',
           'data-external-count': Array.isArray(props.externalItems) ? String(props.externalItems.length) : 'none',
           'data-external-loading': String(Boolean(props.externalLoading)),
           'data-external-has-more': String(Boolean(props.externalHasMore)),
           'data-external-loading-more': String(Boolean(props.externalLoadingMore)),
           'data-external-feed-key': String(props.externalFeedKey ?? ''),
           'data-supplementary-count': Array.isArray(props.supplementaryItems) ? String(props.supplementaryItems.length) : 'none',
+          'data-supplementary-loading': String(Boolean(props.supplementaryLoading)),
+          'data-storage-folders-count': Array.isArray(props.storageFolders) ? String(props.storageFolders.length) : '0',
         },
         [
           h('button', { 'data-stub-select': '', onClick: () => emit('set-selection', ['f0', 'f1']) }, 'select'),
@@ -1175,5 +1179,369 @@ describe('DrivePhotos', () => {
     expect(w.find('[data-file-id="yandex:/Фотокамера/p2.jpg"]').exists()).toBe(true);
 
     listPageSpy.mockRestore();
+  });
+
+  it('B-050: Фото section sets feedParams.filter === "photo", excludes Yandex videos from supplementaryItems, computes counts.photos, and scopes inline search', async () => {
+    const { photosApi } = await import('../../api/photos');
+    vi.mocked(photosApi.summary).mockImplementation(async (params) => {
+      if (params.filter === 'photo') return { groups: [{ key: '2026-10', count: 5 }] };
+      if (params.filter === 'video') return { groups: [{ key: '2026-10', count: 3 }] };
+      if (params.filter === 'fav') return { groups: [{ key: '2026-10', count: 1 }] };
+      return { groups: [{ key: '2026-10', count: 8 }] };
+    });
+
+    const yPhoto1 = {
+      path: '/Фотокамера/sun.jpg',
+      name: 'sun.jpg',
+      type: 'file' as const,
+      size: 2048,
+      mime: 'image/jpeg',
+      mediaType: 'image',
+      md5: 'y-sun',
+      createdAt: '2026-10-18T10:00:00Z',
+      modifiedAt: '2026-10-18T10:00:00Z',
+      publicUrl: null,
+      previewUrl: '/api/yandex-disk/preview?path=/Фотокамера/sun.jpg&size=L',
+    };
+    const yPhoto2 = {
+      path: '/Фотокамера/moon.jpg',
+      name: 'moon.jpg',
+      type: 'file' as const,
+      size: 2048,
+      mime: 'image/jpeg',
+      mediaType: 'image',
+      md5: 'y-moon',
+      createdAt: '2026-10-18T11:00:00Z',
+      modifiedAt: '2026-10-18T11:00:00Z',
+      publicUrl: null,
+      previewUrl: '/api/yandex-disk/preview?path=/Фотокамера/moon.jpg&size=L',
+    };
+    const yVideo = {
+      path: '/Фотокамера/clip.mp4',
+      name: 'clip.mp4',
+      type: 'file' as const,
+      size: 8192,
+      mime: 'video/mp4',
+      mediaType: 'video',
+      md5: 'y-clip',
+      createdAt: '2026-10-19T10:00:00Z',
+      modifiedAt: '2026-10-19T10:00:00Z',
+      publicUrl: null,
+      previewUrl: '/api/yandex-disk/preview?path=/Фотокамера/clip.mp4&size=L',
+    };
+
+    useYandexDisk().status.value = {
+      enabled: true,
+      connected: true,
+      reconnectRequired: false,
+      login: 'vlad',
+      displayName: 'Vlad',
+      email: null,
+      avatarUrl: null,
+    };
+    yandexStatusMock.mockResolvedValue(useYandexDisk().status.value);
+    yandexListMediaMock.mockResolvedValue([yPhoto1, yPhoto2, yVideo]);
+
+    const w = mountIt({ activeSection: 'photos' });
+    await flushPromises();
+
+    const feed = w.get('[data-testid="feed-stub"]');
+    expect(feed.attributes('data-filter')).toBe('photo');
+    expect(feed.attributes('data-supplementary-count')).toBe('2');
+    expect(w.find('[data-file-id="yandex:/Фотокамера/sun.jpg"]').exists()).toBe(true);
+    expect(w.find('[data-file-id="yandex:/Фотокамера/moon.jpg"]').exists()).toBe(true);
+    expect(w.find('[data-file-id="yandex:/Фотокамера/clip.mp4"]').exists()).toBe(false);
+    expect(w.get('[data-s2-scope-pill]').text()).toContain('в: Фото');
+
+    const countsEmits = w.emitted('update:counts') ?? [];
+    const lastCounts = countsEmits[countsEmits.length - 1]?.[0] as {
+      library?: number;
+      photos?: number;
+      videos?: number;
+      favorites?: number;
+    };
+    expect(lastCounts.photos).toBe(7); // 5 Q Space photos + 2 Yandex photos
+    expect(lastCounts.videos).toBe(4); // 3 Q Space videos + 1 Yandex video
+    expect(lastCounts.library).toBe(11); // 8 Q Space + 3 Yandex
+    expect(lastCounts.favorites).toBe(1);
+
+    // Search in Фото excludes Yandex videos
+    await typeQuery(w, 'clip');
+    const searchIds = w.findAll('[data-testid="photos-search-grid"] [data-file-id]').map((n) => n.attributes('data-file-id'));
+    expect(searchIds).not.toContain('yandex:/Фотокамера/clip.mp4');
+  });
+
+  it('B-049: stale localStorage filter: "video" and videos -> Yandex folder -> Album (30 Yandex photos) never leave filter: "video" active, and albumMetaLoading gates supplementaryLoading', async () => {
+    localStorage.setItem('qcanva:photos:view:v1', JSON.stringify({ filter: 'video', period: 'day' }));
+
+    const yAlbumPhotos = Array.from({ length: 30 }, (_, idx) => ({
+      path: `/Фотокамера/img_${idx}.jpg`,
+      name: `img_${idx}.jpg`,
+      type: 'file' as const,
+      size: 1024,
+      mime: 'image/jpeg',
+      mediaType: 'image',
+      md5: `md5-${idx}`,
+      createdAt: '2026-10-18T10:00:00Z',
+      modifiedAt: '2026-10-18T10:00:00Z',
+      publicUrl: null,
+      previewUrl: `/api/yandex-disk/preview?path=/Фотокамера/img_${idx}.jpg&size=L`,
+    }));
+
+    useYandexDisk().status.value = {
+      enabled: true,
+      connected: true,
+      reconnectRequired: false,
+      login: 'vlad',
+      displayName: 'Vlad',
+      email: null,
+      avatarUrl: null,
+    };
+    yandexStatusMock.mockResolvedValue(useYandexDisk().status.value);
+    yandexListMediaMock.mockResolvedValue([]);
+
+    const w = mountIt({ activeSection: 'library' });
+    await flushPromises();
+    expect(w.get('[data-testid="feed-stub"]').attributes('data-filter')).toBe('all');
+
+    await w.setProps({ activeSection: 'videos' });
+    await flushPromises();
+    expect(w.get('[data-testid="feed-stub"]').attributes('data-filter')).toBe('video');
+
+    // Switch to Yandex folder while activeSection prop stays 'videos' -> filter MUST be 'all'
+    await w.setProps({ externalYandexPath: '/Фотокамера' });
+    await flushPromises();
+    expect(w.get('[data-testid="feed-stub"]').attributes('data-filter')).toBe('all');
+
+    // Switch directly to Album with 30 Yandex photos while activeSection stays 'videos'
+    let resolveSpacesGet!: (val: unknown) => void;
+    spacesGetMock.mockReturnValueOnce(new Promise((resolve) => { resolveSpacesGet = resolve; }));
+    spacesFeedMock.mockResolvedValueOnce({ items: [], offset: 0, limit: 200, nextOffset: null });
+    yandexListMediaMock.mockResolvedValueOnce(yAlbumPhotos);
+
+    await w.setProps({ externalYandexPath: null, externalAlbumId: 'alb-y30' });
+    const feed = w.get('[data-testid="feed-stub"]');
+    expect(feed.attributes('data-filter')).toBe('all');
+    expect(feed.attributes('data-supplementary-loading')).toBe('true');
+
+    resolveSpacesGet({
+      id: 'alb-y30',
+      name: '30 Фото',
+      sources: [{ id: 'src-y30', kind: 'yandex', title: 'Фотокамера', folderId: null, yandexPath: '/Фотокамера' }],
+    });
+    await flushPromises();
+
+    expect(feed.attributes('data-filter')).toBe('all');
+    expect(feed.attributes('data-supplementary-loading')).toBe('false');
+    expect(feed.attributes('data-supplementary-count')).toBe('30');
+  });
+
+  it('B-046: revisiting Yandex folder hydrates instantly from cache with 0 extra listMediaPage calls, and opening Yandex folder / Q Space folder / Album pauses background loads', async () => {
+    const { yandexDisk } = await import('../../api/yandexDisk');
+    const folderItems = [
+      {
+        path: '/Фотокамера/cached.jpg',
+        name: 'cached.jpg',
+        type: 'file' as const,
+        size: 1024,
+        mime: 'image/jpeg',
+        mediaType: 'image',
+        md5: 'md5-cached',
+        createdAt: '2026-10-18T10:00:00Z',
+        modifiedAt: '2026-10-18T10:00:00Z',
+        publicUrl: null,
+        previewUrl: '/api/yandex-disk/preview?path=/Фотокамера/cached.jpg&size=L',
+      },
+    ];
+
+    useYandexDisk().status.value = {
+      enabled: true,
+      connected: true,
+      reconnectRequired: false,
+      login: 'vlad',
+      displayName: 'Vlad',
+      email: null,
+      avatarUrl: null,
+    };
+    yandexStatusMock.mockResolvedValue(useYandexDisk().status.value);
+
+    // Track AbortSignal passed to root '/' background crawl vs '/Фотокамера'
+    const rootSignals: AbortSignal[] = [];
+    const listPageSpy = vi.spyOn(yandexDisk, 'listMediaPage').mockImplementation(async (path, opts) => {
+      if (path === '/') {
+        if (opts?.signal) rootSignals.push(opts.signal);
+        return { path: '/', items: [], total: 0, limit: 120, nextCursor: null, hasMore: false };
+      }
+      return { path, items: folderItems, total: 1, limit: 100, nextCursor: null, hasMore: false };
+    });
+
+    const w = mountIt({ activeSection: 'library' });
+    await flushPromises();
+
+    // 1. Open Фотокамера -> fetches once and caches
+    await w.setProps({ externalYandexPath: '/Фотокамера' });
+    await flushPromises();
+    expect(rootSignals.every((s) => s.aborted || true)).toBe(true);
+    const callsForCamera1 = listPageSpy.mock.calls.filter(([p]) => p === '/Фотокамера').length;
+    expect(callsForCamera1).toBe(1);
+    expect(w.get('[data-testid="feed-stub"]').attributes('data-external-count')).toBe('1');
+    expect(w.find('[data-file-id="yandex:/Фотокамера/cached.jpg"]').exists()).toBe(true);
+
+    // 2. Return to Медиатека
+    await w.setProps({ externalYandexPath: null });
+    await flushPromises();
+
+    // 3. Revisit Фотокамера -> hydrates instantly from cache with 0 extra listMediaPage('/Фотокамера') calls
+    await w.setProps({ externalYandexPath: '/Фотокамера' });
+    expect(w.get('[data-testid="feed-stub"]').attributes('data-external-loading')).toBe('false');
+    expect(w.get('[data-testid="feed-stub"]').attributes('data-external-count')).toBe('1');
+    await flushPromises();
+    const callsForCamera2 = listPageSpy.mock.calls.filter(([p]) => p === '/Фотокамера').length;
+    expect(callsForCamera2).toBe(1);
+
+    // 4. Verify pauseBackgroundLoads() aborts an in-flight root '/' fetch on opening Q Space folder and Album
+    let pendingResolve!: (val: Awaited<ReturnType<typeof yandexDisk.listMediaPage>>) => void;
+    listPageSpy.mockImplementation(async (path, opts) => {
+      if (path === '/' && opts?.signal) {
+        rootSignals.push(opts.signal);
+        return await new Promise<Awaited<ReturnType<typeof yandexDisk.listMediaPage>>>((resolve) => {
+          pendingResolve = resolve;
+        });
+      }
+      return { items: [], total: 0, limit: 100, nextCursor: null, hasMore: false };
+    });
+
+    const { invalidateYandexMediaLibrary, useYandexMediaLibrary } = await import('../../composables/useYandexMediaLibrary');
+    await w.setProps({ externalYandexPath: null });
+    invalidateYandexMediaLibrary();
+    void useYandexMediaLibrary().ensureLoaded(true);
+    await flushPromises();
+    const signalForFolder = rootSignals[rootSignals.length - 1]!;
+    expect(signalForFolder.aborted).toBe(false);
+
+    // Opening Q Space folder aborts root fetch
+    await w.setProps({ externalFolderId: 'fold-1' });
+    expect(signalForFolder.aborted).toBe(true);
+
+    // Reset and verify Album also aborts root fetch
+    await w.setProps({ externalFolderId: null });
+    invalidateYandexMediaLibrary();
+    void useYandexMediaLibrary().ensureLoaded(true);
+    await flushPromises();
+    const signalForAlbum = rootSignals[rootSignals.length - 1]!;
+    expect(signalForAlbum.aborted).toBe(false);
+
+    spacesGetMock.mockResolvedValueOnce({ id: 'alb-pause', name: 'Pause Test', sources: [] });
+    spacesFeedMock.mockResolvedValueOnce({ items: [], offset: 0, limit: 200, nextOffset: null });
+    await w.setProps({ externalAlbumId: 'alb-pause' });
+    expect(signalForAlbum.aborted).toBe(true);
+    pendingResolve?.({ items: [], total: 0, limit: 120, nextCursor: null, hasMore: false });
+
+    listPageSpy.mockRestore();
+  });
+
+  it('B-046: reach-end loadMoreYandexFolder is a no-op while silent stale-while-revalidate is in flight and resumes cleanly after revalidation', async () => {
+    resetYandexMediaCacheForTests();
+    const { yandexDisk } = await import('../../api/yandexDisk');
+
+    useYandexDisk().status.value = {
+      enabled: true,
+      connected: true,
+      reconnectRequired: false,
+      login: 'vlad',
+      displayName: 'Vlad',
+      email: null,
+      avatarUrl: null,
+    };
+    yandexStatusMock.mockResolvedValue(useYandexDisk().status.value);
+
+    const staleItem = {
+      path: '/Архив/stale.jpg',
+      name: 'stale.jpg',
+      type: 'file' as const,
+      size: 1024,
+      mime: 'image/jpeg',
+      mediaType: 'image',
+      md5: 'md5-stale',
+      createdAt: '2026-10-18T10:00:00Z',
+      modifiedAt: '2026-10-18T10:00:00Z',
+      publicUrl: null,
+      previewUrl: '/api/yandex-disk/preview?path=/Архив/stale.jpg&size=L',
+    };
+    await setCachedYandexFolder('/Архив', {
+      items: [staleItem],
+      nextCursor: 'stale-cur-2',
+      hasMore: true,
+      savedAt: Date.now() - YANDEX_CACHE_REVALIDATE_MS - 10_000,
+    });
+
+    let resolveRevalidate!: (val: Awaited<ReturnType<typeof yandexDisk.listMediaPage>>) => void;
+    const listPageSpy = vi.spyOn(yandexDisk, 'listMediaPage').mockImplementationOnce(
+      () => new Promise((resolve) => { resolveRevalidate = resolve; }),
+    );
+
+    const w = mountIt({ externalYandexPath: '/Архив' });
+    await flushPromises();
+
+    // Hydrated from stale cache while silent revalidation is in flight.
+    expect(w.get('[data-testid="feed-stub"]').attributes('data-external-count')).toBe('1');
+    expect(w.get('[data-testid="feed-stub"]').attributes('data-external-loading')).toBe('false');
+    expect(w.get('[data-testid="feed-stub"]').attributes('data-external-has-more')).toBe('true');
+    expect(listPageSpy).toHaveBeenCalledTimes(1);
+
+    // Trigger reach-end while revalidation is in flight -> must NOT issue cursor request.
+    await w.get('[data-stub-reach-end]').trigger('click');
+    await flushPromises();
+    expect(listPageSpy).toHaveBeenCalledTimes(1);
+
+    // Revalidation resolves with fresh page 1 and fresh cursor.
+    resolveRevalidate({
+      items: [
+        {
+          ...staleItem,
+          path: '/Архив/fresh1.jpg',
+          name: 'fresh1.jpg',
+          md5: 'md5-f1',
+          previewUrl: '/api/yandex-disk/preview?path=/Архив/fresh1.jpg&size=L',
+        },
+      ],
+      limit: 100,
+      hasMore: true,
+      nextCursor: 'fresh-cur-2',
+    });
+    await flushPromises();
+
+    expect(w.find('[data-file-id="yandex:/Архив/fresh1.jpg"]').exists()).toBe(true);
+    expect(w.find('[data-file-id="yandex:/Архив/stale.jpg"]').exists()).toBe(false);
+    expect(w.get('[data-testid="feed-stub"]').attributes('data-external-has-more')).toBe('true');
+
+    // Subsequent reach-end uses the fresh cursor cleanly.
+    listPageSpy.mockResolvedValueOnce({
+      items: [
+        {
+          ...staleItem,
+          path: '/Архив/fresh2.jpg',
+          name: 'fresh2.jpg',
+          md5: 'md5-f2',
+          previewUrl: '/api/yandex-disk/preview?path=/Архив/fresh2.jpg&size=L',
+        },
+      ],
+      limit: 100,
+      hasMore: false,
+      nextCursor: null,
+    });
+    await w.get('[data-stub-reach-end]').trigger('click');
+    await flushPromises();
+
+    expect(listPageSpy).toHaveBeenNthCalledWith(
+      2,
+      '/Архив',
+      expect.objectContaining({ limit: 100, cursor: 'fresh-cur-2', signal: expect.any(AbortSignal) }),
+    );
+    expect(w.get('[data-testid="feed-stub"]').attributes('data-external-count')).toBe('2');
+    expect(w.get('[data-testid="feed-stub"]').attributes('data-external-has-more')).toBe('false');
+
+    listPageSpy.mockRestore();
+    resetYandexMediaCacheForTests();
   });
 });

@@ -56,6 +56,8 @@ export type YandexMediaPage = {
   limit?: number;
   hasMore?: boolean;
   nextCursor?: string | null;
+  cached?: boolean;
+  syncedAt?: string;
 };
 
 export type YandexImportToQspaceResult = {
@@ -212,15 +214,28 @@ const q = (params: Record<string, string | number | boolean | undefined>) => {
 
 const json = (body: unknown): RequestInit => ({ method: 'POST', body: JSON.stringify(body) });
 
+const disconnectListeners = new Set<() => void>();
+
+export function onYandexDisconnected(listener: () => void): () => void {
+  disconnectListeners.add(listener);
+  return () => disconnectListeners.delete(listener);
+}
+
 export const yandexDisk = {
   status: () => request<YandexStatus>('/integrations/yandex'),
   /** The Yandex consent page; `returnTo` is where the browser comes back to in the app. */
   connectUrl: (returnTo: string) => request<{ url: string }>('/integrations/yandex/connect', json({ returnTo })),
-  disconnect: () => request<void>('/integrations/yandex', { method: 'DELETE' }).catch((error) => {
-    // 204 has no JSON body: request() fails to parse it, which is success here.
-    if (error instanceof SyntaxError) return;
-    throw error;
-  }),
+  disconnect: async () => {
+    try {
+      await request<void>('/integrations/yandex', { method: 'DELETE' });
+    } catch (error) {
+      // 204 has no JSON body: request() fails to parse it, which is success here.
+      if (!(error instanceof SyntaxError)) throw error;
+    }
+    for (const listener of disconnectListeners) {
+      try { listener(); } catch { /* ignore */ }
+    }
+  },
   list: (
     path: string,
     opts: { offset?: number; limit?: number; sort?: YandexSort; previewSize?: YandexPreviewSize; signal?: AbortSignal } = {},
@@ -242,6 +257,8 @@ export const yandexDisk = {
       offset?: number;
       cursor?: string | null;
       previewSize?: YandexPreviewSize;
+      kind?: 'all' | 'photo' | 'video';
+      refresh?: boolean | '1';
       signal?: AbortSignal;
     } = {},
   ): Promise<YandexMediaPage> {
@@ -288,6 +305,8 @@ export const yandexDisk = {
         offset: opts.offset,
         cursor: opts.cursor ?? undefined,
         previewSize,
+        kind: opts.kind,
+        refresh: opts.refresh ? '1' : undefined,
       })}`,
       signal ? { signal } : undefined,
     );
@@ -306,6 +325,8 @@ export const yandexDisk = {
       limit: page?.limit ?? limit,
       hasMore: Boolean(page?.hasMore),
       nextCursor: page?.nextCursor ?? null,
+      cached: page?.cached,
+      syncedAt: page?.syncedAt,
     };
   },
   listMedia: async (

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { FeedItem } from '../../api/photos';
 import {
+  compareFolderHierarchy,
+  folderHierarchySortKey,
   formatDuration,
   groupKeysForItem,
   groupTitle,
@@ -24,16 +26,64 @@ describe('groupTitle', () => {
     expect(parseDateKey('undated')).toBeNull();
   });
 
-  it('folder shows the last path segment and the full path as secondary', () => {
+  it('folder shows the full slash-separated path directly in title without duplicating secondary', () => {
     const g = { key: 'f1', folder: { name: 'Алтай', path: ['Поездки', 'Алтай'] } };
     expect(groupTitle('folder', g, 'month', 'ru')).toEqual({
-      title: 'Алтай',
-      secondary: 'Поездки / Алтай',
+      title: 'Поездки / Алтай',
+      isFolder: true,
+    });
+    expect(
+      groupTitle('folder', { key: 'f-day1', folder: { name: 'День 1', path: ['ОКО ЗА ОКУ', 'День 1'] } }, 'month', 'ru'),
+    ).toEqual({
+      title: 'ОКО ЗА ОКУ / День 1',
       isFolder: true,
     });
     const top = groupTitle('folder', { key: 'f2', folder: { name: 'Камера', path: ['Камера'] } }, 'month', 'ru');
     expect(top.secondary).toBeUndefined();
     expect(groupTitle('folder', { key: 'root' }, 'month', 'ru').title).toBe('Корень диска');
+  });
+
+  it('folderHierarchySortKey and compareFolderHierarchy keep parent folders and subfolders strictly contiguous', () => {
+    expect(folderHierarchySortKey({ name: 'День 1', path: ['ОКО ЗА ОКУ', 'День 1'] })).toBe(
+      'ОКО ЗА ОКУ\u0000День 1',
+    );
+    expect(folderHierarchySortKey({ name: 'Камера', path: [] }, 'f2')).toBe('Камера');
+    expect(folderHierarchySortKey(null, 'fallback')).toBe('fallback');
+
+    const paths = [
+      ['Фотокамера'],
+      ['ОКО ЗА ОКУ', 'Финал'],
+      ['ОКО ЗА ОКУ', 'День 1'],
+      ['МСТА 2026'],
+      ['ОКО ЗА ОКУ', 'Сплав'],
+      ['ОКО ЗА ОКУ'],
+      ['ОКО ЗА ОКУ', 'Аня'],
+    ];
+
+    const asc = [...paths].sort((a, b) => compareFolderHierarchy(a, b, false)).map((p) => p.join(' / '));
+    expect(asc).toEqual([
+      'МСТА 2026',
+      'ОКО ЗА ОКУ',
+      'ОКО ЗА ОКУ / Аня',
+      'ОКО ЗА ОКУ / День 1',
+      'ОКО ЗА ОКУ / Сплав',
+      'ОКО ЗА ОКУ / Финал',
+      'Фотокамера',
+    ]);
+
+    const desc = [...paths].sort((a, b) => compareFolderHierarchy(a, b, true)).map((p) => p.join(' / '));
+    expect(desc).toEqual([
+      'Фотокамера',
+      'ОКО ЗА ОКУ',
+      'ОКО ЗА ОКУ / Аня',
+      'ОКО ЗА ОКУ / День 1',
+      'ОКО ЗА ОКУ / Сплав',
+      'ОКО ЗА ОКУ / Финал',
+      'МСТА 2026',
+    ]);
+
+    expect(compareFolderHierarchy(['ОКО ЗА ОКУ', 'День 2'], ['ОКО ЗА ОКУ', 'День 10'])).toBeLessThan(0);
+    expect(compareFolderHierarchy(['око за оку'], ['ОКО ЗА ОКУ', 'Аня'], true)).toBeLessThan(0);
   });
 
   it('album and size buckets', () => {

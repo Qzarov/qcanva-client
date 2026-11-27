@@ -215,35 +215,42 @@ describe('usePhotosView', () => {
     expect(state.value.tile).toBe('m');
   });
 
-  it('persists to localStorage immediately and to hub debounced', async () => {
+  it('persists to localStorage immediately and to hub debounced (omitting filter)', async () => {
     const { usePhotosView, PHOTOS_VIEW_STORAGE_KEY, PHOTOS_VIEW_PREFERENCE_KEY } = await load();
-    const { state, setPeriod, setFilter } = usePhotosView();
+    const { state, setPeriod, setShared, setFilter } = usePhotosView();
 
     setPeriod('year');
 
     const raw = localStorage.getItem(PHOTOS_VIEW_STORAGE_KEY);
     expect(raw).not.toBeNull();
-    expect(JSON.parse(raw!).period).toBe('year');
+    const parsed = JSON.parse(raw!);
+    expect(parsed.period).toBe('year');
+    expect('filter' in parsed).toBe(false);
 
     await vi.advanceTimersByTimeAsync(499);
     expect(putPrefMock).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(1);
     expect(putPrefMock).toHaveBeenCalledTimes(1);
-    expect(putPrefMock).toHaveBeenCalledWith(PHOTOS_VIEW_PREFERENCE_KEY, state.value);
+    const { filter: _f1, ...expected1 } = state.value;
+    expect(putPrefMock).toHaveBeenCalledWith(PHOTOS_VIEW_PREFERENCE_KEY, expected1);
 
     putPrefMock.mockClear();
 
     setPeriod('day');
     await vi.advanceTimersByTimeAsync(200);
+    setShared(false);
     setFilter('photo');
     await vi.advanceTimersByTimeAsync(499);
     expect(putPrefMock).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(1);
     expect(putPrefMock).toHaveBeenCalledTimes(1);
-    expect(putPrefMock).toHaveBeenCalledWith(PHOTOS_VIEW_PREFERENCE_KEY, state.value);
+    const { filter: _f2, ...expected2 } = state.value;
+    expect('filter' in expected2).toBe(false);
+    expect(putPrefMock).toHaveBeenCalledWith(PHOTOS_VIEW_PREFERENCE_KEY, expected2);
     expect(state.value.period).toBe('day');
+    expect(state.value.shared).toBe(false);
     expect(state.value.filter).toBe('photo');
   });
 
@@ -319,7 +326,7 @@ describe('usePhotosView', () => {
     expect(normalizePhotosViewState('x')).toEqual(defaultPhotosViewState());
   });
 
-  it('hub value arriving after load is applied', async () => {
+  it('hub value arriving after load applies persisted fields without overwriting filter', async () => {
     getPrefMock.mockResolvedValue({ period: 'year', filter: 'video' });
 
     const { usePhotosView, PHOTOS_VIEW_STORAGE_KEY } = await load();
@@ -329,9 +336,41 @@ describe('usePhotosView', () => {
     await Promise.resolve();
 
     expect(state.value.period).toBe('year');
-    expect(state.value.filter).toBe('video');
-    expect(JSON.parse(localStorage.getItem(PHOTOS_VIEW_STORAGE_KEY)!).period).toBe('year');
+    expect(state.value.filter).toBe('all');
+    const saved = JSON.parse(localStorage.getItem(PHOTOS_VIEW_STORAGE_KEY)!);
+    expect(saved.period).toBe('year');
+    expect('filter' in saved).toBe(false);
     expect(putPrefMock).not.toHaveBeenCalled();
+  });
+
+  it('B-049: stale localStorage { filter: "video" } and hub { filter: "video" } always hydrate with filter "all" and do not clobber active section filter', async () => {
+    localStorage.setItem(
+      'qcanva:photos:view:v1',
+      JSON.stringify({ period: 'day', filter: 'video', tile: 'l' }),
+    );
+    let resolveGetPref!: (val: unknown) => void;
+    getPrefMock.mockReturnValue(
+      new Promise((resolve) => {
+        resolveGetPref = resolve;
+      }),
+    );
+
+    const { usePhotosView, normalizePhotosViewState } = await load();
+    expect(normalizePhotosViewState({ filter: 'video', period: 'year' }).filter).toBe('all');
+
+    const { state, setFilter } = usePhotosView();
+    expect(state.value.filter).toBe('all');
+    expect(state.value.period).toBe('day');
+    expect(state.value.tile).toBe('l');
+
+    // Simulate section setting filter to 'photo' before async hub response returns stale 'video'
+    setFilter('photo');
+    resolveGetPref({ period: 'year', filter: 'video' });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(state.value.period).toBe('year');
+    expect(state.value.filter).toBe('photo');
   });
 
   it('hub value does not override a change made meanwhile', async () => {
@@ -394,15 +433,16 @@ describe('usePhotosView', () => {
     expect(state.value.collapsedShares).toEqual(['share-root-2']);
 
     reset();
+    const { filter: _ignoredFilter, ...persistedDefaults } = defaultPhotosViewState();
     expect(state.value).toEqual(defaultPhotosViewState());
     expect(JSON.parse(localStorage.getItem(PHOTOS_VIEW_STORAGE_KEY)!)).toEqual(
-      defaultPhotosViewState(),
+      persistedDefaults,
     );
 
     await vi.advanceTimersByTimeAsync(500);
     expect(putPrefMock).toHaveBeenCalledWith(
       PHOTOS_VIEW_PREFERENCE_KEY,
-      defaultPhotosViewState(),
+      persistedDefaults,
     );
   });
 

@@ -1422,6 +1422,7 @@ import {
   type YandexItem,
 } from '../api/yandexDisk';
 import { useYandexDisk } from '../composables/useYandexDisk';
+import { invalidateYandexFolderCache } from '../composables/useYandexMediaCache';
 import { invalidateYandexMediaLibrary } from '../composables/useYandexMediaLibrary';
 import { importTitle, type ImportKind } from '../dashboard/import-files';
 import { marked } from 'marked';
@@ -4101,6 +4102,7 @@ export default defineComponent({
     const onYandexDiskChanged = () => {
       yandexRefreshKey.value += 1;
       invalidateYandexMediaLibrary();
+      void invalidateYandexFolderCache();
       void gallerySidebarRef.value?.refreshYandex?.();
       refreshGalleryView({ clearSelection: false, invalidateFolders: false });
     };
@@ -4190,6 +4192,7 @@ export default defineComponent({
       clearSelection();
       yandexRefreshKey.value += 1;
       invalidateYandexMediaLibrary();
+      void invalidateYandexFolderCache([...move.sources, target]);
       void gallerySidebarRef.value?.refreshYandex?.();
       refreshGalleryView({ clearSelection: true, invalidateFolders: false });
       // The open folder itself moved: follow it.
@@ -4771,6 +4774,7 @@ export default defineComponent({
       })));
       yandexRefreshKey.value += 1;
       invalidateYandexMediaLibrary();
+      void invalidateYandexFolderCache([path]);
     };
     /** Back from Yandex's consent page: `?space=yandex&yandex=connected|error`. */
     const takeYandexReturn = (): boolean => {
@@ -4965,7 +4969,10 @@ export default defineComponent({
       trashDriveFile: (file) => driveApi.trashFile(file.id),
       removeYandexFile: (file) => yandexDisk.remove(file.path).then(settleYandexOutcome),
       afterSuccess: async ({ items, driveFiles, yandex }) => {
-        if (yandex.length) yandexRefreshKey.value += 1;
+        if (yandex.length) {
+          yandexRefreshKey.value += 1;
+          void invalidateYandexFolderCache(yandex.map((f) => f.path));
+        }
         if (driveFiles.length) {
           folderFilesRefreshKey.value += 1;
           refreshFolderFileCounts();
@@ -7744,6 +7751,7 @@ export default defineComponent({
           try {
             await yandexDisk.createFolder(joinYandexPath(targetYandexPath, name));
             invalidateYandexMediaLibrary();
+            void invalidateYandexFolderCache([targetYandexPath]);
             yandexRefreshKey.value += 1;
             void gallerySidebarRef.value?.refreshYandex?.(targetYandexPath);
             void yandexView.value?.reload?.();
@@ -7772,6 +7780,7 @@ export default defineComponent({
           try {
             await uploadYandexFile(joinYandexPath(targetYandexPath, fileName), file).promise;
             invalidateYandexMediaLibrary();
+            void invalidateYandexFolderCache([targetYandexPath]);
             yandexRefreshKey.value += 1;
             void gallerySidebarRef.value?.refreshYandex?.(targetYandexPath);
             void yandexView.value?.reload?.();
@@ -7987,6 +7996,7 @@ export default defineComponent({
           yandexRefreshKey.value += 1;
           void gallerySidebarRef.value?.refreshYandex?.(yandexParentPath(yPath));
           const renamedPath = normalizeYandexAlbumPath(outcome.path || joinYandexPath(yandexParentPath(yPath), nextName));
+          void invalidateYandexFolderCache([yPath, renamedPath]);
           if (galleryYandexPath.value === yPath || galleryYandexPath.value?.startsWith(`${yPath}/`)) {
             galleryYandexPath.value = renamedPath + galleryYandexPath.value.slice(yPath.length);
           }
@@ -8097,6 +8107,7 @@ export default defineComponent({
             deletedPaths.push(yPath);
           }
           invalidateYandexMediaLibrary();
+          void invalidateYandexFolderCache(deletedPaths);
           yandexRefreshKey.value += 1;
           void gallerySidebarRef.value?.refreshYandex?.(yandexParentPath(deletedPaths[0]!));
           if (

@@ -61,6 +61,43 @@ const SIZE_LABELS = {
   lt3: 'photosSizeLt3',
 } as const;
 
+const folderNameCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+
+/** Sort key for folder hierarchies using null-separated path segments. */
+export function folderHierarchySortKey(
+  folder?: { name: string; path: string[] } | null,
+  fallbackKey?: string,
+): string {
+  if (folder && folder.path.length > 0) {
+    return folder.path.join('\u0000');
+  }
+  return folder?.name ?? fallbackKey ?? '';
+}
+
+/**
+ * Compares two folder paths so a parent folder and all of its subfolders remain
+ * strictly contiguous in both ascending and descending root sort modes.
+ */
+export function compareFolderHierarchy(
+  aPath: readonly string[],
+  bPath: readonly string[],
+  rootDesc = false,
+): number {
+  if (aPath.length === 0 && bPath.length === 0) return 0;
+  const aRoot = aPath[0] ?? '';
+  const bRoot = bPath[0] ?? '';
+  const rootCmp = folderNameCollator.compare(aRoot, bRoot);
+  if (rootCmp !== 0) {
+    return rootCmp * (rootDesc ? -1 : 1);
+  }
+  const commonLen = Math.min(aPath.length, bPath.length);
+  for (let i = 1; i < commonLen; i++) {
+    const segCmp = folderNameCollator.compare(aPath[i]!, bPath[i]!);
+    if (segCmp !== 0) return segCmp;
+  }
+  return aPath.length - bPath.length;
+}
+
 /** Title (and secondary path) of a feed group at the given grouping level. */
 export function groupTitle(
   level: SortKey,
@@ -75,11 +112,10 @@ export function groupTitle(
     case 'folder': {
       if (group.folder) {
         const path = group.folder.path.length > 0 ? group.folder.path : [group.folder.name];
-        const title = path[path.length - 1] ?? group.folder.name;
+        const title = path.length > 1 ? path.join(' / ') : (path[0] ?? group.folder.name);
         return {
           title,
           isFolder: true,
-          ...(path.length > 1 ? { secondary: path.join(' / ') } : {}),
         };
       }
       return { title: group.key === 'root' ? m.photosFolderRoot : group.key, isFolder: true };

@@ -10,6 +10,7 @@ export function invalidateGalleryFolderFilesCache(): void {
 
 <script setup lang="ts">
 import {
+  Camera,
   ChevronDown,
   ChevronRight,
   Clock,
@@ -52,9 +53,10 @@ import { useI18n } from '../../composables/useI18n';
 import { useSpaces } from '../../composables/useSpaces';
 import { useToast } from '../../composables/useToast';
 import { useYandexDisk } from '../../composables/useYandexDisk';
+import { invalidateYandexFolderCache } from '../../composables/useYandexMediaCache';
 import { invalidateYandexMediaLibrary } from '../../composables/useYandexMediaLibrary';
 
-export type GallerySection = 'library' | 'people' | 'favorites' | 'recent' | 'videos' | 'trash';
+export type GallerySection = 'library' | 'photos' | 'people' | 'favorites' | 'recent' | 'videos' | 'trash';
 
 export interface GalleryStorageFolder {
   id: string;
@@ -67,6 +69,7 @@ export interface GalleryStorageFolder {
 
 export interface GallerySidebarCounts {
   library?: number;
+  photos?: number;
   people?: number;
   favorites?: number;
   recent?: number;
@@ -1200,6 +1203,7 @@ async function onYandexDrop(e: DragEvent, targetPath: string): Promise<void> {
   }
   if (moved > 0) {
     invalidateYandexMediaLibrary();
+    void invalidateYandexFolderCache([...affectedParents]);
     const folderLabel = targetPath === '/' ? t('yandexDisk') : (targetPath.split('/').filter(Boolean).pop() ?? targetPath);
     toast.show(
       t('bulkMovedTo').replace('{folder}', folderLabel).replace('{n}', String(moved)),
@@ -1349,6 +1353,7 @@ const libItems = computed<Array<{
   icon: typeof ImageIcon;
 }>>(() => [
   { key: 'library', label: t('galleryLibrary'), count: props.counts.library, icon: ImageIcon },
+  { key: 'photos', label: t('galleryPhotosOnly'), count: props.counts.photos, icon: Camera },
   { key: 'people', label: t('galleryPeople'), soon: true, icon: Users },
   { key: 'favorites', label: t('galleryFavorites'), count: props.counts.favorites, icon: Heart },
   { key: 'recent', label: t('galleryRecent'), count: props.counts.recent, icon: Clock },

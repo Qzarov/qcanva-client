@@ -968,22 +968,21 @@ describe('PhotosFeed', () => {
     await extFavBtn.trigger('click');
     expect((w.emitted('toggle-favorite')?.[0]?.[0] as FeedItem | undefined)?.fileId).toBe('yd:/Фото/img1.jpg');
 
-    // Simulate natural dimensions loading for a 2:1 wide image when width was null
+    // B-048: unknown dimensions use stable 4:3 aspect ratio and NEVER relayout on load
+    const tileEl = w.get('[data-file-id="yd:/Фото/img1.jpg"]').element as HTMLElement;
+    const beforeW = parseFloat(tileEl.style.width);
+    const beforeH = parseFloat(tileEl.style.height);
+    expect(beforeW / beforeH).toBeCloseTo(4 / 3, 1);
+
     const imgEl = img1.element as HTMLImageElement;
     Object.defineProperty(imgEl, 'naturalWidth', { configurable: true, value: 1600 });
     Object.defineProperty(imgEl, 'naturalHeight', { configurable: true, value: 800 });
-    const origRaf = window.requestAnimationFrame;
-    (window as unknown as { requestAnimationFrame?: unknown }).requestAnimationFrame = undefined;
-    try {
-      await img1.trigger('load');
-      await settle();
-    } finally {
-      window.requestAnimationFrame = origRaf;
-    }
-    const tileEl = w.get('[data-file-id="yd:/Фото/img1.jpg"]').element as HTMLElement;
-    const tileW = parseFloat(tileEl.style.width);
-    const tileH = parseFloat(tileEl.style.height);
-    expect(tileW / tileH).toBeCloseTo(2, 1);
+    await img1.trigger('load');
+    await settle();
+
+    expect(parseFloat(tileEl.style.width)).toBeCloseTo(beforeW, 3);
+    expect(parseFloat(tileEl.style.height)).toBeCloseTo(beforeH, 3);
+    expect(img1.classes()).toContain('is-loaded');
     const orderedAfterLoad = (w.vm as unknown as { orderedItems: () => Array<{ fileId: string; processed: boolean }> }).orderedItems();
     expect(orderedAfterLoad.find((i) => i.fileId === 'yd:/Фото/img1.jpg')?.processed).toBe(false);
 
@@ -1204,7 +1203,7 @@ describe('PhotosFeed', () => {
     const [a, b] = await Promise.all([lib.ensureLoaded(), lib.ensureLoaded()]);
     expect(statusSpy).toHaveBeenCalledTimes(1);
     expect(listMediaSpy).toHaveBeenCalledTimes(1);
-    expect(listMediaSpy).toHaveBeenCalledWith('/');
+    expect(listMediaSpy).toHaveBeenCalledWith('/', expect.objectContaining({ signal: expect.any(AbortSignal) }));
     expect(a).toHaveLength(1);
     expect(b).toHaveLength(1);
     expect(lib.items.value[0]).toMatchObject({
@@ -1409,13 +1408,21 @@ describe('PhotosFeed', () => {
 
     const lib = libMod.useYandexMediaLibrary();
     await lib.ensureLoaded();
-    expect(listPageSpy).toHaveBeenNthCalledWith(1, '/', { limit: 120 });
+    expect(listPageSpy).toHaveBeenNthCalledWith(
+      1,
+      '/',
+      expect.objectContaining({ limit: 120, signal: expect.any(AbortSignal) }),
+    );
     expect(lib.items.value.map((i) => i.yandexPath)).toEqual(['/Фотокамера/p1.jpg']);
     expect(lib.hasMore.value).toBe(true);
     expect(lib.loading.value).toBe(false);
 
     await lib.loadMore();
-    expect(listPageSpy).toHaveBeenNthCalledWith(2, '/', { limit: 120, cursor: 'cur-2' });
+    expect(listPageSpy).toHaveBeenNthCalledWith(
+      2,
+      '/',
+      expect.objectContaining({ limit: 120, cursor: 'cur-2', signal: expect.any(AbortSignal) }),
+    );
     expect(lib.items.value.map((i) => i.yandexPath)).toEqual(['/Фотокамера/p1.jpg', '/Фотокамера/p2.jpg']);
     expect(lib.hasMore.value).toBe(false);
     expect(lib.loadingMore.value).toBe(false);
@@ -1425,5 +1432,443 @@ describe('PhotosFeed', () => {
     listPageSpy.mockRestore();
     libMod.resetYandexMediaLibraryForTests();
     ydStatusMod.resetYandexDiskStatus();
+  });
+
+  it('B-047: sorts parent folders and subfolders strictly contiguously in name and size modes, and renders full slash path in title', async () => {
+    const Feed = await load();
+    const mkExtFolderItem = (id: number, folderPath: string, bytes: number) => ({
+      ...mkItem(id, {
+        fileId: `yd:${folderPath}/img-${id}.jpg`,
+        hash: `h-${id}`,
+        name: `img-${id}.jpg`,
+        processed: false,
+        folderId: folderPath,
+        bytes,
+      }),
+      previewSrc: `/api/yandex-disk/preview?path=${folderPath}/img-${id}.jpg`,
+      noReferrer: true,
+    });
+
+    // Root aggregate sizes:
+    // - МСТА 2026: 10 MB
+    // - ОКО ЗА ОКУ + subfolders: 1 + 2 + 50 + 3 + 4 = 60 MB
+    // - Фотокамера: 100 MB
+    const extItems = [
+      mkExtFolderItem(1, '/Фотокамера', 100_000_000),
+      mkExtFolderItem(2, '/ОКО ЗА ОКУ/Финал', 4_000_000),
+      mkExtFolderItem(3, '/ОКО ЗА ОКУ/День 1', 50_000_000),
+      mkExtFolderItem(4, '/МСТА 2026', 10_000_000),
+      mkExtFolderItem(5, '/ОКО ЗА ОКУ/Сплав', 3_000_000),
+      mkExtFolderItem(6, '/ОКО ЗА ОКУ', 1_000_000),
+      mkExtFolderItem(7, '/ОКО ЗА ОКУ/Аня', 2_000_000),
+    ];
+
+    const w = mountFeed(Feed, {
+      externalItems: extItems,
+      tileHeight: 80,
+      params: params({
+        levels: ['folder'],
+        sort: [{ key: 'folder', desc: false, sub: 'name' }],
+      }),
+    });
+    await settle();
+
+    const expectedAsc = [
+      'МСТА 2026',
+      'ОКО ЗА ОКУ',
+      'ОКО ЗА ОКУ / Аня',
+      'ОКО ЗА ОКУ / День 1',
+      'ОКО ЗА ОКУ / Сплав',
+      'ОКО ЗА ОКУ / Финал',
+      'Фотокамера',
+    ];
+    expect(w.findAll('.pgh-title').map((n) => n.text())).toEqual(expectedAsc);
+    expect(w.findAll('.pgh-path')).toHaveLength(0);
+
+    // Folder size ascending: root aggregates 10 MB < 60 MB < 100 MB -> identical contiguous hierarchy
+    await w.setProps({
+      params: params({
+        levels: ['folder'],
+        sort: [{ key: 'folder', desc: false, sub: 'size' }],
+      }),
+    });
+    await settle();
+    expect(w.findAll('.pgh-title').map((n) => n.text())).toEqual(expectedAsc);
+
+    // Folder size descending: 100 MB > 60 MB > 10 MB, and ОКО ЗА ОКУ subfolders remain strictly contiguous
+    await w.setProps({
+      params: params({
+        levels: ['folder'],
+        sort: [{ key: 'folder', desc: true, sub: 'size' }],
+      }),
+    });
+    await settle();
+    await scrollTo(w, 0);
+    expect(w.findAll('.pgh-title').map((n) => n.text())).toEqual([
+      'Фотокамера',
+      'ОКО ЗА ОКУ',
+      'ОКО ЗА ОКУ / Аня',
+      'ОКО ЗА ОКУ / День 1',
+      'ОКО ЗА ОКУ / Сплав',
+      'ОКО ЗА ОКУ / Финал',
+      'МСТА 2026',
+    ]);
+    w.unmount();
+
+    // Q Space mode with storageFolders enrichment also keeps subfolders contiguous & displays ОКО ЗА ОКУ / День 1
+    const storageFolders = [
+      { id: 'f-oko', name: 'ОКО ЗА ОКУ', parentId: null },
+      { id: 'f-anya', name: 'Аня', parentId: 'f-oko' },
+      { id: 'f-day1', name: 'День 1', parentId: 'f-oko' },
+      { id: 'f-splav', name: 'Сплав', parentId: 'f-oko' },
+      { id: 'f-final', name: 'Финал', parentId: 'f-oko' },
+      { id: 'f-msta', name: 'МСТА 2026', parentId: null },
+      { id: 'f-cam', name: 'Фотокамера', parentId: null },
+    ];
+    summaryMock.mockResolvedValue({
+      groups: [
+        { key: 'f-cam', count: 1, folder: { name: 'Фотокамера', path: [] } },
+        { key: 'f-final', count: 1, folder: { name: 'Финал', path: [] } },
+        { key: 'f-day1', count: 1, folder: { name: 'День 1', path: [] } },
+        { key: 'f-msta', count: 1, folder: { name: 'МСТА 2026', path: [] } },
+        { key: 'f-splav', count: 1, folder: { name: 'Сплав', path: [] } },
+        { key: 'f-oko', count: 1, folder: { name: 'ОКО ЗА ОКУ', path: [] } },
+        { key: 'f-anya', count: 1, folder: { name: 'Аня', path: [] } },
+      ],
+    });
+    itemsMock.mockResolvedValue({ items: [], nextCursor: null });
+
+    const wq = mountFeed(Feed, {
+      storageFolders,
+      tileHeight: 80,
+      params: params({
+        levels: ['folder'],
+        sort: [{ key: 'folder', desc: false, sub: 'name' }],
+      }),
+    });
+    await settle();
+    expect(wq.findAll('.pgh-title').map((n) => n.text())).toEqual(expectedAsc);
+    wq.unmount();
+  });
+
+  it('B-048: async img load on 20 unknown-dimension tiles never triggers relayout or changes coordinates, and adds .is-loaded', async () => {
+    const Feed = await load();
+    const extItems = Array.from({ length: 20 }, (_, i) => ({
+      ...mkItem(i, {
+        fileId: `yd:/Album/p${i}.jpg`,
+        hash: `h-${i}`,
+        name: `p${i}.jpg`,
+        processed: false,
+        width: null,
+        height: null,
+        folderId: '/Album',
+      }),
+      previewSrc: `https://cdn.example/thumb/${i}.jpg`,
+    }));
+
+    const w = mountFeed(Feed, {
+      externalItems: extItems,
+      tile: 's',
+      aspectMode: 'ratio',
+      params: params({ levels: ['date'], sort: [{ key: 'date', desc: true }] }),
+    });
+    await settle();
+
+    const readCoords = () =>
+      w.findAll('.pf-tile').map((tile) => {
+        const el = tile.element as HTMLElement;
+        const rowEl = el.closest('.pf-row') as HTMLElement;
+        return {
+          id: tile.attributes('data-file-id'),
+          top: rowEl.style.top,
+          rowH: rowEl.style.height,
+          left: el.style.left,
+          width: el.style.width,
+          height: el.style.height,
+        };
+      });
+
+    const before = readCoords();
+    expect(before).toHaveLength(20);
+
+    const imgs = w.findAll('img.pf-img');
+    expect(imgs).toHaveLength(20);
+    for (const imgW of imgs) {
+      expect(imgW.classes()).not.toContain('is-loaded');
+      const imgEl = imgW.element as HTMLImageElement;
+      Object.defineProperty(imgEl, 'naturalWidth', { configurable: true, value: 1920 });
+      Object.defineProperty(imgEl, 'naturalHeight', { configurable: true, value: 1080 });
+      await imgW.trigger('load');
+    }
+    await settle();
+
+    expect(readCoords()).toEqual(before);
+    for (const imgW of w.findAll('img.pf-img')) {
+      expect(imgW.classes()).toContain('is-loaded');
+    }
+    w.unmount();
+  });
+
+  it('B-046: gates /yandex-disk/preview loads to max 6 concurrent slots in LIFO viewport order and clears src on switch/unmount', async () => {
+    const Feed = await load();
+    const extItems = Array.from({ length: 50 }, (_, i) => ({
+      ...mkItem(i, {
+        fileId: `yd:/Путешествие/p${String(i).padStart(2, '0')}.jpg`,
+        hash: `ym-${i}`,
+        name: `p${String(i).padStart(2, '0')}.jpg`,
+        processed: false,
+        width: 1200,
+        height: 800,
+        folderId: '/Путешествие',
+      }),
+      previewSrc: `/api/yandex-disk/preview?path=/Путешествие/p${String(i).padStart(2, '0')}.jpg`,
+      noReferrer: true,
+    }));
+
+    const w = mountFeed(Feed, {
+      externalItems: extItems,
+      externalFeedKey: '/Путешествие',
+      params: params({ levels: ['date'], sort: [{ key: 'date', desc: true }] }),
+    });
+    await settle();
+
+    const activeImgs = () =>
+      w.findAll('img.pf-img:not(.is-loaded)').filter((img) => Boolean(img.attributes('src')));
+
+    // At most 6 concurrent /yandex-disk/preview imgs have src set at once
+    const initialActive = activeImgs();
+    expect(initialActive.length).toBeLessThanOrEqual(6);
+    expect(initialActive.length).toBe(6);
+
+    const visibleTileIdsBefore = w.findAll('.pf-tile').map((t) => t.attributes('data-file-id')!);
+
+    // Scroll down so new tiles enter visible at the bottom while some earlier queued tiles remain visible
+    await scrollTo(w, 600);
+    const visibleTileIdsAfter = w.findAll('.pf-tile').map((t) => t.attributes('data-file-id')!);
+    const newlyVisibleIds = visibleTileIdsAfter.filter((id) => !visibleTileIdsBefore.includes(id));
+    expect(newlyVisibleIds.length).toBeGreaterThan(0);
+
+    // Complete one active load -> the freed slot MUST pick a newly visible URL (LIFO!), not an older queued one
+    const activeBeforeLoad = activeImgs();
+    expect(activeBeforeLoad.length).toBeLessThanOrEqual(6);
+    const toComplete = activeBeforeLoad[0]!;
+    const activeSetBefore = new Set(activeBeforeLoad.map((i) => i.attributes('src')!));
+    await toComplete.trigger('load');
+    await settle();
+
+    const activeAfterLoad = activeImgs();
+    expect(activeAfterLoad.length).toBeLessThanOrEqual(6);
+    const startedSrc = activeAfterLoad
+      .map((i) => i.attributes('src')!)
+      .find((s) => !activeSetBefore.has(s));
+    expect(startedSrc).toBeTruthy();
+    const startedTileId = `yd:${startedSrc!.split('path=')[1]}`;
+    expect(newlyVisibleIds).toContain(startedTileId);
+
+    // On externalFeedKey switch, in-flight img src attributes are removed (never left as "")
+    const inflightElsBeforeSwitch = activeImgs().map((i) => i.element as HTMLImageElement);
+    expect(inflightElsBeforeSwitch.length).toBeGreaterThan(0);
+    await w.setProps({
+      externalFeedKey: '/ДругаяПапка',
+      externalItems: [
+        {
+          ...mkItem(99, {
+            fileId: 'yd:/ДругаяПапка/one.jpg',
+            hash: 'ym-99',
+            name: 'one.jpg',
+            processed: false,
+            width: 1200,
+            height: 800,
+            folderId: '/ДругаяПапка',
+          }),
+          previewSrc: '/api/yandex-disk/preview?path=/ДругаяПапка/one.jpg',
+          noReferrer: true,
+        },
+      ],
+    });
+    await settle();
+    for (const el of inflightElsBeforeSwitch) {
+      expect(el.getAttribute('src')).toBeNull();
+    }
+
+    // On unmount, remaining in-flight img src attribute is removed (never left as "")
+    const inflightBeforeUnmount = activeImgs().map((i) => i.element as HTMLImageElement);
+    expect(inflightBeforeUnmount.length).toBe(1);
+    w.unmount();
+    for (const el of inflightBeforeUnmount) {
+      expect(el.getAttribute('src')).toBeNull();
+    }
+  });
+
+  it('B-046: tracks externalImgEls per fileId so unmounting one duplicate-URL tile keeps cancelling the remaining mounted img without src=""', async () => {
+    const Feed = await load();
+    const sharedUrl = '/api/yandex-disk/preview?path=/Shared/dup.jpg';
+    const itemA = {
+      ...mkItem(1, {
+        fileId: 'yd:/Shared/dup-a',
+        hash: 'dup-hash',
+        name: 'dup-a.jpg',
+        processed: false,
+        width: 1200,
+        height: 800,
+        folderId: '/Shared',
+      }),
+      previewSrc: sharedUrl,
+      noReferrer: true,
+    };
+    const itemB = {
+      ...mkItem(2, {
+        fileId: 'yd:/Shared/dup-b',
+        hash: 'dup-hash',
+        name: 'dup-b.jpg',
+        processed: false,
+        width: 1200,
+        height: 800,
+        folderId: '/Shared',
+      }),
+      previewSrc: sharedUrl,
+      noReferrer: true,
+    };
+
+    const w = mountFeed(Feed, {
+      externalItems: [itemA, itemB],
+      externalFeedKey: '/Shared',
+      params: params({ levels: ['date'], sort: [{ key: 'date', desc: true }] }),
+    });
+    await settle();
+
+    const imgsBefore = w.findAll('img.pf-img').map((n) => n.element as HTMLImageElement);
+    expect(imgsBefore).toHaveLength(2);
+    expect(imgsBefore.every((el) => el.getAttribute('src') === sharedUrl)).toBe(true);
+
+    // Unmount tile A while tile B remains mounted with the same previewSrc URL.
+    await w.setProps({ externalItems: [itemB] });
+    await settle();
+
+    const remainingImg = w.get('img.pf-img').element as HTMLImageElement;
+    expect(remainingImg.getAttribute('src')).toBe(sharedUrl);
+
+    // Switching externalFeedKey cancels tile B's mounted img by removing the src attribute (no bogus GET /).
+    await w.setProps({ externalFeedKey: '/Other', externalItems: [] });
+    await settle();
+    expect(remainingImg.getAttribute('src')).toBeNull();
+
+    w.unmount();
+  });
+
+  it('B-047: mixed loaded and unloaded roots under sub="size" preserve strict transitive ordering and contiguous subfolders', async () => {
+    const Feed = await load();
+    const storageFolders = [
+      { id: 'f-alpha', name: 'Alpha', parentId: null },
+      { id: 'f-beta', name: 'Beta', parentId: null },
+      { id: 'f-beta-sub', name: 'Sub', parentId: 'f-beta' },
+      { id: 'f-gamma', name: 'Gamma', parentId: null },
+    ];
+    summaryMock.mockResolvedValue({
+      groups: [
+        { key: 'f-gamma', count: 1, folder: { name: 'Gamma', path: [] } },
+        { key: 'f-beta-sub', count: 1, folder: { name: 'Sub', path: [] } },
+        { key: 'f-alpha', count: 1, folder: { name: 'Alpha', path: [] } },
+        { key: 'f-beta', count: 1, folder: { name: 'Beta', path: [] } },
+      ],
+    });
+    // Alpha (100 MB) and Gamma (10 MB) are loaded; Beta has 0 loaded items -> mixed loaded/unloaded roots.
+    itemsMock.mockImplementation(async (_p, groupKey) => {
+      if (groupKey === 'f-alpha') {
+        return { items: [mkItem(1, { folderId: 'f-alpha', bytes: 100_000_000 })], nextCursor: null };
+      }
+      if (groupKey === 'f-gamma') {
+        return { items: [mkItem(2, { folderId: 'f-gamma', bytes: 10_000_000 })], nextCursor: null };
+      }
+      return { items: [], nextCursor: null };
+    });
+
+    const w = mountFeed(Feed, {
+      storageFolders,
+      tileHeight: 80,
+      params: params({
+        levels: ['folder'],
+        sort: [{ key: 'folder', desc: false, sub: 'size' }],
+      }),
+    });
+    await settle();
+
+    // Mixed loaded/unloaded roots keep deterministic root minIndex ordering and contiguous Beta -> Beta / Sub.
+    const titles = w.findAll('.pgh-title').map((n) => n.text());
+    expect(titles).toHaveLength(4);
+    const betaIdx = titles.indexOf('Beta');
+    const betaSubIdx = titles.indexOf('Beta / Sub');
+    expect(betaIdx).toBeGreaterThanOrEqual(0);
+    expect(betaSubIdx).toBe(betaIdx + 1);
+
+    // Supplementary items with mixed loaded/unloaded roots also keep strict transitive ordering.
+    await w.setProps({
+      supplementaryItems: [
+        {
+          ...mkItem(10, {
+            fileId: 'yd:/Extra/e.jpg',
+            hash: 'he-1',
+            name: 'e.jpg',
+            processed: false,
+            folderId: 'f-gamma',
+            bytes: 5_000_000,
+          }),
+          previewSrc: 'https://cdn.example/e.jpg',
+        },
+      ],
+    });
+    await settle();
+    const titlesAfter = w.findAll('.pgh-title').map((n) => n.text());
+    expect(titlesAfter.indexOf('Beta / Sub')).toBe(titlesAfter.indexOf('Beta') + 1);
+
+    w.unmount();
+  });
+
+  it('B-049: supplementaryLoading=true with 0 groups shows skeleton (never empty text) and renders merged items as soon as it flips false', async () => {
+    summaryMock.mockResolvedValue({ groups: [] });
+    itemsMock.mockResolvedValue({ items: [], nextCursor: null });
+
+    const Feed = await load();
+    const w = mountFeed(Feed, {
+      supplementaryItems: [],
+      supplementaryLoading: true,
+    });
+    await settle();
+
+    expect(w.find('[data-testid="photos-feed-skeleton"]').exists()).toBe(true);
+    expect(w.text()).not.toContain('Здесь пока пусто');
+
+    const suppItem = {
+      ...mkItem(1, {
+        fileId: 'yandex:/Альбом/photo.jpg',
+        hash: 'y-supp-1',
+        name: 'photo.jpg',
+        processed: false,
+        folderId: '/Альбом',
+      }),
+      previewSrc: '/api/yandex-disk/preview?path=/Альбом/photo.jpg',
+      noReferrer: true,
+    };
+
+    await w.setProps({
+      supplementaryItems: [suppItem],
+      supplementaryLoading: false,
+    });
+    await settle();
+
+    expect(w.find('[data-testid="photos-feed-skeleton"]').exists()).toBe(false);
+    expect(w.find('[data-file-id="yandex:/Альбом/photo.jpg"]').exists()).toBe(true);
+    expect(w.text()).not.toContain('Здесь пока пусто');
+
+    // When supplementaryLoading flips false with 0 items total, empty text renders
+    await w.setProps({
+      supplementaryItems: [],
+      supplementaryLoading: false,
+    });
+    await settle();
+    expect(w.find('[data-testid="photos-feed-skeleton"]').exists()).toBe(false);
+    expect(w.text()).toContain('Здесь пока пусто');
+
+    w.unmount();
   });
 });

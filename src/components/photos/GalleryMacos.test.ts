@@ -191,7 +191,7 @@ describe('macOS Photos Gallery (T-021)', () => {
         activeSection: 'library',
         highlightedFolderId: 'fold-a',
         highlightedFileId: 'f1',
-        counts: { library: 42, people: 2, favorites: 5, recent: 24, videos: 3, trash: 1 },
+        counts: { library: 42, photos: 39, people: 2, favorites: 5, recent: 24, videos: 3, trash: 1 },
       },
       attachTo: document.body,
     });
@@ -201,6 +201,8 @@ describe('macOS Photos Gallery (T-021)', () => {
     // Section Фото + live counts
     expect(wrapper.get('[data-gallery-section="library"]').text()).toContain('Медиатека');
     expect(wrapper.get('[data-gallery-section="library"] .gs-meta').text()).toBe('42');
+    expect(wrapper.get('[data-gallery-section="photos"]').text()).toContain('Фото');
+    expect(wrapper.get('[data-gallery-section="photos"] .gs-meta').text()).toBe('39');
     const peopleRow = wrapper.get('[data-gallery-section="people"]');
     expect(peopleRow.text()).toContain('Люди');
     expect(peopleRow.attributes('aria-disabled')).toBe('true');

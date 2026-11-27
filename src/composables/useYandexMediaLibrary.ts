@@ -1,5 +1,5 @@
 import { computed, readonly, ref, shallowRef } from 'vue';
-import { onAuthCleared } from '../api/client';
+import * as clientApi from '../api/client';
 import { resolveDownloadUrl } from '../api/drive';
 import {
   downloadYandexLink,
@@ -12,8 +12,15 @@ import {
 import type { ViewerMediaItem } from '../components/photos/PhotoViewer.vue';
 import { useExplorerLayoutPrefs } from './useExplorerLayoutPrefs';
 import { useYandexDisk } from './useYandexDisk';
+import {
+  getCachedYandexFolder,
+  getYandexCacheMemory,
+  invalidateYandexFolderCache,
+  resetYandexMediaCacheForTests,
+  setCachedYandexFolder,
+  YANDEX_CACHE_REVALIDATE_MS,
+} from './useYandexMediaCache';
 
-const YANDEX_MEDIA_TTL_MS = 60_000;
 const YANDEX_MEDIA_PAGE_LIMIT = 120;
 const YANDEX_ID_PREFIX = 'yandex:';
 
@@ -30,7 +37,30 @@ let nextCursor: string | null = null;
 let fetchedAt = 0;
 let inFlight: Promise<YandexMediaLibraryItem[]> | null = null;
 let loadMoreInFlight: Promise<void> | null = null;
+let fetchController: AbortController | null = null;
+let loadMoreController: AbortController | null = null;
 let generation = 0;
+
+function abortLoadMore(): void {
+  loadMoreController?.abort();
+  loadMoreController = null;
+}
+
+function isAbortError(error: unknown): boolean {
+  return Boolean(error && typeof error === 'object' && (error as { name?: string }).name === 'AbortError');
+}
+
+function dedupYandexItems(list: readonly YandexItem[]): YandexItem[] {
+  const seen = new Set<string>();
+  const out: YandexItem[] = [];
+  for (const item of list) {
+    if (item?.path && !seen.has(item.path)) {
+      seen.add(item.path);
+      out.push(item);
+    }
+  }
+  return out;
+}
 
 function mapYandexItemToViewerMedia(
   item: YandexItem,
@@ -86,6 +116,83 @@ const items = computed<YandexMediaLibraryItem[]>(() => {
   return rawItems.value.map((item) => mapYandexItemToViewerMedia(item, favSet));
 });
 
+const photoCount = computed(() => items.value.filter((i) => i.kind !== 'video').length);
+const videoCount = computed(() => items.value.filter((i) => i.kind === 'video').length);
+
+function pauseBackgroundLoads(): void {
+  generation++;
+  fetchController?.abort();
+  fetchController = null;
+  loadMoreController?.abort();
+  loadMoreController = null;
+  inFlight = null;
+  loadMoreInFlight = null;
+  loading.value = false;
+  loadingMore.value = false;
+}
+
+function startRootFetch(
+  yd: ReturnType<typeof useYandexDisk>,
+  opts: { force: boolean; background: boolean },
+): Promise<YandexMediaLibraryItem[]> {
+  const myGen = ++generation;
+  fetchController?.abort();
+  abortLoadMore();
+  loadMoreInFlight = null;
+  loadingMore.value = false;
+
+  const controller = new AbortController();
+  fetchController = controller;
+  if (!opts.background) {
+    loading.value = true;
+  }
+
+  let promise: Promise<YandexMediaLibraryItem[]> | null = null;
+  promise = (async (): Promise<YandexMediaLibraryItem[]> => {
+    try {
+      const fetchOpts: { limit: number; signal: AbortSignal; refresh?: '1' } = {
+        limit: YANDEX_MEDIA_PAGE_LIMIT,
+        signal: controller.signal,
+      };
+      if (opts.force) {
+        fetchOpts.refresh = '1';
+      }
+      const page = await yandexDisk.listMediaPage('/', fetchOpts);
+      if (myGen !== generation || controller.signal.aborted) return items.value;
+      abortLoadMore();
+      const pageItems = dedupYandexItems(page.items ?? []);
+      rawItems.value = pageItems;
+      nextCursor = page.nextCursor ?? null;
+      hasMore.value = Boolean(page.hasMore && nextCursor);
+      fetchedAt = Date.now();
+      void setCachedYandexFolder('/', {
+        items: pageItems,
+        nextCursor,
+        hasMore: hasMore.value,
+      });
+      return items.value;
+    } catch (err) {
+      if (isAbortError(err) || controller.signal.aborted) {
+        return items.value;
+      }
+      yd.noteError(err);
+      if (myGen === generation && !yd.status.value?.connected) {
+        rawItems.value = [];
+        nextCursor = null;
+        hasMore.value = false;
+        fetchedAt = 0;
+      }
+      return items.value;
+    } finally {
+      if (fetchController === controller) fetchController = null;
+      if (inFlight === promise) inFlight = null;
+      if (myGen === generation && !opts.background) loading.value = false;
+    }
+  })();
+  inFlight = promise;
+  return promise;
+}
+
 async function ensureLoaded(force = false): Promise<YandexMediaLibraryItem[]> {
   const yd = useYandexDisk();
   if (!yd.status.value) {
@@ -99,61 +206,49 @@ async function ensureLoaded(force = false): Promise<YandexMediaLibraryItem[]> {
     fetchedAt = 0;
     return [];
   }
-  if (!force && fetchedAt > 0 && Date.now() - fetchedAt < YANDEX_MEDIA_TTL_MS) {
-    return items.value;
-  }
-  if (inFlight && !force) {
-    return inFlight;
+
+  if (!force) {
+    if (inFlight) {
+      return inFlight;
+    }
+    const entryGen = generation;
+    const cached = getYandexCacheMemory('/') ?? (await getCachedYandexFolder('/'));
+    if (inFlight) {
+      return inFlight;
+    }
+    if (entryGen !== generation) {
+      return items.value;
+    }
+    if (cached) {
+      rawItems.value = cached.items;
+      nextCursor = cached.nextCursor;
+      hasMore.value = Boolean(cached.hasMore && cached.nextCursor);
+      fetchedAt = cached.savedAt;
+      loading.value = false;
+      if (Date.now() - cached.savedAt < YANDEX_CACHE_REVALIDATE_MS) {
+        return items.value;
+      }
+      void startRootFetch(yd, { force: false, background: true });
+      return items.value;
+    }
+    if (fetchedAt > 0 && Date.now() - fetchedAt < YANDEX_CACHE_REVALIDATE_MS) {
+      return items.value;
+    }
   }
 
-  const myGen = ++generation;
-  loading.value = true;
-  loadingMore.value = false;
-  loadMoreInFlight = null;
-  let promise: Promise<YandexMediaLibraryItem[]> | null = null;
-  promise = (async (): Promise<YandexMediaLibraryItem[]> => {
-    try {
-      const page = await yandexDisk.listMediaPage('/', { limit: YANDEX_MEDIA_PAGE_LIMIT });
-      if (myGen !== generation) return items.value;
-      const seen = new Set<string>();
-      const pageItems: YandexItem[] = [];
-      for (const item of page.items ?? []) {
-        if (item?.path && !seen.has(item.path)) {
-          seen.add(item.path);
-          pageItems.push(item);
-        }
-      }
-      rawItems.value = pageItems;
-      nextCursor = page.nextCursor ?? null;
-      hasMore.value = Boolean(page.hasMore && nextCursor);
-      fetchedAt = Date.now();
-      return items.value;
-    } catch (err) {
-      yd.noteError(err);
-      if (myGen === generation && !yd.status.value?.connected) {
-        rawItems.value = [];
-        nextCursor = null;
-        hasMore.value = false;
-        fetchedAt = 0;
-      }
-      return items.value;
-    } finally {
-      if (inFlight === promise) inFlight = null;
-      if (myGen === generation) loading.value = false;
-    }
-  })();
-  inFlight = promise;
-  return promise;
+  return startRootFetch(yd, { force, background: false });
 }
 
 async function loadMore(): Promise<void> {
   const yd = useYandexDisk();
   if (!yd.status.value?.connected) return;
-  if (loading.value || !hasMore.value || !nextCursor) return;
+  if (loading.value || inFlight || !hasMore.value || !nextCursor) return;
   if (loadMoreInFlight) return loadMoreInFlight;
 
   const myGen = generation;
   const cursor = nextCursor;
+  const controller = new AbortController();
+  loadMoreController = controller;
   loadingMore.value = true;
   let promise: Promise<void> | null = null;
   promise = (async (): Promise<void> => {
@@ -161,8 +256,9 @@ async function loadMore(): Promise<void> {
       const page = await yandexDisk.listMediaPage('/', {
         limit: YANDEX_MEDIA_PAGE_LIMIT,
         cursor,
+        signal: controller.signal,
       });
-      if (myGen !== generation) return;
+      if (myGen !== generation || controller.signal.aborted) return;
       const seen = new Set(rawItems.value.map((i) => i.path));
       const appended: YandexItem[] = [];
       for (const item of page.items ?? []) {
@@ -177,7 +273,15 @@ async function loadMore(): Promise<void> {
       const next = page.nextCursor ?? null;
       nextCursor = next && next !== cursor ? next : null;
       hasMore.value = Boolean(page.hasMore && nextCursor);
+      void setCachedYandexFolder('/', {
+        items: rawItems.value,
+        nextCursor,
+        hasMore: hasMore.value,
+      });
     } catch (err) {
+      if (isAbortError(err) || controller.signal.aborted) {
+        return;
+      }
       yd.noteError(err);
       if (myGen === generation) {
         if (!yd.status.value?.connected) {
@@ -188,6 +292,7 @@ async function loadMore(): Promise<void> {
         hasMore.value = false;
       }
     } finally {
+      if (loadMoreController === controller) loadMoreController = null;
       if (loadMoreInFlight === promise) loadMoreInFlight = null;
       if (myGen === generation) loadingMore.value = false;
     }
@@ -198,12 +303,18 @@ async function loadMore(): Promise<void> {
 
 export function invalidateYandexMediaLibrary(): void {
   generation++;
+  fetchController?.abort();
+  fetchController = null;
+  loadMoreController?.abort();
+  loadMoreController = null;
   fetchedAt = 0;
   inFlight = null;
   loadMoreInFlight = null;
   nextCursor = null;
   hasMore.value = false;
+  loading.value = false;
   loadingMore.value = false;
+  void invalidateYandexFolderCache(['/']);
   if (!useYandexDisk().status.value?.connected) {
     rawItems.value = [];
   }
@@ -211,6 +322,10 @@ export function invalidateYandexMediaLibrary(): void {
 
 export function resetYandexMediaLibraryForTests(): void {
   generation++;
+  fetchController?.abort();
+  fetchController = null;
+  loadMoreController?.abort();
+  loadMoreController = null;
   rawItems.value = [];
   loading.value = false;
   loadingMore.value = false;
@@ -219,9 +334,12 @@ export function resetYandexMediaLibraryForTests(): void {
   fetchedAt = 0;
   inFlight = null;
   loadMoreInFlight = null;
+  resetYandexMediaCacheForTests();
 }
 
-onAuthCleared(resetYandexMediaLibraryForTests);
+if ('onAuthCleared' in clientApi && typeof clientApi.onAuthCleared === 'function') {
+  clientApi.onAuthCleared(resetYandexMediaLibraryForTests);
+}
 
 export function useYandexMediaLibrary() {
   return {
@@ -230,8 +348,11 @@ export function useYandexMediaLibrary() {
     loadingMore: readonly(loadingMore),
     hasMore: readonly(hasMore),
     items,
+    photoCount,
+    videoCount,
     ensureLoaded,
     loadMore,
+    pauseBackgroundLoads,
     invalidate: invalidateYandexMediaLibrary,
   };
 }
