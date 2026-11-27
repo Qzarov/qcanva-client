@@ -43,11 +43,13 @@
   grid-template-columns: minmax(0, 1fr);
 }
 .dashboard-central-shell {
+  width: 100%;
   min-width: 0;
   max-width: 100%;
   min-height: 0;
   box-sizing: border-box;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
   overflow: hidden;
 }
@@ -55,6 +57,8 @@
    into an implicit third row below the screen. */
 .dashboard-central-shell > .app-header {
   grid-row: 1;
+  min-width: 0;
+  max-width: 100%;
 }
 .dashboard-central-shell .app-main {
   /* Always the 1fr row, even when the header above is hidden (desktop):

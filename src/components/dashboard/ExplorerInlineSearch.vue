@@ -721,7 +721,7 @@ defineExpose({
 <style>
 .s2-wrap {
   position: relative;
-  flex: 1 1 380px;
+  flex: 1 1 0;
   min-width: 0;
   max-width: 720px;
 }
@@ -790,7 +790,9 @@ defineExpose({
   font-weight: 600;
   white-space: nowrap;
   max-width: 180px;
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .s2-pill-pop-enter-active,
@@ -1052,6 +1054,12 @@ defineExpose({
   text-align: center;
   color: var(--ui-text-muted, var(--explorer-muted));
   font-size: 12px;
+}
+
+@media (max-width: 960px) {
+  .s2-kbd {
+    display: none;
+  }
 }
 
 @media (max-width: 768px) {

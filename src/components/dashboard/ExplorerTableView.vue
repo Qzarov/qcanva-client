@@ -563,7 +563,7 @@ function onRowDrop(event: DragEvent, row: ExplorerTableRow): void {
 .exp-row {
   display: grid;
   grid-template-columns: minmax(136px, 2.5fr) minmax(84px, 1.05fr) minmax(58px, 0.72fr) minmax(58px, 0.65fr) minmax(72px, 0.88fr) minmax(86px, 1.15fr);
-  min-width: 536px;
+  min-width: 542px;
   box-sizing: border-box;
   align-items: center;
   gap: 6px;
@@ -572,17 +572,17 @@ function onRowDrop(event: DragEvent, row: ExplorerTableRow): void {
 .exp-table-shell.hide-source .exp-table-head,
 .exp-table-shell.hide-source .exp-row {
   grid-template-columns: minmax(136px, 2.6fr) minmax(84px, 1.05fr) minmax(58px, 0.72fr) minmax(58px, 0.65fr) minmax(86px, 1.15fr);
-  min-width: 458px;
+  min-width: 464px;
 }
 .exp-table-shell.hide-albums .exp-table-head,
 .exp-table-shell.hide-albums .exp-row {
   grid-template-columns: minmax(136px, 2.6fr) minmax(84px, 1.05fr) minmax(58px, 0.72fr) minmax(58px, 0.65fr) minmax(72px, 0.88fr);
-  min-width: 444px;
+  min-width: 450px;
 }
 .exp-table-shell.hide-source.hide-albums .exp-table-head,
 .exp-table-shell.hide-source.hide-albums .exp-row {
   grid-template-columns: minmax(136px, 2.7fr) minmax(84px, 1.05fr) minmax(58px, 0.72fr) minmax(58px, 0.65fr);
-  min-width: 366px;
+  min-width: 372px;
 }
 
 .exp-table-head {

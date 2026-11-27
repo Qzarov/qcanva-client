@@ -38,9 +38,11 @@ body.resizing * {
 
 .dashboard-central-shell {
   position: relative;
+  width: 100%;
   min-width: 0;
   max-width: 100%;
   box-sizing: border-box;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .dashboard-central-shell .app-main:not(.app-main-gallery) {
@@ -838,6 +840,18 @@ body.resizing * {
 /* ===== Headroom 50px Top Chrome & Editable Glass Path Bar ===== */
 .dashboard-central-shell > .top-chrome.explorer-headroom {
   grid-row: 1;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.top-chrome.explorer-headroom,
+.explorer-headroom {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .top-chrome.explorer-headroom {
@@ -866,6 +880,10 @@ body.resizing * {
 
 .explorer-headroom .ws-header {
   position: relative;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
   height: 50px;
   display: flex;
   align-items: center;
@@ -1413,6 +1431,12 @@ body.resizing * {
 /* ===== Mobile <= 768px / 390px Responsive Layout & Bottom Tab Bar ===== */
 .explorer-mobile-tabbar.mobile-tabbar {
   display: none;
+}
+
+@media (max-width: 960px) {
+  .explorer-headroom .headroom-share-btn span {
+    display: none;
+  }
 }
 
 @media (max-width: 768px) {
