@@ -1,13 +1,22 @@
 <template>
-  <!-- A shared album (Space): clean header (Title, Members badge, Share button,
-       Filter, icon-only [Feed | Table] toggle, actions menu), NO top subfolder
-       filter pills, NO Split/Guests/Upload-destination clutter. -->
+  <!-- A shared album (Space): clean header (Title, clickable Members pill,
+       Share button, Filter, icon-only [Feed | Table] toggle), NO ⋯ menu,
+       NO top subfolder filter pills, NO Split/Guests/Upload-destination clutter. -->
   <div class="folder-manager-row space-view" data-space-view>
     <div v-if="!hideHeader" class="folder-manager-top">
       <div class="folder-manager-main">
         <span class="folder-manager-title">
           <span class="folder-manager-name" data-space-title>{{ space?.name ?? '' }}</span>
-          <span v-if="space" class="folder-manager-count" data-space-count>{{ countLabel }}</span>
+          <button
+            v-if="space"
+            type="button"
+            class="folder-manager-count space-count-btn"
+            data-space-count
+            @click="openMembers"
+          >
+            <Users :size="13" aria-hidden="true" />
+            <span>{{ countLabel }}</span>
+          </button>
         </span>
       </div>
       <template v-if="space">
@@ -45,27 +54,6 @@
           :mode="albumView"
           @update:mode="setAlbumView"
         />
-
-        <div class="folder-manager-menu">
-          <button
-            class="folder-manager-trigger"
-            data-space-menu
-            :title="t('groupActions')"
-            :aria-expanded="menu === 'space'"
-            @click.stop="toggleMenu('space')"
-          >⋯</button>
-          <Transition name="card-menu-pop">
-            <div v-if="menu === 'space'" class="mobile-action-popover" data-space-actions @click.stop>
-              <button v-if="canAdd" class="card-menu-item" data-space-add-folder @click="startAdd()">{{ t('spaceAddFolder') }}</button>
-              <button class="card-menu-item" data-space-members-open @click="openMembers">{{ t('explorerShareGroup') }}</button>
-              <template v-if="space.role === 'owner'">
-                <button class="card-menu-item" data-space-rename @click="rename">{{ t('rename') }}</button>
-                <button class="card-menu-item danger" data-space-delete @click="removeSpace">{{ t('delete') }}</button>
-              </template>
-              <button v-else class="card-menu-item danger" data-space-leave-menu @click="leave">{{ t('spaceLeave') }}</button>
-            </div>
-          </Transition>
-        </div>
       </template>
     </div>
 
@@ -349,7 +337,7 @@
 
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { ChevronRight, File as FileIcon, Folder, Image as ImageIcon, Play, Plus, Share2, Video } from '@lucide/vue';
+import { ChevronRight, File as FileIcon, Folder, Image as ImageIcon, Play, Plus, Share2, Users, Video } from '@lucide/vue';
 import { spacesApi, type SpaceDetails, type SpaceFeedItem, type SpaceFeedType, type SpaceSource } from '../../api/spaces';
 import SpaceFilterDialog from './SpaceFilterDialog.vue';
 
@@ -1865,6 +1853,31 @@ defineExpose({
 .space-crumb-sep {
   flex: none;
   opacity: 0.55;
+}
+.space-count-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 9px;
+  border-radius: 999px;
+  border: 1px solid var(--ui-glass-border, var(--ui-border));
+  background: var(--ui-glass-btn-bg, var(--ui-surface-subtle));
+  color: var(--ui-text-secondary, var(--ui-text));
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  flex: none;
+  transition: background-color 0.14s ease, border-color 0.14s ease, color 0.14s ease;
+}
+.space-count-btn:hover,
+.space-count-btn:focus-visible {
+  background: var(--ui-glass-btn-hover, var(--ui-surface-subtle));
+  border-color: var(--ui-glass-accent-border, var(--color-brands));
+  color: var(--ui-glass-accent-text, var(--color-brands));
+  outline: none;
 }
 .space-share-btn {
   display: inline-flex;

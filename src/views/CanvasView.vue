@@ -927,7 +927,9 @@ export default defineComponent({
     const canonicalize = (preferred: string, id: string) => {
       tab.registerAlias(id);
       tab.registerAlias(preferred);
-      if (tab.active.value && route.params.id !== preferred) router.replace(`/canvas/${preferred}`).catch(() => {});
+      if (tab.active.value && route.params.id !== preferred) {
+        router.replace({ path: `/canvas/${preferred}`, query: route.query }).catch(() => {});
+      }
     };
     const canvasData = ref<any>(null);
     const role = ref('');

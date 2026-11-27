@@ -17,6 +17,7 @@ import drivePhotosSource from './DrivePhotos.vue?raw';
 import GallerySidebar from './GallerySidebar.vue';
 import photosFeedSource from './PhotosFeed.vue?raw';
 import photosGroupHeadSource from './PhotosGroupHead.vue?raw';
+import photosViewBarSource from './PhotosViewBar.vue?raw';
 import inlineSearchSource from '../dashboard/ExplorerInlineSearch.vue?raw';
 import { resetPhotosView } from './usePhotosView';
 
@@ -37,7 +38,11 @@ const spacesListMock = vi.hoisted(() => vi.fn());
 const spacesGetMock = vi.hoisted(() => vi.fn());
 const spacesCreateMock = vi.hoisted(() => vi.fn());
 const spacesAddItemsMock = vi.hoisted(() => vi.fn());
+const spacesRenameMock = vi.hoisted(() => vi.fn());
 const spacesRemoveMock = vi.hoisted(() => vi.fn());
+const spacesRemoveMemberMock = vi.hoisted(() => vi.fn());
+const confirmDialogMock = vi.hoisted(() => vi.fn());
+const promptDialogMock = vi.hoisted(() => vi.fn());
 const getTrashMock = vi.hoisted(() => vi.fn());
 const trashFileMock = vi.hoisted(() => vi.fn());
 const getFolderMock = vi.hoisted(() => vi.fn());
@@ -65,6 +70,7 @@ const dashboardRoute = { query: {} as Record<string, unknown> };
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), currentRoute: { value: dashboardRoute } }),
   useRoute: () => dashboardRoute,
+  onBeforeRouteLeave: vi.fn(),
 }));
 
 vi.mock('../../api/client', async (importOriginal) => {
@@ -158,12 +164,23 @@ vi.mock('../../api/spaces', () => ({
     get: spacesGetMock,
     addItems: spacesAddItemsMock,
     create: spacesCreateMock,
+    rename: spacesRenameMock,
     remove: spacesRemoveMock,
+    removeMember: spacesRemoveMemberMock,
     removeItems: vi.fn().mockResolvedValue({ removed: 0 }),
     feed: vi.fn().mockResolvedValue({ items: [], total: 0 }),
     feedTypes: vi.fn().mockResolvedValue({ types: [] }),
   },
 }));
+
+vi.mock('../../composables/appDialog', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../composables/appDialog')>();
+  return {
+    ...actual,
+    confirmDialog: confirmDialogMock,
+    promptDialog: promptDialogMock,
+  };
+});
 
 vi.mock('../../api/yandexDisk', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../api/yandexDisk')>();
@@ -303,7 +320,11 @@ describe('Gallery UX v2 & B-009/B-011/B-014 regressions', () => {
       updatedAt: '2026-11-26T10:00:00Z',
     });
     spacesAddItemsMock.mockReset().mockResolvedValue({ added: 2 });
+    spacesRenameMock.mockReset().mockResolvedValue({ id: 'alb-1', name: 'Renamed' });
     spacesRemoveMock.mockReset().mockResolvedValue(undefined);
+    spacesRemoveMemberMock.mockReset().mockResolvedValue(undefined);
+    confirmDialogMock.mockReset().mockResolvedValue(true);
+    promptDialogMock.mockReset().mockResolvedValue(null);
     getTrashMock.mockReset().mockResolvedValue({ items: [] });
     trashFileMock.mockReset().mockResolvedValue({});
     getFolderMock.mockReset().mockResolvedValue({ folder: { id: 'fold-1', name: 'Алтай' }, path: [] });
@@ -338,7 +359,7 @@ describe('Gallery UX v2 & B-009/B-011/B-014 regressions', () => {
     expect(svg.attributes('height')).toBe('18');
   });
 
-  it('B-009: scrolling .pf-scroller hides .dp-top and PhotosViewBar synchronously while .pf.headroom-hidden .pf-stick docks flush at top: 0; scrolling up reveals both', async () => {
+  it('B-009 + B-024: scrolling .pf-scroller hides .dp-top while .pf.headroom-hidden .pf-stick docks flush at top: 0 and .dp-float-sort glides in lockstep to top: 7px on top of the curtain; scrolling up reveals both', async () => {
     const stickCssMatch = photosFeedSource.match(/\.pf\.headroom-hidden\s+\.pf-stick\s*\{([^}]*)\}/);
     expect(stickCssMatch).not.toBeNull();
     expect(stickCssMatch![1]).toContain('top: 0;');
@@ -353,11 +374,13 @@ describe('Gallery UX v2 & B-009/B-011/B-014 regressions', () => {
     await settle();
 
     const topbar = w.get('.dp-top');
+    const floatSort = w.get('.dp-float-sort');
     const viewBar = w.get('.pvb');
     const feed = w.get('[data-testid="photos-feed"]');
     const scroller = w.get('.pf-scroller').element as HTMLElement;
 
     expect(topbar.classes()).not.toContain('is-hidden');
+    expect(floatSort.classes()).not.toContain('is-headroom-hidden');
     expect(viewBar.classes()).not.toContain('is-hidden');
     expect(feed.classes()).not.toContain('headroom-hidden');
 
@@ -367,8 +390,18 @@ describe('Gallery UX v2 & B-009/B-011/B-014 regressions', () => {
     await nextTick();
 
     expect(topbar.classes()).toContain('is-hidden');
-    expect(viewBar.classes()).toContain('is-hidden');
+    expect(floatSort.classes()).toContain('is-headroom-hidden');
+    expect(viewBar.classes()).not.toContain('is-hidden');
     expect(feed.classes()).toContain('headroom-hidden');
+
+    // Opening sort menu while scrolled down reveals .dp-top, .dp-float-sort, and .pf synchronously
+    await w.get('[data-testid="sort-pill"]').trigger('click');
+    await nextTick();
+    expect(topbar.classes()).not.toContain('is-hidden');
+    expect(floatSort.classes()).not.toContain('is-headroom-hidden');
+    expect(feed.classes()).not.toContain('headroom-hidden');
+    await w.get('[data-testid="sort-pill"]').trigger('click');
+    await nextTick();
 
     // Scroll up (delta < -8px) reveals both synchronously
     scroller.scrollTop = 120;
@@ -376,7 +409,7 @@ describe('Gallery UX v2 & B-009/B-011/B-014 regressions', () => {
     await nextTick();
 
     expect(topbar.classes()).not.toContain('is-hidden');
-    expect(viewBar.classes()).not.toContain('is-hidden');
+    expect(floatSort.classes()).not.toContain('is-headroom-hidden');
     expect(feed.classes()).not.toContain('headroom-hidden');
   });
 
@@ -1289,5 +1322,169 @@ describe('Gallery UX v2 & B-009/B-011/B-014 regressions', () => {
 
     expect((dash.vm as any).activeSection).toEqual({ kind: 'folder', folderId: 'f-sub' });
     expect((dash.vm as any).selectedKeys).toEqual([]);
+  });
+
+  it('B-024: .pf-stick is absolute direct child of .pf flush against .dp-top (no +2px scroller gap) and .dp-float-sort overlays on top at z-index 12 > 8', async () => {
+    const stickMatch = photosFeedSource.match(/\.pf-stick\s*\{([^}]*)\}/);
+    expect(stickMatch).not.toBeNull();
+    expect(stickMatch![1]).toContain('position: absolute;');
+    expect(stickMatch![1]).toContain('top: var(--dp-top-h, 50px);');
+    expect(stickMatch![1]).toContain('height: 56px;');
+    expect(stickMatch![1]).toContain('overflow: hidden;');
+    expect(stickMatch![1]).toContain('z-index: 8;');
+
+    const stickHiddenMatch = photosFeedSource.match(/\.pf\.headroom-hidden\s+\.pf-stick\s*\{([^}]*)\}/);
+    expect(stickHiddenMatch).not.toBeNull();
+    expect(stickHiddenMatch![1]).toContain('top: 0;');
+
+    const scrollerMatch = photosFeedSource.match(/\.pf-scroller\s*\{([^}]*)\}/);
+    expect(scrollerMatch).not.toBeNull();
+    expect(scrollerMatch![1]).toContain('padding: var(--dp-top-h, 50px) 4px 48px 2px;');
+    expect(scrollerMatch![1]).not.toContain('+ 2px');
+
+    const floatSortMatch = drivePhotosSource.match(/\.dp-float-sort\s*\{([^}]*)\}/);
+    expect(floatSortMatch).not.toBeNull();
+    expect(floatSortMatch![1]).toContain('top: calc(var(--dp-top-h, 50px) + 7px);');
+    expect(floatSortMatch![1]).toContain('z-index: 12;');
+    expect(floatSortMatch![1]).toContain('transition: top 0.22s ease;');
+
+    const floatSortHiddenMatch = drivePhotosSource.match(/\.dp-float-sort\.is-headroom-hidden\s*\{([^}]*)\}/);
+    expect(floatSortHiddenMatch).not.toBeNull();
+    expect(floatSortHiddenMatch![1]).toContain('top: 7px;');
+
+    expect(photosViewBarSource).toContain('var(--dp-top-h, 50px)');
+    expect(photosViewBarSource).not.toContain('var(--dp-top-h, 46px)');
+
+    // DOM hierarchy verification: [data-testid="sticky-head"] sits directly under .pf, NOT inside .pf-scroller
+    const manyItems = Array.from({ length: 24 }, (_, idx) => mkItem(idx + 1));
+    summaryMock.mockResolvedValue({
+      groups: [{ key: '2026-10', title: 'Октябрь 2026', count: manyItems.length, subs: null }],
+    });
+    itemsMock.mockResolvedValue({ items: manyItems, nextCursor: null });
+
+    const w = mountDrivePhotos();
+    await settle();
+
+    const scroller = w.get('.pf-scroller').element as HTMLElement;
+    scroller.scrollTop = 180;
+    scroller.dispatchEvent(new Event('scroll'));
+    await nextTick();
+
+    const stickEl = w.get('[data-testid="sticky-head"]').element as HTMLElement;
+    expect(stickEl.parentElement).toBe(w.get('[data-testid="photos-feed"]').element);
+    expect(scroller.contains(stickEl)).toBe(false);
+  });
+
+  it('B-023 (Gallery): DrivePhotos renders clickable Участников: N pill and GallerySidebar album ПКМ handles owner & non-owner actions + outside-click/Escape dismissal', async () => {
+    // 1. DrivePhotos clickable Участников: N pill + clean Поделиться pill
+    const dp = mountDrivePhotos({ externalAlbumId: 'alb-1', externalAlbumMembersCount: 2 });
+    await settle();
+
+    const membersPill = dp.get('[data-testid="gallery-album-members"]');
+    expect(membersPill.text()).toContain('Участников: 2');
+    await membersPill.trigger('click');
+    expect(dp.emitted('share-album')?.[0]).toEqual(['alb-1']);
+
+    const sharePill = dp.get('[data-testid="gallery-album-share"]');
+    expect(sharePill.text().trim()).toBe('Поделиться');
+    await sharePill.trigger('click');
+    expect(dp.emitted('share-album')?.[1]).toEqual(['alb-1']);
+
+    // Solo album (N = 1) still shows Участников: 1
+    await dp.setProps({ externalAlbumMembersCount: 1 });
+    await settle();
+    expect(dp.get('[data-testid="gallery-album-members"]').text()).toContain('Участников: 1');
+    dp.unmount();
+
+    // 2. GallerySidebar album ПКМ (owner & non-owner)
+    const sb = mount(GallerySidebar, {
+      props: {
+        activeAlbumId: 'alb-own',
+        albums: [
+          { id: 'alb-own', name: 'Мой альбом', role: 'owner', ownerId: 'u1', memberCount: 2, sourceCount: 0, mediaCount: 3, updatedAt: '' },
+          { id: 'alb-shared', name: 'Чужой альбом', role: 'viewer', ownerId: 'u2', memberCount: 3, sourceCount: 0, mediaCount: 5, updatedAt: '' },
+        ],
+        folders: [],
+      },
+      attachTo: document.body,
+    });
+    await settle();
+
+    // Owner album context menu: Открыть, Поделиться, Переименовать, Удалить (NO Покинуть)
+    await sb.get('[data-gallery-album="alb-own"]').trigger('contextmenu', { clientX: 80, clientY: 120 });
+    await nextTick();
+    const ownMenu = document.body.querySelector('[data-testid="gallery-album-context-menu"]') as HTMLElement | null;
+    expect(ownMenu).not.toBeNull();
+    expect(sb.element.contains(ownMenu!)).toBe(false);
+    expect(ownMenu!.querySelector('[data-album-ctx-open]')?.textContent).toContain('Открыть');
+    expect(ownMenu!.querySelector('[data-album-ctx-share]')?.textContent).toContain('Поделиться');
+    expect(ownMenu!.querySelector('[data-album-ctx-rename]')?.textContent).toContain('Переименовать');
+    expect(ownMenu!.querySelector('[data-album-ctx-delete]')?.textContent).toContain('Удалить');
+    expect(ownMenu!.querySelector('[data-album-ctx-leave]')).toBeNull();
+
+    // Escape closes menu
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }));
+    await nextTick();
+    expect(document.body.querySelector('[data-testid="gallery-album-context-menu"]')).toBeNull();
+
+    // Outside click closes menu (B-019)
+    await sb.get('[data-gallery-album="alb-own"]').trigger('contextmenu', { clientX: 80, clientY: 120 });
+    await nextTick();
+    expect(document.body.querySelector('[data-testid="gallery-album-context-menu"]')).not.toBeNull();
+    document.body.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+    await nextTick();
+    expect(document.body.querySelector('[data-testid="gallery-album-context-menu"]')).toBeNull();
+
+    // Открыть -> emits select-album
+    await sb.get('[data-gallery-album="alb-own"]').trigger('contextmenu', { clientX: 80, clientY: 120 });
+    await nextTick();
+    (document.body.querySelector('[data-album-ctx-open]') as HTMLButtonElement).click();
+    await nextTick();
+    expect(sb.emitted('select-album')?.[0]).toEqual(['alb-own']);
+
+    // Поделиться -> emits share-album
+    await sb.get('[data-gallery-album="alb-own"]').trigger('contextmenu', { clientX: 80, clientY: 120 });
+    await nextTick();
+    (document.body.querySelector('[data-album-ctx-share]') as HTMLButtonElement).click();
+    await nextTick();
+    expect(sb.emitted('share-album')?.[0]).toEqual(['alb-own']);
+
+    // Переименовать -> promptDialog + spacesApi.rename + loadSpaces(true)
+    promptDialogMock.mockResolvedValueOnce('Новое имя');
+    await sb.get('[data-gallery-album="alb-own"]').trigger('contextmenu', { clientX: 80, clientY: 120 });
+    await nextTick();
+    (document.body.querySelector('[data-album-ctx-rename]') as HTMLButtonElement).click();
+    await settle();
+    expect(promptDialogMock).toHaveBeenCalledTimes(1);
+    expect(spacesRenameMock).toHaveBeenCalledWith('alb-own', 'Новое имя');
+
+    // Удалить active album -> confirmDialog + spacesApi.remove + emits select-section('library')
+    confirmDialogMock.mockResolvedValueOnce(true);
+    await sb.get('[data-gallery-album="alb-own"]').trigger('contextmenu', { clientX: 80, clientY: 120 });
+    await nextTick();
+    (document.body.querySelector('[data-album-ctx-delete]') as HTMLButtonElement).click();
+    await settle();
+    expect(confirmDialogMock).toHaveBeenCalledTimes(1);
+    expect(spacesRemoveMock).toHaveBeenCalledWith('alb-own');
+    expect(sb.emitted('select-section')?.[0]).toEqual(['library']);
+
+    // Non-owner album context menu: hides Переименовать/Удалить, shows Покинуть альбом
+    await sb.setProps({ activeAlbumId: 'alb-shared' });
+    await sb.get('[data-gallery-album="alb-shared"]').trigger('contextmenu', { clientX: 80, clientY: 160 });
+    await nextTick();
+    const sharedMenu = document.body.querySelector('[data-testid="gallery-album-context-menu"]') as HTMLElement | null;
+    expect(sharedMenu).not.toBeNull();
+    expect(sharedMenu!.querySelector('[data-album-ctx-rename]')).toBeNull();
+    expect(sharedMenu!.querySelector('[data-album-ctx-delete]')).toBeNull();
+    const leaveBtn = sharedMenu!.querySelector('[data-album-ctx-leave]') as HTMLButtonElement | null;
+    expect(leaveBtn).not.toBeNull();
+    expect(leaveBtn!.textContent).toContain('Покинуть альбом');
+
+    confirmDialogMock.mockResolvedValueOnce(true);
+    leaveBtn!.click();
+    await settle();
+    expect(spacesRemoveMemberMock).toHaveBeenCalledWith('alb-shared', 'u1');
+    expect(sb.emitted('select-section')?.[1]).toEqual(['library']);
+    sb.unmount();
   });
 });

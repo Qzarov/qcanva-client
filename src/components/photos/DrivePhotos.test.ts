@@ -284,15 +284,30 @@ describe('DrivePhotos', () => {
     expect(w.get('[data-testid="feed-stub"]').attributes('data-period')).toBe('year');
   });
 
-  it('drives album feed when externalAlbumId is passed, renders share pill with member count, and emits clear-album', async () => {
+  it('drives album feed when externalAlbumId is passed, renders clickable members pill + clean share pill, and emits clear-album', async () => {
     const w = mountIt({ externalAlbumId: 'alb1', externalAlbumMembersCount: 4 });
     await flushPromises();
     expect(w.get('[data-testid="feed-stub"]').attributes('data-album')).toBe('alb1');
     expect(w.get('[data-testid="gallery-album-crumb"]').text()).toContain('Алтай');
-    const sharePill = w.get('[data-testid="gallery-album-share"]');
-    expect(sharePill.text()).toContain('Поделиться · 4');
-    await sharePill.trigger('click');
+    const membersPill = w.get('[data-testid="gallery-album-members"]');
+    expect(membersPill.text()).toContain('Участников: 4');
+    await membersPill.trigger('click');
     expect(w.emitted('share-album')).toEqual([['alb1']]);
+
+    const sharePill = w.get('[data-testid="gallery-album-share"]');
+    expect(sharePill.text().trim()).toBe('Поделиться');
+    await sharePill.trigger('click');
+    expect(w.emitted('share-album')).toEqual([['alb1'], ['alb1']]);
+
+    // Solo album (N = 1) still shows clickable Участников: 1 pill
+    await w.setProps({ externalAlbumMembersCount: 1 });
+    await flushPromises();
+    expect(w.get('[data-testid="gallery-album-members"]').text()).toContain('Участников: 1');
+
+    // Fallback to useSpaces() SpaceSummary.memberCount adds +1 for owner (memberCount: 4 -> Участников: 5)
+    await w.setProps({ externalAlbumMembersCount: null });
+    await flushPromises();
+    expect(w.get('[data-testid="gallery-album-members"]').text()).toContain('Участников: 5');
 
     await w.get('[data-testid="gallery-album-crumb"]').trigger('click');
     expect(w.emitted('clear-album')).toHaveLength(1);

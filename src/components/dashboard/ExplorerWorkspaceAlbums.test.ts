@@ -440,7 +440,7 @@ describe('DashboardSpace (T-018 Albums redesign)', () => {
     expect(wrapper.find('[data-album-share-dialog]').exists()).toBe(true);
   });
 
-  it('renames album via menu and filters by sourceFilterId prop from left tree', async () => {
+  it('has clickable members count pill with no ⋯ menu, exposes rename, and filters by sourceFilterId prop from left tree', async () => {
     vi.mocked(promptDialog).mockResolvedValue('Алтай Зима');
     vi.mocked(spacesApi.rename).mockResolvedValue(makeSpaceDetails({ name: 'Алтай Зима' }));
 
@@ -456,8 +456,17 @@ describe('DashboardSpace (T-018 Albums redesign)', () => {
 
     expect(spacesApi.feed).toHaveBeenCalledWith('space-1', expect.objectContaining({ sourceIds: ['src-1'] }));
 
-    await wrapper.get('[data-space-menu]').trigger('click');
-    await wrapper.get('[data-space-rename]').trigger('click');
+    // B-023: no ⋯ menu in DashboardSpace header; Участников: N is a clickable button opening AlbumShareDialog
+    expect(wrapper.find('[data-space-menu]').exists()).toBe(false);
+    expect(wrapper.find('[data-space-actions]').exists()).toBe(false);
+    const countBtn = wrapper.get('button[data-space-count]');
+    expect(countBtn.text().trim()).toBe('Участников: 2');
+    await countBtn.trigger('click');
+    await nextTick();
+    expect(wrapper.find('[data-album-share-dialog]').exists()).toBe(true);
+
+    // Exposed rename method still works cleanly
+    await (wrapper.vm as any).rename();
     await flushPromises();
     expect(spacesApi.rename).toHaveBeenCalledWith('space-1', 'Алтай Зима');
     expect(wrapper.get('[data-space-title]').text()).toBe('Алтай Зима');

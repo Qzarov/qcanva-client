@@ -267,7 +267,7 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick));
 }
 .pvb.is-hidden {
   opacity: 0;
-  transform: translateY(calc(-1 * (var(--dp-top-h, 46px) + 18px)));
+  transform: translateY(calc(-1 * (var(--dp-top-h, 50px) + 18px)));
   pointer-events: none;
 }
 :where(.pvb button) {

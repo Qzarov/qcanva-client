@@ -38,6 +38,19 @@
         <button
           v-if="effectiveAlbumId"
           type="button"
+          class="dp-icon-pill dp-album-members-pill"
+          data-testid="gallery-album-members"
+          :aria-label="albumMembersLabel"
+          :title="albumMembersLabel"
+          @click="emit('share-album', effectiveAlbumId)"
+        >
+          <Users :size="13" aria-hidden="true" />
+          <span>{{ albumMembersLabel }}</span>
+        </button>
+
+        <button
+          v-if="effectiveAlbumId"
+          type="button"
           class="dp-icon-pill dp-album-share-pill"
           data-testid="gallery-album-share"
           :aria-label="t('galleryShare')"
@@ -45,9 +58,7 @@
           @click="emit('share-album', effectiveAlbumId)"
         >
           <Share2 :size="14" aria-hidden="true" />
-          <span>
-            {{ t('galleryShare') }}<template v-if="typeof externalAlbumMembersCount === 'number' && externalAlbumMembersCount > 0"> · {{ externalAlbumMembersCount }}</template>
-          </span>
+          <span>{{ t('galleryShare') }}</span>
         </button>
 
         <button
@@ -180,12 +191,13 @@
         class="dp-main"
         data-photos-main
       >
-        <!-- Floating translucent Sort pill (Headroom-synced) -->
+        <!-- Floating translucent Sort pill overlaid directly on top of the sticky curtain -->
         <div
           v-if="!searchActive && !showPeopleGrid && activeSection !== 'trash'"
           class="dp-float-sort"
+          :class="{ 'is-headroom-hidden': isTopChromeHidden }"
         >
-          <PhotosViewBar :hidden="isTopChromeHidden" :force-visible="!isTopChromeHidden" @menu-open="sortMenuOpen = $event" />
+          <PhotosViewBar :hidden="false" :force-visible="true" @menu-open="sortMenuOpen = $event" />
         </div>
 
         <!-- Search: flat semantic CLIP/hybrid relevance grid -->
@@ -245,6 +257,7 @@
           :folder-include-root="externalFolderId === 'root'"
           :people-filter="selectedPeople"
           :recent-limit="activeSection === 'recent' ? 24 : null"
+          :headroom-hidden="isTopChromeHidden"
           :selected="selected"
           :current="currentId"
           @open="onOpen"
@@ -542,6 +555,7 @@ import {
   RectangleHorizontal,
   Share2,
   Trash2,
+  Users,
   X,
 } from '@lucide/vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
@@ -648,6 +662,20 @@ const albumName = ref('');
 const folderName = ref('');
 const albumSourceFolderIds = ref<Set<string>>(new Set());
 const effectiveAlbumId = computed(() => props.externalAlbumId ?? internalAlbumId.value);
+const effectiveAlbumMembersCount = computed<number>(() => {
+  if (typeof props.externalAlbumMembersCount === 'number' && props.externalAlbumMembersCount > 0) {
+    return props.externalAlbumMembersCount;
+  }
+  const id = effectiveAlbumId.value;
+  if (id) {
+    const found = spaces.value.find((s) => s.id === id);
+    if (found && typeof found.memberCount === 'number' && found.memberCount >= 0) {
+      return found.memberCount + 1;
+    }
+  }
+  return 1;
+});
+const albumMembersLabel = computed(() => fmt('explorerMembersCount', { n: effectiveAlbumMembersCount.value }));
 
 const loadedStorageFolders = ref<GalleryStorageFolder[]>([]);
 const allStorageFolders = computed<readonly GalleryStorageFolder[]>(() => props.folders ?? loadedStorageFolders.value);
@@ -2459,9 +2487,13 @@ onBeforeUnmount(() => {
 
 .dp-float-sort {
   position: absolute;
-  top: calc(var(--dp-top-h, 50px) + 8px);
+  top: calc(var(--dp-top-h, 50px) + 7px);
   right: 64px;
   z-index: 12;
+  transition: top 0.22s ease;
+}
+.dp-float-sort.is-headroom-hidden {
+  top: 7px;
 }
 
 .dp-search-grid {
@@ -2762,6 +2794,11 @@ onBeforeUnmount(() => {
     max-width: 82px;
     height: 26px;
     padding: 0 6px;
+    font-size: 11px;
+  }
+  .dp-album-members-pill {
+    height: 26px;
+    padding: 0 7px;
     font-size: 11px;
   }
   .dp-album-share-pill {

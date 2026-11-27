@@ -7,6 +7,7 @@ import DashboardView from './DashboardView.vue';
 import { canvas, htmlDocuments, interactiveTemplates, recentResources, resourceFolders, textDocuments } from '../api/client';
 import { runBackHandlers } from '../composables/useBackHandler';
 import { currentAppDialog } from '../composables/appDialog';
+import { resetDashboardReturnOriginForTests } from '../composables/useDashboardReturnOrigin';
 import { resetExplorerGroupDnd } from '../composables/useExplorerGroupDnd';
 import { resetExplorerLayoutPrefs } from '../composables/useExplorerLayoutPrefs';
 import { useI18n } from '../composables/useI18n';
@@ -199,6 +200,7 @@ describe('dashboard sidebar navigation', () => {
     vi.clearAllMocks();
     dashboardRoute.query = {};
     localStorage.clear();
+    resetDashboardReturnOriginForTests();
     resetExplorerLayoutPrefs(true);
     resetExplorerGroupDnd();
     useI18n().setLocale('en');
@@ -2467,6 +2469,7 @@ describe('mobile Dashboard filters: Recent, folder counters, tag sheet', () => {
     vi.clearAllMocks();
     dashboardRoute.query = {};
     localStorage.clear();
+    resetDashboardReturnOriginForTests();
     resetExplorerLayoutPrefs(true);
     useI18n().setLocale('en');
     withDefaultFolders();
@@ -3052,6 +3055,7 @@ describe('Home/Spaces Yandex Disk display', () => {
     vi.clearAllMocks();
     dashboardRoute.query = {};
     localStorage.clear();
+    resetDashboardReturnOriginForTests();
     resetExplorerLayoutPrefs(true);
     useI18n().setLocale('en');
     withDefaultFolders();

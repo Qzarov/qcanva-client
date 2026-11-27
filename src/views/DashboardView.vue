@@ -243,40 +243,24 @@
         <template v-if="spaceId !== null && activeSpace">
           <button
             type="button"
+            class="headroom-members-pill"
+            data-headroom-space-members
+            :title="headroomSpaceCountLabel"
+            :aria-label="headroomSpaceCountLabel"
+            @click="openAlbumShareById(spaceId)"
+          >
+            <Users :size="13" aria-hidden="true" />
+            <span class="headroom-members-prefix">{{ headroomSpaceCountPrefix }}</span><span class="headroom-members-num">{{ headroomSpaceMembersTotal }}</span>
+          </button>
+          <button
+            type="button"
             class="space-share-btn headroom-share-btn"
             data-headroom-space-share
             @click="openAlbumShareById(spaceId)"
           >
             <Share2 :size="14" aria-hidden="true" />
             <span>{{ t('explorerShareGroup') }}</span>
-            <span v-if="activeSpace.members.length > 0" class="headroom-share-count" data-headroom-space-count>· {{ activeSpace.members.length + 1 }}</span>
           </button>
-          <div class="folder-manager-menu headroom-space-menu">
-            <button
-              type="button"
-              class="icon-btn headroom-actions-trigger"
-              data-headroom-space-menu
-              :title="t('groupActions')"
-              :aria-label="t('groupActions')"
-              :aria-expanded="openControlMenu === 'space:' + spaceId"
-              @click.stop="toggleToolbarMenu('space:' + spaceId)"
-            >⋯</button>
-            <Transition name="card-menu-pop">
-              <div
-                v-if="openControlMenu === 'space:' + spaceId"
-                class="mobile-action-popover headroom-action-popover"
-                data-headroom-space-actions
-                @click.stop
-              >
-                <button v-if="activeSpace.role === 'owner' || activeSpace.role === 'editor'" type="button" class="card-menu-item" data-space-add-folder @click="openControlMenu = ''; spaceView?.startAdd()">{{ t('spaceAddFolder') }}</button>
-                <template v-if="activeSpace.role === 'owner'">
-                  <button type="button" class="card-menu-item" data-space-rename @click="openControlMenu = ''; spaceView?.rename()">{{ t('rename') }}</button>
-                  <button type="button" class="card-menu-item danger" data-space-delete @click="openControlMenu = ''; spaceView?.removeSpace()">{{ t('delete') }}</button>
-                </template>
-                <button v-else type="button" class="card-menu-item danger" data-space-leave-menu @click="openControlMenu = ''; spaceView?.leave()">{{ t('spaceLeave') }}</button>
-              </div>
-            </Transition>
-          </div>
         </template>
       </template>
     </ExplorerHeadroomBar>
@@ -1147,7 +1131,9 @@
       :can-album="contextMenuCanAlbum"
       :can-delete="explorerCtxMenu.canDelete"
       :can-rename="explorerCtxMenu.canRename"
+      :can-download="explorerCtxMenu.canDownload"
       :can-properties="explorerCtxMenu.canProperties"
+      :delete-label="explorerCtxMenu.deleteLabel"
       :is-favorite="explorerCtxMenu.isFavorite"
       :albums="contextMenuAlbums"
       @close="explorerCtxMenu.open = false"
@@ -1209,7 +1195,7 @@
 </template>
 
 <script lang="ts">
-import { ChevronDown, ChevronUp, File as FileIcon, Folder, Plus, Share2, SlidersHorizontal, UsersRound } from '@lucide/vue';
+import { ChevronDown, ChevronUp, File as FileIcon, Folder, Plus, Share2, SlidersHorizontal, Users, UsersRound } from '@lucide/vue';
 import { defineAsyncComponent, defineComponent, ref, reactive, onBeforeUnmount, onMounted, computed, nextTick, watch, type Ref } from 'vue';
 import { alertDialog, confirmDelete, confirmDialog, promptDialog } from '../composables/appDialog';
 import { selectAll, selectRange, selectionKey, toggleSelection } from '../dashboard/selection';
@@ -1220,6 +1206,7 @@ import { useSidebarDriveFiles } from '../composables/useSidebarDriveFiles';
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
 import { markResourceOpened } from '../composables/useRecentResource';
+import * as vueRouter from 'vue-router';
 import { useRouter } from 'vue-router';
 import { accessRequests, canvas, getCurrentUser, htmlDocuments, interactiveTemplates, isAdmin, isAuthenticated, MAX_DESCRIPTION_LENGTH, recentResources as recentResourcesApi, refreshCurrentUserRole, resourceFolders, tags, textDocuments, type InteractiveTemplate, type ResourceFolderSummary, type ResourceTag } from '../api/client';
 import { useI18n } from '../composables/useI18n';
@@ -1344,6 +1331,12 @@ import { useDashboardBulkDelete } from '../composables/useDashboardBulkDelete';
 import { useDashboardActionRunner } from '../composables/useDashboardActionRunner';
 import { useDriveDropzone } from '../composables/useDriveDropzone';
 import { useActivityJournal } from '../composables/useActivityJournal';
+import {
+  clearDashboardReturnOrigin,
+  consumeDashboardReturnOrigin,
+  isResourceEditorRoute,
+  saveDashboardReturnOrigin,
+} from '../composables/useDashboardReturnOrigin';
 
 type CanvasTag = { id: string; name: string; color: string };
 type CanvasRecord = {
@@ -1486,6 +1479,7 @@ export default defineComponent({
     Plus,
     Share2,
     SlidersHorizontal,
+    Users,
     UsersRound,
   },
   setup() {
@@ -1548,6 +1542,36 @@ export default defineComponent({
     const openMenuCanvasId = ref('');
     const openControlMenu = ref('');
     const activeSection = ref<DashboardSection>({ kind: isLoggedIn ? 'recent' : 'public' });
+    const gallerySection = ref<GallerySection | 'trash'>('library');
+    const galleryAlbumId = ref<string | null>(null);
+    const galleryFolderId = ref<string | null>(null);
+    const recordDashboardReturnOrigin = () => {
+      if (!isLoggedIn) return;
+      const mode = activeSection.value.kind === 'gallery' ? 'media' : 'files';
+      saveDashboardReturnOrigin({
+        mode,
+        section: activeSection.value,
+        ...(mode === 'media'
+          ? {
+              gallerySection: gallerySection.value,
+              galleryAlbumId: galleryAlbumId.value,
+              galleryFolderId: galleryFolderId.value,
+            }
+          : {}),
+      });
+    };
+    try {
+      const registerRouteLeave = vueRouter.onBeforeRouteLeave;
+      if (typeof registerRouteLeave === 'function') {
+        registerRouteLeave((to) => {
+          if (isResourceEditorRoute(to)) {
+            recordDashboardReturnOrigin();
+          }
+        });
+      }
+    } catch {
+      // Unit tests with partial vue-router mocks skip route-leave hooks cleanly.
+    }
     const storage = () => {
       try {
         return typeof window === 'undefined' ? null : window.localStorage;
@@ -2698,6 +2722,7 @@ export default defineComponent({
       markResourceOpened(type, record.id);
     };
     const rememberRecentResource = (type: RecentResourceType, routeId: string) => {
+      recordDashboardReturnOrigin();
       const item = allRecentResourceItems.value.find((resource) => resource.type === type && (resource.id === routeId || ('slug' in resource && resource.slug === routeId)));
       if (!item) return;
       const recent: RecentHistoryEntry = { id: item.id, routeId: ('slug' in item && item.slug) || item.id, type, title: item.title || '', openedAt: Date.now() };
@@ -2707,11 +2732,13 @@ export default defineComponent({
 
     const openCanvas = (id: string) => {
       rememberRecentResource('canvas', id);
+      recordDashboardReturnOrigin();
       router.push(`/canvas/${id}`);
     };
 
     const openInteractiveTemplate = (id: string) => {
       rememberRecentResource('interactive-template', id);
+      recordDashboardReturnOrigin();
       router.push({ name: 'interactive-template', params: { id } });
     };
 
@@ -2725,6 +2752,7 @@ export default defineComponent({
 
     const openHtmlDocument = (id: string) => {
       rememberRecentResource('html-document', id);
+      recordDashboardReturnOrigin();
       router.push(`/edit/html/${id}`);
     };
 
@@ -2738,6 +2766,7 @@ export default defineComponent({
 
     const openTextDocument = (id: string) => {
       rememberRecentResource('text-document', id);
+      recordDashboardReturnOrigin();
       router.push({ name: 'text-document', params: { id } });
     };
 
@@ -2789,6 +2818,7 @@ export default defineComponent({
       const c = await runAction('create-canvas', () => canvas.create(title, undefined, targetFolderId), 'Canvas created');
       if (!c) return;
       rememberCreatedResource('canvas', c);
+      recordDashboardReturnOrigin();
       router.push(`/canvas/${c.id}`);
     };
 
@@ -2804,6 +2834,7 @@ export default defineComponent({
       );
       if (!doc) return;
       rememberCreatedResource('html-document', doc);
+      recordDashboardReturnOrigin();
       router.push(`/edit/html/${doc.id}`);
     };
 
@@ -3964,20 +3995,26 @@ export default defineComponent({
      * `?folder=<id>` a folder - the old Q Space pages (/drive/trash,
      * /drive/<folder>) land here. Read once, then dropped from the address.
      */
-    const takeAddressSection = () => {
-      if (!isLoggedIn) return;
+    const takeAddressSection = (): boolean => {
+      if (!isLoggedIn) return false;
       const query = router.currentRoute?.value?.query ?? {};
       const section = typeof query.section === 'string' ? query.section : '';
       const activity = typeof query.activity === 'string' ? query.activity : '';
       const folder = typeof query.folder === 'string' ? query.folder : '';
       const querySpaceId = typeof query.spaceId === 'string' ? query.spaceId : '';
-      if (!section && !activity && !folder && !querySpaceId) return;
+      if (!section && !activity && !folder && !querySpaceId) return false;
       if (section === 'trash') selectDashboardSection({ kind: 'trash' });
       else if (section === 'gallery' || activity === 'gallery') selectDashboardSection({ kind: 'gallery' });
-      else if (section === 'space' && querySpaceId) selectDashboardSection({ kind: 'space', spaceId: querySpaceId });
-      else if (folder) selectFolder(folder);
+      else if (querySpaceId) {
+        selectDashboardSection({
+          kind: 'space',
+          spaceId: querySpaceId,
+          ...(folder ? { folderId: folder } : {}),
+        });
+      } else if (folder) selectFolder(folder);
       const { section: _section, activity: _activity, folder: _folder, spaceId: _spaceId, ...rest } = query;
       void router.replace({ query: rest });
+      return true;
     };
 
     /**
@@ -4093,6 +4130,7 @@ export default defineComponent({
       const created = await textDocuments.create({ title, folderId });
       await textDocuments.replaceContent(created.id, { html: marked.parse(content, { async: false }) as string });
       rememberCreatedResource('text-document', created);
+      recordDashboardReturnOrigin();
       router.push(`/docs/${created.slug || created.id}`);
     };
     const openDriveMarkdown = (file: { id: string; name: string; updatedAt?: string | null; folderId?: string | null }) => {
@@ -4190,12 +4228,12 @@ export default defineComponent({
       yandexRefreshKey.value += 1;
     };
     /** Back from Yandex's consent page: `?space=yandex&yandex=connected|error`. */
-    const takeYandexReturn = () => {
-      if (typeof window === 'undefined') return;
+    const takeYandexReturn = (): boolean => {
+      if (typeof window === 'undefined') return false;
       const url = new URL(window.location.href);
       const space = url.searchParams.get('space');
       const result = url.searchParams.get('yandex');
-      if (space !== 'yandex' && !result) return;
+      if (space !== 'yandex' && !result) return false;
       if (isLoggedIn) activeSection.value = { kind: 'yandex', path: '/' };
       if (result === 'connected') setFeedback('success', t('yandexConnected'));
       else if (result === 'error') setFeedback('error', url.searchParams.get('reason') === 'denied' ? t('yandexConnectDenied') : t('yandexConnectFailed'));
@@ -4204,6 +4242,7 @@ export default defineComponent({
       const query = Object.fromEntries(url.searchParams.entries());
       if (typeof router?.replace === 'function') void router.replace({ query });
       else window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+      return true;
     };
 
     /**
@@ -4675,7 +4714,10 @@ export default defineComponent({
       } catch (error) {
         console.error('Failed to import file:', error);
       }
-      if (opened.length === 1) router.push(opened[0]!);
+      if (opened.length === 1) {
+        recordDashboardReturnOrigin();
+        router.push(opened[0]!);
+      }
       else if (opened.length) await load({ showLoading: false });
     };
 
@@ -5166,6 +5208,7 @@ export default defineComponent({
           : { kind: 'recent' };
       };
       if (isKnown(selectedFolderId.value)) {
+        expandAncestorsOf(selectedFolderId.value);
         syncActiveFolderSection();
         return;
       }
@@ -5187,6 +5230,7 @@ export default defineComponent({
     };
 
     const selectFolder = (folderId: string) => {
+      clearDashboardReturnOrigin();
       activeSection.value = { kind: 'folder', folderId };
       selectedFolderId.value = folderId;
       expandAncestorsOf(folderId);
@@ -5201,6 +5245,7 @@ export default defineComponent({
       || folder.name.toLowerCase() === 'default';
 
     const selectDashboardSection = (section: DashboardSection) => {
+      clearDashboardReturnOrigin();
       activeSection.value = section;
       if (section.kind === 'folder') {
         selectFolder(section.folderId);
@@ -5233,6 +5278,7 @@ export default defineComponent({
         selectDashboardSection(section);
         return;
       }
+      clearDashboardReturnOrigin();
       if (activeSection.value.kind !== 'recent') activeSection.value = { kind: 'recent' };
       closeCardMenu();
       mobileSidebarOpen.value = false;
@@ -5313,11 +5359,17 @@ export default defineComponent({
       )
     ));
 
+    const headroomSpaceMembersTotal = computed(() => (
+      activeSpace.value ? activeSpace.value.members.length + 1 : 0
+    ));
     const headroomSpaceCountLabel = computed(() => {
-      if (spaceView.value?.countLabel) return spaceView.value.countLabel;
-      const s = activeSpace.value;
-      if (!s) return '';
-      return t('explorerMembersCount').replace('{n}', String(s.members.length + 1));
+      if (!activeSpace.value) return '';
+      return t('explorerMembersCount').replace('{n}', String(headroomSpaceMembersTotal.value));
+    });
+    const headroomSpaceCountPrefix = computed(() => {
+      const label = headroomSpaceCountLabel.value;
+      const num = String(headroomSpaceMembersTotal.value);
+      return num && label.endsWith(num) ? label.slice(0, -num.length) : label;
     });
 
     const addDialogTargetFolderName = computed(() => {
@@ -5809,8 +5861,15 @@ export default defineComponent({
       }
     };
     const onSharingAlbumChanged = (next: SpaceDetails | null) => {
+      const prevId = sharingAlbum.value?.id;
       const wasUnlisted = Boolean(sharingAlbum.value?.unlisted || next?.unlisted);
       sharingAlbum.value = next && wasUnlisted ? { ...next, unlisted: true } : next;
+      if (next && activeSpace.value?.id === next.id) {
+        activeSpace.value = next;
+      } else if (!next && !wasUnlisted && prevId && spaceId.value === prevId) {
+        leaveSpaceSection();
+        return;
+      }
       if (!wasUnlisted) {
         void loadSpaces(true);
       }
@@ -6228,7 +6287,9 @@ export default defineComponent({
       canMove: boolean;
       canDelete: boolean;
       canRename: boolean;
+      canDownload: boolean;
       canProperties: boolean;
+      deleteLabel: string;
       isFavorite: boolean;
     }>({
       open: false,
@@ -6239,7 +6300,9 @@ export default defineComponent({
       canMove: false,
       canDelete: false,
       canRename: false,
+      canDownload: true,
       canProperties: false,
+      deleteLabel: '',
       isFavorite: false,
     });
 
@@ -6279,6 +6342,22 @@ export default defineComponent({
         }));
     });
 
+    const isSpaceContextItem = (item: ExplorerContextMenuItem): boolean => (
+      item.kind === 'space'
+      || item.kind === 'album'
+      || item.key.startsWith('space:')
+      || item.key.startsWith('album:')
+    );
+
+    const findSpaceForContextItem = (item: ExplorerContextMenuItem) => {
+      const id = item.id || item.key.replace(/^(space:|album:)/, '');
+      if (!id) return null;
+      const listed = allSpaces.value.find((s) => s.id === id);
+      if (listed) return listed;
+      if (activeSpace.value && activeSpace.value.id === id) return activeSpace.value;
+      return null;
+    };
+
     const openContextMenuForItems = (x: number, y: number, items: ExplorerContextMenuItem[]) => {
       if (!items.length) return;
       const first = items[0]!;
@@ -6293,16 +6372,27 @@ export default defineComponent({
         'file',
         'interactive-template',
       ]);
+      const singleIsSpace = items.length === 1 && isSpaceContextItem(first);
+      const singleSpace = singleIsSpace ? findSpaceForContextItem(first) : null;
+      const allSpacesOnly = items.every(isSpaceContextItem);
+      const canRename = singleIsSpace
+        ? singleSpace?.role === 'owner'
+        : items.length === 1 && renamableKinds.has(first.kind || '');
+      const deleteLabel = singleIsSpace && singleSpace && singleSpace.role !== 'owner'
+        ? t('spaceLeave')
+        : '';
       explorerCtxMenu.value = {
         open: true,
         x,
         y,
         items,
         emptyArea: false,
-        canMove: items.some((i) => i.kind !== 'space' && i.kind !== 'album'),
+        canMove: items.some((i) => !isSpaceContextItem(i)),
         canDelete: true,
-        canRename: items.length === 1 && renamableKinds.has(first.kind || ''),
+        canRename,
+        canDownload: !allSpacesOnly,
         canProperties: items.length === 1 && (first.kind === 'drive-file' || first.kind === 'file') && Boolean(first.id),
+        deleteLabel,
         isFavorite: items.every((i) => layoutPrefs.isFavorite(i.key)),
       };
     };
@@ -6434,7 +6524,9 @@ export default defineComponent({
         canMove: false,
         canDelete: false,
         canRename: false,
+        canDownload: false,
         canProperties: false,
+        deleteLabel: '',
         isFavorite: false,
       };
     };
@@ -6626,7 +6718,10 @@ export default defineComponent({
 
       if (item.kind === 'space' || item.kind === 'album') {
         try {
-          await spacesApi.rename(item.id, nextName);
+          const updated = await spacesApi.rename(item.id, nextName);
+          if (updated && activeSpace.value?.id === item.id) {
+            activeSpace.value = updated;
+          }
           await loadSpaces(true);
         } catch (err) {
           setFeedback('error', err instanceof Error && err.message ? err.message : t('spaceActionFailed'));
@@ -6676,22 +6771,44 @@ export default defineComponent({
         if (f) void deleteFolder(f);
         return;
       }
-      if (items.length === 1 && (items[0]!.kind === 'space' || items[0]!.kind === 'album') && items[0]!.id) {
-        const targetId = items[0]!.id;
-        const space = allSpaces.value.find((s) => s.id === targetId);
-        const confirmed = await confirmDialog({
-          title: t('spaceDeleteTitle').replace('{name}', space?.name || items[0]!.name || ''),
-          confirmLabel: t('delete'),
-          cancelLabel: t('cancel'),
-          danger: true,
-        });
-        if (!confirmed) return;
-        try {
-          await spacesApi.remove(targetId);
-          await loadSpaces(true);
-          if (spaceId.value === targetId) selectDashboardSection({ kind: 'recent' });
-        } catch (err) {
-          setFeedback('error', err instanceof Error && err.message ? err.message : t('spaceActionFailed'));
+      if (items.length === 1 && isSpaceContextItem(items[0]!)) {
+        const targetId = items[0]!.id || items[0]!.key.replace(/^(space:|album:)/, '');
+        if (!targetId) return;
+        const space = findSpaceForContextItem(items[0]!);
+        const spaceName = space?.name || items[0]!.name || '';
+        const isOwner = !space || space.role === 'owner';
+        if (isOwner) {
+          const confirmed = await confirmDialog({
+            title: t('spaceDeleteTitle').replace('{name}', spaceName),
+            confirmLabel: t('delete'),
+            cancelLabel: t('cancel'),
+            danger: true,
+          });
+          if (!confirmed) return;
+          try {
+            await spacesApi.remove(targetId);
+            await loadSpaces(true);
+            if (spaceId.value === targetId) selectDashboardSection({ kind: 'recent' });
+          } catch (err) {
+            setFeedback('error', err instanceof Error && err.message ? err.message : t('spaceActionFailed'));
+          }
+        } else {
+          const meId = currentUser.value?.id;
+          if (!meId) return;
+          const confirmed = await confirmDialog({
+            title: t('spaceLeaveTitle').replace('{name}', spaceName),
+            confirmLabel: t('spaceLeave'),
+            cancelLabel: t('cancel'),
+            danger: true,
+          });
+          if (!confirmed) return;
+          try {
+            await spacesApi.removeMember(targetId, meId);
+            await loadSpaces(true);
+            if (spaceId.value === targetId) selectDashboardSection({ kind: 'recent' });
+          } catch (err) {
+            setFeedback('error', err instanceof Error && err.message ? err.message : t('spaceActionFailed'));
+          }
         }
         return;
       }
@@ -6767,7 +6884,7 @@ export default defineComponent({
       }
       if (
         typeof document !== 'undefined'
-        && Boolean(document.querySelector('.card-menu, [data-space-add-menu], [data-space-actions], [data-yandex-add-menu], [data-yandex-space-menu]'))
+        && Boolean(document.querySelector('.card-menu, [data-space-add-menu], [data-yandex-add-menu], [data-yandex-space-menu]'))
       ) {
         return;
       }
@@ -6803,9 +6920,6 @@ export default defineComponent({
         galleryRefreshKey.value += 1;
       }
     };
-    const gallerySection = ref<GallerySection | 'trash'>('library');
-    const galleryAlbumId = ref<string | null>(null);
-    const galleryFolderId = ref<string | null>(null);
     const galleryHighlightFolderId = ref<string | null>(null);
     const galleryHighlightFileId = ref<string | null>(null);
     const gallerySidebarCounts = ref<GallerySidebarCounts>({});
@@ -6813,7 +6927,7 @@ export default defineComponent({
     const galleryAlbumMembersCount = computed<number | null>(() => {
       if (!galleryAlbumId.value) return null;
       const found = allSpaces.value.find((s) => s.id === galleryAlbumId.value);
-      return found ? found.memberCount : null;
+      return found ? found.memberCount + 1 : null;
     });
 
     const galleryStorageFolders = computed<GalleryStorageFolder[]>(() =>
@@ -7004,6 +7118,22 @@ export default defineComponent({
     let appStateListener: PluginListenerHandle | null = null;
     let dashboardUnmounted = false;
 
+    const restoreDashboardReturnOrigin = () => {
+      if (!isLoggedIn) return;
+      const origin = consumeDashboardReturnOrigin();
+      if (!origin) return;
+      if (origin.mode === 'media' || origin.section.kind === 'gallery') {
+        if (origin.gallerySection) {
+          gallerySection.value = origin.gallerySection as GallerySection | 'trash';
+        }
+        galleryAlbumId.value = origin.galleryAlbumId ?? null;
+        galleryFolderId.value = origin.galleryFolderId ?? null;
+        selectDashboardSection({ kind: 'gallery' });
+        return;
+      }
+      selectDashboardSection(origin.section);
+    };
+
     onMounted(() => {
       void loadRecentResources();
       // The role is stored at sign-in; one given or taken since shows now.
@@ -7021,8 +7151,13 @@ export default defineComponent({
       // Even a fresh native snapshot is refreshed quietly, so moving a
       // document between a dashboard visit and a return can never hide it.
       void load({ showLoading: !cached.found });
-      takeYandexReturn();
-      takeAddressSection();
+      const handledYandexReturn = takeYandexReturn();
+      const handledAddressSection = takeAddressSection();
+      if (handledYandexReturn || handledAddressSection) {
+        clearDashboardReturnOrigin();
+      } else {
+        restoreDashboardReturnOrigin();
+      }
       window.addEventListener('resize', refreshOverflowIndicators);
       refreshOverflowIndicators();
     });
@@ -7232,7 +7367,9 @@ export default defineComponent({
       headroomElevated,
       onDashboardMainScroll,
       headroomViewToggleMode,
+      headroomSpaceMembersTotal,
       headroomSpaceCountLabel,
+      headroomSpaceCountPrefix,
       activeSpaceFolderId,
       activeSpaceYandexSourceId,
       activeSpaceYandexSubpath,
@@ -7568,6 +7705,32 @@ export default defineComponent({
   color: var(--ui-glass-accent-text);
 }
 
+.headroom-members-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--ui-glass-border, var(--ui-border));
+  background: var(--ui-glass-btn-bg, var(--ui-surface-subtle));
+  color: var(--ui-text-secondary, var(--ui-text));
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  flex: none;
+  transition: background-color 0.14s ease, border-color 0.14s ease, color 0.14s ease;
+}
+.headroom-members-pill:hover,
+.headroom-members-pill:focus-visible {
+  background: var(--ui-glass-btn-hover, var(--ui-surface-subtle));
+  border-color: var(--ui-glass-accent-border, var(--color-brands));
+  color: var(--ui-glass-accent-text, var(--color-brands));
+  outline: none;
+}
+
 .headroom-share-btn {
   display: inline-flex;
   align-items: center;
@@ -7586,11 +7749,6 @@ export default defineComponent({
   flex: none;
 }
 
-.headroom-share-count {
-  opacity: 0.85;
-  font-weight: 600;
-}
-
 .headroom-actions-trigger {
   font-size: 16px;
   line-height: 1;
@@ -7602,6 +7760,15 @@ export default defineComponent({
   right: 0;
   z-index: 40;
   min-width: 196px;
+}
+
+@media (max-width: 960px) {
+  .headroom-members-pill {
+    padding: 0 8px;
+  }
+  .headroom-members-pill .headroom-members-prefix {
+    display: none;
+  }
 }
 
 @media (max-width: 768px) {

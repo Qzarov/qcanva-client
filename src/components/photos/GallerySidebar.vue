@@ -6,11 +6,14 @@ import {
   Cloud,
   File as FileIcon,
   Folder,
+  FolderOpen,
   Globe2,
   HardDrive,
   Heart,
   House,
   Image as ImageIcon,
+  LogOut,
+  Pencil,
   Plus,
   Send,
   Share2,
@@ -19,15 +22,17 @@ import {
   Video,
 } from '@lucide/vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch, type CSSProperties } from 'vue';
-import { resourceFolders, type ResourceFolderSummary } from '../../api/client';
+import { getCurrentUser, resourceFolders, type ResourceFolderSummary } from '../../api/client';
 import { driveApi, type DriveItem } from '../../api/drive';
 import { photosApi, renditionUrl, type Album } from '../../api/photos';
-import type { SpaceSummary } from '../../api/spaces';
+import { spacesApi, type SpaceRole, type SpaceSummary } from '../../api/spaces';
 import { yandexDisk, type YandexItem } from '../../api/yandexDisk';
+import { confirmDialog, promptDialog } from '../../composables/appDialog';
 import { useExplorerGroupDnd } from '../../composables/useExplorerGroupDnd';
 import { useExplorerLayoutPrefs } from '../../composables/useExplorerLayoutPrefs';
 import { useI18n } from '../../composables/useI18n';
 import { useSpaces } from '../../composables/useSpaces';
+import { useToast } from '../../composables/useToast';
 import { useYandexDisk } from '../../composables/useYandexDisk';
 
 export type GallerySection = 'library' | 'people' | 'favorites' | 'recent' | 'videos' | 'trash';
@@ -90,6 +95,7 @@ const emit = defineEmits<{
 }>();
 
 const { t, locale } = useI18n();
+const toast = useToast();
 const rootEl = ref<HTMLElement | null>(null);
 const prefs = useExplorerLayoutPrefs();
 const dnd = useExplorerGroupDnd();
@@ -104,6 +110,7 @@ interface UnifiedAlbumEntry {
   name: string;
   count: number;
   coverFileIds: string[];
+  role?: SpaceRole;
 }
 
 const albumsList = computed<UnifiedAlbumEntry[]>(() => {
@@ -117,6 +124,7 @@ const albumsList = computed<UnifiedAlbumEntry[]>(() => {
         name: item.name,
         count: sp.mediaCount ?? sp.itemCount ?? sp.count ?? sp.sourceCount ?? 0,
         coverFileIds: sp.coverFileIds ?? [],
+        role: sp.role,
       };
     });
 });
@@ -580,8 +588,208 @@ onMounted(async () => {
   }
 });
 
+// ----- Album Context Menu (ПКМ, B-023 + B-019 outside-click/Escape dismissal) -----
+interface AlbumCtxMenuState {
+  x: number;
+  y: number;
+  album: UnifiedAlbumEntry;
+}
+
+const albumCtxMenu = ref<AlbumCtxMenuState | null>(null);
+const albumCtxMenuEl = ref<HTMLElement | null>(null);
+let albumCtxListenersAttached = false;
+let pointerInsideAlbumCtx = false;
+let pointerInsideAlbumCtxTimer: ReturnType<typeof setTimeout> | null = null;
+
+const isAlbumOwner = (alb: UnifiedAlbumEntry): boolean => !alb.role || alb.role === 'owner';
+
+function clearPointerInsideAlbumCtx(): void {
+  pointerInsideAlbumCtx = false;
+  if (pointerInsideAlbumCtxTimer !== null) {
+    clearTimeout(pointerInsideAlbumCtxTimer);
+    pointerInsideAlbumCtxTimer = null;
+  }
+}
+
+function markPointerInsideAlbumCtx(): void {
+  clearPointerInsideAlbumCtx();
+  pointerInsideAlbumCtx = true;
+  pointerInsideAlbumCtxTimer = setTimeout(() => {
+    pointerInsideAlbumCtx = false;
+    pointerInsideAlbumCtxTimer = null;
+  }, 400);
+}
+
+function isInsideAlbumCtxMenu(target: Node | null): boolean {
+  if (!target) return false;
+  return Boolean(albumCtxMenuEl.value?.contains(target));
+}
+
+function onAlbumCtxOutsidePointer(e: Event): void {
+  if (!albumCtxMenu.value) return;
+  const target = e.target as Node | null;
+  if (isInsideAlbumCtxMenu(target)) return;
+  closeAlbumCtxMenu();
+}
+
+function onAlbumCtxDocFocusIn(e: FocusEvent): void {
+  if (!albumCtxMenu.value || pointerInsideAlbumCtx) return;
+  const target = e.target as Node | null;
+  if (isInsideAlbumCtxMenu(target)) return;
+  closeAlbumCtxMenu();
+}
+
+function onAlbumCtxFocusOut(e: FocusEvent): void {
+  if (!albumCtxMenu.value || pointerInsideAlbumCtx) return;
+  const next = e.relatedTarget as Node | null;
+  if (next && isInsideAlbumCtxMenu(next)) return;
+  if (!next) return;
+  closeAlbumCtxMenu();
+}
+
+function onAlbumCtxKeydown(e: KeyboardEvent): void {
+  if (!albumCtxMenu.value) return;
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    e.stopPropagation();
+    closeAlbumCtxMenu();
+  }
+}
+
+function onAlbumCtxWindowScroll(e: Event): void {
+  if (!albumCtxMenu.value) return;
+  const target = e.target as Node | null;
+  if (isInsideAlbumCtxMenu(target)) return;
+  closeAlbumCtxMenu();
+}
+
+function attachAlbumCtxListeners(): void {
+  if (albumCtxListenersAttached) return;
+  albumCtxListenersAttached = true;
+  window.addEventListener('pointerdown', onAlbumCtxOutsidePointer, true);
+  window.addEventListener('mousedown', onAlbumCtxOutsidePointer, true);
+  window.addEventListener('click', onAlbumCtxOutsidePointer, true);
+  window.addEventListener('keydown', onAlbumCtxKeydown, true);
+  document.addEventListener('focusin', onAlbumCtxDocFocusIn, true);
+  window.addEventListener('blur', closeAlbumCtxMenu);
+  window.addEventListener('scroll', onAlbumCtxWindowScroll, true);
+}
+
+function detachAlbumCtxListeners(): void {
+  if (!albumCtxListenersAttached) return;
+  albumCtxListenersAttached = false;
+  window.removeEventListener('pointerdown', onAlbumCtxOutsidePointer, true);
+  window.removeEventListener('mousedown', onAlbumCtxOutsidePointer, true);
+  window.removeEventListener('click', onAlbumCtxOutsidePointer, true);
+  window.removeEventListener('keydown', onAlbumCtxKeydown, true);
+  document.removeEventListener('focusin', onAlbumCtxDocFocusIn, true);
+  window.removeEventListener('blur', closeAlbumCtxMenu);
+  window.removeEventListener('scroll', onAlbumCtxWindowScroll, true);
+}
+
+function closeAlbumCtxMenu(): void {
+  albumCtxMenu.value = null;
+  clearPointerInsideAlbumCtx();
+  detachAlbumCtxListeners();
+}
+
+function openAlbumCtxMenu(e: MouseEvent, alb: UnifiedAlbumEntry): void {
+  const vw = typeof window !== 'undefined' ? window.innerWidth : 1280;
+  const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
+  const x = Math.max(8, Math.min(e.clientX, vw - 220));
+  const y = Math.max(8, Math.min(e.clientY, vh - 210));
+  albumCtxMenu.value = { x, y, album: alb };
+  attachAlbumCtxListeners();
+  void nextTick(() => {
+    albumCtxMenuEl.value?.focus({ preventScroll: true });
+  });
+}
+
+function ctxOpenAlbum(): void {
+  const alb = albumCtxMenu.value?.album;
+  closeAlbumCtxMenu();
+  if (!alb) return;
+  onSelectAlbum(alb.id);
+}
+
+function ctxShareAlbum(): void {
+  const alb = albumCtxMenu.value?.album;
+  closeAlbumCtxMenu();
+  if (!alb) return;
+  emit('share-album', alb.id);
+}
+
+async function ctxRenameAlbum(): Promise<void> {
+  const alb = albumCtxMenu.value?.album;
+  closeAlbumCtxMenu();
+  if (!alb || !isAlbumOwner(alb)) return;
+  const nextName = (await promptDialog({
+    title: t('rename'),
+    value: alb.name,
+    confirmLabel: t('driveSave'),
+    cancelLabel: t('cancel'),
+  }))?.trim();
+  if (!nextName || nextName === alb.name) return;
+  try {
+    await spacesApi.rename(alb.id, nextName);
+    await loadSpaces(true);
+  } catch {
+    toast.show(t('spaceActionFailed'), 'error');
+  }
+}
+
+async function ctxDeleteAlbum(): Promise<void> {
+  const alb = albumCtxMenu.value?.album;
+  closeAlbumCtxMenu();
+  if (!alb || !isAlbumOwner(alb)) return;
+  const confirmed = await confirmDialog({
+    title: t('spaceDeleteTitle').replace('{name}', alb.name),
+    confirmLabel: t('delete'),
+    cancelLabel: t('cancel'),
+    danger: true,
+  });
+  if (!confirmed) return;
+  try {
+    await spacesApi.remove(alb.id);
+    if (effectiveActiveAlbumId.value === alb.id) {
+      emit('select-section', 'library');
+    }
+    await loadSpaces(true);
+  } catch {
+    toast.show(t('spaceActionFailed'), 'error');
+  }
+}
+
+async function ctxLeaveAlbum(): Promise<void> {
+  const alb = albumCtxMenu.value?.album;
+  closeAlbumCtxMenu();
+  if (!alb || isAlbumOwner(alb)) return;
+  const confirmed = await confirmDialog({
+    title: t('spaceLeaveTitle').replace('{name}', alb.name),
+    confirmLabel: t('spaceLeave'),
+    cancelLabel: t('cancel'),
+    danger: true,
+  });
+  if (!confirmed) return;
+  const meId = getCurrentUser()?.id;
+  if (!meId) {
+    toast.show(t('spaceActionFailed'), 'error');
+    return;
+  }
+  try {
+    await spacesApi.removeMember(alb.id, meId);
+    if (effectiveActiveAlbumId.value === alb.id) {
+      emit('select-section', 'library');
+    }
+    await loadSpaces(true);
+  } catch {
+    toast.show(t('spaceActionFailed'), 'error');
+  }
+}
+
 onBeforeUnmount(() => {
   alive = false;
+  closeAlbumCtxMenu();
 });
 </script>
 
@@ -664,6 +872,7 @@ onBeforeUnmount(() => {
           'drag-over': isDropActive('album', alb.id),
         }"
         :data-gallery-album="alb.id"
+        @contextmenu.prevent="openAlbumCtxMenu($event, alb)"
         @dragenter.prevent="onAlbumDragOver(alb.id)"
         @dragover.prevent="onAlbumDragOver(alb.id)"
         @dragleave="onAlbumDragLeave(alb.id)"
@@ -981,6 +1190,70 @@ onBeforeUnmount(() => {
         </div>
       </template>
     </div>
+
+    <Teleport to="body">
+      <div
+        v-if="albumCtxMenu"
+        ref="albumCtxMenuEl"
+        class="gs-ctx-menu"
+        role="menu"
+        tabindex="-1"
+        data-testid="gallery-album-context-menu"
+        :style="{ left: `${albumCtxMenu.x}px`, top: `${albumCtxMenu.y}px` }"
+        @click.stop
+        @pointerdown="markPointerInsideAlbumCtx"
+        @mousedown="markPointerInsideAlbumCtx"
+        @focusout="onAlbumCtxFocusOut"
+      >
+        <button type="button" role="menuitem" class="gs-ctx-item" data-album-ctx-open @click="ctxOpenAlbum">
+          <FolderOpen :size="14" aria-hidden="true" />
+          <span>{{ t('photosOpen') }}</span>
+        </button>
+
+        <button type="button" role="menuitem" class="gs-ctx-item" data-album-ctx-share @click="ctxShareAlbum">
+          <Share2 :size="14" aria-hidden="true" />
+          <span>{{ t('galleryShare') }}</span>
+        </button>
+
+        <button
+          v-if="isAlbumOwner(albumCtxMenu.album)"
+          type="button"
+          role="menuitem"
+          class="gs-ctx-item"
+          data-album-ctx-rename
+          @click="ctxRenameAlbum"
+        >
+          <Pencil :size="14" aria-hidden="true" />
+          <span>{{ t('rename') }}</span>
+        </button>
+
+        <div class="gs-ctx-sep" role="separator"></div>
+
+        <button
+          v-if="isAlbumOwner(albumCtxMenu.album)"
+          type="button"
+          role="menuitem"
+          class="gs-ctx-item gs-ctx-danger"
+          data-album-ctx-delete
+          @click="ctxDeleteAlbum"
+        >
+          <Trash2 :size="14" aria-hidden="true" />
+          <span>{{ t('delete') }}</span>
+        </button>
+
+        <button
+          v-else
+          type="button"
+          role="menuitem"
+          class="gs-ctx-item gs-ctx-danger"
+          data-album-ctx-leave
+          @click="ctxLeaveAlbum"
+        >
+          <LogOut :size="14" aria-hidden="true" />
+          <span>{{ t('spaceLeave') }}</span>
+        </button>
+      </div>
+    </Teleport>
   </nav>
 </template>
 
@@ -1221,5 +1494,53 @@ onBeforeUnmount(() => {
 .gs button:focus-visible {
   outline: 2px solid var(--ui-focus);
   outline-offset: 1px;
+}
+.gs-ctx-menu {
+  position: fixed;
+  z-index: 1100;
+  min-width: 196px;
+  max-width: 260px;
+  padding: 6px;
+  border-radius: 13px;
+  background: var(--ui-glass-tint), var(--ui-surface-solid);
+  border: 1px solid var(--ui-glass-border);
+  box-shadow: var(--ui-glass-surface-shadow);
+  backdrop-filter: blur(var(--ui-glass-blur, 18px)) saturate(1.25);
+  -webkit-backdrop-filter: blur(var(--ui-glass-blur, 18px)) saturate(1.25);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  outline: none;
+  color: var(--ui-text);
+}
+.gs-ctx-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ui-text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.gs-ctx-item:hover {
+  background: var(--ui-glass-btn-hover);
+}
+.gs-ctx-item:focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 1px;
+}
+.gs-ctx-danger {
+  color: var(--ui-danger);
+}
+.gs-ctx-sep {
+  height: 1px;
+  background: var(--ui-glass-border);
+  margin: 3px 4px;
 }
 </style>

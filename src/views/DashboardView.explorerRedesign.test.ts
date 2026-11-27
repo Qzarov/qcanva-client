@@ -1508,12 +1508,18 @@ describe('DashboardView T-021 + T-018 Explorer Redesign Integration', () => {
     expect(wrapper.find('[data-dashboard-view="space"] [data-explorer-table]').exists()).toBe(true);
     expect(wrapper.get('.dashboard-shell').classes()).not.toContain('dashboard-list-view');
 
-    // Header cleanup: members.length === 0 -> no noisy count pill, clean Share button, no duplicate Share in ⋯ menu
+    // B-023 header: clickable Участников: 1 pill + clean Share button, NO ⋯ menu
     expect(wrapper.find('[data-headroom-space-count]').exists()).toBe(false);
+    expect(wrapper.find('[data-headroom-space-menu]').exists()).toBe(false);
+    expect(wrapper.find('[data-headroom-space-actions]').exists()).toBe(false);
+    expect(wrapper.get('[data-headroom-space-members]').text().trim()).toBe('Участников: 1');
     expect(wrapper.get('[data-headroom-space-share]').text().trim()).toBe('Поделиться');
-    await wrapper.get('[data-headroom-space-menu]').trigger('click');
+    await wrapper.get('[data-headroom-space-members]').trigger('click');
+    await flushPromises();
+    expect(wrapper.find('[data-album-share-dialog]').exists()).toBe(true);
+    await wrapper.get('[data-album-share-dialog] .dialog-close, [data-album-share-dialog] button[aria-label]').trigger('click').catch(() => {});
+    (wrapper.vm as any).onCloseSharingAlbum?.();
     await nextTick();
-    expect(wrapper.find('[data-headroom-space-actions] [data-space-members-open]').exists()).toBe(false);
 
     // Even while Q Space -> home folders are collapsed, expanding Альбомы -> alb-1 reveals > on own attached folder and expands 2nd & 3rd-level subfolders!
     await wrapper.get('[data-album-toggle="alb-1"]').trigger('click');

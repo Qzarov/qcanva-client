@@ -196,7 +196,7 @@
           @click="onDelete"
         >
           <Trash2 :size="15" aria-hidden="true" />
-          <span>{{ deleteLabel }}</span>
+          <span>{{ effectiveDeleteLabel }}</span>
         </button>
       </template>
       </template>
@@ -317,6 +317,7 @@ const props = withDefaults(defineProps<{
   canRename?: boolean;
   canDownload?: boolean;
   canProperties?: boolean;
+  deleteLabel?: string;
   isFavorite?: boolean;
   albums?: ReadonlyArray<ExplorerContextMenuAlbum>;
 }>(), {
@@ -334,6 +335,7 @@ const props = withDefaults(defineProps<{
   canRename: true,
   canDownload: true,
   canProperties: false,
+  deleteLabel: '',
   isFavorite: false,
 });
 
@@ -382,7 +384,7 @@ const moveLabel = computed(() => {
   return base.endsWith('…') ? `${base.slice(0, -1)} (${count.value})…` : `${base} (${count.value})`;
 });
 const downloadLabel = computed(() => withCount(t('download')));
-const deleteLabel = computed(() => withCount(t('delete')));
+const effectiveDeleteLabel = computed(() => withCount(props.deleteLabel || t('delete')));
 const removeFromAlbumLabel = computed(() => withCount(t('photosSelRemoveFromAlbum')));
 const hasSecondaryActions = computed(() =>
   Boolean(props.canMove || (count.value === 1 && props.canRename) || props.canDownload || (count.value === 1 && props.canProperties)),

@@ -758,4 +758,75 @@ describe('PhotosFeed', () => {
 
     w.unmount();
   });
+
+  it('B-024: renders .pf-stick as direct child of .pf outside .pf-scroller and computes stuck/offset accurately for headroomHidden=false (stickY=50) and headroomHidden=true (stickY=0)', async () => {
+    const oct = Array.from({ length: 24 }, (_, i) => mkItem(i));
+    const sep = Array.from({ length: 12 }, (_, i) =>
+      mkItem(100 + i, { localTakenAt: '2026-09-10T10:00:00.000Z', takenAt: '2026-09-10T10:00:00.000Z' }),
+    );
+    summaryMock.mockResolvedValue({
+      groups: [
+        { key: '2026-10', count: 24 },
+        { key: '2026-09', count: 12 },
+      ],
+    });
+    itemsMock.mockImplementation(async (_p, g) => ({ items: g === '2026-10' ? oct : sep, nextCursor: null }));
+
+    const Feed = await load();
+    const w = mountFeed(Feed, { headroomHidden: false });
+    await settle();
+
+    // At st = 0 with headroomHidden=false, first h1 sits flush at y=50px, so sticky-head is not shown
+    expect(w.find('[data-testid="sticky-head"]').exists()).toBe(false);
+
+    // At st = 10 with headroomHidden=false (stickY=50), sticky-head mounts as direct child of .pf (outside .pf-scroller)
+    await scrollTo(w, 10);
+    const stickEl = w.get('[data-testid="sticky-head"]').element as HTMLElement;
+    expect(stickEl.parentElement).toBe(w.get('[data-testid="photos-feed"]').element);
+    expect(w.get('.pf-scroller').element.contains(stickEl)).toBe(false);
+    expect(stickEl.textContent).toContain('Октябрь 2026');
+    expect((w.get('.pf-stick-inner').element as HTMLElement).style.transform).toBe('translateY(0px)');
+
+    // Find second group header top
+    await scrollTo(w, 800);
+    const sepRow = w.findAll('.pf-row[data-kind="tiles"]').find((r) => r.attributes('data-group') === '2026-09');
+    expect(sepRow).toBeTruthy();
+    const sepTop = parseFloat((sepRow!.element as HTMLElement).style.top);
+    expect(sepTop).toBeGreaterThan(100);
+
+    // Approaching sepTop with headroomHidden=false (stickY=50): threshold = st = sepTop - 20 -> offset = -28px
+    await scrollTo(w, sepTop - 20);
+    expect(w.get('[data-testid="sticky-head"]').text()).toContain('Октябрь 2026');
+    expect((w.get('.pf-stick-inner').element as HTMLElement).style.transform).toBe('translateY(-28px)');
+
+    // Just past sepTop with headroomHidden=false: sticky-head switches to Сентябрь 2026 with offset 0
+    await scrollTo(w, sepTop + 1);
+    expect(w.get('[data-testid="sticky-head"]').text()).toContain('Сентябрь 2026');
+    expect((w.get('.pf-stick-inner').element as HTMLElement).style.transform).toBe('translateY(0px)');
+
+    // Now switch to headroomHidden=true (stickY=0, threshold = st - 50)
+    await w.setProps({ headroomHidden: true });
+    await settle();
+
+    // At st = 40 (<= 50), list[0] is still on screen at y = 50 - 40 = 10 >= 0 -> no sticky-head
+    await scrollTo(w, 40);
+    expect(w.find('[data-testid="sticky-head"]').exists()).toBe(false);
+
+    // At st = 60 (> 50), list[0] passed y = 0 -> sticky-head shows Октябрь 2026 at offset 0
+    await scrollTo(w, 60);
+    expect(w.get('[data-testid="sticky-head"]').text()).toContain('Октябрь 2026');
+    expect((w.get('.pf-stick-inner').element as HTMLElement).style.transform).toBe('translateY(0px)');
+
+    // At st = sepTop + 30 -> threshold = sepTop - 20 -> nextScreenY = 20 -> offset = -28px (no 50px premature push!)
+    await scrollTo(w, sepTop + 30);
+    expect(w.get('[data-testid="sticky-head"]').text()).toContain('Октябрь 2026');
+    expect((w.get('.pf-stick-inner').element as HTMLElement).style.transform).toBe('translateY(-28px)');
+
+    // At st = sepTop + 51 -> threshold = sepTop + 1 -> sticky-head switches to Сентябрь 2026 at offset 0
+    await scrollTo(w, sepTop + 51);
+    expect(w.get('[data-testid="sticky-head"]').text()).toContain('Сентябрь 2026');
+    expect((w.get('.pf-stick-inner').element as HTMLElement).style.transform).toBe('translateY(0px)');
+
+    w.unmount();
+  });
 });

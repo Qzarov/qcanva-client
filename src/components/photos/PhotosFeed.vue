@@ -67,6 +67,7 @@ const props = withDefaults(defineProps<{
   folderIncludeRoot?: boolean;
   peopleFilter?: readonly string[];
   recentLimit?: number | null;
+  headroomHidden?: boolean;
   selected: Set<string>;
   current: string | null;
 }>(), {
@@ -78,6 +79,7 @@ const props = withDefaults(defineProps<{
   folderIncludeRoot: false,
   peopleFilter: () => [],
   recentLimit: null,
+  headroomHidden: undefined,
 });
 
 const emit = defineEmits<{
@@ -100,6 +102,8 @@ const PAGE_SIZE = 200;
 const OVERSCAN = 600;
 /** Header band the sticky group title covers; the anchor line sits right below it. */
 const STICKY_OFFSET = H1_HEIGHT;
+/** Height of the floating gallery topbar (.dp-top, matches --dp-top-h: 50px). */
+const TOP_BAR_H = 50;
 const MAX_PENDING_PAGES = 25;
 const MAX_CONCURRENT = 4;
 const JUMP_DEBOUNCE_MS = 80;
@@ -165,7 +169,9 @@ const collapsedShares = computed(() => new Set(view.state.value.collapsedShares)
 const level1 = computed<SortKey>(() => appliedParams.value.levels[0] ?? 'date');
 const level2 = computed<SortKey | undefined>(() => appliedParams.value.levels[1]);
 const isOverlayDateWall = computed(() => level1.value === 'date' && !level2.value);
-const headroomHidden = computed(() => prefs.headroomHidden.value && !hasMultiSelect.value);
+const effectiveHeadroomHidden = computed(
+  () => props.headroomHidden ?? (prefs.headroomHidden.value && !hasMultiSelect.value),
+);
 
 const selectionAnchorId = ref<string | null>(null);
 const marqueeRect = ref<{ left: number; top: number; width: number; height: number } | null>(null);
@@ -736,12 +742,14 @@ const visible = computed(() =>
 const stuck = computed(() => {
   const list = h1Rows.value;
   const st = scrollTop.value;
+  const stickY = effectiveHeadroomHidden.value ? 0 : TOP_BAR_H;
+  const threshold = st - (TOP_BAR_H - stickY);
   let lo = 0;
   let hi = list.length - 1;
   let idx = -1;
   while (lo <= hi) {
     const mid = (lo + hi) >> 1;
-    if (list[mid]!.top < st) {
+    if (list[mid]!.top < threshold) {
       idx = mid;
       lo = mid + 1;
     } else {
@@ -751,7 +759,7 @@ const stuck = computed(() => {
   if (idx < 0) return null;
   const row = list[idx]!;
   const next = list[idx + 1];
-  const offset = next ? Math.min(0, next.top - st - H1_HEIGHT) : 0;
+  const offset = next ? Math.min(0, next.top - threshold - H1_HEIGHT) : 0;
   return { row, offset };
 });
 
@@ -1308,9 +1316,32 @@ onBeforeUnmount(() => {
 <template>
   <div
     class="pf"
-    :class="{ 'has-multi-select': hasMultiSelect, 'sel-on': hasMultiSelect, 'headroom-hidden': headroomHidden }"
+    :class="{ 'has-multi-select': hasMultiSelect, 'sel-on': hasMultiSelect, 'headroom-hidden': effectiveHeadroomHidden }"
     data-testid="photos-feed"
   >
+    <div
+      v-if="stuck"
+      class="pf-stick"
+      data-testid="sticky-head"
+    >
+      <div
+        class="pf-stick-inner"
+        :style="{ transform: `translateY(${stuck.offset}px)` }"
+      >
+        <PhotosGroupHead
+          level="h1"
+          :title="stuck.row.title ?? ''"
+          :secondary="headFor(stuck.row)?.secondary"
+          :count="stuck.row.count ?? 0"
+          :folder="headFor(stuck.row)?.isFolder"
+          :pressed="groupPressed(stuck.row.groupKey)"
+          :selecting="hasMultiSelect"
+          :curtain="true"
+          @pick="pickGroup(stuck.row.groupKey)"
+        />
+      </div>
+    </div>
+
     <div
       ref="scroller"
       class="pf-scroller"
@@ -1320,27 +1351,6 @@ onBeforeUnmount(() => {
       @pointerdown="onScrollerPointerDown"
       @keydown="cancelPending"
     >
-      <div
-        v-if="stuck"
-        class="pf-stick"
-        data-testid="sticky-head"
-        :style="{ transform: `translateY(${stuck.offset}px)` }"
-      >
-        <div class="pf-stick-inner">
-          <PhotosGroupHead
-            level="h1"
-            :title="stuck.row.title ?? ''"
-            :secondary="headFor(stuck.row)?.secondary"
-            :count="stuck.row.count ?? 0"
-            :folder="headFor(stuck.row)?.isFolder"
-            :pressed="groupPressed(stuck.row.groupKey)"
-            :selecting="hasMultiSelect"
-            :curtain="true"
-            @pick="pickGroup(stuck.row.groupKey)"
-          />
-        </div>
-      </div>
-
       <div ref="sizer" class="pf-sizer" :style="{ height: `${layout.totalHeight}px` }">
         <template v-for="row in visible" :key="rowKey(row)">
           <div
@@ -1498,7 +1508,7 @@ onBeforeUnmount(() => {
   flex: 1;
   min-width: 0;
   overflow-y: auto;
-  padding: calc(var(--dp-top-h, 50px) + 2px) 4px 48px 2px;
+  padding: var(--dp-top-h, 50px) 4px 48px 2px;
   scrollbar-width: none;
 }
 .pf-scroller::-webkit-scrollbar {
@@ -1525,6 +1535,9 @@ onBeforeUnmount(() => {
   border-radius: 0;
   background: linear-gradient(180deg, rgba(14, 24, 18, 0.52) 0%, rgba(14, 24, 18, 0) 100%);
 }
+.pf-h1:not(.is-overlay) {
+  padding-right: 210px;
+}
 :root[data-theme='light'] .pf-h1:not(.is-overlay),
 :root[data-theme='light'] .pf-h2 {
   background: linear-gradient(180deg, rgba(232, 241, 235, 0.75) 0%, rgba(232, 241, 235, 0) 100%);
@@ -1534,7 +1547,7 @@ onBeforeUnmount(() => {
   left: 0;
   right: 0;
   box-sizing: border-box;
-  padding: 10px 14px 20px;
+  padding: 10px 210px 20px 14px;
   border-radius: 0;
   background: linear-gradient(
     180deg,
@@ -1566,9 +1579,12 @@ onBeforeUnmount(() => {
   pointer-events: none;
 }
 .pf-stick {
-  position: sticky;
+  position: absolute;
   top: var(--dp-top-h, 50px);
-  height: 0;
+  left: 2px;
+  right: 4px;
+  height: 56px;
+  overflow: hidden;
   z-index: 8;
   pointer-events: none;
   transition: top 0.22s ease;
@@ -1584,7 +1600,7 @@ onBeforeUnmount(() => {
   box-sizing: border-box;
   display: flex;
   align-items: flex-start;
-  padding: 10px 14px 22px;
+  padding: 10px 260px 22px 14px;
   border-radius: 0;
   background: linear-gradient(
     180deg,
@@ -1594,6 +1610,9 @@ onBeforeUnmount(() => {
   );
   pointer-events: none;
 }
+.pf-stick-inner :deep(.pgh-pick) {
+  pointer-events: auto;
+}
 :root[data-theme='light'] .pf-stick-inner {
   background: linear-gradient(
     180deg,
@@ -1601,6 +1620,15 @@ onBeforeUnmount(() => {
     rgba(244, 248, 245, 0.60) 55%,
     rgba(244, 248, 245, 0) 100%
   );
+}
+@media (max-width: 640px) {
+  .pf-h1.is-overlay,
+  .pf-h1:not(.is-overlay) {
+    padding-right: 130px;
+  }
+  .pf-stick-inner {
+    padding-right: 160px;
+  }
 }
 .pf-skeleton {
   width: 100%;
