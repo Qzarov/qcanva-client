@@ -101,6 +101,52 @@ describe('useExplorerLayoutPrefs', () => {
     onScroll(90);
     expect(prefs.headroomHidden.value).toBe(false);
   });
+
+  it('B-020: bidirectionally syncs viewMode and albumView and persists nested space routes', () => {
+    const prefs = useExplorerLayoutPrefs();
+
+    prefs.setViewMode('table');
+    expect(prefs.viewMode.value).toBe('table');
+    expect(prefs.albumView.value).toBe('table');
+    expect(localStorage.getItem(PREF_KEYS.viewMode)).toBe('table');
+    expect(localStorage.getItem(PREF_KEYS.albumView)).toBe('table');
+
+    prefs.setAlbumView('feed');
+    expect(prefs.viewMode.value).toBe('grid');
+    expect(prefs.albumView.value).toBe('feed');
+    expect(localStorage.getItem(PREF_KEYS.viewMode)).toBe('grid');
+    expect(localStorage.getItem(PREF_KEYS.albumView)).toBe('feed');
+
+    // Hydrating when only legacy qspace:albumView=table is stored initializes both to table
+    resetExplorerLayoutPrefs(true);
+    localStorage.setItem(PREF_KEYS.albumView, 'table');
+    const fromAlbumOnly = useExplorerLayoutPrefs();
+    expect(fromAlbumOnly.viewMode.value).toBe('table');
+    expect(fromAlbumOnly.albumView.value).toBe('table');
+
+    // Persist space route with nested Q Space folderId & Yandex subpath
+    fromAlbumOnly.setLastExplorerRoute({ kind: 'space', spaceId: 'alb-7', folderId: 'sub-2' });
+    resetExplorerLayoutPrefs(false);
+    expect(useExplorerLayoutPrefs().lastExplorerRoute.value).toEqual({
+      kind: 'space',
+      spaceId: 'alb-7',
+      folderId: 'sub-2',
+    });
+
+    useExplorerLayoutPrefs().setLastExplorerRoute({
+      kind: 'space',
+      spaceId: 'alb-7',
+      yandexSourceId: 'ysrc-1',
+      yandexSubpath: 'Day1/Morning',
+    });
+    resetExplorerLayoutPrefs(false);
+    expect(useExplorerLayoutPrefs().lastExplorerRoute.value).toEqual({
+      kind: 'space',
+      spaceId: 'alb-7',
+      yandexSourceId: 'ysrc-1',
+      yandexSubpath: 'Day1/Morning',
+    });
+  });
 });
 
 describe('useExplorerGroupDnd', () => {

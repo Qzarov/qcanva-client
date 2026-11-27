@@ -88,35 +88,91 @@
       />
     </div>
 
-    <div class="folder-manager-body">
-      <div v-if="error" class="dash-empty" role="alert" data-space-error>
-        {{ error }}
+    <div class="folder-manager-body" @contextmenu="onBodyContextMenu">
+      <nav
+        v-if="space && (inQspaceFolder || inYandexFolder)"
+        class="space-breadcrumbs"
+        :aria-label="t('driveFolders')"
+        data-space-breadcrumbs
+      >
+        <button
+          type="button"
+          class="space-crumb-btn space-crumb-root"
+          data-space-crumb-root
+          @click="navigateToAlbumRoot"
+        >
+          {{ space.name }}
+        </button>
+        <template v-for="(crumb, idx) in activeBreadcrumbs" :key="crumb.key">
+          <ChevronRight :size="13" class="space-crumb-sep" aria-hidden="true" />
+          <span
+            v-if="idx === activeBreadcrumbs.length - 1"
+            class="space-crumb-current"
+            :data-space-crumb="crumb.id"
+            aria-current="location"
+          >{{ crumb.name }}</span>
+          <button
+            v-else
+            type="button"
+            class="space-crumb-btn"
+            :data-space-crumb="crumb.id"
+            @click="onCrumbClick(crumb)"
+          >{{ crumb.name }}</button>
+        </template>
+      </nav>
+
+      <div v-if="effectiveError" class="dash-empty" role="alert" data-space-error>
+        {{ effectiveError }}
         <button type="button" class="dash-empty-reset" @click="reload">{{ t('retry') }}</button>
       </div>
-      <div v-else-if="!space" class="dash-empty">{{ t('driveLoading') }}</div>
+      <div v-else-if="!space || (folderLoading && !visibleFolders.length && !shown.length)" class="dash-empty">{{ t('driveLoading') }}</div>
       <template v-else>
-        <div v-if="!items.length && loaded && filtered" class="dash-empty" data-space-filtered-empty>
+        <div v-if="!visibleFolders.length && !shown.length && effectiveLoaded && filtered" class="dash-empty" data-space-filtered-empty>
           {{ t('noFilterMatches') }}
           <button type="button" class="dash-empty-reset" @click="resetFilters">{{ t('resetFilters') }}</button>
         </div>
-        <div v-else-if="!items.length && loaded" class="dash-grid">
-          <button v-if="canAdd && !space.sources.length" type="button" class="dashboard-add-tile" data-space-empty @click.stop="startAdd($event)">
+        <div v-else-if="!visibleFolders.length && !shown.length && effectiveLoaded" class="dash-grid">
+          <button v-if="atAlbumRoot && canAdd && !space.sources.length" type="button" class="dashboard-add-tile" data-space-empty @click.stop="startAdd($event)">
             <span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span>
           </button>
           <p v-else class="dash-empty" data-space-empty>{{ t('noFolderItems') }}</p>
         </div>
 
         <ExplorerTableView
-          v-else-if="albumView === 'table'"
+          v-else-if="isTableView"
           :rows="tableRows"
           :selected-keys="effectiveSelectedKeys"
+          :external-sort-mode="props.sortMode"
+          :external-sort-seq="props.externalSortSeq"
+          :allow-empty-context-menu="true"
           drag-source="explorer"
           @update:selected-keys="onTableSelection"
-          @open="open($event.raw as SpaceFeedItem)"
-          @contextmenu="(ev, row) => openItemContextMenu(ev, row.raw as SpaceFeedItem)"
+          @update:sort="(col, dir) => emit('update:sort', col, dir)"
+          @open="onTableRowOpen"
+          @contextmenu="onTableRowContextMenu"
+          @empty-contextmenu="openEmptyContextMenu"
         />
 
-        <div v-else class="dash-grid" data-space-feed>
+        <template v-else>
+          <div v-if="visibleFolders.length" class="dash-grid subfolder-grid" data-space-subfolders>
+            <button
+              v-for="folder in visibleFolders"
+              :key="folder.key"
+              type="button"
+              class="subfolder-card"
+              :data-space-folder="folder.id"
+              @click="enterSpaceFolder(folder)"
+              @contextmenu.prevent.stop="openFolderContextMenu($event, folder)"
+            >
+              <span class="subfolder-card-icon" aria-hidden="true">
+                <Folder :size="20" />
+              </span>
+              <span class="subfolder-card-name">{{ folder.name }}</span>
+              <span v-if="folder.count !== null" class="subfolder-card-count">{{ folder.count }}</span>
+            </button>
+          </div>
+
+          <div v-if="shown.length" class="dash-grid" data-space-feed>
           <template v-for="item in shown" :key="item.key">
             <!-- A QCanva document: its own card, picture and icon. -->
             <article
@@ -201,9 +257,10 @@
               </Transition>
             </article>
           </template>
-        </div>
+          </div>
+        </template>
 
-        <button v-if="nextOffset !== null" type="button" class="folder-files-more" :disabled="loadingMore" data-space-more @click="loadMore">
+        <button v-if="atAlbumRoot && nextOffset !== null && (!props.hierarchical || hasActiveSearchOrFilter || shown.length > 0)" type="button" class="folder-files-more" :disabled="loadingMore" data-space-more @click="loadMore">
           {{ loadingMore ? t('driveLoading') : t('driveShowMore') }}
         </button>
       </template>
@@ -228,20 +285,34 @@
       :open="ctxMenu.open"
       :x="ctxMenu.x"
       :y="ctxMenu.y"
-      :items="ctxMenu.items"
+      :items="ctxDisplayItems"
+      :empty-area="ctxMenu.emptyArea"
+      :show-empty-create-folder="canAdd"
+      :empty-create-folder-label="t('spaceAddFolder')"
+      :show-empty-add="false"
+      :can-share="!ctxMenu.folder"
+      :can-album="ctxCanAddToOtherAlbum"
+      :albums="otherAlbums"
+      :can-remove-from-album="ctxCanRemoveFromAlbum"
+      :can-favorite="!ctxMenu.folder"
       :can-move="ctxCanMove"
       :can-delete="ctxCanDelete"
       :can-rename="false"
+      :can-download="!ctxMenu.folder"
       :can-properties="ctxCanProperties"
       :is-favorite="ctxAllFavorite"
       @close="ctxMenu.open = false"
       @open="onCtxOpen"
       @share="openMembers"
+      @add-to-album="onCtxAddToAlbum"
+      @remove-from-album="onCtxRemoveFromAlbum"
       @toggle-favorite="onCtxToggleFavorite"
       @move="onCtxMove"
       @download="onCtxDownload"
       @properties="onCtxProperties"
       @delete="onCtxDelete"
+      @create-folder="startAdd()"
+      @refresh="reload()"
     />
 
     <DriveFileProperties
@@ -278,12 +349,12 @@
 
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { File as FileIcon, Image as ImageIcon, Play, Plus, Share2, Video } from '@lucide/vue';
+import { ChevronRight, File as FileIcon, Folder, Image as ImageIcon, Play, Plus, Share2, Video } from '@lucide/vue';
 import { spacesApi, type SpaceDetails, type SpaceFeedItem, type SpaceFeedType, type SpaceSource } from '../../api/spaces';
 import SpaceFilterDialog from './SpaceFilterDialog.vue';
 
 import { LAYOUT, matchesMedia } from '../../composables/layoutMedia';
-import { downloadDriveFile, driveApi, getFileExtension, resolveDownloadUrl } from '../../api/drive';
+import { downloadDriveFile, driveApi, getFileExtension, resolveDownloadUrl, type DriveItem } from '../../api/drive';
 import { downloadYandexLink } from '../../api/yandexDisk';
 import { confirmDialog, promptDialog } from '../../composables/appDialog';
 import { useExplorerGroupDnd, type GroupDragEntry } from '../../composables/useExplorerGroupDnd';
@@ -304,7 +375,7 @@ const DriveFileProperties = defineAsyncComponent(() => import('../DriveFilePrope
 import AlbumShareDialog from './AlbumShareDialog.vue';
 import DashboardViewToggle from './DashboardViewToggle.vue';
 import ExplorerContextMenu, { type ExplorerContextMenuItem } from './ExplorerContextMenu.vue';
-import ExplorerTableView, { type ExplorerTableRow } from './ExplorerTableView.vue';
+import ExplorerTableView, { type ExplorerExternalSortMode, type ExplorerSortCol, type ExplorerSortDir, type ExplorerTableRow } from './ExplorerTableView.vue';
 import FilePlaceholder from './FilePlaceholder.vue';
 import ResourceThumb from './ResourceThumb.vue';
 import SpaceAddDialog from './SpaceAddDialog.vue';
@@ -312,7 +383,36 @@ import SpaceFolderDialog from './SpaceFolderDialog.vue';
 import YandexFolderPicker from './YandexFolderPicker.vue';
 import type { MediaViewerItem } from './DashboardMediaViewer.vue';
 
-type ViewMode = 'grid' | 'list';
+type ViewMode = 'grid' | 'table' | 'list';
+
+interface SpaceFolderEntry {
+  key: string;
+  id: string;
+  name: string;
+  count: number | null;
+  updatedAt: string | null;
+  kind: 'source-qspace' | 'source-yandex' | 'qspace-subfolder' | 'yandex-subfolder';
+  source?: SpaceSource;
+  folderId?: string | null;
+  yandexSourceId?: string | null;
+  yandexSubpath?: string | null;
+  sourceLabel: string;
+}
+
+interface SpaceTableFolderRaw {
+  __spaceFolder: true;
+  folder: SpaceFolderEntry;
+}
+
+interface SpaceBreadcrumbItem {
+  key: string;
+  id: string;
+  name: string;
+  kind: 'qspace' | 'yandex';
+  folderId?: string;
+  yandexSourceId?: string;
+  yandexSubpath?: string;
+}
 
 const props = withDefaults(defineProps<{
   spaceId: string;
@@ -325,17 +425,36 @@ const props = withDefaults(defineProps<{
   selectedKeys?: readonly string[];
   /** Optional subfolder/source ID chosen in the left Explorer tree. */
   sourceFilterId?: string | null;
+  /** Render attached folders & recursive subfolders hierarchically inside the album. */
+  hierarchical?: boolean;
+  /** Active Q Space folder/subfolder ID drilled into inside the album. */
+  activeFolderId?: string | null;
+  /** Active Yandex source ID drilled into inside the album. */
+  activeYandexSourceId?: string | null;
+  /** Relative subpath inside the active Yandex source. */
+  activeYandexSubpath?: string | null;
+  /** Unified Explorer sort mode from DashboardSortMenu. */
+  sortMode?: ExplorerExternalSortMode;
+  /** Sync sequence counter for external sort changes. */
+  externalSortSeq?: number;
   /** Hide internal view toggle when ExplorerHeadroomBar owns it. */
   hideViewToggle?: boolean;
   /** Hide internal header bar when ExplorerHeadroomBar owns it. */
   hideHeader?: boolean;
 }>(), {
+  hierarchical: false,
+  activeFolderId: null,
+  activeYandexSourceId: null,
+  activeYandexSubpath: null,
+  externalSortSeq: 0,
   hideHeader: false,
 });
 
 const emit = defineEmits<{
   'update:viewMode': [mode: ViewMode];
   'update:selectedKeys': [keys: string[]];
+  'update:sort': [col: ExplorerSortCol, dir: ExplorerSortDir];
+  'navigate-space-folder': [payload: { folderId?: string | null; yandexSourceId?: string | null; yandexSubpath?: string | null }];
   /** A QCanva document: the dashboard opens it as it opens any. */
   open: [kind: string, id: string];
   /** Pictures full screen, from the one clicked. */
@@ -355,10 +474,16 @@ const emit = defineEmits<{
 }>();
 
 const { t, locale } = useI18n();
-const { load: loadSpaces } = useSpaces();
+const { spaces: allSpaces, load: loadSpaces } = useSpaces();
 const { status: yandexStatus, load: loadYandexStatus } = useYandexDisk();
 const { albumView, setAlbumView, isFavorite, toggleFavorite } = useExplorerLayoutPrefs();
 const { startGroupDrag, updateGroupDragPosition, endGroupDrag } = useExplorerGroupDnd();
+
+const isTableView = computed(() => (
+  props.viewMode !== undefined
+    ? (props.viewMode === 'table' || props.viewMode === 'list')
+    : albumView.value === 'table'
+));
 
 const space = ref<SpaceDetails | null>(null);
 const items = ref<SpaceFeedItem[]>([]);
@@ -371,12 +496,31 @@ const menu = ref('');
 const localSelectedKeys = ref<string[]>([]);
 const selectionAnchorKey = ref('');
 
+// In-album folder / subfolder drill-down state
+const inQspaceFolder = computed(() => Boolean(props.hierarchical && props.activeFolderId));
+const inYandexFolder = computed(() => Boolean(props.hierarchical && !props.activeFolderId && props.activeYandexSourceId));
+const atAlbumRoot = computed(() => !inQspaceFolder.value && !inYandexFolder.value);
+
+const folderLoading = ref(false);
+const folderLoaded = ref(false);
+const folderError = ref('');
+const folderSubfolders = ref<SpaceFolderEntry[]>([]);
+const folderItems = ref<SpaceFeedItem[]>([]);
+const folderTrail = ref<Array<{ id: string; name: string }>>([]);
+const yandexSubfolders = ref<SpaceFolderEntry[]>([]);
+const yandexDirectItems = ref<SpaceFeedItem[]>([]);
+const yandexTrail = ref<Array<{ subpath: string; name: string }>>([]);
+
 const filterTypes = ref<SpaceFeedType[]>([]);
 const filterPeople = ref<string[]>([]);
 const filterOwners = ref<string[]>([]);
 const filterExts = ref<string[]>([]);
 const filterMenuOpen = ref(false);
 const typeCounts = ref<Partial<Record<SpaceFeedType, number>>>({});
+
+const activeFilterCount = computed(() =>
+  filterTypes.value.length + filterExts.value.length + filterOwners.value.length + filterPeople.value.length,
+);
 
 const feedFilters = () => ({
   sourceIds: props.sourceFilterId ? [props.sourceFilterId] : [],
@@ -386,7 +530,10 @@ const feedFilters = () => ({
   addedBy: filterPeople.value,
 });
 const filtered = computed(() =>
-  Boolean(props.sourceFilterId || filterTypes.value.length || filterExts.value.length || filterOwners.value.length || filterPeople.value.length),
+  Boolean(props.sourceFilterId || activeFilterCount.value > 0),
+);
+const hasActiveSearchOrFilter = computed(() =>
+  Boolean((props.query || '').trim() || activeFilterCount.value > 0),
 );
 
 const adders = computed(() => {
@@ -411,9 +558,145 @@ const countLabel = computed(() => {
   return t('explorerMembersCount').replace('{n}', String(s.members.length + 1));
 });
 
+const effectiveError = computed(() => (atAlbumRoot.value ? error.value : (folderError.value || error.value)));
+const effectiveLoaded = computed(() => (atAlbumRoot.value ? loaded.value : folderLoaded.value));
+
+const activeBreadcrumbs = computed<SpaceBreadcrumbItem[]>(() => {
+  if (inQspaceFolder.value) {
+    return folderTrail.value.map((c) => ({
+      key: `q:${c.id}`,
+      id: c.id,
+      name: c.name,
+      kind: 'qspace',
+      folderId: c.id,
+    }));
+  }
+  if (inYandexFolder.value && props.activeYandexSourceId) {
+    return yandexTrail.value.map((c) => ({
+      key: `y:${props.activeYandexSourceId}:${c.subpath}`,
+      id: c.subpath || props.activeYandexSourceId!,
+      name: c.name,
+      kind: 'yandex',
+      yandexSourceId: props.activeYandexSourceId!,
+      yandexSubpath: c.subpath,
+    }));
+  }
+  return [];
+});
+
+const currentFolderName = computed(() => {
+  const crumbs = activeBreadcrumbs.value;
+  return crumbs.length ? crumbs[crumbs.length - 1]!.name : '';
+});
+
+function sortSpaceItems(list: SpaceFeedItem[]): SpaceFeedItem[] {
+  const mode = props.sortMode;
+  if (!mode) return list;
+  const loc = locale.value === 'ru' ? 'ru' : 'en';
+  const copy = [...list];
+  copy.sort((a, b) => {
+    if (mode === 'title-asc') return (a.name || '').localeCompare(b.name || '', loc);
+    if (mode === 'title-desc') return (b.name || '').localeCompare(a.name || '', loc);
+    const ta = a.updatedAt ? Date.parse(a.updatedAt) : 0;
+    const tb = b.updatedAt ? Date.parse(b.updatedAt) : 0;
+    const safeA = Number.isFinite(ta) ? ta : 0;
+    const safeB = Number.isFinite(tb) ? tb : 0;
+    if (safeA !== safeB) return mode === 'updated-asc' ? safeA - safeB : safeB - safeA;
+    return (a.name || '').localeCompare(b.name || '', loc);
+  });
+  return copy;
+}
+
+function sortSpaceFolders(list: SpaceFolderEntry[]): SpaceFolderEntry[] {
+  const mode = props.sortMode;
+  if (!mode) return list;
+  const loc = locale.value === 'ru' ? 'ru' : 'en';
+  const copy = [...list];
+  copy.sort((a, b) => {
+    if (mode === 'title-desc') return b.name.localeCompare(a.name, loc);
+    if (mode === 'updated-asc' || mode === 'updated-desc') {
+      const ta = a.updatedAt ? Date.parse(a.updatedAt) : 0;
+      const tb = b.updatedAt ? Date.parse(b.updatedAt) : 0;
+      const safeA = Number.isFinite(ta) ? ta : 0;
+      const safeB = Number.isFinite(tb) ? tb : 0;
+      if (safeA !== safeB) return mode === 'updated-asc' ? safeA - safeB : safeB - safeA;
+    }
+    return a.name.localeCompare(b.name, loc);
+  });
+  return copy;
+}
+
+function matchesClientFilters(item: SpaceFeedItem): boolean {
+  if (filterExts.value.length) {
+    const ext = getFileExtension(item.name).toLocaleLowerCase();
+    const wantedExts = filterExts.value.map((e) => e.replace(/^\./, '').toLocaleLowerCase());
+    if (!wantedExts.includes(ext)) return false;
+  }
+  if (filterTypes.value.length) {
+    const matchesAny = filterTypes.value.some((ft) => {
+      if (ft === 'canva') return item.kind === 'canvas' || item.kind === 'board' || item.kind === 'sheet';
+      if (ft === 'document') return item.kind === 'text-document' || item.kind === 'html-document' || isMarkdown(item);
+      if (ft === 'image') return isPicture(item);
+      if (ft === 'video') return isVideo(item);
+      if (ft === 'audio') return Boolean(item.mime?.startsWith('audio/'));
+      if (ft === 'book') return ['pdf', 'epub', 'fb2', 'djvu'].includes(getFileExtension(item.name).toLocaleLowerCase());
+      return true;
+    });
+    if (!matchesAny) return false;
+  }
+  return true;
+}
+
+const rootSourceFolders = computed<SpaceFolderEntry[]>(() => {
+  if (!props.hierarchical || !atAlbumRoot.value) return [];
+  return (space.value?.sources ?? []).map((src) => ({
+    key: `source:${src.id}`,
+    id: src.folderId || src.id,
+    name: src.title,
+    count: src.itemCount,
+    updatedAt: src.syncedAt ?? space.value?.updatedAt ?? null,
+    kind: src.kind === 'yandex' ? 'source-yandex' : 'source-qspace',
+    source: src,
+    folderId: src.folderId,
+    yandexSourceId: src.kind === 'yandex' ? src.id : null,
+    yandexSubpath: src.kind === 'yandex' ? '' : null,
+    sourceLabel: src.kind === 'yandex' ? t('yandexDisk') : t('qSpace'),
+  }));
+});
+
+const visibleFolders = computed<SpaceFolderEntry[]>(() => {
+  const base = inQspaceFolder.value
+    ? folderSubfolders.value
+    : inYandexFolder.value
+      ? yandexSubfolders.value
+      : rootSourceFolders.value;
+  const needle = (props.query || '').trim().toLocaleLowerCase();
+  const filteredList = needle
+    ? base.filter((f) => f.name.toLocaleLowerCase().includes(needle))
+    : base;
+  return sortSpaceFolders(filteredList);
+});
+
+const rootSourceIds = computed(() => new Set((space.value?.sources ?? []).map((s) => s.id)));
+
 const shown = computed(() => {
   const needle = (props.query || '').trim().toLocaleLowerCase();
-  return needle ? items.value.filter((item) => item.name.toLocaleLowerCase().includes(needle)) : items.value;
+  let list: SpaceFeedItem[];
+  if (inQspaceFolder.value) {
+    list = folderItems.value.filter(matchesClientFilters);
+  } else if (inYandexFolder.value) {
+    list = yandexDirectItems.value.filter(matchesClientFilters);
+  } else if (props.hierarchical && !hasActiveSearchOrFilter.value) {
+    // At hierarchical album root without active search/filter: show standalone direct items
+    // (items inside attached sources are reached by opening the folder tiles above).
+    list = items.value.filter((item) => !item.sourceId || !rootSourceIds.value.has(item.sourceId));
+  } else {
+    list = items.value;
+  }
+  if (needle) {
+    list = list.filter((item) => item.name.toLocaleLowerCase().includes(needle));
+  }
+  return sortSpaceItems(list);
 });
 
 const effectiveSelectedKeys = computed(() => props.selectedKeys ?? localSelectedKeys.value);
@@ -444,9 +727,25 @@ function itemTypeLabel(item: SpaceFeedItem): string {
   return getFileExtension(item.name);
 }
 
-const tableRows = computed<ExplorerTableRow<SpaceFeedItem>[]>(() =>
-  shown.value.map((item) => {
-    const src = sourceById.value.get(item.sourceId);
+const tableRows = computed<ExplorerTableRow<SpaceFeedItem | SpaceTableFolderRaw>[]>(() => {
+  const albumRefs = space.value ? [{ id: space.value.id, name: space.value.name }] : [];
+  const folderRows: ExplorerTableRow<SpaceTableFolderRaw>[] = visibleFolders.value.map((folder) => ({
+    key: folder.key,
+    id: folder.id,
+    kind: 'folder',
+    name: folder.name,
+    updatedAt: folder.updatedAt,
+    typeLabel: t('driveFolder'),
+    sizeBytes: null,
+    sourceLabel: folder.sourceLabel,
+    albumNames: albumRefs,
+    folderId: folder.folderId ?? null,
+    path: folder.yandexSubpath ?? null,
+    isFolder: true,
+    raw: { __spaceFolder: true, folder },
+  }));
+  const itemRows: ExplorerTableRow<SpaceFeedItem>[] = shown.value.map((item) => {
+    const src = item.sourceId ? sourceById.value.get(item.sourceId) : undefined;
     const sourceLabel = src?.title || (item.origin === 'yandex' ? t('yandexDisk') : t('qSpace'));
     return {
       key: item.key,
@@ -457,14 +756,94 @@ const tableRows = computed<ExplorerTableRow<SpaceFeedItem>[]>(() =>
       typeLabel: itemTypeLabel(item),
       sizeBytes: item.size,
       sourceLabel,
-      albumNames: space.value ? [{ id: space.value.id, name: space.value.name }] : [],
+      albumNames: albumRefs,
       folderId: src?.folderId ?? null,
       path: item.path,
       isFolder: false,
       raw: item,
     };
-  }),
-);
+  });
+  return [...folderRows, ...itemRows];
+});
+
+function isTableFolderRaw(raw: unknown): raw is SpaceTableFolderRaw {
+  return Boolean(raw && typeof raw === 'object' && '__spaceFolder' in raw && (raw as SpaceTableFolderRaw).__spaceFolder);
+}
+
+function onTableRowOpen(row: ExplorerTableRow): void {
+  if (isTableFolderRaw(row.raw)) {
+    enterSpaceFolder(row.raw.folder);
+    return;
+  }
+  void open(row.raw as SpaceFeedItem);
+}
+
+function onTableRowContextMenu(ev: MouseEvent, row: ExplorerTableRow): void {
+  if (isTableFolderRaw(row.raw)) {
+    openFolderContextMenu(ev, row.raw.folder);
+    return;
+  }
+  openItemContextMenu(ev, row.raw as SpaceFeedItem);
+}
+
+function enterSpaceFolder(folder: SpaceFolderEntry): void {
+  menu.value = '';
+  if (folder.kind === 'source-qspace' || folder.kind === 'qspace-subfolder') {
+    const fid = folder.folderId || folder.id;
+    if (!fid) return;
+    emit('navigate-space-folder', { folderId: fid, yandexSourceId: null, yandexSubpath: null });
+    return;
+  }
+  if (folder.yandexSourceId) {
+    emit('navigate-space-folder', {
+      folderId: null,
+      yandexSourceId: folder.yandexSourceId,
+      yandexSubpath: folder.yandexSubpath ?? '',
+    });
+  }
+}
+
+function navigateToAlbumRoot(): void {
+  emit('navigate-space-folder', { folderId: null, yandexSourceId: null, yandexSubpath: null });
+}
+
+function onCrumbClick(crumb: SpaceBreadcrumbItem): void {
+  if (crumb.kind === 'qspace' && crumb.folderId) {
+    emit('navigate-space-folder', { folderId: crumb.folderId, yandexSourceId: null, yandexSubpath: null });
+  } else if (crumb.kind === 'yandex' && crumb.yandexSourceId) {
+    emit('navigate-space-folder', {
+      folderId: null,
+      yandexSourceId: crumb.yandexSourceId,
+      yandexSubpath: crumb.yandexSubpath ?? '',
+    });
+  }
+}
+
+function navigateUp(): boolean {
+  if (inQspaceFolder.value) {
+    if (folderTrail.value.length > 1) {
+      const parent = folderTrail.value[folderTrail.value.length - 2]!;
+      emit('navigate-space-folder', { folderId: parent.id, yandexSourceId: null, yandexSubpath: null });
+    } else {
+      navigateToAlbumRoot();
+    }
+    return true;
+  }
+  if (inYandexFolder.value) {
+    if (yandexTrail.value.length > 1 && props.activeYandexSourceId) {
+      const parent = yandexTrail.value[yandexTrail.value.length - 2]!;
+      emit('navigate-space-folder', {
+        folderId: null,
+        yandexSourceId: props.activeYandexSourceId,
+        yandexSubpath: parent.subpath,
+      });
+    } else {
+      navigateToAlbumRoot();
+    }
+    return true;
+  }
+  return false;
+}
 
 const isDocument = (item: SpaceFeedItem) => item.origin === 'qspace' && item.kind !== 'file';
 const fileLike = (item: SpaceFeedItem) => ({ name: item.name, mime: item.mime, kind: item.mediaType === 'video' ? 'video' : item.mediaType === 'image' ? 'photo' : undefined });
@@ -497,6 +876,208 @@ const errorText = (err: unknown, fallback: string) => (err instanceof Error && e
 
 // ----- loading
 let loadId = 0;
+let folderLoadSeq = 0;
+
+function mapDriveItemToSpaceFeedItem(it: DriveItem, sourceId: string | null): SpaceFeedItem {
+  const mappedKind = it.kind === 'photo' || it.kind === 'video' ? 'file' : it.kind;
+  const mediaType = it.kind === 'video' ? 'video' : it.kind === 'photo' ? 'image' : null;
+  return {
+    key: `q:${mappedKind}:${it.id}`,
+    sourceId,
+    origin: 'qspace',
+    kind: mappedKind,
+    id: it.id,
+    path: null,
+    name: it.name,
+    mime: it.mime ?? null,
+    mediaType,
+    size: it.sizeBytes ?? null,
+    updatedAt: it.updatedAt ?? it.sortDate ?? null,
+    owner: { id: it.ownerId, name: null },
+    addedBy: { id: it.ownerId, name: null },
+    previewUrl: null,
+  };
+}
+
+async function loadQspaceFolder(folderId: string) {
+  const seq = ++folderLoadSeq;
+  folderLoading.value = true;
+  folderLoaded.value = false;
+  folderError.value = '';
+  const initialSourceMap = new Map(
+    (space.value?.sources ?? [])
+      .filter((s) => s.kind === 'qspace' && s.folderId)
+      .map((s) => [s.folderId!, s]),
+  );
+  if (initialSourceMap.has(folderId)) {
+    folderTrail.value = [{ id: folderId, name: initialSourceMap.get(folderId)!.title }];
+  } else {
+    const existingIdx = folderTrail.value.findIndex((c) => c.id === folderId);
+    if (existingIdx >= 0) {
+      folderTrail.value = folderTrail.value.slice(0, existingIdx + 1);
+    } else {
+      const clickedSub = folderSubfolders.value.find((f) => f.folderId === folderId || f.id === folderId);
+      const known = props.folderOptions.find((f) => f.id === folderId);
+      const label = clickedSub?.name || known?.name;
+      if (label) {
+        folderTrail.value = [...folderTrail.value, { id: folderId, name: label }];
+      }
+    }
+  }
+  try {
+    if (!space.value) {
+      const details = await spacesApi.get(props.spaceId);
+      if (seq !== folderLoadSeq) return;
+      space.value = details;
+    }
+    const [itemsRes, folderRes] = await Promise.all([
+      driveApi.getFolderItems(folderId, { slice: 'all', limit: 200 }),
+      typeof driveApi.getFolder === 'function' ? driveApi.getFolder(folderId).catch(() => null) : Promise.resolve(null),
+    ]);
+    if (seq !== folderLoadSeq) return;
+
+    const sourceFolderMap = new Map(
+      (space.value?.sources ?? [])
+        .filter((s) => s.kind === 'qspace' && s.folderId)
+        .map((s) => [s.folderId!, s]),
+    );
+
+    let trail: Array<{ id: string; name: string }> = [];
+    if (folderRes?.path?.length) {
+      const startIdx = folderRes.path.findIndex((c) => sourceFolderMap.has(c.id));
+      const trimmed = startIdx >= 0 ? folderRes.path.slice(startIdx) : folderRes.path;
+      trail = trimmed.map((c) => ({ id: c.id, name: c.name }));
+    } else if (sourceFolderMap.has(folderId)) {
+      trail = [{ id: folderId, name: sourceFolderMap.get(folderId)!.title }];
+    } else {
+      const known = props.folderOptions.find((f) => f.id === folderId);
+      const name = folderRes?.folder?.name || known?.name || folderId;
+      const existingIdx = folderTrail.value.findIndex((c) => c.id === folderId);
+      if (existingIdx >= 0) {
+        trail = folderTrail.value.slice(0, existingIdx + 1);
+      } else if (folderTrail.value.length > 0) {
+        trail = [...folderTrail.value, { id: folderId, name }];
+      } else {
+        trail = [{ id: folderId, name }];
+      }
+    }
+    folderTrail.value = trail;
+
+    const rootCrumbId = trail[0]?.id;
+    const matchingSource = (rootCrumbId ? sourceFolderMap.get(rootCrumbId) : undefined) ?? sourceFolderMap.get(folderId);
+    const sourceLabel = matchingSource?.title || t('qSpace');
+
+    const subs: SpaceFolderEntry[] = [];
+    const mappedItems: SpaceFeedItem[] = [];
+    for (const it of itemsRes?.items ?? []) {
+      if (it.kind === 'folder') {
+        subs.push({
+          key: `folder:${it.id}`,
+          id: it.id,
+          name: it.name,
+          count: null,
+          updatedAt: it.updatedAt ?? it.sortDate ?? null,
+          kind: 'qspace-subfolder',
+          folderId: it.id,
+          sourceLabel,
+        });
+      } else {
+        mappedItems.push(mapDriveItemToSpaceFeedItem(it, matchingSource?.id ?? null));
+      }
+    }
+    folderSubfolders.value = subs;
+    folderItems.value = mappedItems;
+    folderLoaded.value = true;
+    void loadPreviews(mappedItems);
+  } catch (err) {
+    if (seq !== folderLoadSeq) return;
+    folderError.value = errorText(err, t('driveFolderLoadFailed'));
+    folderSubfolders.value = [];
+    folderItems.value = [];
+    folderLoaded.value = true;
+  } finally {
+    if (seq === folderLoadSeq) folderLoading.value = false;
+  }
+}
+
+async function loadYandexFolder(sourceId: string, rawSubpath: string) {
+  const seq = ++folderLoadSeq;
+  folderLoading.value = true;
+  folderLoaded.value = false;
+  folderError.value = '';
+  try {
+    if (!space.value) {
+      const details = await spacesApi.get(props.spaceId);
+      if (seq !== folderLoadSeq) return;
+      space.value = details;
+    }
+    const source = space.value?.sources.find((s) => s.id === sourceId);
+    const feed = await spacesApi.feed(props.spaceId, { sourceIds: [sourceId], limit: 200 });
+    if (seq !== folderLoadSeq) return;
+
+    const basePath = (source?.yandexPath || '/').replace(/^disk:/, '').replace(/\/+$/, '');
+    const cleanSub = (rawSubpath || '').replace(/^\/+|\/+$/g, '');
+    const prefix = cleanSub ? `${basePath}/${cleanSub}/` : `${basePath}/`;
+
+    const trail: Array<{ subpath: string; name: string }> = [
+      { subpath: '', name: source?.title || t('yandexDisk') },
+    ];
+    if (cleanSub) {
+      let acc = '';
+      for (const seg of cleanSub.split('/').filter(Boolean)) {
+        acc = acc ? `${acc}/${seg}` : seg;
+        trail.push({ subpath: acc, name: seg });
+      }
+    }
+    yandexTrail.value = trail;
+
+    const dirCounts = new Map<string, number>();
+    const direct: SpaceFeedItem[] = [];
+    for (const item of feed.items) {
+      const itemPath = (item.path || '').replace(/^disk:/, '');
+      if (!itemPath.startsWith(prefix)) continue;
+      const rest = itemPath.slice(prefix.length);
+      if (!rest) continue;
+      const slashIdx = rest.indexOf('/');
+      if (slashIdx >= 0) {
+        const dirName = rest.slice(0, slashIdx);
+        dirCounts.set(dirName, (dirCounts.get(dirName) ?? 0) + 1);
+      } else {
+        direct.push(item);
+      }
+    }
+
+    const subs: SpaceFolderEntry[] = [...dirCounts.entries()]
+      .sort(([a], [b]) => a.localeCompare(b, locale.value === 'ru' ? 'ru' : 'en'))
+      .map(([dirName, count]) => {
+        const nextSub = cleanSub ? `${cleanSub}/${dirName}` : dirName;
+        return {
+          key: `y-dir:${sourceId}:${nextSub}`,
+          id: `${sourceId}:${nextSub}`,
+          name: dirName,
+          count,
+          updatedAt: source?.syncedAt ?? null,
+          kind: 'yandex-subfolder',
+          yandexSourceId: sourceId,
+          yandexSubpath: nextSub,
+          sourceLabel: source?.title || t('yandexDisk'),
+        };
+      });
+
+    yandexSubfolders.value = subs;
+    yandexDirectItems.value = direct;
+    folderLoaded.value = true;
+  } catch (err) {
+    if (seq !== folderLoadSeq) return;
+    folderError.value = errorText(err, t('spaceLoadFailed'));
+    yandexSubfolders.value = [];
+    yandexDirectItems.value = [];
+    folderLoaded.value = true;
+  } finally {
+    if (seq === folderLoadSeq) folderLoading.value = false;
+  }
+}
+
 async function load(quiet = false) {
   const current = ++loadId;
   error.value = '';
@@ -524,7 +1105,17 @@ async function load(quiet = false) {
     error.value = errorText(err, t('spaceLoadFailed'));
   }
 }
-const reload = () => load();
+const reload = async () => {
+  if (inQspaceFolder.value && props.activeFolderId) {
+    await Promise.all([load(true), loadQspaceFolder(props.activeFolderId)]);
+    return;
+  }
+  if (inYandexFolder.value && props.activeYandexSourceId) {
+    await Promise.all([load(true), loadYandexFolder(props.activeYandexSourceId, props.activeYandexSubpath ?? '')]);
+    return;
+  }
+  await load();
+};
 
 const READ_POLL_MS = 3000;
 const READ_POLL_FOR_MS = 3 * 60 * 1000;
@@ -584,6 +1175,7 @@ watch(() => props.spaceId, () => {
   if (readPoll) clearTimeout(readPoll);
   readPoll = null;
   readPollSince = 0;
+  folderLoadSeq += 1;
   filterTypes.value = [];
   filterPeople.value = [];
   filterOwners.value = [];
@@ -592,11 +1184,47 @@ watch(() => props.spaceId, () => {
   filterMenuOpen.value = false;
   space.value = null;
   items.value = [];
+  folderSubfolders.value = [];
+  folderItems.value = [];
+  folderTrail.value = [];
+  yandexSubfolders.value = [];
+  yandexDirectItems.value = [];
+  yandexTrail.value = [];
+  folderError.value = '';
+  folderLoaded.value = false;
   for (const key of Object.keys(previews)) delete previews[key];
   broken.clear();
   noPicture.clear();
-  void load();
+  void load().then(() => {
+    if (inQspaceFolder.value && props.activeFolderId) void loadQspaceFolder(props.activeFolderId);
+    else if (inYandexFolder.value && props.activeYandexSourceId) {
+      void loadYandexFolder(props.activeYandexSourceId, props.activeYandexSubpath ?? '');
+    }
+  });
 });
+
+watch(
+  [() => props.activeFolderId, () => props.activeYandexSourceId, () => props.activeYandexSubpath, () => props.hierarchical],
+  () => {
+    localSelectedKeys.value = [];
+    selectionAnchorKey.value = '';
+    if (inQspaceFolder.value && props.activeFolderId) {
+      void loadQspaceFolder(props.activeFolderId);
+    } else if (inYandexFolder.value && props.activeYandexSourceId) {
+      void loadYandexFolder(props.activeYandexSourceId, props.activeYandexSubpath ?? '');
+    } else {
+      folderLoadSeq += 1;
+      folderLoading.value = false;
+      folderError.value = '';
+      folderSubfolders.value = [];
+      folderItems.value = [];
+      folderTrail.value = [];
+      yandexSubfolders.value = [];
+      yandexDirectItems.value = [];
+      yandexTrail.value = [];
+    }
+  },
+);
 
 watch(() => props.sourceFilterId, () => {
   void load();
@@ -634,7 +1262,7 @@ function toDragEntry(item: SpaceFeedItem): GroupDragEntry {
     id: item.id || item.key,
     kind: item.kind,
     name: item.name,
-    folderId: sourceById.value.get(item.sourceId)?.folderId ?? null,
+    folderId: item.sourceId ? (sourceById.value.get(item.sourceId)?.folderId ?? null) : null,
     path: item.path,
   };
 }
@@ -664,31 +1292,68 @@ const ctxMenu = reactive<{
   open: boolean;
   x: number;
   y: number;
+  emptyArea: boolean;
   items: SpaceFeedItem[];
+  folder: SpaceFolderEntry | null;
 }>({
   open: false,
   x: 0,
   y: 0,
+  emptyArea: false,
   items: [],
+  folder: null,
+});
+
+const ctxDisplayItems = computed<ExplorerContextMenuItem[]>(() => {
+  if (ctxMenu.folder) {
+    return [{
+      key: ctxMenu.folder.key,
+      id: ctxMenu.folder.id,
+      name: ctxMenu.folder.name,
+      kind: 'folder',
+    }];
+  }
+  return ctxMenu.items;
 });
 
 const ctxAllFavorite = computed(() =>
-  ctxMenu.items.length > 0 && ctxMenu.items.every((item) => isFavorite(item.key)),
+  !ctxMenu.folder && ctxMenu.items.length > 0 && ctxMenu.items.every((item) => isFavorite(item.key)),
 );
 
 const ctxCanMove = computed(() =>
-  props.folderOptions.length > 0
+  !ctxMenu.folder
+  && props.folderOptions.length > 0
   && partitionMovableSpaceItems(ctxMenu.items, space.value?.role, props.meId).movable.length > 0,
 );
 
 const ctxCanDelete = computed(() => {
+  if (ctxMenu.folder) return false;
   const { docs, files } = partitionDeletableSpaceItems(ctxMenu.items, space.value?.role, props.meId);
   return docs.length + files.length > 0;
+});
+
+const otherAlbums = computed(() =>
+  allSpaces.value
+    .filter((s) => s.id !== props.spaceId && (s.role === 'owner' || s.role === 'editor'))
+    .map((s) => ({ id: s.id, name: s.name })),
+);
+
+const ctxCanAddToOtherAlbum = computed(() =>
+  !ctxMenu.folder
+  && otherAlbums.value.length > 0
+  && ctxMenu.items.some((it) => it.origin === 'qspace' && it.kind === 'file' && Boolean(it.id)),
+);
+
+const ctxCanRemoveFromAlbum = computed(() => {
+  if (!canAdd.value) return false;
+  if (ctxMenu.folder) return Boolean(ctxMenu.folder.source);
+  return ctxMenu.items.some((it) => !it.sourceId && it.origin === 'qspace' && it.kind === 'file' && Boolean(it.id));
 });
 
 const propertiesFile = ref<{ id: string; name?: string } | null>(null);
 
 const ctxCanProperties = computed(() => {
+  if (ctxMenu.folder) return false;
   const first = ctxMenu.items[0];
   return ctxMenu.items.length === 1 && Boolean(first && first.origin === 'qspace' && first.kind === 'file' && first.id);
 });
@@ -706,8 +1371,39 @@ function openItemContextMenu(event: MouseEvent, item: SpaceFeedItem): void {
   }
   ctxMenu.x = event.clientX;
   ctxMenu.y = event.clientY;
+  ctxMenu.emptyArea = false;
+  ctxMenu.folder = null;
   ctxMenu.items = selectedItems;
   ctxMenu.open = true;
+}
+
+function openFolderContextMenu(event: MouseEvent, folder: SpaceFolderEntry): void {
+  ctxMenu.x = event.clientX;
+  ctxMenu.y = event.clientY;
+  ctxMenu.emptyArea = false;
+  ctxMenu.items = [];
+  ctxMenu.folder = folder;
+  ctxMenu.open = true;
+}
+
+function openEmptyContextMenu(event: MouseEvent): void {
+  ctxMenu.x = event.clientX;
+  ctxMenu.y = event.clientY;
+  ctxMenu.emptyArea = true;
+  ctxMenu.items = [];
+  ctxMenu.folder = null;
+  ctxMenu.open = true;
+}
+
+function onBodyContextMenu(event: MouseEvent): void {
+  if (!space.value) return;
+  const target = event.target as HTMLElement | null;
+  if (target?.closest('.canvas-card, .subfolder-card, .exp-row, .space-breadcrumbs, button, a, input, textarea, [data-explorer-context-menu]')) {
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  openEmptyContextMenu(event);
 }
 
 function onTileClick(event: MouseEvent, item: SpaceFeedItem): void {
@@ -732,8 +1428,61 @@ function onTileClick(event: MouseEvent, item: SpaceFeedItem): void {
 }
 
 function onCtxOpen(entry: ExplorerContextMenuItem): void {
+  if (ctxMenu.folder && ctxMenu.folder.key === entry.key) {
+    enterSpaceFolder(ctxMenu.folder);
+    return;
+  }
   const found = shown.value.find((item) => item.key === entry.key);
   if (found) void open(found);
+}
+
+async function onCtxAddToAlbum(albumId: string | undefined): Promise<void> {
+  if (!albumId) return;
+  const fileIds = ctxMenu.items
+    .filter((it) => it.origin === 'qspace' && it.kind === 'file' && Boolean(it.id))
+    .map((it) => it.id!);
+  if (!fileIds.length) return;
+  try {
+    await spacesApi.addItems(albumId, fileIds);
+    emit('feedback', 'success', t('explorerAddToAlbum'));
+    void loadSpaces(true);
+  } catch (err) {
+    emit('feedback', 'error', errorText(err, t('spaceActionFailed')));
+  }
+}
+
+async function onCtxRemoveFromAlbum(): Promise<void> {
+  if (!canAdd.value) return;
+  if (ctxMenu.folder?.source) {
+    const source = ctxMenu.folder.source;
+    const confirmed = await confirmDialog({
+      title: t('spaceRemoveFolderTitle').replace('{name}', source.title),
+      confirmLabel: t('spaceRemoveFolder'),
+      cancelLabel: t('cancel'),
+      danger: true,
+    });
+    if (!confirmed) return;
+    try {
+      await spacesApi.removeSource(props.spaceId, source.id);
+      await reload();
+      void loadSpaces(true);
+    } catch (err) {
+      emit('feedback', 'error', errorText(err, t('spaceActionFailed')));
+    }
+    return;
+  }
+  const fileIds = ctxMenu.items
+    .filter((it) => !it.sourceId && it.origin === 'qspace' && it.kind === 'file' && Boolean(it.id))
+    .map((it) => it.id!);
+  if (!fileIds.length) return;
+  try {
+    await spacesApi.removeItems(props.spaceId, fileIds);
+    onTableSelection([]);
+    await reload();
+    void loadSpaces(true);
+  } catch (err) {
+    emit('feedback', 'error', errorText(err, t('spaceActionFailed')));
+  }
 }
 
 function onCtxToggleFavorite(entries: ReadonlyArray<ExplorerContextMenuItem>): void {
@@ -789,7 +1538,7 @@ const markdownViewerItem = (item: SpaceFeedItem): MarkdownViewerItem => ({
   date: item.updatedAt,
   loadText: async () => {
     const url = item.origin === 'yandex'
-      ? (await spacesApi.yandexDownload(props.spaceId, item.sourceId, item.path!)).href
+      ? (await spacesApi.yandexDownload(props.spaceId, item.sourceId!, item.path!)).href
       : resolveDownloadUrl((await driveApi.getDownloadLink(item.id!)).url);
     return fetchMarkdownTextFromUrl(url, item.origin === 'yandex' ? { referrerPolicy: 'no-referrer' } : undefined);
   },
@@ -803,7 +1552,7 @@ const viewerItem = (item: SpaceFeedItem): MediaViewerItem => ({
   date: item.updatedAt,
   preview: previewOf(item),
   loadFull: async () => (item.origin === 'yandex'
-    ? (await spacesApi.yandexDownload(props.spaceId, item.sourceId, item.path!)).href
+    ? (await spacesApi.yandexDownload(props.spaceId, item.sourceId!, item.path!)).href
     : resolveDownloadUrl((await driveApi.getDownloadLink(item.id!)).url)),
   download: () => download(item),
 });
@@ -811,7 +1560,7 @@ const viewerItem = (item: SpaceFeedItem): MediaViewerItem => ({
 async function download(item: SpaceFeedItem) {
   try {
     if (item.origin === 'yandex') {
-      const { href } = await spacesApi.yandexDownload(props.spaceId, item.sourceId, item.path!);
+      const { href } = await spacesApi.yandexDownload(props.spaceId, item.sourceId!, item.path!);
       downloadYandexLink(href, item.name);
     } else if (item.id) {
       await downloadDriveFile(item.id, item.name);
@@ -999,10 +1748,16 @@ onMounted(() => {
   document.addEventListener('click', closeMenu);
   window.addEventListener('keydown', onWindowKeydown);
   void loadYandexStatus();
-  void load();
+  void load().then(() => {
+    if (inQspaceFolder.value && props.activeFolderId) void loadQspaceFolder(props.activeFolderId);
+    else if (inYandexFolder.value && props.activeYandexSourceId) {
+      void loadYandexFolder(props.activeYandexSourceId, props.activeYandexSubpath ?? '');
+    }
+  });
 });
 onBeforeUnmount(() => {
   loadId += 1;
+  folderLoadSeq += 1;
   document.removeEventListener('click', closeMenu);
   window.removeEventListener('keydown', onWindowKeydown);
   if (previewTimer) clearTimeout(previewTimer);
@@ -1015,12 +1770,68 @@ function toggleFilters(): void {
   filterMenuOpen.value = !filterMenuOpen.value;
 }
 
-defineExpose({ reload, startAdd, openMembers, rename, removeSpace, leave, space, countLabel, canAdd, filterMenuOpen, toggleFilters });
+defineExpose({
+  reload,
+  startAdd,
+  openMembers,
+  rename,
+  removeSpace,
+  leave,
+  space,
+  countLabel,
+  canAdd,
+  filterMenuOpen,
+  activeFilterCount,
+  toggleFilters,
+  navigateUp,
+  currentFolderName,
+});
 </script>
 
 <style scoped>
 .space-filter-modal-only :deep(.space-filter-trigger) {
   display: none;
+}
+.space-breadcrumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 12px;
+  padding: 2px 2px 6px;
+  font-size: 13px;
+  color: var(--ui-muted, var(--ui-text-muted));
+}
+.space-crumb-btn {
+  border: 0;
+  background: transparent;
+  color: var(--ui-muted, var(--ui-text-muted));
+  font: inherit;
+  font-weight: 500;
+  padding: 3px 7px;
+  border-radius: 7px;
+  cursor: pointer;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.space-crumb-btn:hover {
+  background: var(--ui-glass-btn-hover, var(--ui-surface-subtle));
+  color: var(--ui-text);
+}
+.space-crumb-current {
+  color: var(--ui-text);
+  font-weight: 600;
+  padding: 3px 7px;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.space-crumb-sep {
+  flex: none;
+  opacity: 0.55;
 }
 .space-share-btn {
   display: inline-flex;

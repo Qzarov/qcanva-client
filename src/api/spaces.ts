@@ -60,7 +60,7 @@ export type SpaceFeedItem = {
   /** Whose it is; an older hub leaves it out. */
   owner?: { id: string; name: string | null };
   key: string;
-  sourceId: string;
+  sourceId: string | null;
   origin: 'qspace' | 'yandex';
   /** canvas, text-document, html-document, board, sheet, file. */
   kind: string;

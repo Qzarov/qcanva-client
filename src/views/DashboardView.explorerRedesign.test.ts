@@ -136,6 +136,7 @@ vi.mock('../api/drive', async () => {
     driveApi: {
       ...actual.driveApi,
       getFolderFileCounts: vi.fn().mockResolvedValue({ counts: {} }),
+      getFolder: vi.fn().mockResolvedValue(null),
       getFolderItems: vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
       getThumbLinks: vi.fn().mockResolvedValue({ links: {} }),
       renameFile: vi.fn().mockResolvedValue({ id: 'df-1', name: 'renamed.pdf' }),
@@ -963,10 +964,11 @@ describe('DashboardView T-021 + T-018 Explorer Redesign Integration', () => {
     tableKeys = wrapper.findAll('[data-dashboard-view="folder"] [data-row-key]').map((el) => el.attributes('data-row-key'));
     expect(tableKeys).toEqual(['canvas:c-old', 'canvas:c-new']);
 
-    // Album view hides DashboardSortMenu & DashboardFilterMenu
+    // B-020: Album view keeps DashboardSortMenu and swaps DashboardFilterMenu for the compact space filter button
     (wrapper.vm as any).selectDashboardSection({ kind: 'space', spaceId: 'alb-1' });
     await nextTick();
-    expect(headroom.find('[data-sort-menu-trigger]').exists()).toBe(false);
+    expect(headroom.find('[data-sort-menu-trigger]').exists()).toBe(true);
+    expect(headroom.find('[data-headroom-space-filter]').exists()).toBe(true);
     expect(headroom.find('[data-filter-menu-trigger]').exists()).toBe(false);
   });
 
@@ -1393,5 +1395,184 @@ describe('DashboardView T-021 + T-018 Explorer Redesign Integration', () => {
 
     expect((wrapper.vm as any).activeSection).toEqual({ kind: 'home' });
     expect((wrapper.vm as any).selectedKeys).toEqual([]);
+  });
+
+  it('B-020: unifies Grid/Table toggle without .dashboard-list-view corruption, cleans album header/menu, navigates in-album 2nd-level subfolders with ↑/←, and reloads on drop into open album', async () => {
+    vi.mocked(resourceFolders.list).mockResolvedValueOnce({
+      own: [
+        {
+          id: 'folder-home',
+          name: 'Поездки',
+          role: 'owner',
+          parentId: null,
+          canvases: [{ id: 'c1', title: 'Маршрут', folderId: 'folder-home', updatedAt: '2026-11-20T10:00:00Z' }],
+          htmlDocuments: [],
+        },
+        {
+          id: 'folder-child',
+          name: 'Грузия',
+          role: 'owner',
+          parentId: 'folder-home',
+          canvases: [],
+          htmlDocuments: [],
+        },
+        {
+          id: 'folder-grandchild',
+          name: 'Тбилиси',
+          role: 'owner',
+          parentId: 'folder-child',
+          canvases: [],
+          htmlDocuments: [],
+        },
+      ],
+      shared: [],
+    } as never);
+    vi.mocked(spacesApi.get).mockResolvedValue({
+      id: 'alb-1',
+      name: 'Семья',
+      role: 'owner',
+      owner: { id: 'user-1', name: 'Vlad', email: 'vlad@example.com' },
+      members: [],
+      sources: [
+        {
+          id: 'src-home',
+          kind: 'qspace',
+          title: 'Поездки',
+          folderId: 'folder-home',
+          yandexPath: null,
+          addedBy: { id: 'user-1', name: 'Vlad' },
+          syncedAt: null,
+          syncError: null,
+          itemCount: 2,
+        },
+      ],
+      createdAt: '2026-11-20T10:00:00Z',
+      updatedAt: '2026-11-20T10:00:00Z',
+    });
+    vi.mocked(spacesApi.feed).mockResolvedValue({
+      items: [
+        {
+          key: 'q:file:direct-pic',
+          sourceId: null,
+          origin: 'qspace',
+          kind: 'file',
+          id: 'direct-pic',
+          path: null,
+          name: 'cover.jpg',
+          mime: 'image/jpeg',
+          mediaType: 'image',
+          size: 1024,
+          updatedAt: '2026-11-22T10:00:00Z',
+          addedBy: { id: 'user-1', name: 'Vlad' },
+          previewUrl: null,
+        },
+      ],
+      offset: 0,
+      limit: 60,
+      nextOffset: null,
+    } as never);
+    vi.mocked(driveApi.getFolderItems).mockImplementation(async (fid: string) => {
+      if (fid === 'folder-home') {
+        return {
+          items: [
+            { kind: 'folder', id: 'folder-child', name: 'Грузия', mime: null, sizeBytes: null, sortDate: '2026-11-21T10:00:00Z', updatedAt: '2026-11-21T10:00:00Z', ownerId: 'user-1', folderId: 'folder-home' },
+          ],
+          nextCursor: null,
+        };
+      }
+      if (fid === 'folder-child') {
+        return {
+          items: [
+            { kind: 'file', id: 'df-g1', name: 'tbilisi.pdf', mime: 'application/pdf', sizeBytes: 512, sortDate: '2026-11-22T10:00:00Z', updatedAt: '2026-11-22T10:00:00Z', ownerId: 'user-1', folderId: 'folder-child' },
+          ],
+          nextCursor: null,
+        };
+      }
+      return { items: [], nextCursor: null };
+    });
+
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    // Switch to Table mode in Explorer folder -> NO .dashboard-list-view class on .dashboard-shell!
+    await wrapper.get('[data-view-toggle="table"]').trigger('click');
+    await nextTick();
+    expect(wrapper.get('.dashboard-shell').classes()).not.toContain('dashboard-list-view');
+
+    // Open Album -> stays in Table mode via unified [data-explorer-view-toggle] (no [data-album-view-toggle])
+    await wrapper.get('[data-album-id="alb-1"]').trigger('click');
+    await flushPromises();
+    await nextTick();
+    expect(wrapper.find('[data-explorer-view-toggle]').exists()).toBe(true);
+    expect(wrapper.find('[data-album-view-toggle]').exists()).toBe(false);
+    expect(wrapper.find('[data-dashboard-view="space"] [data-explorer-table]').exists()).toBe(true);
+    expect(wrapper.get('.dashboard-shell').classes()).not.toContain('dashboard-list-view');
+
+    // Header cleanup: members.length === 0 -> no noisy count pill, clean Share button, no duplicate Share in ⋯ menu
+    expect(wrapper.find('[data-headroom-space-count]').exists()).toBe(false);
+    expect(wrapper.get('[data-headroom-space-share]').text().trim()).toBe('Поделиться');
+    await wrapper.get('[data-headroom-space-menu]').trigger('click');
+    await nextTick();
+    expect(wrapper.find('[data-headroom-space-actions] [data-space-members-open]').exists()).toBe(false);
+
+    // Even while Q Space -> home folders are collapsed, expanding Альбомы -> alb-1 reveals > on own attached folder and expands 2nd & 3rd-level subfolders!
+    await wrapper.get('[data-album-toggle="alb-1"]').trigger('click');
+    await flushPromises();
+    await nextTick();
+    expect(wrapper.find('[data-album-folder-toggle="alb-1:folder-home"]').exists()).toBe(true);
+    await wrapper.get('[data-album-folder-toggle="alb-1:folder-home"]').trigger('click');
+    await nextTick();
+    expect(wrapper.find('[data-album-folder="folder-child"]').exists()).toBe(true);
+    expect(wrapper.find('[data-album-folder-toggle="alb-1:folder-child"]').exists()).toBe(true);
+    await wrapper.get('[data-album-folder-toggle="alb-1:folder-child"]').trigger('click');
+    await nextTick();
+    expect(wrapper.find('[data-album-folder="folder-grandchild"]').exists()).toBe(true);
+    await wrapper.get('[data-album-folder="folder-grandchild"]').trigger('click');
+    await flushPromises();
+    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'space', spaceId: 'alb-1', folderId: 'folder-grandchild' });
+
+    // Clicking parent album row returns cleanly to Album root
+    await wrapper.get('[data-album-id="alb-1"]').trigger('click');
+    await flushPromises();
+    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'space', spaceId: 'alb-1' });
+
+    // Switch to Grid mode -> tiles render cleanly without .dashboard-list-view corruption
+    await wrapper.get('[data-view-toggle="grid"]').trigger('click');
+    await nextTick();
+    expect(wrapper.get('.dashboard-shell').classes()).not.toContain('dashboard-list-view');
+    expect(wrapper.find('[data-dashboard-view="space"] [data-space-folder="folder-home"]').exists()).toBe(true);
+
+    // Enter 1st-level folder inside Album, then 2nd-level subfolder "Грузия" — stays in { kind: 'space' }
+    await wrapper.get('[data-space-folder="folder-home"]').trigger('click');
+    await flushPromises();
+    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'space', spaceId: 'alb-1', folderId: 'folder-home' });
+    expect((wrapper.vm as any).s2ScopeLabel).toBe('Семья / Поездки');
+
+    await wrapper.get('[data-space-folder="folder-child"]').trigger('click');
+    await flushPromises();
+    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'space', spaceId: 'alb-1', folderId: 'folder-child' });
+    expect((wrapper.vm as any).s2ScopeLabel).toBe('Семья / Грузия');
+    expect(wrapper.find('[data-space-item="q:file:df-g1"]').exists()).toBe(true);
+
+    // ↑ / ← steps up inside the album: folder-child -> folder-home -> Album root -> spaces
+    await wrapper.get('[data-nav-up]').trigger('click');
+    await flushPromises();
+    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'space', spaceId: 'alb-1', folderId: 'folder-home' });
+
+    await wrapper.get('[data-nav-back]').trigger('click');
+    await flushPromises();
+    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'space', spaceId: 'alb-1' });
+
+    // Dropping a file into the currently open album reloads spaceView immediately
+    const feedCallsBefore = vi.mocked(spacesApi.feed).mock.calls.length;
+    await (wrapper.vm as any).onDropGroupToAlbum('alb-1', {
+      source: 'explorer',
+      keys: ['drive-file:df-99'],
+      count: 1,
+      items: [{ key: 'drive-file:df-99', id: 'df-99', kind: 'drive-file', name: 'new.jpg' }],
+    });
+    await flushPromises();
+    expect(spacesApi.addItems).toHaveBeenCalledWith('alb-1', ['df-99']);
+    expect(vi.mocked(spacesApi.feed).mock.calls.length).toBeGreaterThan(feedCallsBefore);
   });
 });

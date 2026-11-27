@@ -166,6 +166,8 @@
               :data-yandex-file="row.kind === 'yandex-file' ? row.yandexPath : undefined"
               :data-shared-space="row.kind === 'album' ? row.albumId : undefined"
               :data-album-id="row.kind === 'album' ? row.albumId : undefined"
+              :data-album-source="row.kind === 'album-source' ? (row.sourceFolderId || row.sourceId || undefined) : undefined"
+              :data-album-folder="row.kind === 'album-folder' ? row.sourceFolderId : undefined"
               :data-sidebar-file="row.kind === 'file' ? row.fileKey : undefined"
               :data-sidebar-more="row.kind === 'more' ? row.folderId : undefined"
               :draggable="row.draggable"
@@ -193,6 +195,7 @@
                 :data-folder-toggle="row.kind === 'folder' ? row.folderId : undefined"
                 :data-yandex-toggle="row.kind === 'yandex-root' || row.kind === 'yandex-dir' ? row.yandexPath : undefined"
                 :data-album-toggle="row.kind === 'album' ? row.albumId : undefined"
+                :data-album-folder-toggle="(row.kind === 'album-source' || row.kind === 'album-folder') && row.albumFolderKey ? row.albumFolderKey : undefined"
                 @click.stop="toggleNodeExpanded(row)"
               >
                 <ChevronDown v-if="row.expanded" :size="14" aria-hidden="true" />
@@ -209,7 +212,7 @@
                 <House v-else-if="row.key === 'qspace:home'" :size="15" />
                 <Send v-else-if="row.key === 'clouds:telegram'" :size="15" />
                 <FolderCog v-else-if="row.kind === 'folder' && row.folderItem?.technical" :size="15" />
-                <Folder v-else-if="row.kind === 'folder' || row.kind === 'yandex-dir' || row.kind === 'album-source'" :size="15" />
+                <Folder v-else-if="row.kind === 'folder' || row.kind === 'yandex-dir' || row.kind === 'album-source' || row.kind === 'album-folder'" :size="15" />
                 <span
                   v-else-if="row.kind === 'album'"
                   class="tag-dot"
@@ -379,6 +382,7 @@ import {
   X,
 } from '@lucide/vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch, type CSSProperties } from 'vue';
+import { driveApi } from '../../api/drive';
 import { spacesApi, type SpaceDetails } from '../../api/spaces';
 import { yandexDisk, type YandexItem } from '../../api/yandexDisk';
 import { SOURCE_CODE_URL } from '../../app-info';
@@ -433,7 +437,8 @@ interface TreeRow {
     | 'yandex-more'
     | 'telegram'
     | 'album'
-    | 'album-source';
+    | 'album-source'
+    | 'album-folder';
   label: string;
   ariaLabel?: string;
   title?: string;
@@ -454,8 +459,11 @@ interface TreeRow {
   yandexPath?: string;
   yandexItem?: YandexItem;
   albumId?: string;
+  sourceId?: string | null;
   sourceFolderId?: string | null;
   sourceYandexPath?: string | null;
+  yandexSubpath?: string | null;
+  albumFolderKey?: string;
 }
 
 const appVersion = '2.2';
@@ -469,6 +477,8 @@ const props = withDefaults(defineProps<{
   mobileOpen: boolean;
   androidApp?: boolean;
   folders: readonly DashboardSidebarNavItem[];
+  /** Unpruned folder list (all depths) so Albums tree expands own/shared subfolders even when Q Space folders are collapsed. */
+  allFolders?: readonly { id: string; name: string; parentId: string | null; hasChildren?: boolean }[];
   admin?: boolean;
   spaces?: boolean;
   yandexRefreshKey?: number;
@@ -634,10 +644,69 @@ async function toggleYandexPath(path: string) {
   }
 }
 
-// Albums (`spaces`) lazy source expansion
+// Albums (`spaces`) lazy source & recursive subfolder expansion
+type AlbumSubfolderEntry = { id: string; name: string; parentId: string | null; hasChildren: boolean };
 const openAlbums = ref<Set<string>>(new Set());
+const openAlbumFolders = ref<Set<string>>(new Set());
 const albumDetailsCache = reactive<Record<string, SpaceDetails>>({});
 const albumLoading = reactive<Record<string, boolean>>({});
+const albumRemoteSubfolders = reactive<Record<string, AlbumSubfolderEntry[]>>({});
+const albumRemoteLoaded = reactive<Record<string, boolean>>({});
+const albumRemoteLoading = reactive<Record<string, boolean>>({});
+const albumRemoteParentById = reactive<Record<string, string | null>>({});
+
+async function ensureAlbumDetailsLoaded(spaceId: string): Promise<SpaceDetails | undefined> {
+  if (albumDetailsCache[spaceId]) return albumDetailsCache[spaceId];
+  if (albumLoading[spaceId]) return undefined;
+  albumLoading[spaceId] = true;
+  try {
+    const details = await spacesApi.get(spaceId);
+    albumDetailsCache[spaceId] = details;
+    for (const src of details.sources) {
+      if (src.kind === 'qspace' && src.folderId && !albumLocalFolderLookup.value.has(src.folderId)) {
+        void ensureRemoteSubfoldersLoaded(src.folderId);
+      }
+    }
+    return details;
+  } catch {
+    // Non-fatal: keep album row usable even if details fail.
+    return undefined;
+  } finally {
+    albumLoading[spaceId] = false;
+  }
+}
+
+async function ensureRemoteSubfoldersLoaded(folderId: string): Promise<void> {
+  if (!folderId || albumLocalFolderLookup.value.has(folderId) || albumRemoteLoaded[folderId] || albumRemoteLoading[folderId]) {
+    return;
+  }
+  if (typeof driveApi?.getFolderItems !== 'function') {
+    albumRemoteLoaded[folderId] = true;
+    return;
+  }
+  albumRemoteLoading[folderId] = true;
+  try {
+    const res = await driveApi.getFolderItems(folderId, { limit: 100 });
+    const subs: AlbumSubfolderEntry[] = (res?.items ?? [])
+      .filter((item) => item.kind === 'folder')
+      .map((item) => {
+        albumRemoteParentById[item.id] = folderId;
+        return {
+          id: item.id,
+          name: item.name,
+          parentId: folderId,
+          hasChildren: true,
+        };
+      });
+    albumRemoteSubfolders[folderId] = subs;
+    albumRemoteLoaded[folderId] = true;
+  } catch {
+    albumRemoteSubfolders[folderId] = [];
+    albumRemoteLoaded[folderId] = true;
+  } finally {
+    albumRemoteLoading[folderId] = false;
+  }
+}
 
 async function toggleAlbumExpanded(spaceId: string) {
   const next = new Set(openAlbums.value);
@@ -648,14 +717,12 @@ async function toggleAlbumExpanded(spaceId: string) {
   }
   next.add(spaceId);
   openAlbums.value = next;
-  if (!albumDetailsCache[spaceId] && !albumLoading[spaceId]) {
-    albumLoading[spaceId] = true;
-    try {
-      albumDetailsCache[spaceId] = await spacesApi.get(spaceId);
-    } catch {
-      // Non-fatal: keep album row usable even if details fail.
-    } finally {
-      albumLoading[spaceId] = false;
+  const details = await ensureAlbumDetailsLoaded(spaceId);
+  if (details) {
+    for (const src of details.sources) {
+      if (src.kind === 'qspace' && src.folderId && !albumLocalFolderLookup.value.has(src.folderId)) {
+        void ensureRemoteSubfoldersLoaded(src.folderId);
+      }
     }
   }
 }
@@ -670,6 +737,123 @@ const folderLookup = computed(() => {
   }
   return map;
 });
+
+type LocalAlbumFolder = { id: string; name: string; parentId: string | null; hasChildren?: boolean };
+
+const albumLocalFolderLookup = computed(() => {
+  const map = new Map<string, LocalAlbumFolder>();
+  const source: readonly LocalAlbumFolder[] = props.allFolders
+    ? props.allFolders
+    : [...folderLookup.value.values()];
+  for (const f of source) {
+    map.set(f.id, f);
+  }
+  return map;
+});
+
+const albumLocalChildFolders = computed(() => {
+  const map = new Map<string, LocalAlbumFolder[]>();
+  for (const f of albumLocalFolderLookup.value.values()) {
+    if (f.parentId) {
+      const list = map.get(f.parentId) ?? [];
+      list.push(f);
+      map.set(f.parentId, list);
+    }
+  }
+  return map;
+});
+
+function subfoldersOfInAlbum(folderId: string): AlbumSubfolderEntry[] {
+  if (albumLocalFolderLookup.value.has(folderId)) {
+    return [...(albumLocalChildFolders.value.get(folderId) ?? [])]
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+      .map((f) => ({
+        id: f.id,
+        name: f.name,
+        parentId: f.parentId,
+        hasChildren: Boolean(f.hasChildren || (albumLocalChildFolders.value.get(f.id)?.length ?? 0) > 0),
+      }));
+  }
+  return [...(albumRemoteSubfolders[folderId] ?? [])]
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+}
+
+async function syncAlbumTreeToActiveSection(section: DashboardSection): Promise<void> {
+  if (section.kind !== 'space') return;
+  if (!section.folderId && !section.yandexSourceId) return;
+
+  const roots = new Set(openRoots.value);
+  roots.add('root:albums');
+  openRoots.value = roots;
+
+  const albumsNext = new Set(openAlbums.value);
+  albumsNext.add(section.spaceId);
+  openAlbums.value = albumsNext;
+
+  await ensureAlbumDetailsLoaded(section.spaceId);
+
+  if (!section.folderId) return;
+  const targetFolderId = section.folderId;
+  const details = albumDetailsCache[section.spaceId];
+  const sourceRootIds = new Set(
+    (details?.sources ?? [])
+      .filter((s) => s.kind === 'qspace' && s.folderId)
+      .map((s) => s.folderId!),
+  );
+
+  const openFoldersNext = new Set(openAlbumFolders.value);
+  if (albumLocalFolderLookup.value.has(targetFolderId)) {
+    let cur = albumLocalFolderLookup.value.get(targetFolderId);
+    const visited = new Set<string>();
+    while (cur && cur.parentId && !visited.has(cur.parentId)) {
+      visited.add(cur.parentId);
+      openFoldersNext.add(`${section.spaceId}:${cur.parentId}`);
+      if (sourceRootIds.has(cur.parentId)) break;
+      cur = albumLocalFolderLookup.value.get(cur.parentId);
+    }
+    openAlbumFolders.value = openFoldersNext;
+    return;
+  }
+
+  // Remote album folder (owned by another album member): resolve ancestor chain via remote cache or driveApi.getFolder
+  const chain: string[] = [];
+  let cursor: string | null | undefined = albumRemoteParentById[targetFolderId];
+  const visited = new Set<string>();
+  while (cursor && !visited.has(cursor)) {
+    visited.add(cursor);
+    chain.push(cursor);
+    if (sourceRootIds.has(cursor)) break;
+    cursor = albumRemoteParentById[cursor];
+  }
+  if (!chain.length && typeof driveApi?.getFolder === 'function') {
+    try {
+      const info = await driveApi.getFolder(targetFolderId);
+      const crumbs = info?.path ?? [];
+      const startIdx = crumbs.findIndex((c) => sourceRootIds.has(c.id));
+      const trimmed = startIdx >= 0 ? crumbs.slice(startIdx) : crumbs;
+      for (let i = 0; i < trimmed.length - 1; i += 1) {
+        const ancestorId = trimmed[i]!.id;
+        chain.push(ancestorId);
+        const childId = trimmed[i + 1]?.id;
+        if (childId) albumRemoteParentById[childId] = ancestorId;
+      }
+    } catch {
+      // Ignore path lookup errors; folder remains open in workspace.
+    }
+  }
+  for (const ancestorId of chain) {
+    openFoldersNext.add(`${section.spaceId}:${ancestorId}`);
+  }
+  openAlbumFolders.value = openFoldersNext;
+  await Promise.all(chain.map((ancestorId) => ensureRemoteSubfoldersLoaded(ancestorId)));
+  const leafPrefetches = new Set<string>([targetFolderId]);
+  for (const ancestorId of chain) {
+    for (const child of albumRemoteSubfolders[ancestorId] ?? []) {
+      leafPrefetches.add(child.id);
+    }
+  }
+  await Promise.all([...leafPrefetches].map((id) => ensureRemoteSubfoldersLoaded(id)));
+}
 
 function folderAncestors(folderId: string): Set<string> {
   const chain = new Set<string>();
@@ -695,7 +879,16 @@ watch(() => props.activeSection, (next, prev) => {
     next.kind === prev.kind
     && (next.kind !== 'folder' || (prev.kind === 'folder' && next.folderId === prev.folderId))
     && (next.kind !== 'yandex' || (prev.kind === 'yandex' && next.path === prev.path))
-    && (next.kind !== 'space' || (prev.kind === 'space' && next.spaceId === prev.spaceId))
+    && (
+      next.kind !== 'space'
+      || (
+        prev.kind === 'space'
+        && next.spaceId === prev.spaceId
+        && (next.folderId ?? null) === (prev.folderId ?? null)
+        && (next.yandexSourceId ?? null) === (prev.yandexSourceId ?? null)
+        && (next.yandexSubpath ?? null) === (prev.yandexSubpath ?? null)
+      )
+    )
   ) {
     return;
   }
@@ -709,7 +902,13 @@ watch(() => props.activeSection, (next, prev) => {
     const nextActiveKey = next.kind === 'folder'
       ? `folder:${next.folderId}`
       : next.kind === 'space'
-        ? `album:${next.spaceId}`
+        ? (
+            next.folderId
+              ? (visibleRows.value.find((r) => (r.kind === 'album-source' || r.kind === 'album-folder') && r.albumId === next.spaceId && r.sourceFolderId === next.folderId)?.key ?? `album:${next.spaceId}:folder:${next.folderId}`)
+              : next.yandexSourceId
+                ? `album:${next.spaceId}:src:${next.yandexSourceId}`
+                : `album:${next.spaceId}`
+          )
         : next.kind === 'yandex'
           ? (next.path === '/' ? 'clouds:yandex' : `yandex:${next.path}`)
           : next.kind === 'home'
@@ -728,6 +927,10 @@ watch(() => props.activeSection, (next, prev) => {
       treeFocusKey.value = null;
     }
     lastSelectedIdx.value = -1;
+  }
+
+  if (next.kind === 'space') {
+    void syncAlbumTreeToActiveSection(next);
   }
 
   // Q Space folder accordion
@@ -964,22 +1167,91 @@ const visibleRows = computed<TreeRow[]>(() => {
       });
 
       if (isExp && sources.length > 0) {
+        const appendAlbumSubfolderRows = (
+          albumId: string,
+          parentFolderId: string,
+          parentRowKey: string,
+          depth: number,
+          visited: Set<string>,
+        ) => {
+          const subs = subfoldersOfInAlbum(parentFolderId);
+          for (const sub of subs) {
+            if (visited.has(sub.id)) continue;
+            const nextVisited = new Set(visited);
+            nextVisited.add(sub.id);
+            const afKey = `${albumId}:${sub.id}`;
+            const subKey = `album:${albumId}:folder:${sub.id}`;
+            const subExpandable = albumLocalFolderLookup.value.has(sub.id)
+              ? subfoldersOfInAlbum(sub.id).length > 0
+              : albumRemoteLoaded[sub.id]
+                ? (albumRemoteSubfolders[sub.id]?.length ?? 0) > 0
+                : sub.hasChildren;
+            const subExpanded = subExpandable && openAlbumFolders.value.has(afKey);
+            const subActive = props.activeSection.kind === 'space'
+              && props.activeSection.spaceId === albumId
+              && props.activeSection.folderId === sub.id;
+            rows.push({
+              key: subKey,
+              parentKey: parentRowKey,
+              kind: 'album-folder',
+              label: sub.name,
+              depth,
+              expandable: subExpandable,
+              expanded: subExpanded,
+              active: subActive,
+              draggable: false,
+              albumId,
+              sourceFolderId: sub.id,
+              albumFolderKey: afKey,
+            });
+            if (subExpanded) {
+              appendAlbumSubfolderRows(albumId, sub.id, subKey, depth + 1, nextVisited);
+            }
+          }
+        };
+
         for (const src of sources) {
+          const isQspace = src.kind === 'qspace' && Boolean(src.folderId);
+          const isYandex = src.kind === 'yandex';
+          const afKey = isQspace && src.folderId ? `${album.id}:${src.folderId}` : undefined;
+          const srcKey = `${aKey}:src:${src.id}`;
+          const srcExpandable = isQspace && src.folderId
+            ? (
+                albumLocalFolderLookup.value.has(src.folderId)
+                  ? subfoldersOfInAlbum(src.folderId).length > 0
+                  : albumRemoteLoaded[src.folderId]
+                    ? (albumRemoteSubfolders[src.folderId]?.length ?? 0) > 0
+                    : (src.itemCount ?? 0) > 0
+              )
+            : false;
+          const srcExpanded = Boolean(srcExpandable && afKey && openAlbumFolders.value.has(afKey));
+          const srcActive = props.activeSection.kind === 'space'
+            && props.activeSection.spaceId === album.id
+            && (
+              (isQspace && Boolean(src.folderId) && props.activeSection.folderId === src.folderId)
+              || (isYandex && props.activeSection.yandexSourceId === src.id && !props.activeSection.yandexSubpath)
+            );
           rows.push({
-            key: `${aKey}:src:${src.id}`,
+            key: srcKey,
             parentKey: aKey,
             kind: 'album-source',
             label: src.title,
             depth: 2,
-            expandable: false,
-            expanded: false,
-            active: false,
+            expandable: srcExpandable,
+            expanded: srcExpanded,
+            active: srcActive,
             draggable: false,
             albumId: album.id,
+            sourceId: src.id,
             sourceFolderId: src.folderId,
             sourceYandexPath: src.yandexPath,
+            yandexSubpath: isYandex ? '' : null,
+            albumFolderKey: afKey,
             meta: src.itemCount ?? undefined,
           });
+          if (srcExpanded && isQspace && src.folderId) {
+            appendAlbumSubfolderRows(album.id, src.folderId, srcKey, 3, new Set([src.folderId]));
+          }
         }
       }
     }
@@ -1163,6 +1435,24 @@ async function toggleNodeExpanded(row: TreeRow, forceExpand?: boolean) {
     if (forceExpand === true && openAlbums.value.has(row.albumId)) return;
     if (forceExpand === false && !openAlbums.value.has(row.albumId)) return;
     await toggleAlbumExpanded(row.albumId);
+    return;
+  }
+  if ((row.kind === 'album-source' || row.kind === 'album-folder') && row.albumFolderKey && row.sourceFolderId) {
+    const next = new Set(openAlbumFolders.value);
+    const shouldOpen = forceExpand ?? !next.has(row.albumFolderKey);
+    if (shouldOpen) {
+      next.add(row.albumFolderKey);
+      openAlbumFolders.value = next;
+      if (!albumLocalFolderLookup.value.has(row.sourceFolderId)) {
+        await ensureRemoteSubfoldersLoaded(row.sourceFolderId);
+        for (const child of albumRemoteSubfolders[row.sourceFolderId] ?? []) {
+          void ensureRemoteSubfoldersLoaded(child.id);
+        }
+      }
+    } else {
+      next.delete(row.albumFolderKey);
+      openAlbumFolders.value = next;
+    }
   }
 }
 
@@ -1173,6 +1463,7 @@ function collapseToFocus() {
   const keepFolders = new Set<string>();
   const keepYandex = new Set<string>();
   const keepAlbums = new Set<string>();
+  const keepAlbumFolders = new Set<string>();
 
   if (focusKey) {
     const rowMap = new Map(visibleRows.value.map((r) => [r.key, r]));
@@ -1182,6 +1473,9 @@ function collapseToFocus() {
       if (cur.kind === 'folder' && cur.folderId) keepFolders.add(cur.folderId);
       if ((cur.kind === 'yandex-root' || cur.kind === 'yandex-dir') && cur.yandexPath) keepYandex.add(cur.yandexPath);
       if (cur.kind === 'album' && cur.albumId) keepAlbums.add(cur.albumId);
+      if ((cur.kind === 'album-source' || cur.kind === 'album-folder') && cur.albumFolderKey) {
+        keepAlbumFolders.add(cur.albumFolderKey);
+      }
       cur = cur.parentKey ? rowMap.get(cur.parentKey) : undefined;
     }
   } else if (props.activeSection.kind === 'folder') {
@@ -1198,6 +1492,7 @@ function collapseToFocus() {
   }
   yandexOpen.value = yandexOpen.value.filter((p) => keepYandex.has(p));
   openAlbums.value = new Set([...openAlbums.value].filter((id) => keepAlbums.has(id)));
+  openAlbumFolders.value = new Set([...openAlbumFolders.value].filter((key) => keepAlbumFolders.has(key)));
   openRoots.value = keepRows;
 }
 
@@ -1249,9 +1544,17 @@ function activateRow(row: TreeRow) {
     emit('select', { kind: 'space', spaceId: row.albumId });
     return;
   }
-  if (row.kind === 'album-source') {
-    if (row.sourceFolderId) emit('select', { kind: 'folder', folderId: row.sourceFolderId });
-    else if (row.sourceYandexPath) emit('select', { kind: 'yandex', path: row.sourceYandexPath });
+  if ((row.kind === 'album-source' || row.kind === 'album-folder') && row.albumId) {
+    if (row.sourceFolderId) {
+      emit('select', { kind: 'space', spaceId: row.albumId, folderId: row.sourceFolderId });
+    } else if (row.sourceId) {
+      emit('select', {
+        kind: 'space',
+        spaceId: row.albumId,
+        yandexSourceId: row.sourceId,
+        yandexSubpath: row.yandexSubpath ?? '',
+      });
+    }
   }
 }
 
@@ -1723,7 +2026,13 @@ async function revealCurrentInTree() {
     const roots = new Set(openRoots.value);
     roots.add('root:albums');
     openRoots.value = roots;
-    targetKey = `album:${props.activeSection.spaceId}`;
+    if (props.activeSection.folderId || props.activeSection.yandexSourceId) {
+      await syncAlbumTreeToActiveSection(props.activeSection);
+      await nextTick();
+      targetKey = findActiveRowKey() ?? `album:${props.activeSection.spaceId}`;
+    } else {
+      targetKey = `album:${props.activeSection.spaceId}`;
+    }
   } else if (props.activeSection.kind === 'yandex') {
     const roots = new Set(openRoots.value);
     roots.add('root:clouds');
@@ -1861,6 +2170,9 @@ onMounted(() => {
   if (props.spaces !== false) {
     void loadYandexStatus();
     void loadSpaces();
+  }
+  if (props.activeSection.kind === 'space' && (props.activeSection.folderId || props.activeSection.yandexSourceId)) {
+    void syncAlbumTreeToActiveSection(props.activeSection);
   }
 });
 

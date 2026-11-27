@@ -33,6 +33,8 @@ vi.mock('../../api/spaces', () => ({
     removeMember: vi.fn(),
     addQspaceFolder: vi.fn(),
     addYandexFolder: vi.fn(),
+    removeSource: vi.fn().mockResolvedValue(undefined),
+    removeItems: vi.fn().mockResolvedValue({ removed: 1 }),
     yandexDownload: vi.fn(),
   },
 }));
@@ -43,6 +45,8 @@ vi.mock('../../api/drive', async () => {
     ...actual,
     driveApi: {
       ...actual.driveApi,
+      getFolder: vi.fn().mockResolvedValue(null),
+      getFolderItems: vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
       getThumbLinks: vi.fn().mockResolvedValue({ links: {} }),
       getDownloadLink: vi.fn().mockResolvedValue({ url: '/api/drive/files/f-1?token=t', expiresAt: '2026-12-01T00:00:00Z' }),
       getFileMeta: vi.fn().mockResolvedValue({
@@ -444,6 +448,263 @@ describe('DashboardSpace (T-018 Albums redesign)', () => {
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }));
     await nextTick();
     expect(lastOf(wrapper.emitted('update:selectedKeys'))).toEqual([[]]);
+  });
+
+  it('B-020: renders hierarchical album root folders + direct items, drills into 2nd-level subfolders with trimmed breadcrumbs, navigateUp, remove-from-album, and empty-area context menu', async () => {
+    vi.mocked(spacesApi.get).mockResolvedValue(makeSpaceDetails({
+      sources: [
+        {
+          id: 'src-1',
+          kind: 'qspace',
+          title: 'Горы',
+          folderId: 'folder-1',
+          yandexPath: null,
+          addedBy: { id: 'u-1', name: 'Влад' },
+          syncedAt: null,
+          syncError: null,
+          itemCount: 3,
+        },
+        {
+          id: 'src-y',
+          kind: 'yandex',
+          title: 'Поход',
+          folderId: null,
+          yandexPath: '/Trip',
+          addedBy: { id: 'u-1', name: 'Влад' },
+          syncedAt: '2026-11-08T10:00:00Z',
+          syncError: null,
+          itemCount: 2,
+        },
+      ],
+    }));
+    vi.mocked(spacesApi.feed).mockImplementation(async (_id, opts) => {
+      if (opts?.sourceIds?.includes('src-y')) {
+        return {
+          items: [
+            {
+              key: 'y:src-y:/Trip/root.jpg',
+              sourceId: 'src-y',
+              origin: 'yandex',
+              kind: 'file',
+              id: null,
+              path: '/Trip/root.jpg',
+              name: 'root.jpg',
+              mime: 'image/jpeg',
+              mediaType: 'image',
+              size: 1024,
+              updatedAt: '2026-11-08T10:00:00Z',
+              addedBy: { id: 'u-1', name: 'Влад' },
+              previewUrl: null,
+            },
+            {
+              key: 'y:src-y:/Trip/Day1/camp.jpg',
+              sourceId: 'src-y',
+              origin: 'yandex',
+              kind: 'file',
+              id: null,
+              path: '/Trip/Day1/camp.jpg',
+              name: 'camp.jpg',
+              mime: 'image/jpeg',
+              mediaType: 'image',
+              size: 2048,
+              updatedAt: '2026-11-08T11:00:00Z',
+              addedBy: { id: 'u-1', name: 'Влад' },
+              previewUrl: null,
+            },
+          ],
+          offset: 0,
+          limit: 200,
+          nextOffset: null,
+        };
+      }
+      return {
+        items: [
+          {
+            key: 'q:file:direct-1',
+            sourceId: null,
+            origin: 'qspace',
+            kind: 'file',
+            id: 'direct-1',
+            path: null,
+            name: 'Обложка.jpg',
+            mime: 'image/jpeg',
+            mediaType: 'image',
+            size: 1024,
+            updatedAt: '2026-11-09T10:00:00Z',
+            addedBy: { id: 'u-1', name: 'Влад' },
+            previewUrl: null,
+          },
+          {
+            key: 'q:file:inside-src',
+            sourceId: 'src-1',
+            origin: 'qspace',
+            kind: 'file',
+            id: 'inside-src',
+            path: null,
+            name: 'Внутри.pdf',
+            mime: 'application/pdf',
+            mediaType: null,
+            size: 2048,
+            updatedAt: '2026-11-08T10:00:00Z',
+            addedBy: { id: 'u-1', name: 'Влад' },
+            previewUrl: null,
+          },
+        ],
+        offset: 0,
+        limit: 60,
+        nextOffset: null,
+      };
+    });
+    vi.mocked(driveApi.getFolder).mockImplementation(async (id: string) => {
+      if (id === 'folder-1') {
+        return {
+          folder: { id: 'folder-1', name: 'Горы', parentId: 'secret-parent', role: 'owner' },
+          path: [
+            { id: 'secret-parent', name: 'Личное' },
+            { id: 'folder-1', name: 'Горы' },
+          ],
+          counts: { folders: 1, files: 1, docs: 0 },
+        } as never;
+      }
+      if (id === 'sub-2') {
+        return {
+          folder: { id: 'sub-2', name: 'Белуха', parentId: 'folder-1', role: 'owner' },
+          path: [
+            { id: 'secret-parent', name: 'Личное' },
+            { id: 'folder-1', name: 'Горы' },
+            { id: 'sub-2', name: 'Белуха' },
+          ],
+          counts: { folders: 0, files: 1, docs: 0 },
+        } as never;
+      }
+      return null as never;
+    });
+    vi.mocked(driveApi.getFolderItems).mockImplementation(async (id: string) => {
+      if (id === 'folder-1') {
+        return {
+          items: [
+            { kind: 'folder', id: 'sub-2', name: 'Белуха', mime: null, sizeBytes: null, sortDate: '2026-11-08T10:00:00Z', updatedAt: '2026-11-08T10:00:00Z', ownerId: 'u-1', folderId: 'folder-1' },
+            { kind: 'file', id: 'inside-src', name: 'Внутри.pdf', mime: 'application/pdf', sizeBytes: 2048, sortDate: '2026-11-08T10:00:00Z', updatedAt: '2026-11-08T10:00:00Z', ownerId: 'u-1', folderId: 'folder-1' },
+          ],
+          nextCursor: null,
+        };
+      }
+      if (id === 'sub-2') {
+        return {
+          items: [
+            { kind: 'photo', id: 'peak-1', name: 'peak.jpg', mime: 'image/jpeg', sizeBytes: 4096, sortDate: '2026-11-09T10:00:00Z', updatedAt: '2026-11-09T10:00:00Z', ownerId: 'u-1', folderId: 'sub-2' },
+          ],
+          nextCursor: null,
+        };
+      }
+      return { items: [], nextCursor: null };
+    });
+
+    const wrapper = mount(DashboardSpace, {
+      attachTo: document.body,
+      props: {
+        spaceId: 'space-1',
+        meId: 'u-1',
+        hierarchical: true,
+        viewMode: 'grid',
+        hideHeader: true,
+        folderOptions: [{ id: 'folder-1', name: 'Горы', depth: 0, path: '' }],
+      },
+    });
+    await flushPromises();
+
+    // Album root shows attached folder tiles + standalone direct item ONLY (not nested inside-src)
+    expect(wrapper.find('[data-space-subfolders]').exists()).toBe(true);
+    expect(wrapper.find('[data-space-folder="folder-1"]').exists()).toBe(true);
+    expect(wrapper.find('[data-space-folder="src-y"]').exists()).toBe(true);
+    expect(wrapper.find('[data-space-item="q:file:direct-1"]').exists()).toBe(true);
+    expect(wrapper.find('[data-space-item="q:file:inside-src"]').exists()).toBe(false);
+
+    // Table view renders attached sources as folder rows at top + direct item
+    await wrapper.setProps({ viewMode: 'table' });
+    await nextTick();
+    expect(wrapper.find('[data-explorer-table]').exists()).toBe(true);
+    expect(wrapper.find('[data-row-key="source:src-1"]').exists()).toBe(true);
+    expect(wrapper.find('[data-row-key="q:file:direct-1"]').exists()).toBe(true);
+
+    // Right-click direct item shows "Убрать из альбома", hides dead "Добавить в альбом" when no other albums exist, and calls spacesApi.removeItems
+    await wrapper.setProps({ viewMode: 'grid' });
+    await nextTick();
+    await wrapper.get('[data-space-item="q:file:direct-1"]').trigger('contextmenu', { clientX: 40, clientY: 50 });
+    await nextTick();
+    expect(wrapper.find('[data-explorer-context-menu] [data-ctx-action="add-to-album"]').exists()).toBe(false);
+    const removeDirectBtn = wrapper.get('[data-explorer-context-menu] [data-ctx-action="remove-from-album"]');
+    expect(removeDirectBtn.text()).toContain('Убрать из альбома');
+    await removeDirectBtn.trigger('click');
+    await flushPromises();
+    expect(spacesApi.removeItems).toHaveBeenCalledWith('space-1', ['direct-1']);
+
+    // Right-click attached source folder shows "Убрать из альбома" and calls spacesApi.removeSource
+    await wrapper.get('[data-space-folder="folder-1"]').trigger('contextmenu', { clientX: 50, clientY: 60 });
+    await nextTick();
+    await wrapper.get('[data-explorer-context-menu] [data-ctx-action="remove-from-album"]').trigger('click');
+    await flushPromises();
+    expect(spacesApi.removeSource).toHaveBeenCalledWith('space-1', 'src-1');
+
+    // Empty-area right-click on .folder-manager-body opens menu with "Добавить папку" + "Обновить"
+    await wrapper.get('.folder-manager-body').trigger('contextmenu', { clientX: 20, clientY: 20 });
+    await nextTick();
+    expect(wrapper.get('[data-explorer-context-menu] [data-ctx-action="create-folder"]').text()).toContain('Добавить папку');
+    expect(wrapper.get('[data-explorer-context-menu] [data-ctx-action="refresh"]').text()).toContain('Обновить');
+    expect(wrapper.find('[data-explorer-context-menu] [data-ctx-action="add"]').exists()).toBe(false);
+
+    // Click attached folder tile -> emits navigate-space-folder { folderId: 'folder-1' }
+    await wrapper.get('[data-space-folder="folder-1"]').trigger('click');
+    expect(lastOf(wrapper.emitted('navigate-space-folder'))).toEqual([{ folderId: 'folder-1', yandexSourceId: null, yandexSubpath: null }]);
+
+    // Drill into 1st-level folder -> breadcrumbs trimmed (NO "Личное"), shows 2nd-level subfolder "Белуха"
+    await wrapper.setProps({ activeFolderId: 'folder-1' });
+    await flushPromises();
+    const crumbs1 = wrapper.get('[data-space-breadcrumbs]');
+    expect(crumbs1.text()).toContain('Алтай 2026');
+    expect(crumbs1.text()).toContain('Горы');
+    expect(crumbs1.text()).not.toContain('Личное');
+    expect(wrapper.find('[data-space-folder="sub-2"]').exists()).toBe(true);
+    expect(wrapper.find('[data-space-item="q:file:inside-src"]').exists()).toBe(true);
+
+    // Drill into 2nd-level subfolder -> breadcrumbs show Album › Горы › Белуха and photo inside
+    await wrapper.get('[data-space-folder="sub-2"]').trigger('click');
+    expect(lastOf(wrapper.emitted('navigate-space-folder'))).toEqual([{ folderId: 'sub-2', yandexSourceId: null, yandexSubpath: null }]);
+    await wrapper.setProps({ activeFolderId: 'sub-2' });
+    await flushPromises();
+    const crumbs2 = wrapper.get('[data-space-breadcrumbs]');
+    expect(crumbs2.text()).toContain('Горы');
+    expect(crumbs2.text()).toContain('Белуха');
+    expect(crumbs2.text()).not.toContain('Личное');
+    expect(wrapper.find('[data-space-item="q:file:peak-1"]').exists()).toBe(true);
+
+    // navigateUp steps sub-2 -> folder-1 -> Album root -> false
+    const vm = wrapper.vm as unknown as { navigateUp: () => boolean; currentFolderName: string };
+    expect(vm.currentFolderName).toBe('Белуха');
+    expect(vm.navigateUp()).toBe(true);
+    expect(lastOf(wrapper.emitted('navigate-space-folder'))).toEqual([{ folderId: 'folder-1', yandexSourceId: null, yandexSubpath: null }]);
+
+    await wrapper.setProps({ activeFolderId: 'folder-1' });
+    await flushPromises();
+    expect(vm.navigateUp()).toBe(true);
+    expect(lastOf(wrapper.emitted('navigate-space-folder'))).toEqual([{ folderId: null, yandexSourceId: null, yandexSubpath: null }]);
+
+    // Drill into Yandex source -> derives Day1 subfolder + root.jpg direct file
+    await wrapper.setProps({ activeFolderId: null, activeYandexSourceId: 'src-y', activeYandexSubpath: '' });
+    await flushPromises();
+    expect(wrapper.find('[data-space-folder="src-y:Day1"]').exists()).toBe(true);
+    expect(wrapper.find('[data-space-item="y:src-y:/Trip/root.jpg"]').exists()).toBe(true);
+    expect(wrapper.find('[data-space-item="y:src-y:/Trip/Day1/camp.jpg"]').exists()).toBe(false);
+
+    await wrapper.setProps({ activeYandexSubpath: 'Day1' });
+    await flushPromises();
+    expect(wrapper.find('[data-space-item="y:src-y:/Trip/Day1/camp.jpg"]').exists()).toBe(true);
+    expect(vm.navigateUp()).toBe(true);
+    expect(lastOf(wrapper.emitted('navigate-space-folder'))).toEqual([{ folderId: null, yandexSourceId: 'src-y', yandexSubpath: '' }]);
+
+    await wrapper.setProps({ activeYandexSourceId: null, activeYandexSubpath: null });
+    await flushPromises();
+    expect(vm.navigateUp()).toBe(false);
   });
 });
 

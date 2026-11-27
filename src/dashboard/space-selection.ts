@@ -9,7 +9,7 @@ import type { SpaceFeedItem, SpaceRole } from '../api/spaces';
  */
 
 export const spaceItemOwnerId = (item: Pick<SpaceFeedItem, 'owner' | 'addedBy'>): string =>
-  item.owner?.id ?? item.addedBy.id;
+  item.owner?.id ?? item.addedBy?.id ?? '';
 
 export const canEditSpaceRole = (role: SpaceRole | null | undefined): boolean =>
   role === 'owner' || role === 'editor';

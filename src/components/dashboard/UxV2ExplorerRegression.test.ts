@@ -5,6 +5,8 @@ import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { nextTick, ref } from 'vue';
 import { resourceFolders } from '../../api/client';
+import { driveApi } from '../../api/drive';
+import { spacesApi } from '../../api/spaces';
 import { yandexDisk, type YandexItem } from '../../api/yandexDisk';
 import { resetExplorerLayoutPrefs, useExplorerLayoutPrefs } from '../../composables/useExplorerLayoutPrefs';
 import { useI18n } from '../../composables/useI18n';
@@ -81,6 +83,7 @@ vi.mock('../../api/drive', async (importOriginal) => {
     driveApi: {
       ...actual.driveApi,
       getFolderFileCounts: vi.fn().mockResolvedValue({ counts: {} }),
+      getFolder: vi.fn().mockResolvedValue(null),
       getFolderItems: vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
       getThumbLinks: vi.fn().mockResolvedValue({ links: {} }),
     },
@@ -781,5 +784,119 @@ describe('UX v2 Explorer & B-011/B-012/B-013/B-014 regressions', () => {
     // 3. PhotosGroupHead light-theme curtain count contrast
     const pghSrc = fs.readFileSync(path.resolve(__dirname, '../photos/PhotosGroupHead.vue'), 'utf8');
     expect(pghSrc).toMatch(/:root\[data-theme='light'\]\s+\.pgh-curtain\s+\.pgh-count\s*\{[^}]*color:\s*rgba\(15,\s*36,\s*20,\s*0\.78\);[^}]*font-weight:\s*600;/);
+  });
+
+  it('B-020: DashboardSidebar expands recursive 2nd & 3rd-level subfolders under Альбомы (local & remote) and keeps clicks inside { kind: "space" }', async () => {
+    useSpaces().spaces.value = [
+      { id: 'alb-1', name: 'Отпуск', role: 'owner', ownerId: 'u1', memberCount: 2, sourceCount: 2, itemCount: 5, updatedAt: '2026-11-20T10:00:00Z' },
+    ];
+    useSpaces().loaded.value = true;
+
+    vi.mocked(spacesApi.get).mockResolvedValue({
+      id: 'alb-1',
+      name: 'Отпуск',
+      role: 'owner',
+      owner: { id: 'u1', name: 'Vlad', email: 'vlad@example.com' },
+      members: [],
+      sources: [
+        { id: 'src-own', kind: 'qspace', title: 'Своя папка', folderId: 'f-1', yandexPath: null, addedBy: { id: 'u1', name: 'Vlad' }, syncedAt: null, syncError: null, itemCount: 3 },
+        { id: 'src-remote', kind: 'qspace', title: 'Чужая папка', folderId: 'rem-1', yandexPath: null, addedBy: { id: 'u2', name: 'Anya' }, syncedAt: null, syncError: null, itemCount: 2 },
+      ],
+      createdAt: '2026-11-20T10:00:00Z',
+      updatedAt: '2026-11-20T10:00:00Z',
+    });
+
+    vi.mocked(driveApi.getFolderItems).mockImplementation(async (fid: string) => {
+      if (fid === 'rem-1') {
+        return {
+          items: [
+            { kind: 'folder', id: 'rem-2', name: 'Чужая 2й уровень', mime: null, sizeBytes: null, sortDate: '', updatedAt: '', ownerId: 'u2', folderId: 'rem-1' },
+          ],
+          nextCursor: null,
+        };
+      }
+      return { items: [], nextCursor: null };
+    });
+
+    const sidebar = mount(DashboardSidebar, {
+      attachTo: document.body,
+      props: {
+        activeSection: { kind: 'space', spaceId: 'alb-1' },
+        mobileOpen: false,
+        spaces: true,
+        folders: [
+          { id: 'f-1', name: 'Своя папка', parentId: null, depth: 0, role: 'owner', technical: false, expanded: false, hasChildren: true, draggable: false, dropActive: false, reorderTarget: false },
+          { id: 'f-2', name: 'Подпапка 2', parentId: 'f-1', depth: 1, role: 'owner', technical: false, expanded: false, hasChildren: true, draggable: false, dropActive: false, reorderTarget: false },
+          { id: 'f-3', name: 'Подпапка 3', parentId: 'f-2', depth: 2, role: 'owner', technical: false, expanded: false, hasChildren: false, draggable: false, dropActive: false, reorderTarget: false },
+        ],
+      },
+      global: { stubs: { RouterLink: routerLinkStub } },
+    });
+    await flushPromises();
+
+    // Expand album -> reveals 1st-level sources with chevrons
+    await sidebar.get('[data-album-toggle="alb-1"]').trigger('click');
+    await flushPromises();
+    await nextTick();
+    expect(sidebar.find('[data-album-source="f-1"]').exists()).toBe(true);
+    expect(sidebar.find('[data-album-folder-toggle="alb-1:f-1"]').exists()).toBe(true);
+    expect(sidebar.find('[data-album-source="rem-1"]').exists()).toBe(true);
+    expect(sidebar.find('[data-album-folder-toggle="alb-1:rem-1"]').exists()).toBe(true);
+
+    // Expand 1st-level -> reveals 2nd-level; expand 2nd-level -> reveals 3rd-level
+    await sidebar.get('[data-album-folder-toggle="alb-1:f-1"]').trigger('click');
+    await nextTick();
+    expect(sidebar.find('[data-album-folder="f-2"]').exists()).toBe(true);
+    expect(sidebar.find('[data-album-folder-toggle="alb-1:f-2"]').exists()).toBe(true);
+
+    await sidebar.get('[data-album-folder-toggle="alb-1:f-2"]').trigger('click');
+    await nextTick();
+    expect(sidebar.find('[data-album-folder="f-3"]').exists()).toBe(true);
+
+    // Expand remote 1st-level -> reveals remote 2nd-level subfolder
+    await sidebar.get('[data-album-folder-toggle="alb-1:rem-1"]').trigger('click');
+    await flushPromises();
+    await nextTick();
+    expect(sidebar.find('[data-album-folder="rem-2"]').exists()).toBe(true);
+
+    // Clicking 1st-level and 3rd-level stays strictly inside { kind: 'space', spaceId: 'alb-1', folderId }
+    await sidebar.get('[data-album-source="f-1"]').trigger('click');
+    await sidebar.get('[data-album-folder="f-3"]').trigger('click');
+    const emitted = sidebar.emitted('select') ?? [];
+    expect(emitted[0]).toEqual([{ kind: 'space', spaceId: 'alb-1', folderId: 'f-1' }]);
+    expect(emitted[1]).toEqual([{ kind: 'space', spaceId: 'alb-1', folderId: 'f-3' }]);
+    expect(emitted.some((call) => (call[0] as { kind: string }).kind === 'folder')).toBe(false);
+
+    // Active highlight moves to f-3 and leaves album root inactive
+    await sidebar.setProps({ activeSection: { kind: 'space', spaceId: 'alb-1', folderId: 'f-3' } });
+    await nextTick();
+    expect(sidebar.get('[data-album-id="alb-1"]').classes()).not.toContain('active');
+    expect(sidebar.get('[data-album-folder="f-3"]').classes()).toContain('active');
+
+    // B-017: navigating directly via workspace drill-down to remote empty leaf folder rem-2 clears false > chevron
+    vi.mocked(driveApi.getFolder).mockResolvedValueOnce({
+      folder: { id: 'rem-2', name: 'Чужая 2й уровень', parentId: 'rem-1', role: 'viewer' },
+      path: [
+        { id: 'rem-1', name: 'Чужая папка' },
+        { id: 'rem-2', name: 'Чужая 2й уровень' },
+      ],
+      counts: { folders: 0, files: 1, docs: 0 },
+    } as never);
+    const freshSidebar = mount(DashboardSidebar, {
+      attachTo: document.body,
+      props: {
+        activeSection: { kind: 'space', spaceId: 'alb-1' },
+        mobileOpen: false,
+        spaces: true,
+        folders: [],
+      },
+      global: { stubs: { RouterLink: routerLinkStub } },
+    });
+    await flushPromises();
+    await freshSidebar.setProps({ activeSection: { kind: 'space', spaceId: 'alb-1', folderId: 'rem-2' } });
+    await flushPromises();
+    await nextTick();
+    expect(freshSidebar.find('[data-album-folder="rem-2"]').exists()).toBe(true);
+    expect(freshSidebar.find('[data-album-folder-toggle="alb-1:rem-2"]').exists()).toBe(false);
   });
 });

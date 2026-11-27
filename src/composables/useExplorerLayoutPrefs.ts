@@ -92,10 +92,6 @@ function parseViewMode(raw: string | null): ExplorerViewMode {
   return 'grid';
 }
 
-function parseAlbumView(raw: string | null): AlbumViewMode {
-  return raw === 'table' ? 'table' : 'feed';
-}
-
 function parseBool(raw: string | null, fallback = false): boolean {
   if (raw === '1' || raw === 'true') return true;
   if (raw === '0' || raw === 'false') return false;
@@ -118,7 +114,17 @@ function parseLastExplorerRoute(raw: string | null): DashboardSection | null {
       return { kind: 'yandex', path: parsed.path || '/' };
     }
     if (parsed.kind === 'space' && typeof parsed.spaceId === 'string' && parsed.spaceId) {
-      return { kind: 'space', spaceId: parsed.spaceId };
+      const section: DashboardSection = { kind: 'space', spaceId: parsed.spaceId };
+      if (typeof parsed.folderId === 'string' && parsed.folderId) {
+        section.folderId = parsed.folderId;
+      }
+      if (typeof parsed.yandexSourceId === 'string' && parsed.yandexSourceId) {
+        section.yandexSourceId = parsed.yandexSourceId;
+        if (typeof parsed.yandexSubpath === 'string') {
+          section.yandexSubpath = parsed.yandexSubpath;
+        }
+      }
+      return section;
     }
     if (
       parsed.kind === 'home'
@@ -178,8 +184,20 @@ let hydrated = false;
 function hydrateFromStorage(): void {
   if (hydrated) return;
   hydrated = true;
-  viewMode.value = parseViewMode(readString(PREF_KEYS.viewMode));
-  albumView.value = parseAlbumView(readString(PREF_KEYS.albumView));
+  const rawViewMode = readString(PREF_KEYS.viewMode);
+  const rawAlbumView = readString(PREF_KEYS.albumView);
+  if (rawViewMode !== null) {
+    const parsed = parseViewMode(rawViewMode);
+    viewMode.value = parsed;
+    albumView.value = parsed === 'table' ? 'table' : 'feed';
+  } else if (rawAlbumView === 'table') {
+    viewMode.value = 'table';
+    albumView.value = 'table';
+  } else {
+    const parsed = parseViewMode(null);
+    viewMode.value = parsed;
+    albumView.value = parsed === 'table' ? 'table' : 'feed';
+  }
   sidebarCollapsed.value = parseBool(readString(PREF_KEYS.sidebarCollapsed), false);
   const rawW = readString(PREF_KEYS.sidebarWidth);
   sidebarWidth.value = rawW !== null ? clampSidebarWidth(Number(rawW)) : SIDEBAR_DEFAULT_WIDTH;
@@ -195,17 +213,17 @@ function hydrateFromStorage(): void {
 export function setExplorerViewMode(next: ExplorerViewMode | 'list'): void {
   hydrateFromStorage();
   const normalized: ExplorerViewMode = next === 'table' || next === 'list' ? 'table' : 'grid';
+  const normalizedAlbum: AlbumViewMode = normalized === 'table' ? 'table' : 'feed';
   viewMode.value = normalized;
+  albumView.value = normalizedAlbum;
   writeString(PREF_KEYS.viewMode, normalized);
+  writeString(PREF_KEYS.albumView, normalizedAlbum);
   // Keep legacy key synchronized for seamless migration.
   writeString(RECENT_VIEW_STORAGE_KEY, normalized === 'table' ? 'list' : 'grid');
 }
 
 export function setAlbumViewMode(next: AlbumViewMode): void {
-  hydrateFromStorage();
-  const normalized: AlbumViewMode = next === 'table' ? 'table' : 'feed';
-  albumView.value = normalized;
-  writeString(PREF_KEYS.albumView, normalized);
+  setExplorerViewMode(next === 'table' ? 'table' : 'grid');
 }
 
 export function setSidebarCollapsed(collapsed: boolean): void {

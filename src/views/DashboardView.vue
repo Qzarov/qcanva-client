@@ -26,6 +26,7 @@
         :mobile-open="mobileSidebarOpen"
         :android-app="isAndroidApp"
         :folders="sidebarFolders"
+        :all-folders="sidebarAllFolders"
         :spaces="isLoggedIn"
         :yandex-refresh-key="yandexRefreshKey"
         :incoming-access-requests-count="incomingRequests.length"
@@ -167,8 +168,26 @@
           @toggle-tag="toggleSelectedTag"
           @reset="clearTypeAndTagFilters"
         />
+        <button
+          v-else
+          type="button"
+          class="icon-btn headroom-space-filter-btn"
+          :class="{ active: (spaceView?.activeFilterCount ?? 0) > 0 }"
+          :aria-label="t('filters')"
+          :title="t('filters')"
+          :aria-expanded="Boolean(spaceView?.filterMenuOpen)"
+          data-headroom-space-filter
+          @click.stop="spaceView?.toggleFilters()"
+        >
+          <SlidersHorizontal :size="15" aria-hidden="true" />
+          <span
+            v-if="(spaceView?.activeFilterCount ?? 0) > 0"
+            class="dashboard-filter-badge"
+            data-headroom-space-filter-count
+          >{{ spaceView?.activeFilterCount }}</span>
+        </button>
         <DashboardSortMenu
-          v-if="spaceId === null"
+          v-if="activeSection.kind !== 'trash'"
           :open="openControlMenu === 'sort:desktop'"
           :mode="sortMode"
           :sheet="isAndroidApp && isMobileHeadroom"
@@ -204,23 +223,24 @@
             :disabled="isBusy"
             @click.stop="toggleFolderMenu(activeFolder.id)"
           >⋯</button>
-          <div
-            v-if="openControlMenu === 'folder:' + activeFolder.id"
-            class="mobile-action-popover headroom-action-popover"
-            data-headroom-folder-actions
-            @click.stop
-          >
-            <button type="button" class="card-menu-item" data-folder-import @click="openAddDialog({ folderId: activeFolder.id, importKind: 'file' })" :disabled="isBusy">{{ t('import') }}</button>
-            <button type="button" class="card-menu-item" data-folder-share @click="openFolderShareModal(activeFolder)" :disabled="isBusy">{{ t('share') }}</button>
-            <button v-if="activeFolder.name !== 'Unsorted'" type="button" class="card-menu-item" data-folder-rename @click="openRenameFolderModal(activeFolder)" :disabled="isBusy">{{ t('rename') }}</button>
-            <button type="button" class="card-menu-item" data-folder-add-subfolder @click="openSubfolderModal(activeFolder)" :disabled="isBusy">{{ t('addFolder') }}</button>
-            <button v-if="activeFolder.name !== 'Unsorted'" type="button" class="card-menu-item" data-action="move-folder-parent" @click="openFolderParentModal(activeFolder)" :disabled="isBusy">{{ t('moveFolderInto') }}</button>
-            <button v-if="activeFolder.name !== 'Unsorted'" type="button" class="card-menu-item danger" data-folder-delete @click="deleteFolder(activeFolder)" :disabled="isBusy">{{ t('delete') }}</button>
-          </div>
+          <Transition name="card-menu-pop">
+            <div
+              v-if="openControlMenu === 'folder:' + activeFolder.id"
+              class="mobile-action-popover headroom-action-popover"
+              data-headroom-folder-actions
+              @click.stop
+            >
+              <button type="button" class="card-menu-item" data-folder-import @click="openAddDialog({ folderId: activeFolder.id, importKind: 'file' })" :disabled="isBusy">{{ t('import') }}</button>
+              <button type="button" class="card-menu-item" data-folder-share @click="openFolderShareModal(activeFolder)" :disabled="isBusy">{{ t('share') }}</button>
+              <button v-if="activeFolder.name !== 'Unsorted'" type="button" class="card-menu-item" data-folder-rename @click="openRenameFolderModal(activeFolder)" :disabled="isBusy">{{ t('rename') }}</button>
+              <button type="button" class="card-menu-item" data-folder-add-subfolder @click="openSubfolderModal(activeFolder)" :disabled="isBusy">{{ t('addFolder') }}</button>
+              <button v-if="activeFolder.name !== 'Unsorted'" type="button" class="card-menu-item" data-action="move-folder-parent" @click="openFolderParentModal(activeFolder)" :disabled="isBusy">{{ t('moveFolderInto') }}</button>
+              <button v-if="activeFolder.name !== 'Unsorted'" type="button" class="card-menu-item danger" data-folder-delete @click="deleteFolder(activeFolder)" :disabled="isBusy">{{ t('delete') }}</button>
+            </div>
+          </Transition>
         </div>
 
         <template v-if="spaceId !== null && activeSpace">
-          <span class="headroom-members-pill" data-headroom-space-count>{{ headroomSpaceCountLabel }}</span>
           <button
             type="button"
             class="space-share-btn headroom-share-btn"
@@ -229,6 +249,7 @@
           >
             <Share2 :size="14" aria-hidden="true" />
             <span>{{ t('explorerShareGroup') }}</span>
+            <span v-if="activeSpace.members.length > 0" class="headroom-share-count" data-headroom-space-count>· {{ activeSpace.members.length + 1 }}</span>
           </button>
           <div class="folder-manager-menu headroom-space-menu">
             <button
@@ -240,20 +261,21 @@
               :aria-expanded="openControlMenu === 'space:' + spaceId"
               @click.stop="toggleToolbarMenu('space:' + spaceId)"
             >⋯</button>
-            <div
-              v-if="openControlMenu === 'space:' + spaceId"
-              class="mobile-action-popover headroom-action-popover"
-              data-headroom-space-actions
-              @click.stop
-            >
-              <button v-if="activeSpace.role === 'owner' || activeSpace.role === 'editor'" type="button" class="card-menu-item" data-space-add-folder @click="openControlMenu = ''; spaceView?.startAdd()">{{ t('spaceAddFolder') }}</button>
-              <button type="button" class="card-menu-item" data-space-members-open @click="openControlMenu = ''; openAlbumShareById(spaceId)">{{ t('explorerShareGroup') }}</button>
-              <template v-if="activeSpace.role === 'owner'">
-                <button type="button" class="card-menu-item" data-space-rename @click="openControlMenu = ''; spaceView?.rename()">{{ t('rename') }}</button>
-                <button type="button" class="card-menu-item danger" data-space-delete @click="openControlMenu = ''; spaceView?.removeSpace()">{{ t('delete') }}</button>
-              </template>
-              <button v-else type="button" class="card-menu-item danger" data-space-leave-menu @click="openControlMenu = ''; spaceView?.leave()">{{ t('spaceLeave') }}</button>
-            </div>
+            <Transition name="card-menu-pop">
+              <div
+                v-if="openControlMenu === 'space:' + spaceId"
+                class="mobile-action-popover headroom-action-popover"
+                data-headroom-space-actions
+                @click.stop
+              >
+                <button v-if="activeSpace.role === 'owner' || activeSpace.role === 'editor'" type="button" class="card-menu-item" data-space-add-folder @click="openControlMenu = ''; spaceView?.startAdd()">{{ t('spaceAddFolder') }}</button>
+                <template v-if="activeSpace.role === 'owner'">
+                  <button type="button" class="card-menu-item" data-space-rename @click="openControlMenu = ''; spaceView?.rename()">{{ t('rename') }}</button>
+                  <button type="button" class="card-menu-item danger" data-space-delete @click="openControlMenu = ''; spaceView?.removeSpace()">{{ t('delete') }}</button>
+                </template>
+                <button v-else type="button" class="card-menu-item danger" data-space-leave-menu @click="openControlMenu = ''; spaceView?.leave()">{{ t('spaceLeave') }}</button>
+              </div>
+            </Transition>
           </div>
         </template>
       </template>
@@ -276,7 +298,7 @@
     <div
       ref="dashboardShell"
       class="dashboard-shell"
-      :class="[{ 'dashboard-list-view': recentViewMode === 'list', 'dashboard-selecting': selectedKeys.length > 0, 'dashboard-marquee-active': Boolean(marquee), 'dashboard-shell-gallery': isLoggedIn && activeSection.kind === 'gallery' }, 'dashboard-nav-' + navDirection]"
+      :class="[{ 'dashboard-list-view': !isLoggedIn && recentViewMode === 'list', 'dashboard-selecting': selectedKeys.length > 0, 'dashboard-marquee-active': Boolean(marquee), 'dashboard-shell-gallery': isLoggedIn && activeSection.kind === 'gallery' }, 'dashboard-nav-' + navDirection]"
       @click.capture="onSelectionClickCapture"
       @pointerdown.capture="onSelectionPointerDown"
       @pointermove.capture="onSelectionPointerMove"
@@ -761,15 +783,23 @@
         <DashboardSpace
           ref="spaceView"
           :space-id="spaceId"
-          :view-mode="recentViewMode"
+          :view-mode="explorerViewMode"
+          :hierarchical="true"
+          :active-folder-id="activeSpaceFolderId"
+          :active-yandex-source-id="activeSpaceYandexSourceId"
+          :active-yandex-subpath="activeSpaceYandexSubpath"
+          :sort-mode="sortMode"
+          :external-sort-seq="sortSyncSeq"
           :hide-view-toggle="true"
           :hide-header="true"
           :query="searchQuery"
           :me-id="currentUser?.id || ''"
           :folder-options="folderOptions"
           :selected-keys="selectedKeys"
-          @update:view-mode="setRecentViewMode"
+          @update:view-mode="setExplorerViewMode"
           @update:selected-keys="selectedKeys = $event"
+          @update:sort="onExplorerTableSort"
+          @navigate-space-folder="onNavigateSpaceFolder"
           @open="openSpaceResource"
           @open-media="(items, start) => (mediaViewer = { items, start })"
           @open-markdown="openSpaceMarkdown"
@@ -1178,7 +1208,7 @@
 </template>
 
 <script lang="ts">
-import { ChevronDown, ChevronUp, File as FileIcon, Folder, Plus, Share2, UsersRound } from '@lucide/vue';
+import { ChevronDown, ChevronUp, File as FileIcon, Folder, Plus, Share2, SlidersHorizontal, UsersRound } from '@lucide/vue';
 import { defineAsyncComponent, defineComponent, ref, reactive, onBeforeUnmount, onMounted, computed, nextTick, watch, type Ref } from 'vue';
 import { alertDialog, confirmDelete, confirmDialog, promptDialog } from '../composables/appDialog';
 import { selectAll, selectRange, selectionKey, toggleSelection } from '../dashboard/selection';
@@ -1454,6 +1484,7 @@ export default defineComponent({
     Folder,
     Plus,
     Share2,
+    SlidersHorizontal,
     UsersRound,
   },
   setup() {
@@ -1530,7 +1561,7 @@ export default defineComponent({
       sidebarCollapsed.value ? 'collapsed' : 'expanded'
     ));
     const explorerViewMode = layoutPrefs.viewMode;
-    const setExplorerViewMode = (mode: 'grid' | 'table') => {
+    const setExplorerViewMode = (mode: 'grid' | 'table' | 'list') => {
       layoutPrefs.setViewMode(mode);
     };
     const albumViewMode = layoutPrefs.albumView;
@@ -2197,6 +2228,14 @@ export default defineComponent({
       dropActive: canDropToFolder(folder) && dragTargetFolder.value === folder.id,
       reorderTarget: folderDragOverId.value === folder.id,
     })));
+    const sidebarAllFolders = computed(() =>
+      allFolderSummaries.value.map((folder) => ({
+        id: folder.id,
+        name: folder.name,
+        parentId: folder.parentId ?? null,
+        hasChildren: Boolean(folder.hasChildren),
+      })),
+    );
     /**
      * The tree as the sidebar shows it: an opened folder lists its
      * subfolders, then its documents, then its Drive files (the first few,
@@ -3750,7 +3789,7 @@ export default defineComponent({
     };
     const archiveSpaceItem = async (item: SpaceFeedItem, taken: Set<string>, signal?: AbortSignal): Promise<ArchiveFile> => {
       if (item.origin === 'yandex') {
-        if (!spaceId.value || !item.path) throw new Error('Missing Yandex item path');
+        if (!spaceId.value || !item.path || !item.sourceId) throw new Error('Missing Yandex item path');
         const { href } = await spacesApi.yandexDownload(spaceId.value, item.sourceId, item.path);
         const response = await fetch(href, signal ? { signal } : undefined);
         if (!response.ok) throw new Error(`${response.status}`);
@@ -3847,6 +3886,32 @@ export default defineComponent({
     // ----- shared spaces: a section of their own
     const spaceView = ref<InstanceType<typeof DashboardSpace> | null>(null);
     const spaceId = computed(() => (activeSection.value.kind === 'space' ? activeSection.value.spaceId : null));
+    const activeSpaceFolderId = computed(() => (
+      activeSection.value.kind === 'space' ? (activeSection.value.folderId ?? null) : null
+    ));
+    const activeSpaceYandexSourceId = computed(() => (
+      activeSection.value.kind === 'space' ? (activeSection.value.yandexSourceId ?? null) : null
+    ));
+    const activeSpaceYandexSubpath = computed(() => (
+      activeSection.value.kind === 'space' ? (activeSection.value.yandexSubpath ?? null) : null
+    ));
+    const onNavigateSpaceFolder = (payload: {
+      folderId?: string | null;
+      yandexSourceId?: string | null;
+      yandexSubpath?: string | null;
+    }) => {
+      if (activeSection.value.kind !== 'space') return;
+      const next: DashboardSection = {
+        kind: 'space',
+        spaceId: activeSection.value.spaceId,
+        ...(payload.folderId ? { folderId: payload.folderId } : {}),
+        ...(payload.yandexSourceId
+          ? { yandexSourceId: payload.yandexSourceId, yandexSubpath: payload.yandexSubpath ?? '' }
+          : {}),
+      };
+      clearSelection();
+      selectDashboardSection(next);
+    };
     const { load: loadSpaces } = useSpaces();
     onMounted(() => {
       if (isLoggedIn) {
@@ -5185,6 +5250,7 @@ export default defineComponent({
         return true;
       }
       if (activeSection.value.kind === 'space') {
+        if (spaceView.value?.navigateUp?.()) return true;
         void onSidebarSelect({ kind: 'spaces' });
         return true;
       }
@@ -5321,7 +5387,6 @@ export default defineComponent({
     };
 
     const headroomViewToggleMode = computed<HeadroomViewToggleMode>(() => {
-      if (activeSection.value.kind === 'space') return 'album';
       if (activeSection.value.kind === 'trash') return 'none';
       return 'explorer';
     });
@@ -5348,7 +5413,15 @@ export default defineComponent({
     const s2ScopeLabel = computed<string | null>(() => {
       if (activeSection.value.kind === 'folder' && activeFolder.value) return activeFolder.value.name;
       if (activeSection.value.kind === 'home') return t('qSpace');
-      if (activeSection.value.kind === 'space' && activeSpace.value) return activeSpace.value.name;
+      if (activeSection.value.kind === 'space' && activeSpace.value) {
+        const subName = spaceView.value?.currentFolderName
+          || (activeSpaceFolderId.value
+            ? (activeSpace.value.sources.find((s) => s.folderId === activeSpaceFolderId.value)?.title
+              ?? allResourceFolders.value.find((f) => f.id === activeSpaceFolderId.value)?.name
+              ?? '')
+            : '');
+        return subName ? `${activeSpace.value.name} / ${subName}` : activeSpace.value.name;
+      }
       return null;
     });
 
@@ -6137,6 +6210,9 @@ export default defineComponent({
       if (added > 0) {
         setFeedback('success', t('explorerAddToAlbum'));
         void loadSpaces(true);
+        if (spaceId.value === targetSpaceId) {
+          void spaceView.value?.reload();
+        }
       }
     };
 
@@ -7099,6 +7175,10 @@ export default defineComponent({
       onDashboardMainScroll,
       headroomViewToggleMode,
       headroomSpaceCountLabel,
+      activeSpaceFolderId,
+      activeSpaceYandexSourceId,
+      activeSpaceYandexSubpath,
+      onNavigateSpaceFolder,
       onSelectActivity,
       onToggleMobileDrawer,
       onSidebarCollapsedChange,
@@ -7188,6 +7268,7 @@ export default defineComponent({
       onDashboardMainPointerDown,
       mobileSidebarOpen,
       sidebarFolders,
+      sidebarAllFolders,
       selectDashboardSection,
       onSidebarSelect,
       toggleSidebarWidth,
@@ -7419,19 +7500,13 @@ export default defineComponent({
   flex: none;
 }
 
-.headroom-members-pill {
-  display: inline-flex;
-  align-items: center;
-  height: 26px;
-  padding: 0 9px;
-  border-radius: 999px;
-  border: 1px solid var(--ui-glass-border);
-  background: var(--ui-glass-btn-bg);
-  color: var(--ui-text-secondary);
-  font-size: 11.5px;
-  font-weight: 500;
-  white-space: nowrap;
-  flex: none;
+.headroom-space-filter-btn {
+  position: relative;
+}
+.headroom-space-filter-btn.active {
+  border-color: var(--ui-glass-accent-border);
+  background: var(--ui-glass-accent-bg);
+  color: var(--ui-glass-accent-text);
 }
 
 .headroom-share-btn {
@@ -7452,6 +7527,11 @@ export default defineComponent({
   flex: none;
 }
 
+.headroom-share-count {
+  opacity: 0.85;
+  font-weight: 600;
+}
+
 .headroom-actions-trigger {
   font-size: 16px;
   line-height: 1;
@@ -7466,7 +7546,6 @@ export default defineComponent({
 }
 
 @media (max-width: 768px) {
-  .headroom-members-pill,
   .headroom-share-btn span {
     display: none;
   }

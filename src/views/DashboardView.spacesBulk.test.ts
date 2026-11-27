@@ -145,10 +145,8 @@ function makeSpace(role: SpaceRole): SpaceDetails {
     role,
     owner: { id: role === 'owner' ? 'user-1' : 'user-9', name: 'Owner', email: 'owner@example.com' },
     members: [{ id: 'user-2', name: 'Anya', email: 'anya@example.com', role: 'editor' }],
-    sources: [
-      { id: 'src-q', kind: 'qspace', title: 'Work', folderId: 'folder-a', yandexPath: null, addedBy: { id: 'user-1', name: 'Me' }, syncedAt: null, syncError: null, itemCount: 3 },
-      { id: 'src-y', kind: 'yandex', title: 'Photos', folderId: null, yandexPath: '/Photos', addedBy: { id: 'user-2', name: 'Anya' }, syncedAt: '2026-11-07T10:00:00Z', syncError: null, itemCount: 1 },
-    ],
+    // Direct-at-root bulk selection tests; attached folder drill-down is covered by B-020 regression tests.
+    sources: [],
     createdAt: '2026-11-01T10:00:00Z',
     updatedAt: '2026-11-07T10:00:00Z',
   };

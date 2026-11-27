@@ -17,6 +17,7 @@
     >
       <template v-if="emptyArea">
         <button
+          v-if="showEmptyCreateFolder"
           type="button"
           class="explorer-ctx-item"
           role="menuitem"
@@ -24,10 +25,11 @@
           @click="onCreateFolder"
         >
           <FolderPlus :size="15" aria-hidden="true" />
-          <span>{{ t('createGroup') }}</span>
+          <span>{{ emptyCreateFolderLabel || t('createGroup') }}</span>
         </button>
 
         <button
+          v-if="showEmptyAdd"
           type="button"
           class="explorer-ctx-item"
           role="menuitem"
@@ -111,6 +113,18 @@
       </div>
 
       <button
+        v-if="canRemoveFromAlbum"
+        type="button"
+        class="explorer-ctx-item danger"
+        role="menuitem"
+        data-ctx-action="remove-from-album"
+        @click="onRemoveFromAlbum"
+      >
+        <FolderMinus :size="15" aria-hidden="true" />
+        <span>{{ removeFromAlbumLabel }}</span>
+      </button>
+
+      <button
         v-if="canFavorite"
         type="button"
         class="explorer-ctx-item"
@@ -122,7 +136,11 @@
         <span>{{ favoriteLabel }}</span>
       </button>
 
-      <div class="explorer-ctx-sep" role="separator"></div>
+      <div
+        v-if="hasSecondaryActions"
+        class="explorer-ctx-sep"
+        role="separator"
+      ></div>
 
       <button
         v-if="canMove"
@@ -215,6 +233,7 @@ import {
   Eye,
   FolderHeart,
   FolderInput,
+  FolderMinus,
   FolderPlus,
   Heart,
   Info,
@@ -232,8 +251,12 @@ const props = withDefaults(defineProps<{
   y: number;
   items?: ReadonlyArray<ExplorerContextMenuItem>;
   emptyArea?: boolean;
+  showEmptyCreateFolder?: boolean;
+  showEmptyAdd?: boolean;
+  emptyCreateFolderLabel?: string;
   canShare?: boolean;
   canAlbum?: boolean;
+  canRemoveFromAlbum?: boolean;
   canFavorite?: boolean;
   canMove?: boolean;
   canDelete?: boolean;
@@ -245,8 +268,12 @@ const props = withDefaults(defineProps<{
 }>(), {
   items: () => [],
   emptyArea: false,
+  showEmptyCreateFolder: true,
+  showEmptyAdd: true,
+  emptyCreateFolderLabel: '',
   canShare: true,
   canAlbum: true,
+  canRemoveFromAlbum: false,
   canFavorite: true,
   canMove: true,
   canDelete: true,
@@ -261,6 +288,7 @@ const emit = defineEmits<{
   open: [item: ExplorerContextMenuItem];
   share: [items: ReadonlyArray<ExplorerContextMenuItem>];
   'add-to-album': [albumId: string | undefined, items: ReadonlyArray<ExplorerContextMenuItem>];
+  'remove-from-album': [items: ReadonlyArray<ExplorerContextMenuItem>];
   'toggle-favorite': [items: ReadonlyArray<ExplorerContextMenuItem>];
   move: [items: ReadonlyArray<ExplorerContextMenuItem>];
   rename: [item: ExplorerContextMenuItem];
@@ -293,6 +321,10 @@ const moveLabel = computed(() => {
 });
 const downloadLabel = computed(() => withCount(t('download')));
 const deleteLabel = computed(() => withCount(t('delete')));
+const removeFromAlbumLabel = computed(() => withCount(t('photosSelRemoveFromAlbum')));
+const hasSecondaryActions = computed(() =>
+  Boolean(props.canMove || (count.value === 1 && props.canRename) || props.canDownload || (count.value === 1 && props.canProperties)),
+);
 
 const positionStyle = computed(() => {
   const vw = typeof window !== 'undefined' && window.innerWidth > 0 ? window.innerWidth : 1280;
@@ -454,6 +486,11 @@ function onAlbumTrigger(): void {
 
 function onPickAlbum(albumId: string): void {
   emit('add-to-album', albumId, props.items);
+  emit('close');
+}
+
+function onRemoveFromAlbum(): void {
+  emit('remove-from-album', props.items);
   emit('close');
 }
 

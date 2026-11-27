@@ -998,12 +998,15 @@ describe('dashboard sidebar navigation', () => {
     expect(shell().classes()).not.toContain('dashboard-list-view');
     expect(wrapper.find('[data-section="shared"]').exists()).toBe(true);
 
+    // B-020: Logged-in table mode renders ExplorerTableView and never applies legacy .dashboard-list-view to .dashboard-shell
     await wrapper.get('[data-headroom-bar] [data-view-toggle="table"]').trigger('click');
-    expect(shell().classes()).toContain('dashboard-list-view');
+    expect(shell().classes()).not.toContain('dashboard-list-view');
+    expect(wrapper.find('[data-explorer-table]').exists()).toBe(true);
 
     // A folder follows the same choice via the single Headroom view toggle (no duplicate toggle in folder heading).
     await wrapper.get('[data-recent-folder-tile="folder-b"]').trigger('click');
-    expect(shell().classes()).toContain('dashboard-list-view');
+    expect(shell().classes()).not.toContain('dashboard-list-view');
+    expect(wrapper.find('[data-dashboard-view="folder"] [data-explorer-table]').exists()).toBe(true);
     expect(wrapper.find('[data-dashboard-view="folder"] .folder-view-toggle').exists()).toBe(false);
     expect(wrapper.get('[data-headroom-bar] [data-view-toggle="table"]').attributes('aria-pressed')).toBe('true');
     await wrapper.get('[data-headroom-bar] [data-view-toggle="grid"]').trigger('click');
