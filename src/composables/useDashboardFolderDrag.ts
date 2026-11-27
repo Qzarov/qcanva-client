@@ -33,7 +33,8 @@ export function useDashboardFolderDrag<T extends FolderTarget>(options: {
     }
     folderDragId.value = folder.id;
     event.dataTransfer?.setData('application/x-qcanva-folder', folder.id);
-    if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+    // Allow both 'move' (into folders/home) and 'copy' (into albums) in native browser DnD.
+    if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copyMove';
   };
 
   const onFolderDragEnd = () => {

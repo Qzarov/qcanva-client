@@ -408,6 +408,7 @@ describe('B-025..B-028 Explorer/Gallery parity, PhotoViewer unification, focus t
       getData: () => '',
     };
     await wrapper.get('[data-dashboard-folder="folder-a"]').trigger('dragstart', { dataTransfer: transfer });
+    expect(transfer.effectAllowed).toBe('copyMove');
     await wrapper.get('[data-dashboard-folder="folder-qdisk"]').trigger('drop', { dataTransfer: transfer });
     await flushPromises();
     expect(resourceFolders.moveFolder).toHaveBeenCalledWith('folder-a', 'folder-qdisk');
