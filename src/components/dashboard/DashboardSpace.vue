@@ -1,6 +1,6 @@
 <template>
   <!-- A shared album (Space): clean header (Title, clickable Members pill,
-       Share button, Filter, icon-only [Feed | Table] toggle), NO ⋯ menu,
+       Filter, icon-only [Feed | Table] toggle), NO ⋯ menu,
        NO top subfolder filter pills, NO Split/Guests/Upload-destination clutter. -->
   <div class="folder-manager-row space-view" data-space-view>
     <div v-if="!hideHeader" class="folder-manager-top">
@@ -20,16 +20,6 @@
         </span>
       </div>
       <template v-if="space">
-        <button
-          type="button"
-          class="space-share-btn"
-          data-space-share
-          @click="openMembers"
-        >
-          <Share2 :size="14" aria-hidden="true" />
-          <span>{{ t('explorerShareGroup') }}</span>
-        </button>
-
         <SpaceFilterDialog
           :open="filterMenuOpen"
           :types="filterTypes"
@@ -353,7 +343,7 @@
 
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { ChevronRight, File as FileIcon, Folder, Image as ImageIcon, Play, Plus, Share2, Users, Video } from '@lucide/vue';
+import { ChevronRight, File as FileIcon, Folder, Image as ImageIcon, Play, Plus, Users, Video } from '@lucide/vue';
 import { spacesApi, type SpaceDetails, type SpaceFeedItem, type SpaceFeedType, type SpaceSource } from '../../api/spaces';
 import SpaceFilterDialog from './SpaceFilterDialog.vue';
 
@@ -1288,6 +1278,8 @@ watch(() => props.spaceId, () => {
   readPoll = null;
   readPollSince = 0;
   folderLoadSeq += 1;
+  localSelectedKeys.value = [];
+  selectionAnchorKey.value = '';
   filterTypes.value = [];
   filterPeople.value = [];
   filterOwners.value = [];
@@ -1603,8 +1595,12 @@ function selectByClick(event: MouseEvent, key: string): void {
     event.preventDefault();
     event.stopPropagation();
     const onScreen = allVisibleSelectableKeys();
-    const anchor = selectionAnchorKey.value || effectiveSelectedKeys.value[effectiveSelectedKeys.value.length - 1] || key;
-    if (!selectionAnchorKey.value) selectionAnchorKey.value = anchor;
+    const validAnchor = selectionAnchorKey.value && onScreen.includes(selectionAnchorKey.value)
+      ? selectionAnchorKey.value
+      : '';
+    const lastSelected = [...effectiveSelectedKeys.value].reverse().find((k) => onScreen.includes(k)) || '';
+    const anchor = validAnchor || lastSelected || key;
+    selectionAnchorKey.value = anchor;
     onTableSelection(selectRange(effectiveSelectedKeys.value, onScreen, anchor, key));
     return;
   }
@@ -1789,7 +1785,7 @@ const viewerItem = (item: SpaceFeedItem): SpaceMediaViewerItem => ({
     ? (await spacesApi.yandexDownload(props.spaceId, item.sourceId!, item.path!)).href
     : resolveDownloadUrl((await driveApi.getDownloadLink(item.id!)).url)),
   download: () => download(item),
-  fileId: item.origin === 'qspace' ? item.id : null,
+  fileId: item.origin === 'qspace' ? item.id : (item.path ? `yandex:${item.path.replace(/^disk:/, '')}` : null),
   noReferrer: item.origin === 'yandex',
   sizeBytes: item.size ?? null,
   mimeType: item.mime ?? null,

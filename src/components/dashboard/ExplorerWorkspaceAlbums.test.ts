@@ -409,10 +409,10 @@ describe('DashboardSpace (T-018 Albums redesign)', () => {
     expect(wrapper.find('[data-space-sources]').exists()).toBe(false);
     expect(wrapper.find('.space-folder-grid').exists()).toBe(false);
 
-    // Header has title, member count, Share button, icon-only [Feed | Table] toggle
+    // Header has title, single clickable member count button (no duplicate Share button), icon-only [Feed | Table] toggle
     expect(wrapper.get('[data-space-title]').text()).toBe('Алтай 2026');
     expect(wrapper.get('[data-space-count]').text()).toBe('Участников: 2');
-    expect(wrapper.find('[data-space-share]').exists()).toBe(true);
+    expect(wrapper.find('[data-space-share]').exists()).toBe(false);
 
     const feedBtn = wrapper.get('[data-album-view="feed"]');
     const tableBtn = wrapper.get('[data-album-view="table"]');
@@ -435,8 +435,8 @@ describe('DashboardSpace (T-018 Albums redesign)', () => {
     await wrapper.get('[data-row-key="q:file:f-1"]').trigger('contextmenu', { clientX: 50, clientY: 60 });
     expect(wrapper.find('[data-explorer-context-menu]').exists()).toBe(true);
 
-    // Explicit Share button opens AlbumShareDialog
-    await wrapper.get('[data-space-share]').trigger('click');
+    // Clickable Members button opens AlbumShareDialog
+    await wrapper.get('[data-space-count]').trigger('click');
     expect(wrapper.find('[data-album-share-dialog]').exists()).toBe(true);
   });
 

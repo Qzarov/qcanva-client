@@ -75,6 +75,7 @@ const props = withDefaults(defineProps<{
   recentLimit?: number | null;
   headroomHidden?: boolean;
   externalItems?: ExternalFeedItem[] | null;
+  supplementaryItems?: ExternalFeedItem[] | null;
   externalLoading?: boolean;
   selected: Set<string>;
   current: string | null;
@@ -89,6 +90,7 @@ const props = withDefaults(defineProps<{
   recentLimit: null,
   headroomHidden: undefined,
   externalItems: null,
+  supplementaryItems: null,
   externalLoading: false,
 });
 
@@ -133,6 +135,11 @@ let lastScrollTop = 0;
 
 const status = ref<'loading' | 'ready' | 'error'>('loading');
 const groups = shallowRef<FeedGroup[]>([]);
+const qspaceGroups = shallowRef<FeedGroup[]>([]);
+const qspaceUnits = new Set<string>();
+const qspaceUnitCount = new Map<string, number>();
+const supplementaryGroups = shallowRef<FeedGroup[]>([]);
+const supplementaryByUnit = shallowRef(new Map<string, FeedItem[]>());
 /** Params the displayed groups and items belong to (props.params may be ahead while loading). */
 const appliedParams = shallowRef<FeedParams>(props.params);
 const items = shallowRef(new Map<string, FeedItem[]>());
@@ -203,13 +210,31 @@ function unitKeyOf(row: Row): string {
 }
 
 function flattenItems(): FeedItem[] {
+  const seen = new Set<string>();
   const out: FeedItem[] = [];
-  for (const list of items.value.values()) out.push(...list);
+  for (const list of items.value.values()) {
+    for (const it of list) {
+      if (seen.has(it.fileId)) continue;
+      seen.add(it.fileId);
+      out.push(it);
+    }
+  }
+  for (const list of supplementaryByUnit.value.values()) {
+    for (const it of list) {
+      if (seen.has(it.fileId)) continue;
+      seen.add(it.fileId);
+      out.push(it);
+    }
+  }
   return out;
 }
 
 function findItem(fileId: string): FeedItem | null {
   for (const list of items.value.values()) {
+    const it = list.find((i) => i.fileId === fileId);
+    if (it) return it;
+  }
+  for (const list of supplementaryByUnit.value.values()) {
     const it = list.find((i) => i.fileId === fileId);
     if (it) return it;
   }
@@ -255,9 +280,77 @@ function withNaturalDimensions(item: FeedItem): FeedItem {
 const filteredItemsMap = computed(() => {
   const hasFilter = hasActiveFolderFilter.value || (props.peopleFilter?.length ?? 0) > 0 || (props.recentLimit ?? 0) > 0;
   const hasDims = naturalDims.size > 0;
-  if (!hasFilter && !hasDims) return items.value;
+  const hasSupp = !isExternalMode.value && supplementaryByUnit.value.size > 0;
+  if (!hasFilter && !hasDims && !hasSupp) return items.value;
   const out = new Map<string, FeedItem[]>();
   let remaining = props.recentLimit && props.recentLimit > 0 ? props.recentLimit : Infinity;
+
+  if (hasSupp) {
+    const sortSpec = appliedParams.value.sort;
+    const seenUnits = new Set<string>();
+    const unitOrder: string[] = [];
+    for (const g of groups.value) {
+      if (level2.value && g.subs && g.subs.length > 0) {
+        for (const s of g.subs) {
+          const uk = unitKey(g.key, s.key);
+          if (!seenUnits.has(uk)) {
+            seenUnits.add(uk);
+            unitOrder.push(uk);
+          }
+        }
+      } else if (!seenUnits.has(g.key)) {
+        seenUnits.add(g.key);
+        unitOrder.push(g.key);
+      }
+    }
+
+    for (const uk of unitOrder) {
+      if (remaining === 0) {
+        out.set(uk, []);
+        continue;
+      }
+      const qList = items.value.get(uk);
+      const sList = supplementaryByUnit.value.get(uk);
+      const hasQUnit = qspaceUnits.has(uk);
+      if (hasQUnit && qList === undefined && !failed.has(uk)) {
+        continue;
+      }
+
+      let merged: FeedItem[];
+      if (qList && qList.length > 0 && sList && sList.length > 0) {
+        const seenIds = new Set<string>();
+        merged = [];
+        for (const it of qList) {
+          if (!seenIds.has(it.fileId)) {
+            seenIds.add(it.fileId);
+            merged.push(it);
+          }
+        }
+        for (const it of sList) {
+          if (!seenIds.has(it.fileId)) {
+            seenIds.add(it.fileId);
+            merged.push(it);
+          }
+        }
+        merged.sort((a, b) => compareFeedItems(a, b, sortSpec));
+      } else if (qList && qList.length > 0) {
+        merged = qList;
+      } else if (sList && sList.length > 0) {
+        merged = sList;
+      } else {
+        merged = [];
+      }
+
+      let filtered = hasFilter ? merged.filter(itemMatchesExternalFilters) : merged;
+      if (remaining !== Infinity) {
+        filtered = filtered.slice(0, Math.max(0, remaining));
+        remaining -= filtered.length;
+      }
+      out.set(uk, hasDims ? filtered.map(withNaturalDimensions) : filtered);
+    }
+    return out;
+  }
+
   for (const [k, list] of items.value) {
     let filtered = hasFilter ? list.filter(itemMatchesExternalFilters) : list;
     if (remaining !== Infinity) {
@@ -277,7 +370,7 @@ function buildLayoutGroups(): LayoutGroup[] {
   const l2 = level2.value;
   headInfo.clear();
   unitCount.clear();
-  const hasClientFilter = hasActiveFolderFilter.value || (props.peopleFilter?.length ?? 0) > 0;
+  const hasClientFilter = hasActiveFolderFilter.value || (props.peopleFilter?.length ?? 0) > 0 || (props.recentLimit ?? 0) > 0;
   const out: LayoutGroup[] = [];
   for (const g of groups.value) {
     const info = groupTitle(l1, g, p.period, locale.value);
@@ -422,6 +515,7 @@ function relayout(): void {
 function loadUnit(group: string, sub?: string): Promise<void> {
   if (isExternalMode.value) return Promise.resolve();
   const key = unitKey(group, sub);
+  if (!qspaceUnits.has(key)) return Promise.resolve();
   const running = inflight.get(key);
   if (running) return running;
   if (failed.has(key)) return Promise.resolve();
@@ -444,7 +538,10 @@ function loadUnit(group: string, sub?: string): Promise<void> {
       relayout();
       emit('units-loaded');
     } catch {
-      if (current()) failed.add(key);
+      if (current()) {
+        failed.add(key);
+        if (supplementaryByUnit.value.has(key)) relayout();
+      }
     } finally {
       if (inflight.get(key) === run) inflight.delete(key);
       if (current()) ensureLoaded();
@@ -505,8 +602,9 @@ function distanceTo(row: Row): number {
 
 function queueNextUnitPage(row: Row, bottom: number, next: Map<string, Task>): void {
   const key = unitKeyOf(row);
+  if (!qspaceUnits.has(key)) return;
   const have = items.value.get(key);
-  const total = unitCount.get(key) ?? 0;
+  const total = qspaceUnitCount.get(key) ?? unitCount.get(key) ?? 0;
   if (
     have &&
     have.length < total &&
@@ -566,6 +664,15 @@ function requestThumb(item: FeedItem): void {
 }
 
 function requestFolder(id: string): Promise<void> {
+  if (id === '/') {
+    folderNames.set('/', t('yandexDisk'));
+    return Promise.resolve();
+  }
+  if (id.startsWith('/')) {
+    const info = externalFolderInfo(id);
+    folderNames.set(id, info?.name ?? t('yandexDisk'));
+    return Promise.resolve();
+  }
   if (folderNames.has(id) || folderRequested.has(id)) return Promise.resolve();
   folderRequested.add(id);
   return driveApi
@@ -674,10 +781,27 @@ function externalItemGroupKeys(item: FeedItem, level: SortKey, period: FeedParam
 }
 
 function externalFolderInfo(folderKey: string): { name: string; path: string[] } | undefined {
-  if (!folderKey || folderKey === 'root' || folderKey === '/') return undefined;
+  if (!folderKey || folderKey === 'root') return undefined;
+  if (folderKey === '/') {
+    const label = t('yandexDisk');
+    return { name: label, path: [label] };
+  }
   const parts = folderKey.split('/').filter(Boolean);
   if (parts.length === 0) return undefined;
   return { name: parts[parts.length - 1]!, path: parts };
+}
+
+function populateExternalFolderNames(list: readonly FeedItem[]): void {
+  for (const item of list) {
+    const fid = item.folderId;
+    if (!fid) continue;
+    if (fid === '/') {
+      folderNames.set('/', t('yandexDisk'));
+    } else if (fid.startsWith('/')) {
+      const info = externalFolderInfo(fid);
+      if (info) folderNames.set(fid, info.name);
+    }
+  }
 }
 
 function compareFeedItems(a: FeedItem, b: FeedItem, sort: SortSpec[]): number {
@@ -738,9 +862,10 @@ function sortExternalBucketEntries(
   });
 }
 
-function syncExternalFeed(): void {
-  const raw = props.externalItems ?? [];
-  const params = props.params;
+function buildClientBuckets(
+  raw: readonly FeedItem[],
+  params: FeedParams,
+): { groups: FeedGroup[]; itemsByUnit: Map<string, FeedItem[]>; totalFiltered: number } {
   const filtered = raw.filter((item) => {
     if (params.filter === 'photo' && item.kind !== 'photo') return false;
     if (params.filter === 'video' && item.kind !== 'video') return false;
@@ -749,12 +874,7 @@ function syncExternalFeed(): void {
   });
 
   // Populate folderNames for Yandex paths so tile captions work without driveApi.getFolder.
-  for (const item of filtered) {
-    if (item.folderId && !folderNames.has(item.folderId)) {
-      const info = externalFolderInfo(item.folderId);
-      if (info) folderNames.set(item.folderId, info.name);
-    }
-  }
+  populateExternalFolderNames(filtered);
 
   const l1: SortKey = params.levels[0] ?? 'date';
   const l2: SortKey | undefined = params.levels[1];
@@ -818,17 +938,139 @@ function syncExternalFeed(): void {
     }
   }
 
+  return { groups: nextGroups, itemsByUnit: nextItems, totalFiltered: filtered.length };
+}
+
+function recordQSpaceUnits(list: readonly FeedGroup[]): void {
+  qspaceUnits.clear();
+  qspaceUnitCount.clear();
+  for (const g of list) {
+    if (g.subs && g.subs.length > 0) {
+      for (const s of g.subs) {
+        const uk = unitKey(g.key, s.key);
+        qspaceUnits.add(uk);
+        qspaceUnitCount.set(uk, s.count);
+      }
+    } else {
+      qspaceUnits.add(g.key);
+      qspaceUnitCount.set(g.key, g.count);
+    }
+  }
+}
+
+function sortMergedGroups(list: FeedGroup[], level: SortKey, params: FeedParams): FeedGroup[] {
+  const spec = params.sort.find((s) => s.key === level);
+  const desc = spec ? spec.desc : (params.sort[0]?.desc ?? true);
+  const dir = desc ? -1 : 1;
+
+  return list.sort((a, b) => {
+    if (level === 'date') {
+      if (a.key === 'unknown' && b.key !== 'unknown') return 1;
+      if (b.key === 'unknown' && a.key !== 'unknown') return -1;
+      return a.key.localeCompare(b.key) * dir;
+    }
+    if (level === 'size') {
+      const rankA = SIZE_ORDER[a.key] ?? 99;
+      const rankB = SIZE_ORDER[b.key] ?? 99;
+      return desc ? rankA - rankB : rankB - rankA;
+    }
+    const nameA = a.folder?.name ?? a.album?.name ?? externalFolderInfo(a.key)?.name ?? a.key;
+    const nameB = b.folder?.name ?? b.album?.name ?? externalFolderInfo(b.key)?.name ?? b.key;
+    return nameA.localeCompare(nameB) * dir;
+  });
+}
+
+function mergeFeedGroups(
+  primary: readonly FeedGroup[],
+  supp: readonly FeedGroup[],
+  params: FeedParams,
+): FeedGroup[] {
+  if (supp.length === 0) return [...primary];
+  if (primary.length === 0) return [...supp];
+
+  const l1: SortKey = params.levels[0] ?? 'date';
+  const l2: SortKey | undefined = params.levels[1];
+  const byKey = new Map<string, FeedGroup>();
+
+  for (const g of primary) {
+    byKey.set(g.key, {
+      ...g,
+      ...(g.subs ? { subs: g.subs.map((s) => ({ ...s })) } : {}),
+    });
+  }
+
+  for (const sg of supp) {
+    const existing = byKey.get(sg.key);
+    if (!existing) {
+      byKey.set(sg.key, {
+        ...sg,
+        ...(sg.subs ? { subs: sg.subs.map((s) => ({ ...s })) } : {}),
+      });
+      continue;
+    }
+    if (l2 && (existing.subs || sg.subs)) {
+      const subMap = new Map<string, FeedGroup>();
+      for (const s of existing.subs ?? []) {
+        subMap.set(s.key, { ...s });
+      }
+      for (const ss of sg.subs ?? []) {
+        const es = subMap.get(ss.key);
+        if (es) {
+          es.count += ss.count;
+          if (!es.folder && ss.folder) es.folder = ss.folder;
+          if (!es.album && ss.album) es.album = ss.album;
+        } else {
+          subMap.set(ss.key, { ...ss });
+        }
+      }
+      const mergedSubs = sortMergedGroups([...subMap.values()], l2, params);
+      existing.subs = mergedSubs;
+      existing.count = mergedSubs.reduce((sum, s) => sum + s.count, 0);
+    } else {
+      existing.count += sg.count;
+    }
+    if (!existing.folder && sg.folder) existing.folder = sg.folder;
+    if (!existing.album && sg.album) existing.album = sg.album;
+  }
+
+  return sortMergedGroups([...byKey.values()], l1, params);
+}
+
+function applySupplementaryItems(emitSummary = true): void {
+  if (isExternalMode.value || status.value !== 'ready') return;
+  const params = appliedParams.value;
+  const supp = buildClientBuckets(props.supplementaryItems ?? [], params);
+  supplementaryGroups.value = supp.groups;
+  supplementaryByUnit.value = supp.itemsByUnit;
+  const merged = mergeFeedGroups(qspaceGroups.value, supp.groups, params);
+  groups.value = merged;
+  if (emitSummary) {
+    emit('summary', merged.reduce((s, g) => s + g.count, 0));
+  }
+  relayout();
+}
+
+function syncExternalFeed(): void {
+  const raw = props.externalItems ?? [];
+  const params = props.params;
+  const built = buildClientBuckets(raw, params);
+
   epoch++;
   wanted = new Map();
   appliedParams.value = params;
-  groups.value = nextGroups;
-  items.value = nextItems;
+  qspaceGroups.value = [];
+  qspaceUnits.clear();
+  qspaceUnitCount.clear();
+  supplementaryGroups.value = [];
+  supplementaryByUnit.value = new Map();
+  groups.value = built.groups;
+  items.value = built.itemsByUnit;
   cursors.clear();
   inflight.clear();
   failed.clear();
   pending = null;
-  status.value = props.externalLoading && nextGroups.length === 0 ? 'loading' : 'ready';
-  emit('summary', filtered.length);
+  status.value = props.externalLoading && built.groups.length === 0 ? 'loading' : 'ready';
+  emit('summary', built.totalFiltered);
   relayout();
   emit('units-loaded');
 }
@@ -858,16 +1100,22 @@ async function refresh(): Promise<void> {
     epoch++;
     wanted = new Map();
     appliedParams.value = params;
-    groups.value = res.groups;
+    qspaceGroups.value = res.groups;
+    recordQSpaceUnits(res.groups);
+    const supp = buildClientBuckets(props.supplementaryItems ?? [], params);
+    supplementaryGroups.value = supp.groups;
+    supplementaryByUnit.value = supp.itemsByUnit;
+    const mergedGroups = mergeFeedGroups(res.groups, supp.groups, params);
+    groups.value = mergedGroups;
     items.value = new Map();
     cursors.clear();
     inflight.clear();
     failed.clear();
     status.value = 'ready';
     pending = null;
-    emit('summary', res.groups.reduce((s, g) => s + g.count, 0));
-    if (anchor && res.groups.length > 0) {
-      const units = targetUnits(anchor, anchorItem, res.groups, params);
+    emit('summary', mergedGroups.reduce((s, g) => s + g.count, 0));
+    if (anchor && mergedGroups.length > 0) {
+      const units = targetUnits(anchor, anchorItem, mergedGroups, params);
       if (units.length > 0) pending = { anchor, units, pages: 0 };
     }
     relayout();
@@ -1003,7 +1251,7 @@ function hoverLabel(key: string, frac: number): string {
   const base = headInfo.get(key)?.title ?? key;
   const p = appliedParams.value;
   if (level1.value !== 'date' || p.period !== 'year') return base;
-  const list = items.value.get(key);
+  const list = filteredItemsMap.value.get(key) ?? items.value.get(key);
   let month: number | null = null;
   if (list && list.length > 0) {
     const it = list[Math.min(list.length - 1, Math.floor(frac * list.length))]!;
@@ -1445,6 +1693,7 @@ watch(
   ] as const,
   () => {
     if (isExternalMode.value) syncExternalFeed();
+    else if (props.supplementaryItems && props.supplementaryItems.length > 0) applySupplementaryItems(true);
     else relayout();
   },
 );
@@ -1459,6 +1708,14 @@ watch(
   () => {
     externalThumbFailed.clear();
     void refresh();
+  },
+);
+watch(
+  () => props.supplementaryItems,
+  () => {
+    if (isExternalMode.value) return;
+    externalThumbFailed.clear();
+    applySupplementaryItems(true);
   },
 );
 watch(
@@ -1515,8 +1772,22 @@ function patchItem(fileId: string, patch: Partial<Pick<FeedItem, 'favorite' | 'a
     next.set(key, copy);
     touched = true;
   }
-  if (!touched) return;
-  items.value = next;
+  let suppTouched = false;
+  const nextSupp = new Map<string, FeedItem[]>();
+  for (const [key, list] of supplementaryByUnit.value) {
+    const idx = list.findIndex((i) => i.fileId === fileId);
+    if (idx < 0) {
+      nextSupp.set(key, list);
+      continue;
+    }
+    const copy = list.slice();
+    copy[idx] = { ...list[idx]!, ...patch };
+    nextSupp.set(key, copy);
+    suppTouched = true;
+  }
+  if (!touched && !suppTouched) return;
+  if (touched) items.value = next;
+  if (suppTouched) supplementaryByUnit.value = nextSupp;
   relayout();
 }
 
@@ -1533,49 +1804,77 @@ function removeItems(fileIds: string[]): void {
 
   let anyRemoved = false;
   const removedByUnit = new Map<string, number>();
+  const qspaceRemovedByUnit = new Map<string, number>();
   const nextItems = new Map<string, FeedItem[]>();
   for (const [key, list] of items.value) {
     const filtered = list.filter((it) => !removeSet.has(it.fileId));
     if (filtered.length !== list.length) {
       anyRemoved = true;
-      removedByUnit.set(key, list.length - filtered.length);
+      const diff = list.length - filtered.length;
+      removedByUnit.set(key, (removedByUnit.get(key) ?? 0) + diff);
+      qspaceRemovedByUnit.set(key, (qspaceRemovedByUnit.get(key) ?? 0) + diff);
     }
     nextItems.set(key, filtered);
   }
+  let anySuppRemoved = false;
+  const nextSupp = new Map<string, FeedItem[]>();
+  for (const [key, list] of supplementaryByUnit.value) {
+    const filtered = list.filter((it) => !removeSet.has(it.fileId));
+    if (filtered.length !== list.length) {
+      anyRemoved = true;
+      anySuppRemoved = true;
+      removedByUnit.set(key, (removedByUnit.get(key) ?? 0) + (list.length - filtered.length));
+    }
+    if (filtered.length > 0) nextSupp.set(key, filtered);
+  }
   if (!anyRemoved) return;
 
-  const nextGroups: FeedGroup[] = [];
-  for (const g of groups.value) {
-    if (g.subs && g.subs.length > 0) {
-      let groupRemoved = 0;
-      const nextSubs: FeedGroup[] = [];
-      for (const s of g.subs) {
-        const uk = unitKey(g.key, s.key);
-        const removed = removedByUnit.get(uk) ?? 0;
-        groupRemoved += removed;
-        const nextCount = Math.max(0, s.count - removed);
+  const pruneGroups = (
+    source: readonly FeedGroup[],
+    removedMap: ReadonlyMap<string, number>,
+    deleteEmptyFromItems?: Map<string, FeedItem[]>,
+  ): FeedGroup[] => {
+    const pruned: FeedGroup[] = [];
+    for (const g of source) {
+      if (g.subs && g.subs.length > 0) {
+        let groupRemoved = 0;
+        const nextSubs: FeedGroup[] = [];
+        for (const s of g.subs) {
+          const uk = unitKey(g.key, s.key);
+          const removed = removedMap.get(uk) ?? 0;
+          groupRemoved += removed;
+          const nextCount = Math.max(0, s.count - removed);
+          if (nextCount > 0) {
+            nextSubs.push({ ...s, count: nextCount });
+          } else {
+            deleteEmptyFromItems?.delete(uk);
+          }
+        }
+        const nextCount = Math.max(0, g.count - groupRemoved);
+        if (nextCount > 0 && nextSubs.length > 0) {
+          pruned.push({ ...g, count: nextCount, subs: nextSubs });
+        }
+      } else {
+        const removed = removedMap.get(g.key) ?? 0;
+        const nextCount = Math.max(0, g.count - removed);
         if (nextCount > 0) {
-          nextSubs.push({ ...s, count: nextCount });
+          pruned.push({ ...g, count: nextCount });
         } else {
-          nextItems.delete(uk);
+          deleteEmptyFromItems?.delete(g.key);
         }
       }
-      const nextCount = Math.max(0, g.count - groupRemoved);
-      if (nextCount > 0 && nextSubs.length > 0) {
-        nextGroups.push({ ...g, count: nextCount, subs: nextSubs });
-      }
-    } else {
-      const removed = removedByUnit.get(g.key) ?? 0;
-      const nextCount = Math.max(0, g.count - removed);
-      if (nextCount > 0) {
-        nextGroups.push({ ...g, count: nextCount });
-      } else {
-        nextItems.delete(g.key);
-      }
     }
+    return pruned;
+  };
+
+  const nextGroups = pruneGroups(groups.value, removedByUnit, nextItems);
+  if (qspaceRemovedByUnit.size > 0 && qspaceGroups.value.length > 0) {
+    qspaceGroups.value = pruneGroups(qspaceGroups.value, qspaceRemovedByUnit);
+    recordQSpaceUnits(qspaceGroups.value);
   }
 
   items.value = nextItems;
+  if (anySuppRemoved) supplementaryByUnit.value = nextSupp;
   groups.value = nextGroups;
   relayout();
 }
@@ -1593,7 +1892,7 @@ async function loadMore(): Promise<boolean> {
       g.subs && g.subs.length > 0 ? g.subs.map((s) => ({ group: g.key, sub: s.key })) : [{ group: g.key }];
     for (const u of units) {
       const key = unitKey(u.group, u.sub);
-      if (failed.has(key)) continue;
+      if (!qspaceUnits.has(key) || failed.has(key)) continue;
       if (!items.value.has(key) || Boolean(cursors.get(key))) {
         await loadUnit(u.group, u.sub);
         return my === epoch;
@@ -1772,7 +2071,6 @@ onBeforeUnmount(() => {
                   <span v-for="(part, i) in tileCaption(tl.item)" :key="i">{{ part }}</span>
                 </span>
                 <button
-                  v-if="!isExternalMode"
                   type="button"
                   class="pf-fav-btn"
                   :class="{ 'is-fav': tl.item.favorite, 'pf-fav': tl.item.favorite }"

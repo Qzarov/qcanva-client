@@ -142,10 +142,10 @@
               role="treeitem"
               class="tree-row"
               :class="{
-                active: row.active,
-                'is-album-related': Boolean(row.albumRelated && !row.active),
-                'kbd-focus': treeFocusKey === row.key,
-                'tree-selected': treeSelectedKeys.has(row.key),
+                active: highlightedFileRowKey ? row.key === highlightedFileRowKey : row.active,
+                'is-album-related': Boolean(row.albumRelated && !(highlightedFileRowKey ? row.key === highlightedFileRowKey : row.active)),
+                'kbd-focus': highlightedFileRowKey ? row.key === highlightedFileRowKey : treeFocusKey === row.key,
+                'tree-selected': highlightedFileRowKey ? row.key === highlightedFileRowKey : treeSelectedKeys.has(row.key),
                 'drag-over': isDropHighlight(row),
                 'is-group-node': row.isGroup,
                 'is-disabled': row.disabled,
@@ -197,6 +197,7 @@
                 :data-yandex-toggle="row.kind === 'yandex-root' || row.kind === 'yandex-dir' ? row.yandexPath : undefined"
                 :data-album-toggle="row.kind === 'album' ? row.albumId : undefined"
                 :data-album-folder-toggle="(row.kind === 'album-source' || row.kind === 'album-folder') && row.albumFolderKey ? row.albumFolderKey : undefined"
+                @mousedown.prevent
                 @click.stop="toggleNodeExpanded(row)"
               >
                 <ChevronDown v-if="row.expanded" :size="14" aria-hidden="true" />
@@ -483,6 +484,10 @@ const props = withDefaults(defineProps<{
   allFolders?: readonly { id: string; name: string; parentId: string | null; hasChildren?: boolean }[];
   /** Folder IDs belonging to the currently selected Album (dim highlight + exclusive auto-expand). */
   albumRelatedFolderIds?: ReadonlySet<string> | null;
+  /** Yandex Disk folder paths belonging to the currently selected Album (dim highlight + auto-expand). */
+  albumRelatedYandexPaths?: ReadonlySet<string> | null;
+  /** Workspace selected keys (e.g. `drive-file:<id>`) for exclusive file row highlight when showFilesInTree is ON. */
+  selectedWorkspaceKeys?: readonly string[];
   admin?: boolean;
   spaces?: boolean;
   yandexRefreshKey?: number;
@@ -497,6 +502,8 @@ const props = withDefaults(defineProps<{
   collapsed: undefined,
   androidApp: false,
   albumRelatedFolderIds: null,
+  albumRelatedYandexPaths: null,
+  selectedWorkspaceKeys: () => [],
   admin: false,
   spaces: true,
   yandexRefreshKey: 0,
@@ -910,6 +917,60 @@ function applyAlbumRelatedExpansion(ids: ReadonlySet<string> | null | undefined)
   }
 }
 
+function normalizeYandexTreePath(raw: string): string {
+  const stripped = raw.replace(/^disk:/, '').trim();
+  if (!stripped || stripped === '/') return '/';
+  const withSlash = stripped.startsWith('/') ? stripped : `/${stripped}`;
+  return withSlash.replace(/\/+$/, '') || '/';
+}
+
+const normalizedAlbumRelatedYandexPaths = computed<Set<string>>(() => {
+  const set = new Set<string>();
+  if (!props.albumRelatedYandexPaths) return set;
+  for (const p of props.albumRelatedYandexPaths) {
+    if (p) set.add(normalizeYandexTreePath(p));
+  }
+  return set;
+});
+
+function isYandexPathAlbumRelated(path: string): boolean {
+  if (!normalizedAlbumRelatedYandexPaths.value.size) return false;
+  return normalizedAlbumRelatedYandexPaths.value.has(normalizeYandexTreePath(path));
+}
+
+async function applyAlbumRelatedYandexExpansion(paths: ReadonlySet<string> | null | undefined): Promise<void> {
+  if (props.activeSection.kind !== 'space') return;
+  if (!paths || paths.size === 0) {
+    yandexOpen.value = [];
+    return;
+  }
+  const roots = new Set(openRoots.value);
+  roots.add('root:clouds');
+  openRoots.value = roots;
+
+  const toOpen = new Set<string>(['/']);
+  for (const rawPath of paths) {
+    if (!rawPath) continue;
+    const normalized = normalizeYandexTreePath(rawPath);
+    if (normalized === '/') continue;
+    const segments = normalized.split('/').filter(Boolean);
+    let acc = '';
+    for (let i = 0; i < segments.length - 1; i += 1) {
+      acc += `/${segments[i]}`;
+      toOpen.add(acc);
+    }
+  }
+  const ordered = [...toOpen].sort((a, b) => a.length - b.length);
+  yandexOpen.value = ordered;
+  if (yandexStatus.value?.connected) {
+    for (const seg of ordered) {
+      if (!yandexNodes[seg]?.items && !yandexNodes[seg]?.loading) {
+        await readYandexPath(seg);
+      }
+    }
+  }
+}
+
 watch(
   [
     () => (props.activeSection.kind === 'space' ? props.activeSection.spaceId : null),
@@ -918,6 +979,18 @@ watch(
   ([spaceId, relatedIds]) => {
     if (!spaceId) return;
     applyAlbumRelatedExpansion(relatedIds);
+  },
+  { immediate: true },
+);
+
+watch(
+  [
+    () => (props.activeSection.kind === 'space' ? props.activeSection.spaceId : null),
+    () => props.albumRelatedYandexPaths,
+  ],
+  ([spaceId, relatedYandexPaths]) => {
+    if (!spaceId) return;
+    void applyAlbumRelatedYandexExpansion(relatedYandexPaths);
   },
   { immediate: true },
 );
@@ -1026,6 +1099,8 @@ watch(() => props.activeSection, (next, prev) => {
     const roots = new Set(openRoots.value);
     roots.add('root:clouds');
     openRoots.value = roots;
+  } else if (next.kind === 'space') {
+    void applyAlbumRelatedYandexExpansion(props.albumRelatedYandexPaths);
   } else {
     yandexOpen.value = [];
   }
@@ -1157,6 +1232,7 @@ const visibleRows = computed<TreeRow[]>(() => {
               : yandexRootNode.items.some((i) => i.type === 'dir'))
           : true;
       const rootOpen = yandexRootExpandable && isYandexOpen('/');
+      const yandexRootActive = isSectionActive({ kind: 'yandex', path: '/' });
       rows.push({
         key: 'clouds:yandex',
         parentKey: 'root:clouds',
@@ -1165,8 +1241,9 @@ const visibleRows = computed<TreeRow[]>(() => {
         depth: 1,
         expandable: yandexRootExpandable,
         expanded: rootOpen,
-        active: isSectionActive({ kind: 'yandex', path: '/' }),
-        draggable: false,
+        active: yandexRootActive,
+        albumRelated: Boolean(!yandexRootActive && isYandexPathAlbumRelated('/')),
+        draggable: yandexConnected,
         yandexPath: '/',
       });
       if (rootOpen) {
@@ -1478,6 +1555,7 @@ function appendYandexRows(rows: TreeRow[], path: string, parentKey: string, dept
           : childNode.items.some((i) => i.type === 'dir'))
       : true;
     const open = dirExpandable && isYandexOpen(dir.path);
+    const dirActive = isSectionActive({ kind: 'yandex', path: dir.path });
     rows.push({
       key,
       parentKey,
@@ -1486,8 +1564,9 @@ function appendYandexRows(rows: TreeRow[], path: string, parentKey: string, dept
       depth,
       expandable: dirExpandable,
       expanded: open,
-      active: isSectionActive({ kind: 'yandex', path: dir.path }),
-      draggable: false,
+      active: dirActive,
+      albumRelated: Boolean(!dirActive && isYandexPathAlbumRelated(dir.path)),
+      draggable: true,
       yandexPath: dir.path,
       yandexItem: dir,
     });
@@ -1614,6 +1693,33 @@ const scrollContainerRef = ref<HTMLElement | null>(null);
 const treeSelectedKeys = ref<Set<string>>(new Set());
 const treeFocusKey = ref<string | null>(null);
 const lastSelectedIdx = ref(-1);
+
+const highlightedFileRowKey = computed<string | null>(() => {
+  if (treeSelectedKeys.value.size === 1) {
+    const [onlyKey] = treeSelectedKeys.value;
+    if (onlyKey) {
+      const found = visibleRows.value.find(
+        (r) => r.key === onlyKey && (r.kind === 'file' || r.kind === 'yandex-file'),
+      );
+      if (found) return found.key;
+    }
+  }
+  if (showFilesInTree.value && props.selectedWorkspaceKeys && props.selectedWorkspaceKeys.length === 1) {
+    const selKey = props.selectedWorkspaceKeys[0]!;
+    const found = visibleRows.value.find((r) => {
+      if (r.kind === 'file') {
+        if (r.fileKey === selKey || r.fileKey?.endsWith(`/${selKey}`)) return true;
+        if (r.fileItem && `${r.fileItem.type}:${r.fileItem.id}` === selKey) return true;
+      }
+      if (r.kind === 'yandex-file' && r.yandexPath) {
+        return selKey === `yandex:${r.yandexPath}`;
+      }
+      return false;
+    });
+    if (found) return found.key;
+  }
+  return null;
+});
 
 function isMultiSelectable(row: TreeRow): boolean {
   return row.kind === 'folder' || row.kind === 'file' || row.kind === 'yandex-dir' || row.kind === 'yandex-file' || row.kind === 'album';
@@ -1798,6 +1904,16 @@ function rowToDragEntry(row: TreeRow): GroupDragEntry | null {
   if (row.kind === 'file' && row.fileItem) {
     return { key: row.key, id: row.fileItem.id, kind: row.fileItem.type, name: row.label, folderId: row.fileItem.folderId };
   }
+  if ((row.kind === 'yandex-dir' || row.kind === 'yandex-root') && row.yandexPath) {
+    const path = normalizeYandexTreePath(row.yandexPath);
+    return {
+      key: `yandex-folder:${path}`,
+      id: path,
+      kind: 'yandex-folder',
+      name: row.label,
+      path,
+    };
+  }
   return null;
 }
 
@@ -1816,6 +1932,9 @@ function isFolderDescendantOrSelf(targetFolderId: string, draggedFolderId: strin
 
 function canDropGroupOnFolder(targetFolderId: string, payload: GroupDragPayload): boolean {
   for (const entry of payload.items) {
+    if (entry.kind === 'yandex-folder' || entry.key.startsWith('yandex-folder:')) {
+      return false;
+    }
     if (entry.kind === 'folder' || entry.key.startsWith('folder:')) {
       const draggedFolderId = entry.id || entry.key.replace(/^folder:/, '');
       if (draggedFolderId && isFolderDescendantOrSelf(targetFolderId, draggedFolderId)) {
@@ -1910,7 +2029,7 @@ function onRowDragEnter(event: DragEvent, row: TreeRow) {
         dnd.setGroupDropTarget({ kind: 'folder', id: row.folderId });
         scheduleSpringIfExpandable(row);
       }
-    } else if (row.key === 'qspace:home') {
+    } else if (row.key === 'qspace:home' && !payload.items.some((e) => e.kind === 'yandex-folder' || e.key.startsWith('yandex-folder:'))) {
       event.preventDefault();
       internalHomeDropOver.value = true;
       scheduleSpringIfExpandable(row);
@@ -1976,7 +2095,7 @@ function onRowDragOver(event: DragEvent, row: TreeRow) {
         dnd.setGroupDropTarget({ kind: 'folder', id: row.folderId });
         scheduleSpringIfExpandable(row);
       }
-    } else if (row.key === 'qspace:home') {
+    } else if (row.key === 'qspace:home' && !payload.items.some((e) => e.kind === 'yandex-folder' || e.key.startsWith('yandex-folder:'))) {
       event.preventDefault();
       event.stopPropagation();
       if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
@@ -2057,7 +2176,7 @@ function onRowDrop(event: DragEvent, row: TreeRow) {
         emit('drop-group-to-folder', { folderId: row.folderId, drag: payload });
         treeSelectedKeys.value = new Set();
       }
-    } else if (row.key === 'qspace:home') {
+    } else if (row.key === 'qspace:home' && !payload.items.some((e) => e.kind === 'yandex-folder' || e.key.startsWith('yandex-folder:'))) {
       event.preventDefault();
       event.stopPropagation();
       emit('drop-group-to-folder', { folderId: null, drag: payload });
@@ -2312,6 +2431,12 @@ defineExpose({
 </script>
 
 <style scoped>
+.tree-twisty:focus,
+.tree-twisty:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
 .tree-row.is-album-related:not(.active),
 .dashboard-sidebar.explorer-sidebar .tree-row.dashboard-sidebar-folder.is-album-related:not(.active) {
   background: color-mix(in srgb, var(--color-brands, #44cf6e) 7%, transparent);

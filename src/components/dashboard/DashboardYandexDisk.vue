@@ -113,6 +113,7 @@
               :key="folder.path"
               type="button"
               class="subfolder-card"
+              draggable="true"
               :data-yandex-subfolder="folder.path"
               :data-select-key="keyOf(folder)"
               :data-selected="effectiveSelectedKeys.includes(keyOf(folder)) || undefined"
@@ -120,6 +121,9 @@
               @dblclick.stop="emit('navigate', folder.path)"
               @keydown.enter.prevent="emit('navigate', folder.path)"
               @contextmenu.prevent.stop="openItemContextMenu($event, folder)"
+              @dragstart="onSubfolderDragStart($event, folder)"
+              @drag="onSubfolderDragMove"
+              @dragend="onSubfolderDragEnd"
             >
               <span class="subfolder-card-icon" aria-hidden="true">▤</span>
               <span class="subfolder-card-name">{{ folder.name }}</span>
@@ -209,8 +213,10 @@
       :y="ctxMenu.y"
       :items="ctxMenu.items"
       :can-share="ctxCanShare"
-      :can-album="false"
-      :can-favorite="false"
+      :can-album="ctxCanAddToAlbum"
+      :albums="editableAlbums"
+      :can-favorite="ctxCanFavorite"
+      :is-favorite="ctxAllFavorite"
       :can-move="true"
       :can-rename="ctxMenu.items.length === 1"
       :can-download="ctxCanDownload"
@@ -218,6 +224,8 @@
       @close="ctxMenu.open = false"
       @open="onCtxOpen"
       @share="onCtxShare"
+      @add-to-album="onCtxAddToAlbum"
+      @toggle-favorite="onCtxToggleFavorite"
       @move="onCtxMove"
       @rename="onCtxRename"
       @download="onCtxDownload"
@@ -241,10 +249,15 @@ import {
   type YandexSort,
 } from '../../api/yandexDisk';
 import { getFileExtension } from '../../api/drive';
+import { spacesApi } from '../../api/spaces';
 import { isDocumentWithPicture, isMarkdownFile } from '../../dashboard/thumb-kinds';
 import { alertDialog, confirmDialog, promptDialog } from '../../composables/appDialog';
+import { useExplorerGroupDnd } from '../../composables/useExplorerGroupDnd';
+import { useExplorerLayoutPrefs } from '../../composables/useExplorerLayoutPrefs';
 import { useI18n } from '../../composables/useI18n';
+import { useSpaces } from '../../composables/useSpaces';
 import { useYandexDisk } from '../../composables/useYandexDisk';
+import { invalidateYandexMediaLibrary } from '../../composables/useYandexMediaLibrary';
 import { vFileInfo } from '../../directives/fileInfo';
 import ResourceIcon from '../ResourceIcon.vue';
 import FilePlaceholder from './FilePlaceholder.vue';
@@ -285,6 +298,9 @@ const emit = defineEmits<{
 
 const { t, locale } = useI18n();
 const { status, load: loadStatus, noteError } = useYandexDisk();
+const { spaces, load: loadSpaces } = useSpaces();
+const layoutPrefs = useExplorerLayoutPrefs();
+const dnd = useExplorerGroupDnd();
 const connected = computed(() => Boolean(status.value?.enabled && status.value.connected));
 
 const items = ref<YandexItem[]>([]);
@@ -317,8 +333,12 @@ function onItemClick(event: MouseEvent, item: YandexItem): void {
     event.preventDefault();
     event.stopPropagation();
     const onScreen = allSelectableKeys();
-    const anchor = selectionAnchorKey.value || effectiveSelectedKeys.value[effectiveSelectedKeys.value.length - 1] || key;
-    if (!selectionAnchorKey.value) selectionAnchorKey.value = anchor;
+    const validAnchor = selectionAnchorKey.value && onScreen.includes(selectionAnchorKey.value)
+      ? selectionAnchorKey.value
+      : '';
+    const lastSelected = [...effectiveSelectedKeys.value].reverse().find((k) => onScreen.includes(k)) || '';
+    const anchor = validAnchor || lastSelected || key;
+    selectionAnchorKey.value = anchor;
     commitSelection(selectRange(effectiveSelectedKeys.value, onScreen, anchor, key));
     return;
   }
@@ -331,6 +351,34 @@ function onItemClick(event: MouseEvent, item: YandexItem): void {
   }
   selectionAnchorKey.value = key;
   commitSelection([key]);
+}
+
+function onSubfolderDragStart(event: DragEvent, folder: YandexItem): void {
+  const key = keyOf(folder);
+  const dirs = effectiveSelectedKeys.value.includes(key) && effectiveSelectedKeys.value.length > 1
+    ? shownFolders.value.filter((candidate) => effectiveSelectedKeys.value.includes(keyOf(candidate)))
+    : [folder];
+  const targets = dirs.length ? dirs : [folder];
+  dnd.startGroupDrag({
+    source: 'explorer',
+    items: targets.map((dir) => ({
+      key: `yandex-folder:${dir.path}`,
+      id: dir.path,
+      kind: 'yandex-folder',
+      name: dir.name,
+      path: dir.path,
+    })),
+  }, event);
+}
+
+function onSubfolderDragMove(event: DragEvent): void {
+  if (event.clientX !== 0 || event.clientY !== 0) {
+    dnd.updateGroupDragPosition(event.clientX, event.clientY);
+  }
+}
+
+function onSubfolderDragEnd(): void {
+  dnd.endGroupDrag();
 }
 
 function onFileDblClick(event: MouseEvent, file: YandexItem): void {
@@ -489,6 +537,10 @@ async function loadMore() {
   }
 }
 
+watch(() => props.path, () => {
+  localSelectedKeys.value = [];
+  selectionAnchorKey.value = '';
+});
 watch(() => [props.path, serverSort.value, connected.value] as const, () => { brokenPreviews.clear(); void load(); });
 watch(() => props.refreshKey, () => { void load(); });
 
@@ -515,6 +567,7 @@ async function disconnect() {
   if (!confirmed) return;
   try {
     await yandexDisk.disconnect();
+    invalidateYandexMediaLibrary();
     await loadStatus(true);
     items.value = [];
     emit('changed');
@@ -547,14 +600,25 @@ const ctxMenu = reactive<{
 
 const ctxCanShare = computed(() => ctxMenu.raw.length === 1 && ctxMenu.raw[0]?.type === 'file');
 const ctxCanDownload = computed(() => ctxMenu.raw.length > 0 && ctxMenu.raw.every((item) => item.type === 'file'));
+const ctxCanAddToAlbum = computed(() => ctxMenu.raw.some((item) => item.type === 'dir'));
+const ctxCanFavorite = computed(() => ctxMenu.raw.length > 0 && ctxMenu.raw.every((item) => isMedia(item)));
+const ctxAllFavorite = computed(() =>
+  ctxMenu.raw.length > 0 && ctxMenu.raw.every((item) => layoutPrefs.isFavorite(keyOf(item))),
+);
+const editableAlbums = computed(() =>
+  spaces.value
+    .filter((s) => !s.unlisted && (!s.role || s.role === 'owner' || s.role === 'editor'))
+    .map((s) => ({ id: s.id, name: s.name })),
+);
 
 function openItemContextMenu(event: MouseEvent, item: YandexItem): void {
   menu.value = '';
   const key = keyOf(item);
   let targetItems: YandexItem[];
-  if (item.type === 'file' && effectiveSelectedKeys.value.includes(key) && effectiveSelectedKeys.value.length > 1) {
+  if (effectiveSelectedKeys.value.includes(key) && effectiveSelectedKeys.value.length > 1) {
     const selectedSet = new Set(effectiveSelectedKeys.value);
-    targetItems = shownFiles.value.filter((candidate) => selectedSet.has(keyOf(candidate)));
+    const pool = [...shownFolders.value, ...shownFiles.value];
+    targetItems = pool.filter((candidate) => selectedSet.has(keyOf(candidate)));
     if (!targetItems.length) targetItems = [item];
   } else {
     if (!effectiveSelectedKeys.value.includes(key)) {
@@ -570,7 +634,7 @@ function openItemContextMenu(event: MouseEvent, item: YandexItem): void {
     key: keyOf(entry),
     id: entry.path,
     name: entry.name,
-    kind: entry.type === 'dir' ? 'folder' : 'yandex-file',
+    kind: entry.type === 'dir' ? 'yandex-folder' : 'yandex-file',
   }));
   ctxMenu.open = true;
 }
@@ -590,6 +654,53 @@ function onCtxOpen(entry: ExplorerContextMenuItem): void {
 function onCtxShare(entries: ReadonlyArray<ExplorerContextMenuItem>): void {
   const found = findCtxRaw(entries[0]);
   if (found) void copyLink(found);
+}
+
+async function onCtxAddToAlbum(albumId: string | undefined, entries: ReadonlyArray<ExplorerContextMenuItem>): Promise<void> {
+  const dirs = entries
+    .map((entry) => findCtxRaw(entry))
+    .filter((item): item is YandexItem => Boolean(item && item.type === 'dir'));
+  if (!dirs.length) return;
+  let targetAlbumId = albumId;
+  if (!targetAlbumId) {
+    const name = (await promptDialog({
+      title: t('spaceNew'),
+      placeholder: t('spaceNamePlaceholder'),
+      confirmLabel: t('create'),
+      cancelLabel: t('cancel'),
+    }))?.trim();
+    if (!name) return;
+    try {
+      const created = await spacesApi.create(name);
+      targetAlbumId = created.id;
+    } catch (err) {
+      emit('feedback', 'error', errorText(err, t('spaceActionFailed')));
+      return;
+    }
+  }
+  try {
+    for (const dir of dirs) {
+      await spacesApi.addYandexFolder(targetAlbumId, dir.path);
+    }
+    await loadSpaces(true);
+    emit('feedback', 'success', t('explorerAddToAlbum'));
+  } catch (err) {
+    emit('feedback', 'error', errorText(err, t('spaceActionFailed')));
+  }
+}
+
+function onCtxToggleFavorite(entries: ReadonlyArray<ExplorerContextMenuItem>): void {
+  const list = entries
+    .map((entry) => findCtxRaw(entry))
+    .filter((item): item is YandexItem => Boolean(item && isMedia(item)));
+  if (!list.length) return;
+  const nextFav = !list.every((item) => layoutPrefs.isFavorite(keyOf(item)));
+  for (const item of list) {
+    const k = keyOf(item);
+    if (layoutPrefs.isFavorite(k) !== nextFav) {
+      layoutPrefs.toggleFavorite(k);
+    }
+  }
 }
 
 function onCtxMove(entries: ReadonlyArray<ExplorerContextMenuItem>): void {
@@ -648,6 +759,7 @@ async function rename(item: YandexItem) {
   try {
     const outcome = await yandexDisk.rename(item.path, name);
     await settleYandexOutcome(outcome);
+    invalidateYandexMediaLibrary();
     if (item.path === props.path) emit('navigate', outcome.path);
     else await load();
     emit('changed');
@@ -672,6 +784,7 @@ async function remove(list: YandexItem[]) {
   if (!confirmed) return;
   try {
     for (const item of list) await settleYandexOutcome(await yandexDisk.remove(item.path));
+    invalidateYandexMediaLibrary();
     if (list.some((item) => item.path === props.path)) emit('navigate', yandexParentPath(props.path));
     else await load();
     emit('changed');
@@ -709,6 +822,7 @@ async function createFolder() {
   }
   try {
     await yandexDisk.createFolder(joinYandexPath(props.path, name));
+    invalidateYandexMediaLibrary();
     await load();
     emit('changed');
   } catch (err) {
@@ -794,6 +908,7 @@ function onWindowKeydown(event: KeyboardEvent) {
 onMounted(async () => {
   document.addEventListener('click', closeMenu);
   window.addEventListener('keydown', onWindowKeydown);
+  void loadSpaces();
   await loadStatus();
   void load();
 });
@@ -803,5 +918,5 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', onWindowKeydown);
 });
 
-defineExpose({ reload, pickFiles });
+defineExpose({ reload, pickFiles, items });
 </script>

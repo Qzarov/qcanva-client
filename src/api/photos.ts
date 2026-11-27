@@ -92,6 +92,15 @@ export interface PhotoReplica {
   lastSeenAt: string | null;
 }
 
+export interface PhotoAiDetails {
+  status: 'ready' | 'clip_only' | 'pending';
+  caption: string | null;
+  tags: string[];
+  ocrText: string | null;
+  model: string | null;
+  source: 'provider' | 'mcp' | 'clip' | null;
+}
+
 export interface PhotoDetails {
   item: FeedItem;
   meta: PhotoMeta | null;
@@ -102,6 +111,7 @@ export interface PhotoDetails {
     hubCopy: 'present' | 'evicting' | 'absent';
     replicas: PhotoReplica[];
   };
+  ai?: PhotoAiDetails | null;
 }
 
 export interface Album {

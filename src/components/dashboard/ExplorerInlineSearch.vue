@@ -2,7 +2,7 @@
   <div
     ref="wrapRef"
     class="s2-wrap"
-    :class="{ 'in-gallery': inGallery, 'is-open': isOpen }"
+    :class="{ 'in-gallery': inGallery, 'is-open': isOpen, 'has-query': Boolean(modelValue) }"
     data-s2-search
   >
     <div
@@ -522,12 +522,55 @@ function updatePopoverPosition() {
   };
 }
 
+const POPOVER_TRACK_MS = 340;
+let boxResizeObserver: ResizeObserver | null = null;
+let trackRafId = 0;
+let trackDeadline = 0;
+
+function stopPopoverTracking() {
+  if (trackRafId && typeof cancelAnimationFrame === 'function') {
+    cancelAnimationFrame(trackRafId);
+  }
+  trackRafId = 0;
+  trackDeadline = 0;
+}
+
+function startPopoverTracking(durationMs = POPOVER_TRACK_MS) {
+  updatePopoverPosition();
+  if (typeof requestAnimationFrame !== 'function') return;
+  const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+  trackDeadline = Math.max(trackDeadline, now + durationMs);
+  if (trackRafId) return;
+  const step = () => {
+    trackRafId = 0;
+    if (!boxRef.value) {
+      trackDeadline = 0;
+      return;
+    }
+    updatePopoverPosition();
+    const cur = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    if (cur < trackDeadline) {
+      trackRafId = requestAnimationFrame(step);
+    } else {
+      trackDeadline = 0;
+    }
+  };
+  trackRafId = requestAnimationFrame(step);
+}
+
 function openPopover() {
+  const wasOpen = isOpen.value;
   isOpen.value = true;
-  void nextTick(updatePopoverPosition);
+  void nextTick(() => {
+    updatePopoverPosition();
+    if (!wasOpen) startPopoverTracking(POPOVER_TRACK_MS);
+  });
 }
 
 function close() {
+  if (isOpen.value) {
+    startPopoverTracking(POPOVER_TRACK_MS);
+  }
   isOpen.value = false;
 }
 
@@ -681,6 +724,11 @@ function onViewportChange() {
   updatePopoverPosition();
 }
 
+function onWrapTransitionEnd() {
+  if (!isOpen.value) return;
+  updatePopoverPosition();
+}
+
 let listenersAttached = false;
 function attachListeners() {
   if (listenersAttached) return;
@@ -689,6 +737,14 @@ function attachListeners() {
   document.addEventListener('mousedown', onOutsidePointer, true);
   window.addEventListener('resize', onViewportChange);
   window.addEventListener('scroll', onViewportChange, true);
+  wrapRef.value?.addEventListener('transitionend', onWrapTransitionEnd);
+  if (typeof ResizeObserver !== 'undefined' && boxRef.value) {
+    boxResizeObserver?.disconnect();
+    boxResizeObserver = new ResizeObserver(() => {
+      if (isOpen.value) updatePopoverPosition();
+    });
+    boxResizeObserver.observe(boxRef.value);
+  }
 }
 
 function detachListeners() {
@@ -698,6 +754,9 @@ function detachListeners() {
   document.removeEventListener('mousedown', onOutsidePointer, true);
   window.removeEventListener('resize', onViewportChange);
   window.removeEventListener('scroll', onViewportChange, true);
+  wrapRef.value?.removeEventListener('transitionend', onWrapTransitionEnd);
+  boxResizeObserver?.disconnect();
+  boxResizeObserver = null;
 }
 
 watch(isOpen, (open) => {
@@ -707,6 +766,7 @@ watch(isOpen, (open) => {
 
 onBeforeUnmount(() => {
   suppressFocusOpen = false;
+  stopPopoverTracking();
   detachListeners();
 });
 
@@ -723,13 +783,31 @@ defineExpose({
   position: relative;
   flex: 1 1 0;
   min-width: 0;
+  max-width: 460px;
+  transition: max-width 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.s2-wrap.is-open,
+.s2-wrap:focus-within,
+.s2-wrap.has-query {
   max-width: 720px;
 }
 
 .s2-wrap.in-gallery {
-  flex: 1 1 360px;
-  min-width: 220px;
-  max-width: 520px;
+  flex: 0 1 280px;
+  min-width: 180px;
+  max-width: 300px;
+  transition:
+    flex-basis 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+    max-width 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+    width 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.s2-wrap.in-gallery.is-open,
+.s2-wrap.in-gallery:focus-within,
+.s2-wrap.in-gallery.has-query {
+  flex: 1 1 560px;
+  max-width: min(620px, 100%);
 }
 
 .s2-box {
@@ -1131,6 +1209,8 @@ defineExpose({
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .s2-wrap,
+  .s2-wrap.in-gallery,
   .s2-box,
   .s2-pop-fade-enter-active,
   .s2-pop-fade-leave-active,

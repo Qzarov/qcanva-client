@@ -50,6 +50,7 @@ import { useI18n } from '../../composables/useI18n';
 import { useSpaces } from '../../composables/useSpaces';
 import { useToast } from '../../composables/useToast';
 import { useYandexDisk } from '../../composables/useYandexDisk';
+import { invalidateYandexMediaLibrary } from '../../composables/useYandexMediaLibrary';
 
 export type GallerySection = 'library' | 'people' | 'favorites' | 'recent' | 'videos' | 'trash';
 
@@ -78,6 +79,7 @@ const props = withDefaults(defineProps<{
   activeFolderId?: string | null;
   activeYandexPath?: string | null;
   albumRelatedFolderIds?: ReadonlySet<string> | null;
+  albumRelatedYandexPaths?: ReadonlySet<string> | null;
   highlightedFolderId?: string | null;
   highlightedFileId?: string | null;
   folders?: readonly GalleryStorageFolder[];
@@ -91,6 +93,7 @@ const props = withDefaults(defineProps<{
   activeFolderId: null,
   activeYandexPath: null,
   albumRelatedFolderIds: null,
+  albumRelatedYandexPaths: null,
   highlightedFolderId: null,
   highlightedFileId: null,
   folders: undefined,
@@ -112,6 +115,8 @@ const emit = defineEmits<{
   (e: 'drop-album', albumId: string, fileIds: string[], folderIds: string[]): void;
   (e: 'drop-folder', folderId: string | null, fileIds: string[], folderIds: string[]): void;
   (e: 'folder-contextmenu', payload: { event: MouseEvent; folderId: string }): void;
+  (e: 'yandex-contextmenu', payload: { event: MouseEvent; path: string; name: string }): void;
+  (e: 'album-sources-changed', albumId: string): void;
 }>();
 
 const { t, locale } = useI18n();
@@ -393,15 +398,128 @@ watch(
   { immediate: true },
 );
 
+function normalizeYandexPath(path: string): string {
+  let p = path.trim();
+  if (p.startsWith('disk:')) p = p.slice('disk:'.length);
+  if (!p.startsWith('/')) p = `/${p}`;
+  if (p.length > 1 && p.endsWith('/')) p = p.replace(/\/+$/, '');
+  return p || '/';
+}
+
+const isHighlightedYandexFile = computed(() =>
+  typeof props.highlightedFileId === 'string' && props.highlightedFileId.startsWith('yandex:'),
+);
+const highlightedYandexFilePath = computed<string | null>(() =>
+  isHighlightedYandexFile.value && props.highlightedFileId
+    ? normalizeYandexPath(props.highlightedFileId.slice('yandex:'.length))
+    : null,
+);
+const highlightedYandexFolderPath = computed<string | null>(() => {
+  if (highlightedYandexFilePath.value) return yandexParentPath(highlightedYandexFilePath.value);
+  if (typeof props.highlightedFolderId === 'string' && props.highlightedFolderId.startsWith('/')) {
+    return normalizeYandexPath(props.highlightedFolderId);
+  }
+  return null;
+});
+const highlightedQspaceFolderId = computed<string | null>(() => {
+  if (isHighlightedYandexFile.value) return null;
+  if (typeof props.highlightedFolderId === 'string' && !props.highlightedFolderId.startsWith('/')) {
+    return props.highlightedFolderId;
+  }
+  return null;
+});
+const isFileHighlightActive = computed(() => Boolean(showFilesInTree.value && props.highlightedFileId));
+
+const isHomeRootActive = computed(() => {
+  if (isFileHighlightActive.value) return false;
+  if (props.activeFolderId !== 'root') return false;
+  if (highlightedQspaceFolderId.value && highlightedQspaceFolderId.value !== 'root') return false;
+  return true;
+});
+const isHomeRootHighlighted = computed(() => {
+  if (isFileHighlightActive.value) return false;
+  return props.activeFolderId !== 'root' && highlightedQspaceFolderId.value === 'root';
+});
+
+function isFolderRowActive(folderId: string): boolean {
+  if (isFileHighlightActive.value) return false;
+  if (props.activeFolderId !== folderId) return false;
+  if (highlightedQspaceFolderId.value && highlightedQspaceFolderId.value !== folderId) return false;
+  return true;
+}
+
+function isFolderRowHighlighted(folderId: string): boolean {
+  if (isFileHighlightActive.value) return false;
+  return props.activeFolderId !== folderId && highlightedQspaceFolderId.value === folderId;
+}
+
+function isFolderRowAlbumRelated(folderId: string): boolean {
+  if (isFolderRowActive(folderId) || isFolderRowHighlighted(folderId)) return false;
+  return Boolean(props.albumRelatedFolderIds?.has(folderId));
+}
+
+const normalizedAlbumYandexPaths = computed<ReadonlySet<string> | null>(() => {
+  const src = props.albumRelatedYandexPaths;
+  if (!src || src.size === 0) return null;
+  const out = new Set<string>();
+  for (const p of src) {
+    if (p) out.add(normalizeYandexPath(p));
+  }
+  return out.size > 0 ? out : null;
+});
+
+function isYandexRowActive(path: string): boolean {
+  if (isFileHighlightActive.value) return false;
+  const norm = normalizeYandexPath(path);
+  const activeNorm = props.activeYandexPath ? normalizeYandexPath(props.activeYandexPath) : null;
+  if (activeNorm !== norm) return false;
+  if (highlightedYandexFolderPath.value && highlightedYandexFolderPath.value !== norm) return false;
+  return true;
+}
+
+function isYandexRowHighlighted(path: string): boolean {
+  if (isFileHighlightActive.value) return false;
+  const norm = normalizeYandexPath(path);
+  const activeNorm = props.activeYandexPath ? normalizeYandexPath(props.activeYandexPath) : null;
+  return activeNorm !== norm && highlightedYandexFolderPath.value === norm;
+}
+
+function isYandexRowAlbumRelated(path: string): boolean {
+  if (isYandexRowActive(path) || isYandexRowHighlighted(path)) return false;
+  return Boolean(normalizedAlbumYandexPaths.value?.has(normalizeYandexPath(path)));
+}
+
 watch(
-  () => props.highlightedFolderId,
+  highlightedQspaceFolderId,
   (id) => {
-    if (id) {
+    if (id === 'root') {
+      ensureFolderGroupOpen('root');
+      if (showFilesInTree.value) void ensureFolderFiles('root');
+    } else if (id) {
+      ensureFolderGroupOpen(id);
       collapseUnrelatedFolders(id, showFilesInTree.value || id === props.activeFolderId);
+      if (showFilesInTree.value) void ensureFolderFiles(id);
     } else if (effectiveActiveAlbumId.value && !props.activeFolderId) {
       syncAlbumRelatedExpansion();
     } else if (!props.activeFolderId) {
       collapseUnrelatedFolders(null, false);
+    }
+  },
+  { immediate: true },
+);
+
+watch(
+  [() => props.highlightedFileId, highlightedQspaceFolderId, () => showFilesInTree.value],
+  ([fileId, qFolderId, showFiles]) => {
+    if (!showFiles || !fileId || fileId.startsWith('yandex:')) return;
+    const targetFolder = qFolderId ?? props.activeFolderId ?? 'root';
+    if (targetFolder === 'root') {
+      ensureFolderGroupOpen('root');
+      void ensureFolderFiles('root');
+    } else {
+      ensureFolderGroupOpen(targetFolder);
+      collapseUnrelatedFolders(targetFolder, true);
+      void ensureFolderFiles(targetFolder);
     }
   },
   { immediate: true },
@@ -413,15 +531,26 @@ watch(allFolders, () => {
     collapseUnrelatedFolders(props.activeFolderId, true);
   } else if (effectiveActiveAlbumId.value) {
     syncAlbumRelatedExpansion();
-  } else if (props.highlightedFolderId) {
-    collapseUnrelatedFolders(props.highlightedFolderId, showFilesInTree.value || props.highlightedFolderId === props.activeFolderId);
+  } else if (highlightedQspaceFolderId.value) {
+    if (highlightedQspaceFolderId.value === 'root') {
+      ensureFolderGroupOpen('root');
+    } else {
+      ensureFolderGroupOpen(highlightedQspaceFolderId.value);
+      collapseUnrelatedFolders(
+        highlightedQspaceFolderId.value,
+        showFilesInTree.value || highlightedQspaceFolderId.value === props.activeFolderId,
+      );
+    }
   }
 });
 
 watch(showFilesInTree, (on) => {
   if (!on) return;
-  if (props.highlightedFolderId) {
-    collapseUnrelatedFolders(props.highlightedFolderId, true);
+  if (highlightedQspaceFolderId.value && highlightedQspaceFolderId.value !== 'root') {
+    ensureFolderGroupOpen(highlightedQspaceFolderId.value);
+    collapseUnrelatedFolders(highlightedQspaceFolderId.value, true);
+  } else if (highlightedYandexFilePath.value) {
+    void expandYandexAncestors(highlightedYandexFilePath.value);
   }
   for (const id of expandedFolders.value) {
     void ensureFolderFiles(id);
@@ -666,6 +795,44 @@ watch(
   { immediate: true },
 );
 
+async function syncAlbumRelatedYandexExpansion(): Promise<void> {
+  if (!effectiveActiveAlbumId.value) return;
+  const related = normalizedAlbumYandexPaths.value;
+  if (!related || related.size === 0) return;
+  if (!openGroups.value.has('clouds')) {
+    const nextGroups = new Set(openGroups.value);
+    nextGroups.add('clouds');
+    openGroups.value = nextGroups;
+  }
+  if (!yandexStatus.value?.connected) return;
+  for (const path of related) {
+    await expandYandexAncestors(path);
+  }
+}
+
+watch(
+  [effectiveActiveAlbumId, normalizedAlbumYandexPaths, () => yandexStatus.value?.connected],
+  ([albId]) => {
+    if (albId && !props.activeYandexPath) {
+      void syncAlbumRelatedYandexExpansion();
+    }
+  },
+  { immediate: true },
+);
+
+watch(
+  [highlightedYandexFilePath, highlightedYandexFolderPath, () => showFilesInTree.value, () => yandexStatus.value?.connected],
+  ([yFilePath, yFolderPath, showFiles, connected]) => {
+    if (!connected) return;
+    if (showFiles && yFilePath) {
+      void expandYandexAncestors(yFilePath);
+    } else if (!showFiles && yFolderPath) {
+      void expandYandexAncestors(yFolderPath);
+    }
+  },
+  { immediate: true },
+);
+
 type YandexTreeRow =
   | { kind: 'dir'; key: string; item: YandexItem; path: string; depth: number; expanded: boolean; hasChildren: boolean }
   | { kind: 'file'; key: string; item: YandexItem; path: string; parentPath: string; depth: number };
@@ -828,8 +995,15 @@ function onFavDragLeave(): void {
 }
 
 function onFavDrop(e: DragEvent): void {
-  const { fileIds } = extractDroppedItems(e);
+  const { fileIds, yandexFilePaths } = extractDroppedItems(e);
   dnd.endGroupDrag();
+  if (yandexFilePaths.length > 0) {
+    const yandexIds = yandexFilePaths.map((p) => `yandex:${p}`);
+    prefs.addFavorites(yandexIds);
+    if (fileIds.length === 0) {
+      toast.show(`${t('explorerAddToFavorites')} (${yandexIds.length})`, 'success');
+    }
+  }
   if (fileIds.length > 0) emit('drop-favorites', fileIds);
 }
 
@@ -860,6 +1034,7 @@ async function onAlbumDrop(e: DragEvent, albumId: string): Promise<void> {
     const albumName = albumsList.value.find((a) => a.id === albumId)?.name ?? '';
     if (added > 0) {
       void loadSpaces(true);
+      emit('album-sources-changed', albumId);
       toast.show(
         t('photosAddedToAlbumToast').replace('{n}', String(added)).replace('{album}', albumName),
         'success',
@@ -869,6 +1044,24 @@ async function onAlbumDrop(e: DragEvent, albumId: string): Promise<void> {
     }
   }
   if (fileIds.length > 0 || folderIds.length > 0) emit('drop-album', albumId, fileIds, folderIds);
+}
+
+function onYandexRootDragStart(e: DragEvent): void {
+  dnd.startGroupDrag(
+    {
+      source: 'tree',
+      items: [
+        {
+          key: 'yandex-folder:/',
+          id: '/',
+          kind: 'yandex-folder',
+          name: t('yandexDisk'),
+          path: '/',
+        },
+      ],
+    },
+    e,
+  );
 }
 
 function onYandexFolderDragStart(e: DragEvent, item: YandexItem): void {
@@ -887,6 +1080,11 @@ function onYandexFolderDragStart(e: DragEvent, item: YandexItem): void {
     },
     e,
   );
+}
+
+function onYandexContextMenu(event: MouseEvent, path: string, name: string): void {
+  closeAlbumCtxMenu();
+  emit('yandex-contextmenu', { event, path, name });
 }
 
 function onYandexDragOver(e: DragEvent, targetPath: string): void {
@@ -938,6 +1136,7 @@ async function onYandexDrop(e: DragEvent, targetPath: string): Promise<void> {
     }
   }
   if (moved > 0) {
+    invalidateYandexMediaLibrary();
     const folderLabel = targetPath === '/' ? t('yandexDisk') : (targetPath.split('/').filter(Boolean).pop() ?? targetPath);
     toast.show(
       t('bulkMovedTo').replace('{folder}', folderLabel).replace('{n}', String(moved)),
@@ -1455,6 +1654,7 @@ onBeforeUnmount(() => {
           type="button"
           class="gs-caret-btn"
           :aria-label="openGroups.has('qspace') ? t('collapseSubfolders') : t('expandSubfolders')"
+          @mousedown.prevent
           @click.stop="toggleGroup('qspace')"
         >
           <ChevronDown v-if="openGroups.has('qspace')" :size="13" aria-hidden="true" />
@@ -1485,6 +1685,7 @@ onBeforeUnmount(() => {
             type="button"
             class="gs-caret-btn"
             :aria-label="openGroups.has('shared') ? t('collapseSubfolders') : t('expandSubfolders')"
+            @mousedown.prevent
             @click.stop="toggleGroup('shared')"
           >
             <ChevronDown v-if="openGroups.has('shared')" :size="13" aria-hidden="true" />
@@ -1529,8 +1730,9 @@ onBeforeUnmount(() => {
           :aria-expanded="homeHasChildren ? openGroups.has('home') : undefined"
           class="gs-row-wrap gs-tree-row"
           :class="{
-            active: activeFolderId === 'root',
-            'is-album-related': activeFolderId !== 'root' && Boolean(albumRelatedFolderIds?.has('root')),
+            active: isHomeRootActive,
+            'is-album-related': !isHomeRootActive && !isHomeRootHighlighted && Boolean(albumRelatedFolderIds?.has('root')),
+            'is-highlighted': isHomeRootHighlighted,
             'drag-over': isDropActive('folder', 'root'),
             'drop-over': isDropActive('folder', 'root'),
           }"
@@ -1546,6 +1748,7 @@ onBeforeUnmount(() => {
             type="button"
             class="gs-caret-btn"
             :aria-label="openGroups.has('home') ? t('collapseSubfolders') : t('expandSubfolders')"
+            @mousedown.prevent
             @click.stop="toggleGroup('home')"
           >
             <ChevronDown v-if="openGroups.has('home')" :size="13" aria-hidden="true" />
@@ -1555,7 +1758,7 @@ onBeforeUnmount(() => {
           <button
             type="button"
             class="gs-row gs-row-main"
-            :aria-current="activeFolderId === 'root' ? 'page' : undefined"
+            :aria-current="isHomeRootActive ? 'page' : undefined"
             :title="homeFolderLabel"
             @click="onSelectFolder('root')"
           >
@@ -1570,9 +1773,9 @@ onBeforeUnmount(() => {
           :aria-expanded="row.hasChildren ? row.expanded : undefined"
           class="gs-row-wrap gs-tree-row"
           :class="{
-            active: activeFolderId === row.folder.id,
-            'is-album-related': activeFolderId !== row.folder.id && Boolean(albumRelatedFolderIds?.has(row.folder.id)),
-            'is-highlighted': activeFolderId !== row.folder.id && highlightedFolderId === row.folder.id,
+            active: isFolderRowActive(row.folder.id),
+            'is-album-related': isFolderRowAlbumRelated(row.folder.id),
+            'is-highlighted': isFolderRowHighlighted(row.folder.id),
             'drag-over': isDropActive('folder', row.folder.id),
             'drop-over': isDropActive('folder', row.folder.id),
           }"
@@ -1592,6 +1795,7 @@ onBeforeUnmount(() => {
             type="button"
             class="gs-caret-btn"
             :aria-label="row.expanded ? t('collapseSubfolders') : t('expandSubfolders')"
+            @mousedown.prevent
             @click.stop="toggleFolderExpand(row.folder.id)"
           >
             <ChevronDown v-if="row.expanded" :size="13" aria-hidden="true" />
@@ -1602,7 +1806,7 @@ onBeforeUnmount(() => {
           <button
             type="button"
             class="gs-row gs-row-main"
-            :aria-current="activeFolderId === row.folder.id ? 'page' : undefined"
+            :aria-current="isFolderRowActive(row.folder.id) ? 'page' : undefined"
             :title="compact ? treeFolderName(row.folder) : undefined"
             @click="onSelectFolder(row.folder.id)"
           >
@@ -1647,6 +1851,7 @@ onBeforeUnmount(() => {
           type="button"
           class="gs-caret-btn"
           :aria-label="openGroups.has('clouds') ? t('collapseSubfolders') : t('expandSubfolders')"
+          @mousedown.prevent
           @click.stop="toggleGroup('clouds')"
         >
           <ChevronDown v-if="openGroups.has('clouds')" :size="13" aria-hidden="true" />
@@ -1669,13 +1874,19 @@ onBeforeUnmount(() => {
             :aria-expanded="yandexRootExpandable ? yandexRootExpanded : undefined"
             class="gs-row-wrap gs-tree-row"
             :class="{
-              active: activeYandexPath === '/',
+              active: isYandexRowActive('/'),
+              'is-album-related': isYandexRowAlbumRelated('/'),
+              'is-highlighted': isYandexRowHighlighted('/'),
               'drag-over': isDropActive('yandex', '/'),
               'drop-over': isDropActive('yandex', '/'),
             }"
             :style="rowIndent(1)"
             data-gallery-yandex-root
             data-gallery-yandex="/"
+            draggable="true"
+            @contextmenu.prevent.stop="onYandexContextMenu($event, '/', t('yandexDisk'))"
+            @dragstart="onYandexRootDragStart($event)"
+            @dragend="onFolderDragEnd"
             @dragenter="onYandexDragOver($event, '/')"
             @dragover="onYandexDragOver($event, '/')"
             @dragleave="onYandexDragLeave($event, '/')"
@@ -1687,6 +1898,7 @@ onBeforeUnmount(() => {
               class="gs-caret-btn"
               data-gallery-yandex-toggle="/"
               :aria-label="yandexRootExpanded ? t('collapseSubfolders') : t('expandSubfolders')"
+              @mousedown.prevent
               @click.stop="toggleYandexPath('/')"
             >
               <ChevronDown v-if="yandexRootExpanded" :size="13" aria-hidden="true" />
@@ -1696,7 +1908,7 @@ onBeforeUnmount(() => {
             <button
               type="button"
               class="gs-row gs-row-main"
-              :aria-current="activeYandexPath === '/' ? 'page' : undefined"
+              :aria-current="isYandexRowActive('/') ? 'page' : undefined"
               @click="onSelectYandex('/')"
             >
               <span class="gs-icon" aria-hidden="true"><Cloud :size="15" /></span>
@@ -1710,13 +1922,16 @@ onBeforeUnmount(() => {
               :aria-expanded="yrow.hasChildren ? yrow.expanded : undefined"
               class="gs-row-wrap gs-tree-row"
               :class="{
-                active: activeYandexPath === yrow.path,
+                active: isYandexRowActive(yrow.path),
+                'is-album-related': isYandexRowAlbumRelated(yrow.path),
+                'is-highlighted': isYandexRowHighlighted(yrow.path),
                 'drag-over': isDropActive('yandex', yrow.path),
                 'drop-over': isDropActive('yandex', yrow.path),
               }"
               :style="rowIndent(yrow.depth)"
               :data-gallery-yandex="yrow.path"
               draggable="true"
+              @contextmenu.prevent.stop="onYandexContextMenu($event, yrow.path, yrow.item.name || t('untitled'))"
               @dragstart="onYandexFolderDragStart($event, yrow.item)"
               @dragend="onFolderDragEnd"
               @dragenter="onYandexDragOver($event, yrow.path)"
@@ -1730,6 +1945,7 @@ onBeforeUnmount(() => {
                 class="gs-caret-btn"
                 :data-gallery-yandex-toggle="yrow.path"
                 :aria-label="yrow.expanded ? t('collapseSubfolders') : t('expandSubfolders')"
+                @mousedown.prevent
                 @click.stop="toggleYandexPath(yrow.path)"
               >
                 <ChevronDown v-if="yrow.expanded" :size="13" aria-hidden="true" />
@@ -1739,7 +1955,7 @@ onBeforeUnmount(() => {
               <button
                 type="button"
                 class="gs-row gs-row-main"
-                :aria-current="activeYandexPath === yrow.path ? 'page' : undefined"
+                :aria-current="isYandexRowActive(yrow.path) ? 'page' : undefined"
                 :title="compact ? (yrow.item.name || t('untitled')) : undefined"
                 @click="onSelectYandex(yrow.path)"
               >
@@ -1752,10 +1968,14 @@ onBeforeUnmount(() => {
               type="button"
               role="treeitem"
               class="gs-row gs-tree-row gs-file-row"
+              :class="{
+                active: highlightedYandexFilePath === normalizeYandexPath(yrow.path),
+                'is-highlighted': highlightedYandexFilePath === normalizeYandexPath(yrow.path),
+              }"
               :style="rowIndent(yrow.depth)"
               :data-gallery-yandex-file="yrow.path"
               :title="yrow.item.name || t('untitled')"
-              @click="onSelectYandex(yrow.parentPath)"
+              @click="emit('select-file', `yandex:${yrow.path}`, yrow.parentPath)"
             >
               <span class="gs-caret-spacer" aria-hidden="true"></span>
               <span class="gs-icon" aria-hidden="true">
@@ -2065,6 +2285,11 @@ onBeforeUnmount(() => {
   background: var(--ui-glass-btn-hover);
   color: var(--ui-text);
 }
+.gs-caret-btn:focus,
+.gs-caret-btn:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
 .gs-file-row {
   font-size: 12px;
   color: var(--ui-text-muted);
@@ -2106,7 +2331,7 @@ onBeforeUnmount(() => {
 .gs.compact .gs-soon-pill {
   display: none;
 }
-.gs button:not(.gs-row-main):focus-visible,
+.gs button:not(.gs-row-main):not(.gs-caret-btn):focus-visible,
 .gs-row-wrap:has(> .gs-row-main:focus-visible) {
   outline: 2px solid var(--ui-focus);
   outline-offset: 1px;

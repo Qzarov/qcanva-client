@@ -235,15 +235,16 @@ describe('macOS Photos Gallery (T-021)', () => {
     expect(wrapper.find('[data-gallery-folder="fold-b-sub"]').exists()).toBe(false);
     expect(wrapper.text()).not.toContain('В проводнике');
 
-    // Enabling showFilesInTree renders highlighted file AND never renders empty filename rows
+    // Enabling showFilesInTree renders highlighted file exclusively (suppressing folder highlight) AND never renders empty filename rows
     useExplorerLayoutPrefs().setShowFilesInTree(true);
     await flushPromises();
     await flushPromises();
+    expect(wrapper.get('[data-gallery-folder="fold-a"]').classes()).not.toContain('is-highlighted');
     expect(wrapper.get('[data-gallery-tree-file="f1"]').classes()).toContain('is-highlighted');
     expect(wrapper.get('[data-gallery-tree-file="f-empty"] .gs-name').text()).toBe('Без названия');
 
-    // Auto-collapse accordion when switching to fold-b-sub
-    await wrapper.setProps({ highlightedFolderId: 'fold-b-sub' });
+    // Auto-collapse accordion when switching to fold-b-sub (clearing file highlight)
+    await wrapper.setProps({ highlightedFolderId: 'fold-b-sub', highlightedFileId: null });
     await flushPromises();
     expect(wrapper.find('[data-gallery-folder="fold-a"]').exists()).toBe(false);
     expect(wrapper.get('[data-gallery-folder="fold-b-sub"]').classes()).toContain('is-highlighted');

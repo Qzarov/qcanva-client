@@ -10,6 +10,7 @@ import { resetExplorerLayoutPrefs, useExplorerLayoutPrefs } from '../../composab
 import { useI18n } from '../../composables/useI18n';
 import { resetSpaces, useSpaces } from '../../composables/useSpaces';
 import { resetYandexDiskStatus, useYandexDisk } from '../../composables/useYandexDisk';
+import { resetYandexMediaLibraryForTests } from '../../composables/useYandexMediaLibrary';
 import DashboardView from '../../views/DashboardView.vue';
 import AlbumShareDialog from '../dashboard/AlbumShareDialog.vue';
 import DrivePhotos from './DrivePhotos.vue';
@@ -278,6 +279,7 @@ describe('Gallery UX v2 & B-009/B-011/B-014 regressions', () => {
     resetExplorerGroupDnd();
     resetSpaces();
     resetYandexDiskStatus();
+    resetYandexMediaLibraryForTests();
     useI18n().setLocale('ru');
 
     requestMock.mockReset().mockResolvedValue(undefined);
@@ -1234,13 +1236,13 @@ describe('Gallery UX v2 & B-009/B-011/B-014 regressions', () => {
       expect(scrollSpy).toHaveBeenCalledWith({ block: 'nearest' });
 
       // Setting activeFolderId='f-shared' opens shared group too
-      await gs.setProps({ activeFolderId: 'f-shared' });
+      await gs.setProps({ activeFolderId: 'f-shared', highlightedFolderId: null });
       await settle();
       expect(gs.find('[data-gallery-folder="f-shared"]').exists()).toBe(true);
       expect(gs.get('[data-gallery-folder="f-shared"]').classes()).toContain('active');
 
       // Setting activeFolderId='root' activates home-root
-      await gs.setProps({ activeFolderId: 'root' });
+      await gs.setProps({ activeFolderId: 'root', highlightedFolderId: null });
       await settle();
       expect(gs.get('[data-gallery-tree-root="home"]').classes()).toContain('active');
       gs.unmount();
@@ -1403,10 +1405,8 @@ describe('Gallery UX v2 & B-009/B-011/B-014 regressions', () => {
     await membersPill.trigger('click');
     expect(dp.emitted('share-album')?.[0]).toEqual(['alb-1']);
 
-    const sharePill = dp.get('[data-testid="gallery-album-share"]');
-    expect(sharePill.text().trim()).toBe('Поделиться');
-    await sharePill.trigger('click');
-    expect(dp.emitted('share-album')?.[1]).toEqual(['alb-1']);
+    // Item 6: duplicate Поделиться button next to Участников: N is removed
+    expect(dp.find('[data-testid="gallery-album-share"]').exists()).toBe(false);
 
     // Solo album (N = 1) still shows Участников: 1
     await dp.setProps({ externalAlbumMembersCount: 1 });
@@ -1527,7 +1527,7 @@ describe('Gallery UX v2 & B-009/B-011/B-014 regressions', () => {
       props: {
         activeSection: 'library',
         activeFolderId: 'f-1',
-        highlightedFolderId: 'f-2',
+        highlightedFolderId: null as string | null,
         activeAlbumId: 'alb-1',
         activeYandexPath: '/',
         folders: [
@@ -1549,7 +1549,10 @@ describe('Gallery UX v2 & B-009/B-011/B-014 regressions', () => {
     expect(activeInner.classes()).not.toContain('active');
     expect(activeInner.classes()).not.toContain('is-highlighted');
 
-    // Highlighted folder: outer .gs-row-wrap has .is-highlighted (no .photo-linked), inner .gs-row-main has neither
+    // Highlighted folder differs from activeFolderId -> exclusively highlights ONLY f-2 (never two folders at once)
+    await sb.setProps({ highlightedFolderId: 'f-2' });
+    await nextTick();
+    expect(sb.get('[data-gallery-folder="f-1"]').classes()).not.toContain('active');
     const hlWrap = sb.get('[data-gallery-folder="f-2"]');
     expect(hlWrap.classes()).toContain('is-highlighted');
     expect(hlWrap.classes()).not.toContain('photo-linked');
@@ -1558,6 +1561,8 @@ describe('Gallery UX v2 & B-009/B-011/B-014 regressions', () => {
     expect(hlInner.classes()).not.toContain('is-highlighted');
 
     // Album & Yandex & home-root inner buttons never carry .active
+    await sb.setProps({ highlightedFolderId: null });
+    await nextTick();
     expect(sb.get('[data-gallery-album="alb-1"]').classes()).toContain('active');
     expect(sb.get('[data-gallery-album="alb-1"] .gs-row-main').classes()).not.toContain('active');
     expect(sb.get('[data-gallery-yandex="/"]').classes()).toContain('active');
@@ -1982,15 +1987,15 @@ describe('Gallery UX v2 & B-009/B-011/B-014 regressions', () => {
     expect(img.exists()).toBe(true);
     expect(img.attributes('referrerpolicy')).toBe('no-referrer');
 
-    // Right-click menu in Yandex mode shows Yandex actions and hides Q Space-only favorite/album
+    // Right-click menu in Yandex mode shows Yandex actions including favorite, and hides Q Space-only album
     await photoTile.trigger('contextmenu');
     await nextTick();
     expect(dp.find('[data-ctx-open]').exists()).toBe(true);
+    expect(dp.find('[data-ctx-favorite]').exists()).toBe(true);
     expect(dp.find('[data-ctx-show-folder]').exists()).toBe(true);
     expect(dp.find('[data-ctx-download]').exists()).toBe(true);
     expect(dp.find('[data-ctx-properties]').exists()).toBe(true);
     expect(dp.find('[data-ctx-delete]').exists()).toBe(true);
-    expect(dp.find('[data-ctx-favorite]').exists()).toBe(false);
     expect(dp.find('[data-ctx-album]').exists()).toBe(false);
 
     // Свойства opens PhotoPanel directly in fallbackMode WITHOUT calling photosApi.details
@@ -2032,6 +2037,153 @@ describe('Gallery UX v2 & B-009/B-011/B-014 regressions', () => {
     // Crumb exits back to Медиатека
     await dp.get('[data-testid="gallery-yandex-crumb"]').trigger('click');
     expect(dp.emitted('select-yandex-path')?.[1]).toEqual([null]);
+    dp.unmount();
+  });
+
+  it('Batch8 Item 1: GallerySidebar removes caret focus ring and enforces exclusive single highlight for photo file rows (Q Space & Yandex)', async () => {
+    expect(gallerySidebarSource).toMatch(/\.gs-caret-btn:focus,\s*\.gs-caret-btn:focus-visible\s*\{[^}]*outline:\s*none\s*!important;[^}]*box-shadow:\s*none\s*!important;/);
+    expect(gallerySidebarSource).toContain('@mousedown.prevent');
+
+    const layoutPrefs = useExplorerLayoutPrefs();
+    layoutPrefs.setShowFilesInTree(true);
+
+    getFolderItemsMock.mockImplementation(async (folderId: string) => {
+      if (folderId === 'f-qdisk') {
+        return {
+          items: [{ id: 'file-1', name: '2026-08-07.JPG', kind: 'photo', deletedAt: null }],
+          nextCursor: null,
+        };
+      }
+      return { items: [], nextCursor: null };
+    });
+
+    const sb = mount(GallerySidebar, {
+      attachTo: document.body,
+      props: {
+        activeSection: 'library',
+        activeFolderId: 'f-qdisk',
+        highlightedFolderId: 'f-qdisk',
+        highlightedFileId: 'file-1',
+        folders: [
+          { id: 'f-qdisk', name: 'Q Disk', parentId: null, role: 'owner' },
+          { id: 'f-other', name: 'Архив', parentId: null, role: 'owner' },
+        ],
+        albums: [],
+      },
+    });
+    await settle();
+
+    // Containing folder auto-expanded and loaded files; ONLY file row is active, folder row is NOT active or highlighted
+    const folderRow = sb.get('[data-gallery-folder="f-qdisk"]');
+    expect(folderRow.classes()).not.toContain('active');
+    expect(folderRow.classes()).not.toContain('is-highlighted');
+
+    const fileRow = sb.get('[data-gallery-tree-file="file-1"]');
+    expect(fileRow.classes()).toContain('active');
+    expect(sb.findAll('.gs-tree-row.active')).toHaveLength(1);
+    sb.unmount();
+  });
+
+  it('Batch8 Items 4 & 5: GallerySidebar supports Yandex root DnD, yandex-contextmenu, album-sources-changed, albumRelatedYandexPaths, and Yandex favorites drop; DrivePhotos renders Yandex media in ФОТО & Albums', async () => {
+    yandexStatusMock.mockResolvedValue({
+      enabled: true,
+      connected: true,
+      reconnectRequired: false,
+      login: 'vlad',
+      displayName: 'Vlad',
+    });
+    yandexListMock.mockImplementation(async (path: string) => {
+      if (path === '/') {
+        return {
+          path: '/',
+          total: 1,
+          items: [
+            { path: '/Фотокамера', name: 'Фотокамера', type: 'dir', size: null, mime: null, mediaType: null, md5: null, createdAt: null, modifiedAt: null, publicUrl: null, previewUrl: null },
+          ],
+        };
+      }
+      return { path, total: 0, items: [] };
+    });
+    yandexListMediaMock.mockResolvedValue([
+      {
+        path: '/Фотокамера/lake.jpg',
+        name: 'lake.jpg',
+        type: 'file',
+        size: 3000,
+        mime: 'image/jpeg',
+        mediaType: 'image',
+        md5: 'y-lake',
+        createdAt: '2026-10-22T12:00:00Z',
+        modifiedAt: '2026-10-22T12:00:00Z',
+        publicUrl: null,
+        previewUrl: '/api/yandex-disk/preview?path=/Фотокамера/lake.jpg&size=L',
+      },
+    ]);
+
+    // 1. GallerySidebar: root draggable, yandex-contextmenu, album-sources-changed, albumRelatedYandexPaths, onFavDrop for Yandex
+    const sb = mount(GallerySidebar, {
+      attachTo: document.body,
+      props: {
+        activeSection: 'library',
+        activeAlbumId: 'alb-1',
+        albumRelatedYandexPaths: new Set(['/Фотокамера']),
+        folders: [],
+        albums: [{ id: 'alb-1', name: 'Отпуск', count: 1, bytes: 0, createdAt: '', addedAt: '', coverFileIds: [] }],
+      },
+    });
+    await settle();
+
+    // Auto-expanded clouds + '/' -> /Фотокамера is visible with .is-album-related
+    const ySub = sb.get('[data-gallery-yandex="/Фотокамера"]');
+    expect(ySub.classes()).toContain('is-album-related');
+    expect(ySub.classes()).not.toContain('active');
+
+    // Root Яндекс Диск is draggable and emits yandex-contextmenu
+    const yRoot = sb.get('[data-gallery-yandex-root]');
+    expect(yRoot.attributes('draggable')).toBe('true');
+    await yRoot.trigger('contextmenu', { clientX: 50, clientY: 90 });
+    expect(sb.emitted('yandex-contextmenu')?.[0]?.[0]).toEqual(
+      expect.objectContaining({ path: '/', name: 'Яндекс Диск' }),
+    );
+    await ySub.trigger('contextmenu', { clientX: 50, clientY: 120 });
+    expect(sb.emitted('yandex-contextmenu')?.[1]?.[0]).toEqual(
+      expect.objectContaining({ path: '/Фотокамера', name: 'Фотокамера' }),
+    );
+
+    // Dragging Yandex root '/' onto Album calls spacesApi.addYandexFolder('alb-1', '/') and emits album-sources-changed('alb-1')
+    await yRoot.trigger('dragstart');
+    await sb.get('[data-gallery-album="alb-1"]').trigger('drop');
+    await settle();
+    expect(spacesAddYandexFolderMock).toHaveBeenCalledWith('alb-1', '/');
+    expect(sb.emitted('album-sources-changed')?.[0]).toEqual(['alb-1']);
+
+    // Dropping a Yandex photo on Избранное marks it favorite in layoutPrefs without emitting drop-favorites
+    const dnd = useExplorerGroupDnd();
+    dnd.startGroupDrag({
+      source: 'gallery',
+      items: [{ key: 'photo:yandex:/Фотокамера/lake.jpg', id: 'yandex:/Фотокамера/lake.jpg', kind: 'photo', name: 'lake.jpg' }],
+    });
+    await sb.get('[data-drop-favorites="true"]').trigger('drop');
+    await nextTick();
+    expect(useExplorerLayoutPrefs().isFavorite('yandex:/Фотокамера/lake.jpg')).toBe(true);
+    expect(sb.emitted('drop-favorites')).toBeUndefined();
+    sb.unmount();
+
+    // 2. DrivePhotos + real PhotosFeed renders Yandex photo inside Медиатека alongside Q Space photos
+    const dp = mountDrivePhotos({ activeSection: 'library' });
+    await settle();
+    expect(dp.find('[data-file-id="f1"]').exists()).toBe(true);
+    expect(dp.find('[data-file-id="yandex:/Фотокамера/lake.jpg"]').exists()).toBe(true);
+
+    // 3. DrivePhotos + real PhotosFeed renders Yandex source inside Медиа album
+    spacesGetMock.mockResolvedValueOnce({
+      id: 'alb-1',
+      name: 'Отпуск',
+      sources: [{ id: 'src-y1', kind: 'yandex', title: 'Фотокамера', folderId: null, yandexPath: '/Фотокамера' }],
+    });
+    await dp.setProps({ externalAlbumId: 'alb-1' });
+    await settle();
+    expect(dp.find('[data-file-id="yandex:/Фотокамера/lake.jpg"]').exists()).toBe(true);
     dp.unmount();
   });
 });

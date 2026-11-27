@@ -1042,7 +1042,11 @@ describe('DashboardView T-021 + T-018 Explorer Redesign Integration', () => {
 
     (wrapper.vm as any).openYandexPath('/');
     await nextTick();
-    expect(wrapper.find('[data-s2-scope-pill]').exists()).toBe(false);
+    expect(wrapper.get('[data-s2-scope-pill]').text()).toContain('в: Яндекс Диск');
+
+    (wrapper.vm as any).openYandexPath('/Фото/Отпуск');
+    await nextTick();
+    expect(wrapper.get('[data-s2-scope-pill]').text()).toContain('в: Отпуск');
   });
 
   it('B-008: never enables Android mode in a narrow web browser (<= 768px), keeps desktop popovers + expand-sidebar drawer trigger, and enables Android mode only when Capacitor.isNativePlatform() === true', async () => {
@@ -1510,12 +1514,12 @@ describe('DashboardView T-021 + T-018 Explorer Redesign Integration', () => {
     expect(wrapper.find('[data-dashboard-view="space"] [data-explorer-table]').exists()).toBe(true);
     expect(wrapper.get('.dashboard-shell').classes()).not.toContain('dashboard-list-view');
 
-    // B-023 header: clickable Участников: 1 pill + clean Share button, NO ⋯ menu
+    // B-038 header: single clickable Участников: 1 pill (no duplicate Share button, NO ⋯ menu)
     expect(wrapper.find('[data-headroom-space-count]').exists()).toBe(false);
     expect(wrapper.find('[data-headroom-space-menu]').exists()).toBe(false);
     expect(wrapper.find('[data-headroom-space-actions]').exists()).toBe(false);
     expect(wrapper.get('[data-headroom-space-members]').text().trim()).toBe('Участников: 1');
-    expect(wrapper.get('[data-headroom-space-share]').text().trim()).toBe('Поделиться');
+    expect(wrapper.find('[data-headroom-space-share]').exists()).toBe(false);
     await wrapper.get('[data-headroom-space-members]').trigger('click');
     await flushPromises();
     expect(wrapper.find('[data-album-share-dialog]').exists()).toBe(true);

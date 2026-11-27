@@ -269,7 +269,7 @@ describe('DashboardView Spaces multi-selection and bulk move', () => {
     expect(wrapper.find('.folder-manager-top').exists()).toBe(false);
     expect(wrapper.find('[data-headroom-space-members]').exists()).toBe(true);
     expect(wrapper.get('[data-headroom-space-members]').text().trim()).toBe('Участников: 2');
-    expect(wrapper.find('[data-headroom-space-share]').exists()).toBe(true);
+    expect(wrapper.find('[data-headroom-space-share]').exists()).toBe(false);
     expect(wrapper.find('[data-headroom-space-menu]').exists()).toBe(false);
     expect(wrapper.find('[data-select-box]').exists()).toBe(false);
 

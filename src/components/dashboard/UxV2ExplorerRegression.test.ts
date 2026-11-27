@@ -917,7 +917,8 @@ describe('UX v2 Explorer & B-011/B-012/B-013/B-014 regressions', () => {
     expect(topRedesign).toMatch(/\.top-chrome\.explorer-headroom,\s*\.explorer-headroom\s*\{[^}]*width:\s*100%;[^}]*min-width:\s*0;[^}]*max-width:\s*100%;[^}]*box-sizing:\s*border-box;/);
     expect(topRedesign).toMatch(/\.explorer-headroom\s+\.ws-header\s*\{[^}]*width:\s*100%;[^}]*min-width:\s*0;[^}]*max-width:\s*100%;[^}]*box-sizing:\s*border-box;/);
     expect(topRedesign).toMatch(/\.explorer-headroom-controls\s*\{[^}]*flex:\s*none;/);
-    expect(searchSrc).toMatch(/\.s2-wrap\s*\{[^}]*flex:\s*1\s+1\s+0;[^}]*min-width:\s*0;[^}]*max-width:\s*720px;/);
+    expect(searchSrc).toMatch(/\.s2-wrap\s*\{[^}]*flex:\s*1\s+1\s+0;[^}]*min-width:\s*0;[^}]*max-width:\s*460px;/);
+    expect(searchSrc).toMatch(/\.s2-wrap\.is-open,\s*\.s2-wrap:focus-within,\s*\.s2-wrap\.has-query\s*\{[^}]*max-width:\s*720px;/);
 
     expect(shellCss).toMatch(/\.dashboard-central-shell\s*\{[^}]*width:\s*100%;[^}]*min-width:\s*0;[^}]*max-width:\s*100%;[^}]*box-sizing:\s*border-box;[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\);/);
     expect(shellCss).toMatch(/\.dashboard-central-shell\s*>\s*\.app-header\s*\{[^}]*min-width:\s*0;[^}]*max-width:\s*100%;/);
@@ -944,5 +945,76 @@ describe('UX v2 Explorer & B-011/B-012/B-013/B-014 regressions', () => {
     expect(tableSrc).toMatch(/\.exp-sort-arrow\s*\{[^}]*flex:\s*none;/);
     expect(tableSrc).toMatch(/\.album-pill\s*\{[^}]*max-width:\s*100%;[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;/);
     expect(tableSrc).toMatch(/@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*:global\(\.is-android-app\)\s+\.exp-table-shell\s+\.exp-table-head,[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+74px\s*!important;[\s\S]*min-width:\s*0\s*!important;/);
+  });
+
+  it('Item 7: ExplorerInlineSearch elongates smoothly on focus/open/has-query in both Files and Media and tracks popover width via ResizeObserver', async () => {
+    const searchSrc = fs.readFileSync(path.resolve(__dirname, './ExplorerInlineSearch.vue'), 'utf8');
+
+    // Smooth elongation CSS in Files and Media + reduced-motion opt-out
+    expect(searchSrc).toMatch(/\.s2-wrap\s*\{[^}]*flex:\s*1\s+1\s+0;[^}]*min-width:\s*0;[^}]*max-width:\s*460px;[^}]*transition:\s*max-width\s+0\.28s\s+cubic-bezier\(0\.16,\s*1,\s*0\.3,\s*1\);/);
+    expect(searchSrc).toMatch(/\.s2-wrap\.is-open,\s*\.s2-wrap:focus-within,\s*\.s2-wrap\.has-query\s*\{[^}]*max-width:\s*720px;/);
+    expect(searchSrc).toMatch(/\.s2-wrap\.in-gallery\s*\{[^}]*flex:\s*0\s+1\s+280px;[^}]*min-width:\s*180px;[^}]*max-width:\s*300px;[^}]*transition:[\s\S]*flex-basis\s+0\.28s\s+cubic-bezier\(0\.16,\s*1,\s*0\.3,\s*1\)[\s\S]*max-width\s+0\.28s\s+cubic-bezier\(0\.16,\s*1,\s*0\.3,\s*1\)/);
+    expect(searchSrc).toMatch(/\.s2-wrap\.in-gallery\.is-open,\s*\.s2-wrap\.in-gallery:focus-within,\s*\.s2-wrap\.in-gallery\.has-query\s*\{[^}]*flex:\s*1\s+1\s+560px;[^}]*max-width:\s*min\(620px,\s*100%\);/);
+    expect(searchSrc).toMatch(/@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{[\s\S]*\.s2-wrap,[\s\S]*\.s2-wrap\.in-gallery,[\s\S]*transition:\s*none;/);
+
+    // Mock ResizeObserver to verify live popover width/left tracking during box expansion
+    const roCallbacks: ResizeObserverCallback[] = [];
+    const observeSpy = vi.fn();
+    const disconnectSpy = vi.fn();
+    const OrigRO = globalThis.ResizeObserver;
+    class MockRO {
+      constructor(cb: ResizeObserverCallback) {
+        roCallbacks.push(cb);
+      }
+      observe = observeSpy;
+      unobserve = vi.fn();
+      disconnect = disconnectSpy;
+    }
+    globalThis.ResizeObserver = MockRO as unknown as typeof ResizeObserver;
+
+    try {
+      const wrapper = mount(ExplorerInlineSearch, {
+        attachTo: document.body,
+        props: {
+          modelValue: '',
+          inGallery: true,
+          scopeLabel: 'Медиатека',
+        },
+      });
+
+      const wrap = wrapper.get('[data-s2-search]');
+      const boxEl = wrapper.get('.s2-box').element as HTMLElement;
+      let currentRect = { left: 700, right: 980, top: 10, bottom: 46, width: 280, height: 36, x: 700, y: 10, toJSON() {} } as DOMRect;
+      boxEl.getBoundingClientRect = () => currentRect;
+
+      expect(wrap.classes()).toContain('in-gallery');
+      expect(wrap.classes()).not.toContain('is-open');
+      expect(wrap.classes()).not.toContain('has-query');
+
+      await wrapper.setProps({ modelValue: 'закат' });
+      await nextTick();
+      expect(wrap.classes()).toContain('has-query');
+
+      await wrapper.get('[data-s2-input]').trigger('focus');
+      await nextTick();
+      expect(wrap.classes()).toContain('is-open');
+      expect(observeSpy).toHaveBeenCalledWith(boxEl);
+
+      const pop = document.body.querySelector<HTMLElement>('[data-s2-popover]');
+      expect(pop).toBeTruthy();
+      expect(pop!.style.width).toBe('520px');
+
+      // Simulate box growing to 600px mid-transition -> ResizeObserver updates popover width to 600px
+      currentRect = { left: 380, right: 980, top: 10, bottom: 46, width: 600, height: 36, x: 380, y: 10, toJSON() {} } as DOMRect;
+      for (const cb of roCallbacks) cb([], {} as ResizeObserver);
+      await nextTick();
+      expect(pop!.style.width).toBe('600px');
+      expect(pop!.style.left).toBe('380px');
+
+      wrapper.unmount();
+      expect(disconnectSpy).toHaveBeenCalled();
+    } finally {
+      globalThis.ResizeObserver = OrigRO;
+    }
   });
 });

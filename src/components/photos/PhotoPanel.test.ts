@@ -455,4 +455,103 @@ describe('PhotoPanel', () => {
     expect(w.emitted('close')).toBeUndefined();
     w.unmount();
   });
+
+  it('Item 3: renders ML caption, model badge, clickable tags (select-tag), OCR text, and pending/empty fallbacks', async () => {
+    detailsMock.mockResolvedValueOnce(
+      mkDetails({
+        ai: {
+          status: 'ready',
+          caption: 'Солнечный закат над горным озером',
+          tags: ['закат', 'горы', 'озеро'],
+          ocrText: 'ALTAI CAMP 2026',
+          model: 'gemini-2.5-flash',
+          source: 'provider',
+        },
+      }),
+    );
+    const w = await setup('f1');
+    const ml = w.get('[data-testid="photo-panel-ml"]');
+    expect(ml.text()).toContain('ИИ-разметка');
+    expect(w.get('[data-testid="photo-ml-model"]').text()).toBe('gemini-2.5-flash');
+    expect(w.get('[data-testid="photo-ml-caption"]').text()).toBe('Солнечный закат над горным озером');
+    expect(w.get('[data-testid="photo-ml-ocr"]').text()).toContain('ALTAI CAMP 2026');
+    expect(w.find('[data-testid="photo-ml-empty"]').exists()).toBe(false);
+
+    const tagBtns = w.findAll('[data-testid="photo-ml-tag"]');
+    expect(tagBtns.map((b) => b.text())).toEqual(['закат', 'горы', 'озеро']);
+    await tagBtns[1]!.trigger('click');
+    expect(w.emitted('select-tag')).toEqual([['горы']]);
+
+    // Pending ML indexing state (RU & EN)
+    detailsMock.mockResolvedValueOnce(
+      mkDetails({
+        item: mkItem({ fileId: 'f2' }),
+        ai: { status: 'pending', caption: null, tags: [], ocrText: null, model: null, source: null },
+      }),
+    );
+    await w.setProps({ fileId: 'f2' });
+    await flushPromises();
+    expect(w.get('[data-testid="photo-ml-empty"]').text()).toBe('Ожидает ML-индексации');
+
+    const i18n = await import('../../composables/useI18n');
+    i18n.useI18n().setLocale('en');
+    await flushPromises();
+    expect(w.get('[data-testid="photo-panel-ml"]').text()).toContain('AI & ML Info');
+    expect(w.get('[data-testid="photo-ml-empty"]').text()).toBe('Pending ML indexing');
+
+    // Empty / clip_only without tags
+    detailsMock.mockResolvedValueOnce(
+      mkDetails({
+        item: mkItem({ fileId: 'f3' }),
+        ai: { status: 'clip_only', caption: null, tags: [], ocrText: null, model: 'ViT-B-32__openai', source: 'clip' },
+      }),
+    );
+    await w.setProps({ fileId: 'f3' });
+    await flushPromises();
+    expect(w.get('[data-testid="photo-ml-model"]').text()).toBe('ViT-B-32__openai');
+    expect(w.get('[data-testid="photo-ml-empty"]').text()).toBe('No ML tags detected');
+
+    i18n.useI18n().setLocale('ru');
+    await flushPromises();
+    expect(w.get('[data-testid="photo-ml-empty"]').text()).toBe('ML-теги не определены');
+  });
+
+  it('Item 4: enables favorite heart toggle for Yandex fallback items via explorer layout prefs', async () => {
+    const prefsMod = await import('../../composables/useExplorerLayoutPrefs');
+    prefsMod.resetExplorerLayoutPrefs(true);
+    const i18n = await import('../../composables/useI18n');
+    i18n.useI18n().setLocale('ru');
+    const { default: PhotoPanel } = await import('./PhotoPanel.vue');
+
+    const ydItem = {
+      ...mkItem({ fileId: 'yandex:/Фото/sunset.jpg', name: 'sunset.jpg', folderId: '/Фото' }),
+      previewSrc: 'https://hub.example/api/yandex-disk/preview?path=/Фото/sunset.jpg',
+      noReferrer: true,
+    };
+
+    wrapper = mount(PhotoPanel, {
+      props: { fileId: ydItem.fileId, item: ydItem, canFavorite: true },
+      attachTo: document.body,
+    });
+    await flushPromises();
+
+    expect(detailsMock).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-testid="photo-panel-ml"]').exists()).toBe(false);
+
+    const favBtn = wrapper.get('[data-panel-fav]');
+    expect(favBtn.attributes('aria-pressed')).toBe('false');
+    await favBtn.trigger('click');
+    await flushPromises();
+
+    expect(prefsMod.useExplorerLayoutPrefs().isFavorite('yandex:/Фото/sunset.jpg')).toBe(true);
+    expect(wrapper.get('[data-panel-fav]').attributes('aria-pressed')).toBe('true');
+    expect(wrapper.emitted('changed')![0]).toEqual([{ fileId: 'yandex:/Фото/sunset.jpg', favorite: true }]);
+
+    await wrapper.get('[data-panel-fav]').trigger('click');
+    await flushPromises();
+    expect(prefsMod.useExplorerLayoutPrefs().isFavorite('yandex:/Фото/sunset.jpg')).toBe(false);
+    expect(wrapper.get('[data-panel-fav]').attributes('aria-pressed')).toBe('false');
+    expect(wrapper.emitted('changed')![1]).toEqual([{ fileId: 'yandex:/Фото/sunset.jpg', favorite: false }]);
+    prefsMod.resetExplorerLayoutPrefs(true);
+  });
 });

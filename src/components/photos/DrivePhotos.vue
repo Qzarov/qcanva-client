@@ -60,19 +60,6 @@
         </button>
 
         <button
-          v-if="effectiveAlbumId"
-          type="button"
-          class="dp-icon-pill dp-album-share-pill"
-          data-testid="gallery-album-share"
-          :aria-label="t('galleryShare')"
-          :title="t('galleryShare')"
-          @click="emit('share-album', effectiveAlbumId)"
-        >
-          <Share2 :size="14" aria-hidden="true" />
-          <span>{{ t('galleryShare') }}</span>
-        </button>
-
-        <button
           v-if="selectedPeople.length > 0"
           type="button"
           class="dp-crumb-pill"
@@ -279,6 +266,7 @@
           :current="currentId"
           :external-items="isYandexMode ? yandexFeedItems : null"
           :external-loading="isYandexMode ? yandexLoading : false"
+          :supplementary-items="supplementaryFeedItems"
           @open="onOpen"
           @focus-photo="onFeedFocusPhoto"
           @activate="onActivate"
@@ -310,12 +298,13 @@
               :key="panelEpoch"
               :file-id="panelId ?? ''"
               :item="panelItem"
-              :can-favorite="!isPanelItemYandex"
+              :can-favorite="true"
               :selected-items="selectedFeedItems"
               :hide-open-folder="hideInternalTabs || isPanelItemYandex"
               @close="closePanel"
               @open-folder="onOpenFolder"
               @open-album="onOpenAlbum"
+              @select-tag="onSelectSearchTag"
               @group-favorite="toggleFavoriteAction"
               @group-share="shareAction"
               @group-album="actions.toggleAlbumMenu()"
@@ -347,6 +336,14 @@
           <button type="button" role="menuitem" class="dp-ctx-item" data-ctx-open @click="ctxOpenViewer">
             <Eye :size="14" aria-hidden="true" />
             <span>{{ t('photosOpen') }}</span>
+          </button>
+
+          <button type="button" role="menuitem" class="dp-ctx-item" data-ctx-favorite @click="ctxToggleFavorite">
+            <Heart :size="14" aria-hidden="true" />
+            <span>
+              {{ ctxAllFavorite ? t('explorerRemoveFromFavorites') : t('explorerAddToFavorites') }}
+              <template v-if="ctxTargetIds.length > 1">({{ ctxTargetIds.length }})</template>
+            </span>
           </button>
 
           <button
@@ -540,7 +537,7 @@
       :total="viewer!.items.length"
       :has-prev="viewer!.index > 0"
       :has-next="viewer!.index < viewer!.items.length - 1"
-      :can-favorite="!isViewerItemYandex"
+      :can-favorite="true"
       :can-share="!isViewerItemYandex || Boolean(viewerItemPublicUrl)"
       :can-delete="true"
       :can-info="true"
@@ -552,6 +549,7 @@
       @share="shareSingleItem"
       @delete="onViewerDelete"
       @panel-changed="onPanelChanged"
+      @select-tag="onViewerSelectTag"
     />
 
     <FolderPickerDialog
@@ -637,7 +635,7 @@ import {
   type FeedPeriod,
   type SortKey,
 } from '../../api/photos';
-import { spacesApi } from '../../api/spaces';
+import { spacesApi, type SpaceFeedItem } from '../../api/spaces';
 import {
   downloadYandexLink,
   settleYandexOutcome,
@@ -655,6 +653,7 @@ import {
 import { useI18n, type MessageKey } from '../../composables/useI18n';
 import { useSpaces } from '../../composables/useSpaces';
 import { useToast } from '../../composables/useToast';
+import { useYandexMediaLibrary } from '../../composables/useYandexMediaLibrary';
 import DashboardTrash from '../dashboard/DashboardTrash.vue';
 import ExplorerInlineSearch, {
   type InlineSearchAlbum,
@@ -735,6 +734,7 @@ const toast = useToast();
 const view = usePhotosView();
 const prefs = useExplorerLayoutPrefs();
 const { spaces, load: loadSpaces } = useSpaces();
+const yandexLib = useYandexMediaLibrary();
 const mockMode = isPhotosMock();
 
 const fmt = (key: MessageKey, vars: Record<string, string | number>): string =>
@@ -888,12 +888,13 @@ const yandexScopeName = computed(() =>
 
 function yandexItemToViewerMedia(item: YandexItem): YandexViewerMediaItem {
   const isVideo = item.mediaType === 'video' || Boolean(item.mime?.toLowerCase().startsWith('video/'));
+  const fileId = `${YANDEX_ID_PREFIX}${item.path}`;
   const parentPath = yandexParentPath(item.path);
   const takenAt = item.modifiedAt || item.createdAt || new Date().toISOString();
   const folderLabel = yandexFolderDisplayName(parentPath);
   return {
-    fileId: `${YANDEX_ID_PREFIX}${item.path}`,
-    hash: item.md5 || `${YANDEX_ID_PREFIX}${item.path}`,
+    fileId,
+    hash: item.md5 || fileId,
     name: item.name,
     mime: item.mime || (isVideo ? 'video/mp4' : 'image/jpeg'),
     kind: isVideo ? 'video' : 'photo',
@@ -905,7 +906,7 @@ function yandexItemToViewerMedia(item: YandexItem): YandexViewerMediaItem {
     durationSec: null,
     bytes: item.size ?? 0,
     folderId: parentPath,
-    favorite: false,
+    favorite: prefs.isFavorite(fileId),
     albumIds: [],
     thumbhash: null,
     share: null,
@@ -924,6 +925,59 @@ function yandexItemToViewerMedia(item: YandexItem): YandexViewerMediaItem {
   };
 }
 
+function spaceFeedYandexItemToViewerMedia(spaceId: string, item: SpaceFeedItem): YandexViewerMediaItem | null {
+  if (item.origin !== 'yandex' || !item.path) return null;
+  const mime = (item.mime ?? '').toLowerCase();
+  const isVideo = item.mediaType === 'video' || mime.startsWith('video/');
+  const isImage = item.mediaType === 'image' || mime.startsWith('image/');
+  if (!isVideo && !isImage) return null;
+  const fileId = `${YANDEX_ID_PREFIX}${item.path}`;
+  const parentPath = yandexParentPath(item.path);
+  const takenAt = item.updatedAt || new Date().toISOString();
+  const folderLabel = yandexFolderDisplayName(parentPath);
+  const previewSrc = item.previewUrl ? resolveDownloadUrl(item.previewUrl) : null;
+  const sourceId = item.sourceId;
+  const yPath = item.path;
+  return {
+    fileId,
+    hash: item.hash || fileId,
+    name: item.name,
+    mime: item.mime || (isVideo ? 'video/mp4' : 'image/jpeg'),
+    kind: isVideo ? 'video' : 'photo',
+    processed: false,
+    takenAt,
+    localTakenAt: takenAt,
+    width: null,
+    height: null,
+    durationSec: null,
+    bytes: item.size ?? 0,
+    folderId: parentPath,
+    favorite: prefs.isFavorite(fileId),
+    albumIds: [spaceId],
+    thumbhash: null,
+    share: null,
+    previewSrc,
+    noReferrer: true,
+    sizeBytes: item.size ?? undefined,
+    mimeType: item.mime || undefined,
+    folderName: folderLabel,
+    yandexPath: yPath,
+    publicUrl: null,
+    resolveOriginalUrl: async () => {
+      if (sourceId && typeof spacesApi?.yandexDownload === 'function') {
+        return (await spacesApi.yandexDownload(spaceId, sourceId, yPath)).href;
+      }
+      return (await yandexDisk.downloadLink(yPath)).href;
+    },
+    downloadAction: async () => {
+      const res = sourceId && typeof spacesApi?.yandexDownload === 'function'
+        ? await spacesApi.yandexDownload(spaceId, sourceId, yPath)
+        : await yandexDisk.downloadLink(yPath);
+      downloadYandexLink(res.href, item.name);
+    },
+  };
+}
+
 const yandexRawItems = shallowRef<YandexItem[]>([]);
 const yandexLoading = ref(false);
 let yandexAbort: AbortController | null = null;
@@ -932,6 +986,50 @@ let yandexLoadSeq = 0;
 const yandexFeedItems = computed<YandexViewerMediaItem[]>(() =>
   yandexRawItems.value.map(yandexItemToViewerMedia),
 );
+
+let albumLoadSeq = 0;
+const albumYandexRawItems = shallowRef<YandexItem[]>([]);
+const albumYandexSpaceFeedItems = shallowRef<{ spaceId: string; items: SpaceFeedItem[] } | null>(null);
+
+const albumYandexFeedItems = computed<YandexViewerMediaItem[]>(() => {
+  const albId = effectiveAlbumId.value;
+  if (!albId) return [];
+  const byId = new Map<string, YandexViewerMediaItem>();
+  for (const raw of albumYandexRawItems.value) {
+    const mapped = yandexItemToViewerMedia(raw);
+    mapped.albumIds = [albId];
+    byId.set(mapped.fileId, mapped);
+  }
+  if (albumYandexSpaceFeedItems.value && albumYandexSpaceFeedItems.value.spaceId === albId) {
+    for (const sItem of albumYandexSpaceFeedItems.value.items) {
+      const mapped = spaceFeedYandexItemToViewerMedia(albId, sItem);
+      if (mapped && !byId.has(mapped.fileId)) {
+        byId.set(mapped.fileId, mapped);
+      }
+    }
+  }
+  return [...byId.values()];
+});
+
+const isPhotoSectionWithYandex = computed(() =>
+  !effectiveAlbumId.value
+  && !props.externalFolderId
+  && !isYandexMode.value
+  && selectedPeople.value.length === 0
+  && props.activeSection !== 'trash',
+);
+
+const supplementaryFeedItems = computed<ViewerMediaItem[] | null>(() => {
+  if (isYandexMode.value) return null;
+  if (effectiveAlbumId.value) {
+    return albumYandexFeedItems.value.length > 0 ? albumYandexFeedItems.value : null;
+  }
+  if (isPhotoSectionWithYandex.value) {
+    const list = yandexLib.items.value;
+    return list.length > 0 ? list : null;
+  }
+  return null;
+});
 
 async function loadYandexMedia(path: string): Promise<void> {
   yandexAbort?.abort();
@@ -1051,15 +1149,42 @@ function itemMatchesScope(item: FeedItem): boolean {
 
 const isYandexScopedSearch = computed(() => isYandexMode.value && searchScopeMode.value === 'current');
 
+function matchesYandexSearchQuery(item: ViewerMediaItem, qLower: string): boolean {
+  if (!qLower) return true;
+  const name = (item.name || '').toLowerCase();
+  const folder = (item.folderId || '').toLowerCase();
+  const yPath = (
+    (item as YandexViewerMediaItem).yandexPath
+    || (isYandexFileId(item.fileId) ? yandexPathFromFileId(item.fileId) : '')
+  ).toLowerCase();
+  return name.includes(qLower) || folder.includes(qLower) || yPath.includes(qLower);
+}
+
 const scopedSearchItems = computed<ViewerMediaItem[]>(() => {
+  const qLower = searchQuery.value.trim().toLowerCase();
   if (isYandexScopedSearch.value) {
-    const q = searchQuery.value.trim().toLowerCase();
-    if (!q) return yandexFeedItems.value;
-    return yandexFeedItems.value.filter(
-      (it) => it.name.toLowerCase().includes(q) || it.yandexPath.toLowerCase().includes(q),
-    );
+    if (!qLower) return yandexFeedItems.value;
+    return yandexFeedItems.value.filter((it) => matchesYandexSearchQuery(it, qLower));
   }
-  return searchItems.value.filter(itemMatchesScope);
+  const qspaceFiltered = searchItems.value.filter(itemMatchesScope);
+  let yandexPool: readonly ViewerMediaItem[] = [];
+  if (searchScopeMode.value !== 'current' || (!effectiveAlbumId.value && !props.externalFolderId && !isYandexMode.value)) {
+    yandexPool = yandexLib.items.value;
+  } else if (effectiveAlbumId.value && albumYandexFeedItems.value.length > 0) {
+    yandexPool = albumYandexFeedItems.value;
+  }
+  if (yandexPool.length === 0 || !qLower) return qspaceFiltered;
+  const yMatches = yandexPool.filter((it) => matchesYandexSearchQuery(it, qLower));
+  if (yMatches.length === 0) return qspaceFiltered;
+  const seen = new Set(qspaceFiltered.map((i) => i.fileId));
+  const merged: ViewerMediaItem[] = [...qspaceFiltered];
+  for (const item of yMatches) {
+    if (!seen.has(item.fileId)) {
+      seen.add(item.fileId);
+      merged.push(item);
+    }
+  }
+  return merged;
 });
 
 const inlineSearchAlbums = computed<InlineSearchAlbum[]>(() => {
@@ -1074,11 +1199,29 @@ const inlineSearchAlbums = computed<InlineSearchAlbum[]>(() => {
 const inlineSearchFolders = computed<InlineSearchFolder[]>(() => []);
 
 const inlineSearchItems = computed<InlineSearchItem[]>(() => {
-  const src: FeedItem[] = searchActive.value
-    ? scopedSearchItems.value
-    : isYandexScopedSearch.value
-      ? yandexFeedItems.value
-      : (feedRef.value?.orderedItems() ?? []).filter(itemMatchesScope);
+  let src: ViewerMediaItem[];
+  if (searchActive.value) {
+    src = scopedSearchItems.value;
+  } else if (isYandexScopedSearch.value) {
+    src = yandexFeedItems.value;
+  } else {
+    const feedOrdered = (feedRef.value?.orderedItems() ?? []).filter(itemMatchesScope);
+    const qLower = query.value.trim().toLowerCase();
+    const includeGlobalYandex = searchScopeMode.value !== 'current'
+      || (!effectiveAlbumId.value && !props.externalFolderId && !isYandexMode.value);
+    const yPool = includeGlobalYandex
+      ? yandexLib.items.value
+      : (effectiveAlbumId.value ? albumYandexFeedItems.value : []);
+    const extraYandex = yPool.length > 0
+      ? (qLower ? yPool.filter((it) => matchesYandexSearchQuery(it, qLower)) : yPool)
+      : [];
+    if (extraYandex.length === 0) {
+      src = feedOrdered;
+    } else {
+      const seen = new Set(feedOrdered.map((i) => i.fileId));
+      src = [...feedOrdered, ...extraYandex.filter((it) => !seen.has(it.fileId))];
+    }
+  }
   return src.slice(0, 20).map((it) => ({
     id: it.fileId,
     title: it.name,
@@ -1174,6 +1317,15 @@ function selectSuggestedTag(tag: string): void {
   startSearch();
 }
 
+function onSelectSearchTag(tag: string): void {
+  selectSuggestedTag(tag);
+}
+
+function onViewerSelectTag(tag: string): void {
+  viewer.value = null;
+  onSelectSearchTag(tag);
+}
+
 function onSearchSelectFolder(folderId: string): void {
   emit('openFolder', folderId, '');
 }
@@ -1181,8 +1333,11 @@ function onSearchSelectFolder(folderId: string): void {
 function onSearchOpenItem(item: InlineSearchItem): void {
   const targetId = item.fileId ?? item.id;
   const found = shownItems().find((i) => i.fileId === targetId)
+    ?? scopedSearchItems.value.find((i) => i.fileId === targetId)
     ?? searchItems.value.find((i) => i.fileId === targetId)
-    ?? feedRef.value?.orderedItems().find((i) => i.fileId === targetId);
+    ?? feedRef.value?.orderedItems().find((i) => i.fileId === targetId)
+    ?? yandexLib.items.value.find((i) => i.fileId === targetId)
+    ?? albumYandexFeedItems.value.find((i) => i.fileId === targetId);
   if (found) onActivate(found);
 }
 
@@ -1284,6 +1439,9 @@ watch(
     }
     albumName.value = '';
     albumSourceFolderIds.value = new Set();
+    albumYandexRawItems.value = [];
+    albumYandexSpaceFeedItems.value = null;
+    albumLoadSeq++;
     if (id) void loadAlbumName(id);
   },
   { immediate: true },
@@ -1353,6 +1511,7 @@ async function loadFolderName(id: string): Promise<void> {
 }
 
 async function loadAlbumName(id: string): Promise<void> {
+  const seq = ++albumLoadSeq;
   try {
     if (!isPhotosMock()) {
       let found = spaces.value.find((s) => s.id === id);
@@ -1360,23 +1519,64 @@ async function loadAlbumName(id: string): Promise<void> {
         await loadSpaces();
         found = spaces.value.find((s) => s.id === id);
       }
+      if (seq !== albumLoadSeq || effectiveAlbumId.value !== id) return;
       let resolvedName = found?.name ?? '';
-      if ((!resolvedName || (found?.sourceCount ?? 0) > 0) && typeof spacesApi?.get === 'function') {
+      if (resolvedName) albumName.value = resolvedName;
+
+      if (typeof spacesApi?.get === 'function') {
         const details = await spacesApi.get(id);
-        if (!resolvedName) resolvedName = details.name;
-        if (effectiveAlbumId.value === id) {
-          albumSourceFolderIds.value = new Set(
-            (details.sources ?? []).map((s) => s.folderId).filter((x): x is string => Boolean(x)),
-          );
+        if (seq !== albumLoadSeq || effectiveAlbumId.value !== id) return;
+        if (!resolvedName && details?.name) resolvedName = details.name;
+        const sources = details?.sources ?? [];
+        albumSourceFolderIds.value = new Set(
+          sources.map((s) => s.folderId).filter((x): x is string => Boolean(x)),
+        );
+        albumName.value = resolvedName;
+
+        const yandexPaths = [
+          ...new Set(
+            sources
+              .filter((s) => s.kind === 'yandex' && typeof s.yandexPath === 'string' && s.yandexPath.length > 0)
+              .map((s) => s.yandexPath as string),
+          ),
+        ];
+        if (yandexPaths.length === 0) {
+          albumYandexRawItems.value = [];
+          albumYandexSpaceFeedItems.value = null;
+        } else {
+          const mediaPromises = yandexPaths.map((p) => yandexDisk.listMedia(p));
+          const feedPromise = typeof spacesApi?.feed === 'function'
+            ? spacesApi.feed(id, { types: ['image', 'video'], limit: 200 })
+            : Promise.resolve(null);
+          const [feedResult, ...mediaResults] = await Promise.allSettled([feedPromise, ...mediaPromises]);
+          if (seq !== albumLoadSeq || effectiveAlbumId.value !== id) return;
+
+          const byPath = new Map<string, YandexItem>();
+          for (const res of mediaResults) {
+            if (res.status === 'fulfilled' && Array.isArray(res.value)) {
+              for (const item of res.value) {
+                if (item?.path && !byPath.has(item.path)) {
+                  byPath.set(item.path, item);
+                }
+              }
+            }
+          }
+          albumYandexRawItems.value = [...byPath.values()];
+
+          if (feedResult.status === 'fulfilled' && Array.isArray(feedResult.value?.items)) {
+            const yFeedItems = feedResult.value.items.filter((it) => it.origin === 'yandex' && Boolean(it.path));
+            albumYandexSpaceFeedItems.value = { spaceId: id, items: yFeedItems };
+          } else {
+            albumYandexSpaceFeedItems.value = null;
+          }
         }
-      }
-      if (effectiveAlbumId.value === id) {
+      } else {
         albumName.value = resolvedName;
       }
       return;
     }
     const list = await photosApi.albums();
-    if (effectiveAlbumId.value === id) {
+    if (seq === albumLoadSeq && effectiveAlbumId.value === id) {
       albumName.value = list.find((a) => a.id === id)?.name ?? '';
     }
   } catch {
@@ -1388,6 +1588,9 @@ function clearAlbumFilter(): void {
   internalAlbumId.value = null;
   albumName.value = '';
   albumSourceFolderIds.value = new Set();
+  albumYandexRawItems.value = [];
+  albumYandexSpaceFeedItems.value = null;
+  albumLoadSeq++;
   searchScopeMode.value = 'current';
   clearSelection();
   emit('clear-album');
@@ -1451,14 +1654,18 @@ const activeTargetIds = computed<string[]>(() => {
   return single ? [single] : [];
 });
 
-function findLoadedItem(fileId: string): FeedItem | undefined {
-  return shownItems().find((i) => i.fileId === fileId);
+function findLoadedItem(fileId: string): ViewerMediaItem | undefined {
+  return shownItems().find((i) => i.fileId === fileId)
+    ?? yandexLib.items.value.find((i) => i.fileId === fileId)
+    ?? albumYandexFeedItems.value.find((i) => i.fileId === fileId);
 }
 
 const allTargetsFavorite = computed(() => {
   const ids = activeTargetIds.value;
   if (ids.length === 0) return false;
-  return ids.every((id) => findLoadedItem(id)?.favorite === true);
+  return ids.every((id) => (
+    isYandexFileId(id) ? prefs.isFavorite(id) : findLoadedItem(id)?.favorite === true
+  ));
 });
 
 // ----- selection actions & right-click context menu -----
@@ -1790,7 +1997,9 @@ const ctxSingleItemAlbumIds = computed<ReadonlySet<string>>(() => {
   return new Set(item?.albumIds ?? []);
 });
 const ctxAllFavorite = computed(() =>
-  ctxTargetIds.value.length > 0 && ctxTargetIds.value.every((id) => findLoadedItem(id)?.favorite === true),
+  ctxTargetIds.value.length > 0 && ctxTargetIds.value.every((id) => (
+    isYandexFileId(id) ? prefs.isFavorite(id) : findLoadedItem(id)?.favorite === true
+  )),
 );
 const ctxShowFolderTarget = computed<string | null>(() => {
   if (!ctxMenu.value) return null;
@@ -1817,15 +2026,36 @@ const ctxShowFolderTarget = computed<string | null>(() => {
 });
 
 async function setFavoriteForIds(ids: string[], nextFav: boolean): Promise<void> {
+  const yandexIds = ids.filter(isYandexFileId);
   const qspaceIds = ids.filter((id) => !isYandexFileId(id));
-  if (qspaceIds.length === 0) return;
+  if (yandexIds.length === 0 && qspaceIds.length === 0) return;
+
+  for (const id of yandexIds) {
+    if (prefs.isFavorite(id) !== nextFav) {
+      prefs.toggleFavorite(id);
+    }
+    feedRef.value?.patchItem(id, { favorite: nextFav });
+    if (viewer.value) {
+      const idx = viewer.value.items.findIndex((i) => i.fileId === id);
+      if (idx >= 0) {
+        const updated = viewer.value.items.map((i) => (i.fileId === id ? { ...i, favorite: nextFav } : i));
+        viewer.value = { items: updated, index: viewer.value.index };
+      }
+    }
+    if (focusedItemCache.value?.fileId === id) {
+      focusedItemCache.value = { ...focusedItemCache.value, favorite: nextFav };
+    }
+  }
+
   for (const id of qspaceIds) {
     feedRef.value?.patchItem(id, { favorite: nextFav });
     if (searchItems.value.some((i) => i.fileId === id)) {
       searchItems.value = searchItems.value.map((i) => (i.fileId === id ? { ...i, favorite: nextFav } : i));
     }
   }
-  await Promise.allSettled(qspaceIds.map((id) => photosApi.edit(id, { favorite: nextFav })));
+  if (qspaceIds.length > 0) {
+    await Promise.allSettled(qspaceIds.map((id) => photosApi.edit(id, { favorite: nextFav })));
+  }
   if (view.state.value.filter === 'fav') {
     void feedRef.value?.refresh();
   }
@@ -1833,8 +2063,8 @@ async function setFavoriteForIds(ids: string[], nextFav: boolean): Promise<void>
 }
 
 async function toggleSingleFavorite(item: FeedItem): Promise<void> {
-  if (isYandexFileId(item.fileId)) return;
-  await setFavoriteForIds([item.fileId], !item.favorite);
+  const currentFav = isYandexFileId(item.fileId) ? prefs.isFavorite(item.fileId) : item.favorite;
+  await setFavoriteForIds([item.fileId], !currentFav);
 }
 
 async function toggleFavoriteAction(): Promise<void> {
@@ -2127,6 +2357,15 @@ async function deleteYandexIds(ids: string[]): Promise<boolean> {
   }
   if (removedPaths.size > 0) {
     yandexRawItems.value = yandexRawItems.value.filter((it) => !removedPaths.has(it.path));
+    albumYandexRawItems.value = albumYandexRawItems.value.filter((it) => !removedPaths.has(it.path));
+    if (albumYandexSpaceFeedItems.value) {
+      albumYandexSpaceFeedItems.value = {
+        ...albumYandexSpaceFeedItems.value,
+        items: albumYandexSpaceFeedItems.value.items.filter((it) => !it.path || !removedPaths.has(it.path)),
+      };
+    }
+    yandexLib.invalidate();
+    void yandexLib.ensureLoaded();
     clearSelection();
     const removedIds = new Set([...removedPaths].map((p) => `${YANDEX_ID_PREFIX}${p}`));
     if (focusedId.value && removedIds.has(focusedId.value)) {
@@ -2137,6 +2376,7 @@ async function deleteYandexIds(ids: string[]): Promise<boolean> {
     if (props.externalYandexPath) {
       void loadYandexMedia(props.externalYandexPath);
     }
+    void refreshSidebarCounts();
   }
   if (failed) {
     toast.show(t('yandexOperationFailed'), 'error');
@@ -2191,6 +2431,15 @@ async function onViewerDelete(item: ViewerMediaItem): Promise<void> {
         await settleYandexOutcome(outcome);
       }
       yandexRawItems.value = yandexRawItems.value.filter((it) => it.path !== path);
+      albumYandexRawItems.value = albumYandexRawItems.value.filter((it) => it.path !== path);
+      if (albumYandexSpaceFeedItems.value) {
+        albumYandexSpaceFeedItems.value = {
+          ...albumYandexSpaceFeedItems.value,
+          items: albumYandexSpaceFeedItems.value.items.filter((it) => it.path !== path),
+        };
+      }
+      yandexLib.invalidate();
+      void yandexLib.ensureLoaded();
     } else {
       await driveApi.trashFile(item.fileId);
     }
@@ -2314,9 +2563,19 @@ function onWindowKeydown(e: KeyboardEvent): void {
 
 onMounted(() => {
   window.addEventListener('keydown', onWindowKeydown);
-  if (!isPhotosMock()) void loadSpaces();
+  if (!isPhotosMock()) {
+    void loadSpaces();
+    void yandexLib.ensureLoaded();
+  }
   void refreshSidebarCounts();
 });
+
+watch(
+  () => yandexLib.items.value.map((i) => `${i.fileId}:${i.favorite ? 1 : 0}`).join('|'),
+  () => {
+    void refreshSidebarCounts();
+  },
+);
 
 // ----- panel (resizable) and viewer -----
 
@@ -2341,6 +2600,12 @@ let lastSidebarCounts: GallerySidebarCounts = {};
 async function refreshSidebarCounts(): Promise<void> {
   const counts: GallerySidebarCounts = {};
   const loaded = feedRef.value?.orderedItems() ?? [];
+  const qspaceLoaded = loaded.filter((i) => !isYandexFileId(i.fileId));
+  const yAll = yandexLib.items.value;
+  const yCount = yAll.length;
+  const yFavCount = yAll.filter((i) => i.favorite).length;
+  const yVidCount = yAll.filter((i) => i.kind === 'video').length;
+
   const baseParams = {
     sort: [],
     levels: ['date' as const],
@@ -2358,39 +2623,53 @@ async function refreshSidebarCounts(): Promise<void> {
     && !isYandexMode.value
     && selectedPeople.value.length === 0;
 
-  let libraryTotal = isAllSection ? lastFeedTotal : undefined;
-  if (libraryTotal === undefined && typeof photosApi?.summary === 'function') {
+  let qspaceLibraryTotal: number | undefined;
+  if (typeof photosApi?.summary === 'function') {
     try {
-      libraryTotal = sumGroups(await photosApi.summary({ ...baseParams, filter: 'all' }));
+      qspaceLibraryTotal = sumGroups(await photosApi.summary({ ...baseParams, filter: 'all' }));
     } catch {
       // Ignore summary count error
     }
   }
-  if ((libraryTotal === undefined || libraryTotal === 0) && isAllSection && loaded.length > 0) {
-    libraryTotal = loaded.length;
+  if (qspaceLibraryTotal === undefined && isAllSection && typeof lastFeedTotal === 'number') {
+    qspaceLibraryTotal = Math.max(0, lastFeedTotal - yCount);
+  }
+  if ((qspaceLibraryTotal === undefined || qspaceLibraryTotal === 0) && isAllSection && qspaceLoaded.length > 0) {
+    qspaceLibraryTotal = qspaceLoaded.length;
   }
 
-  if (typeof libraryTotal === 'number') {
-    counts.library = libraryTotal;
-    counts.recent = Math.min(24, libraryTotal);
+  if (typeof qspaceLibraryTotal === 'number') {
+    const combinedLibrary = qspaceLibraryTotal + yCount;
+    counts.library = combinedLibrary;
+    counts.recent = Math.min(24, combinedLibrary);
+  } else if (yCount > 0) {
+    counts.library = yCount;
+    counts.recent = Math.min(24, yCount);
   }
 
-  if (loaded.length > 0 && typeof libraryTotal === 'number' && loaded.length >= libraryTotal && isAllSection) {
-    counts.favorites = loaded.filter((i) => i.favorite).length;
-    counts.videos = loaded.filter((i) => i.kind === 'video').length;
+  let qspaceFavTotal: number | undefined;
+  let qspaceVidTotal: number | undefined;
+  if (qspaceLoaded.length > 0 && typeof qspaceLibraryTotal === 'number' && qspaceLoaded.length >= qspaceLibraryTotal && isAllSection) {
+    qspaceFavTotal = qspaceLoaded.filter((i) => i.favorite).length;
+    qspaceVidTotal = qspaceLoaded.filter((i) => i.kind === 'video').length;
   } else if (typeof photosApi?.summary === 'function') {
     const [favRes, vidRes] = await Promise.allSettled([
       photosApi.summary({ ...baseParams, filter: 'fav' }),
       photosApi.summary({ ...baseParams, filter: 'video' }),
     ]);
     if (favRes.status === 'fulfilled') {
-      const n = sumGroups(favRes.value);
-      if (typeof n === 'number') counts.favorites = n;
+      qspaceFavTotal = sumGroups(favRes.value);
     }
     if (vidRes.status === 'fulfilled') {
-      const n = sumGroups(vidRes.value);
-      if (typeof n === 'number') counts.videos = n;
+      qspaceVidTotal = sumGroups(vidRes.value);
     }
+  }
+
+  if (typeof qspaceFavTotal === 'number' || yFavCount > 0) {
+    counts.favorites = (qspaceFavTotal ?? 0) + yFavCount;
+  }
+  if (typeof qspaceVidTotal === 'number' || yVidCount > 0) {
+    counts.videos = (qspaceVidTotal ?? 0) + yVidCount;
   }
 
   counts.people = resolvedPeople.value.length;
@@ -2481,7 +2760,7 @@ function onPanelSashDown(e: PointerEvent): void {
 }
 
 function emitFocusPhoto(item: FeedItem): void {
-  if (effectiveAlbumId.value || isYandexFileId(item.fileId)) return;
+  if (effectiveAlbumId.value) return;
   emit('focus-photo', item);
 }
 
@@ -2523,13 +2802,14 @@ function maybeLoadMoreForViewer(index: number, items: ViewerMediaItem[]): void {
 function onActivate(item: ViewerMediaItem): void {
   const items = shownItems();
   const index = items.findIndex((i) => i.fileId === item.fileId);
-  if (index < 0) return;
+  const resolvedItems = index >= 0 ? items : [item];
+  const resolvedIndex = index >= 0 ? index : 0;
   focusedId.value = item.fileId;
   focusedItemCache.value = item;
   emitFocusPhoto(item);
   if (panelOpen.value) panelId.value = item.fileId;
-  viewer.value = { items, index };
-  maybeLoadMoreForViewer(index, items);
+  viewer.value = { items: resolvedItems, index: resolvedIndex };
+  maybeLoadMoreForViewer(resolvedIndex, resolvedItems);
 }
 
 function stepViewer(delta: number): void {
@@ -2619,7 +2899,13 @@ function refresh(opts?: { clearSelection?: boolean; invalidateFolders?: boolean 
   if (isYandexMode.value && props.externalYandexPath !== null && props.externalYandexPath !== undefined) {
     void loadYandexMedia(props.externalYandexPath);
   } else {
+    if (effectiveAlbumId.value) {
+      void loadAlbumName(effectiveAlbumId.value);
+    }
     void feedRef.value?.refresh();
+  }
+  if (!isPhotosMock()) {
+    void yandexLib.ensureLoaded();
   }
   void refreshSidebarCounts();
   if (searchActive.value && searchQuery.value) {
@@ -2669,6 +2955,19 @@ function onPanelChanged(change: { fileId: string; favorite?: boolean; albumIds?:
   if (albumMoved || leavesFavorites) void feed?.refresh();
   if (searchItems.value.some((i) => i.fileId === fileId)) {
     searchItems.value = searchItems.value.map((i) => (i.fileId === fileId ? { ...i, ...patch } : i));
+  }
+  if (patch.favorite !== undefined) {
+    if (viewer.value) {
+      const idx = viewer.value.items.findIndex((i) => i.fileId === fileId);
+      if (idx >= 0) {
+        const updated = viewer.value.items.map((i) => (i.fileId === fileId ? { ...i, favorite: patch.favorite! } : i));
+        viewer.value = { items: updated, index: viewer.value.index };
+      }
+    }
+    if (focusedItemCache.value?.fileId === fileId) {
+      focusedItemCache.value = { ...focusedItemCache.value, favorite: patch.favorite };
+    }
+    void refreshSidebarCounts();
   }
 }
 
@@ -3259,13 +3558,6 @@ onBeforeUnmount(() => {
     height: 26px;
     padding: 0 7px;
     font-size: 11px;
-  }
-  .dp-album-share-pill {
-    height: 26px;
-    padding: 0 7px;
-  }
-  .dp-album-share-pill span {
-    display: none;
   }
   .dp-icon-pill[data-testid='aspect-toggle'] {
     height: 26px;

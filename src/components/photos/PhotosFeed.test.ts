@@ -963,8 +963,10 @@ describe('PhotosFeed', () => {
     const img1 = w.get('[data-file-id="yd:/Фото/img1.jpg"] img');
     expect(img1.attributes('src')).toContain('/api/yandex-disk/preview?path=/Фото/img1.jpg');
     expect(img1.attributes('referrerpolicy')).toBe('no-referrer');
-    // Favorites heart button is hidden on external (Yandex) tiles
-    expect(w.find('.pf-fav-btn').exists()).toBe(false);
+    // Favorites heart button is enabled on external (Yandex) tiles and emits toggle-favorite
+    const extFavBtn = w.get('[data-file-id="yd:/Фото/img1.jpg"] .pf-fav-btn');
+    await extFavBtn.trigger('click');
+    expect((w.emitted('toggle-favorite')?.[0]?.[0] as FeedItem | undefined)?.fileId).toBe('yd:/Фото/img1.jpg');
 
     // Simulate natural dimensions loading for a 2:1 wide image when width was null
     const imgEl = img1.element as HTMLImageElement;
@@ -1039,5 +1041,212 @@ describe('PhotosFeed', () => {
     ac.abort();
     await expect(yandexDisk.listMedia('/', { signal: ac.signal })).rejects.toMatchObject({ name: 'AbortError' });
     listSpy.mockRestore();
+  });
+
+  it('merges supplementaryItems alongside Q Space photosApi feed, populates Yandex folder names without driveApi.getFolder, and reacts without refetching Q Space', async () => {
+    const qOct = [
+      mkItem(1, {
+        fileId: 'q1',
+        name: 'q_oct.jpg',
+        localTakenAt: '2026-10-10T10:00:00.000Z',
+        takenAt: '2026-10-10T10:00:00.000Z',
+        folderId: 'qfold1',
+      }),
+    ];
+    summaryMock.mockResolvedValue({
+      groups: [{ key: '2026-10', count: 1 }],
+    });
+    itemsMock.mockImplementation(async (_p, g) => ({
+      items: g === '2026-10' ? qOct : [],
+      nextCursor: null,
+    }));
+
+    const yOct = {
+      ...mkItem(2, {
+        fileId: 'yandex:/Путешествия/Горы/y_oct.jpg',
+        hash: 'y-oct',
+        name: 'y_oct.jpg',
+        processed: false,
+        folderId: '/Путешествия/Горы',
+        favorite: true,
+        localTakenAt: '2026-10-20T10:00:00.000Z',
+        takenAt: '2026-10-20T10:00:00.000Z',
+      }),
+      previewSrc: 'https://hub.example/api/yandex-disk/preview?path=/Путешествия/Горы/y_oct.jpg',
+      noReferrer: true,
+    };
+    const yNov = {
+      ...mkItem(3, {
+        fileId: 'yandex:/y_nov.mp4',
+        hash: 'y-nov',
+        name: 'y_nov.mp4',
+        mime: 'video/mp4',
+        kind: 'video',
+        processed: false,
+        folderId: '/',
+        favorite: false,
+        localTakenAt: '2026-11-05T10:00:00.000Z',
+        takenAt: '2026-11-05T10:00:00.000Z',
+      }),
+      previewSrc: 'https://hub.example/api/yandex-disk/preview?path=/y_nov.mp4',
+      noReferrer: true,
+    };
+
+    const Feed = await load();
+    const w = mountFeed(Feed, {
+      captionOnTile: ['folder'],
+      supplementaryItems: [],
+    });
+    await settle();
+    expect(summaryMock).toHaveBeenCalledTimes(1);
+    expect(itemsMock).toHaveBeenCalledTimes(1);
+    expect(w.findAll('.pf-tile')).toHaveLength(1);
+
+    // Late arrival of Yandex supplementaryItems merges reactively without re-fetching photosApi!
+    await w.setProps({ supplementaryItems: [yOct, yNov] });
+    await settle();
+
+    expect(summaryMock).toHaveBeenCalledTimes(1);
+    // itemsMock was NEVER called for supplementary-only '2026-11' group
+    expect(itemsMock).toHaveBeenCalledTimes(1);
+    expect(itemsMock).toHaveBeenCalledWith(expect.anything(), '2026-10', null, null, 200);
+
+    // Merged group headers sorted descending: Nov 2026 (supplementary-only), Oct 2026 (merged)
+    const titles = w.findAll('.pgh-title').map((n) => n.text());
+    expect(titles).toEqual(['Ноябрь 2026', 'Октябрь 2026']);
+
+    // Ordered items: yNov (Nov 5), yOct (Oct 20), q1 (Oct 10)
+    const ordered = (w.vm as unknown as { orderedItems: () => FeedItem[] }).orderedItems();
+    expect(ordered.map((i) => i.fileId)).toEqual([
+      'yandex:/y_nov.mp4',
+      'yandex:/Путешествия/Горы/y_oct.jpg',
+      'q1',
+    ]);
+
+    // Yandex folder captions resolved locally without calling driveApi.getFolder('/...')
+    expect(w.get('[data-file-id="yandex:/y_nov.mp4"] .pf-cap').text()).toContain('Яндекс Диск');
+    expect(w.get('[data-file-id="yandex:/Путешествия/Горы/y_oct.jpg"] .pf-cap').text()).toContain('Горы');
+    expect(getFolderMock).toHaveBeenCalledWith('qfold1');
+    expect(getFolderMock).not.toHaveBeenCalledWith('/');
+    expect(getFolderMock).not.toHaveBeenCalledWith('/Путешествия/Горы');
+
+    // Favorite heart works on Yandex tile in mixed feed
+    await w.get('[data-file-id="yandex:/Путешествия/Горы/y_oct.jpg"] .pf-fav-btn').trigger('click');
+    expect((w.emitted('toggle-favorite')?.[0]?.[0] as FeedItem | undefined)?.fileId).toBe(
+      'yandex:/Путешествия/Горы/y_oct.jpg',
+    );
+
+    // Filter to fav: only favorite supplementary item survives alongside empty Q Space summary
+    summaryMock.mockResolvedValue({ groups: [] });
+    await w.setProps({ params: params({ filter: 'fav' }) });
+    await settle();
+    expect(w.findAll('.pf-tile').map((t) => t.attributes('data-file-id'))).toEqual([
+      'yandex:/Путешествия/Горы/y_oct.jpg',
+    ]);
+
+    // Filter to video: only video supplementary item survives
+    await w.setProps({ params: params({ filter: 'video' }) });
+    await settle();
+    expect(w.findAll('.pf-tile').map((t) => t.attributes('data-file-id'))).toEqual([
+      'yandex:/y_nov.mp4',
+    ]);
+
+    // recentLimit caps mixed items in group display order
+    summaryMock.mockResolvedValue({ groups: [{ key: '2026-10', count: 1 }] });
+    await w.setProps({ params: params({ filter: 'all' }), recentLimit: 2 });
+    await settle();
+    const limited = (w.vm as unknown as { orderedItems: () => FeedItem[] }).orderedItems();
+    expect(limited.map((i) => i.fileId)).toEqual([
+      'yandex:/y_nov.mp4',
+      'yandex:/Путешествия/Горы/y_oct.jpg',
+    ]);
+
+    w.unmount();
+  });
+
+  it('useYandexMediaLibrary caches listMedia with TTL, dedupes in-flight loads, and reacts to explorer favorites', async () => {
+    const clientMod = await import('../../api/client');
+    const ydApiMod = await import('../../api/yandexDisk');
+    const ydStatusMod = await import('../../composables/useYandexDisk');
+    const prefsMod = await import('../../composables/useExplorerLayoutPrefs');
+    const libMod = await import('../../composables/useYandexMediaLibrary');
+
+    prefsMod.resetExplorerLayoutPrefs(true);
+    ydStatusMod.resetYandexDiskStatus();
+    libMod.resetYandexMediaLibraryForTests();
+
+    const authSpy = vi.spyOn(clientMod, 'isAuthenticated').mockReturnValue(true);
+    const statusSpy = vi.spyOn(ydApiMod.yandexDisk, 'status').mockResolvedValue({
+      enabled: true,
+      connected: true,
+      reconnectRequired: false,
+      login: 'user',
+      displayName: 'User',
+    });
+    const listMediaSpy = vi.spyOn(ydApiMod.yandexDisk, 'listMedia').mockResolvedValue([
+      {
+        path: '/Отпуск/sea.jpg',
+        name: 'sea.jpg',
+        type: 'file',
+        size: 12345,
+        mime: 'image/jpeg',
+        mediaType: 'image',
+        md5: 'abc123',
+        createdAt: '2026-07-01T10:00:00.000Z',
+        modifiedAt: '2026-07-02T10:00:00.000Z',
+        publicUrl: null,
+        previewUrl: '/api/yandex-disk/preview?path=/Отпуск/sea.jpg',
+      },
+    ]);
+
+    const lib = libMod.useYandexMediaLibrary();
+    // Concurrent ensureLoaded calls share a single in-flight listMedia('/') call
+    const [a, b] = await Promise.all([lib.ensureLoaded(), lib.ensureLoaded()]);
+    expect(statusSpy).toHaveBeenCalledTimes(1);
+    expect(listMediaSpy).toHaveBeenCalledTimes(1);
+    expect(listMediaSpy).toHaveBeenCalledWith('/');
+    expect(a).toHaveLength(1);
+    expect(b).toHaveLength(1);
+    expect(lib.items.value[0]).toMatchObject({
+      fileId: 'yandex:/Отпуск/sea.jpg',
+      hash: 'abc123',
+      name: 'sea.jpg',
+      kind: 'photo',
+      folderId: '/Отпуск',
+      noReferrer: true,
+      sizeBytes: 12345,
+      mimeType: 'image/jpeg',
+      favorite: false,
+    });
+
+    // Cached within 60s TTL
+    await lib.ensureLoaded();
+    expect(listMediaSpy).toHaveBeenCalledTimes(1);
+
+    // Favorite updates reactively from useExplorerLayoutPrefs
+    prefsMod.useExplorerLayoutPrefs().toggleFavorite('yandex:/Отпуск/sea.jpg');
+    expect(lib.items.value[0]?.favorite).toBe(true);
+
+    // Invalidating cache forces next ensureLoaded to refetch
+    libMod.invalidateYandexMediaLibrary();
+    await lib.ensureLoaded();
+    expect(listMediaSpy).toHaveBeenCalledTimes(2);
+
+    // Disconnected status empties items immediately
+    ydStatusMod.useYandexDisk().status.value = {
+      enabled: true,
+      connected: false,
+      reconnectRequired: false,
+      login: null,
+      displayName: null,
+    };
+    expect(lib.items.value).toEqual([]);
+
+    authSpy.mockRestore();
+    statusSpy.mockRestore();
+    listMediaSpy.mockRestore();
+    libMod.resetYandexMediaLibraryForTests();
+    ydStatusMod.resetYandexDiskStatus();
+    prefsMod.resetExplorerLayoutPrefs(true);
   });
 });

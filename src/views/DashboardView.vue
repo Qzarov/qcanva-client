@@ -28,6 +28,8 @@
         :folders="sidebarFolders"
         :all-folders="sidebarAllFolders"
         :album-related-folder-ids="activeSection.kind === 'space' ? activeAlbumRelatedFolderIds : null"
+        :album-related-yandex-paths="activeSection.kind === 'space' ? activeAlbumRelatedYandexPaths : null"
+        :selected-workspace-keys="selectedKeys"
         :spaces="isLoggedIn"
         :yandex-refresh-key="yandexRefreshKey"
         :incoming-access-requests-count="incomingRequests.length"
@@ -67,6 +69,7 @@
             :active-folder-id="galleryFolderId"
             :active-yandex-path="galleryYandexPath"
             :album-related-folder-ids="galleryAlbumId ? activeAlbumRelatedFolderIds : null"
+            :album-related-yandex-paths="galleryAlbumId ? activeAlbumRelatedYandexPaths : null"
             :highlighted-folder-id="galleryHighlightFolderId"
             :highlighted-file-id="galleryHighlightFileId"
             :folders="galleryStorageFolders"
@@ -83,6 +86,8 @@
             @drop-album="onGalleryDropAlbum"
             @drop-folder="onGalleryDropFolder"
             @folder-contextmenu="onGalleryFolderContextMenu"
+            @yandex-contextmenu="onGalleryYandexContextMenu"
+            @album-sources-changed="onGalleryAlbumSourcesChanged"
           />
         </template>
       </DashboardSidebar>
@@ -257,15 +262,6 @@
             <Users :size="13" aria-hidden="true" />
             <span class="headroom-members-prefix">{{ headroomSpaceCountPrefix }}</span><span class="headroom-members-num">{{ headroomSpaceMembersTotal }}</span>
           </button>
-          <button
-            type="button"
-            class="space-share-btn headroom-share-btn"
-            data-headroom-space-share
-            @click="openAlbumShareById(spaceId)"
-          >
-            <Share2 :size="14" aria-hidden="true" />
-            <span>{{ t('explorerShareGroup') }}</span>
-          </button>
         </template>
       </template>
     </ExplorerHeadroomBar>
@@ -373,7 +369,7 @@
         :hide-albums="true"
         :external-sort-mode="sortMode"
         :external-sort-seq="sortSyncSeq"
-        @update:selected-keys="selectedKeys = $event"
+        @update:selected-keys="onWorkspaceSelectionChange"
         @update:sort="onExplorerTableSort"
         @open="openExplorerTableRow"
         @contextmenu="onTableRowContextMenu"
@@ -548,7 +544,7 @@
               :external-sort-mode="sortMode"
               :external-sort-seq="sortSyncSeq"
               :allow-empty-context-menu="true"
-              @update:selected-keys="selectedKeys = $event"
+              @update:selected-keys="onWorkspaceSelectionChange"
               @update:sort="onExplorerTableSort"
               @open="openExplorerTableRow"
               @contextmenu="onTableRowContextMenu"
@@ -656,7 +652,7 @@
                   :external-sort-mode="sortMode"
                   :external-sort-seq="sortSyncSeq"
                   :allow-empty-context-menu="true"
-                  @update:selected-keys="selectedKeys = $event"
+                  @update:selected-keys="onWorkspaceSelectionChange"
                   @update:sort="onExplorerTableSort"
                   @open="openExplorerTableRow"
                   @contextmenu="onTableRowContextMenu"
@@ -755,7 +751,7 @@
         <DashboardYandexDisk
           ref="yandexView"
           :path="yandexPath"
-          :query="searchQuery"
+          :query="s2ScopeMode === 'current' ? searchQuery : ''"
           :sort-mode="sortMode"
           :view-mode="recentViewMode"
           :hide-view-toggle="true"
@@ -763,16 +759,30 @@
           :selected-keys="selectedKeys"
           @navigate="openYandexPath"
           @update:view-mode="setRecentViewMode"
-          @update:selected-keys="selectedKeys = $event"
+          @update:selected-keys="onWorkspaceSelectionChange"
           @toggle-select="toggleSelected"
           @items="yandexFiles = $event"
           @upload="uploadToYandex"
           @move="openYandexMove"
-          @changed="yandexRefreshKey += 1"
+          @changed="onYandexDiskChanged"
           @feedback="setFeedback"
           @open-image="openYandexImage"
           @open-markdown="openYandexMarkdown"
         />
+        <div
+          v-if="showScopedSearchEverywhereCta"
+          class="explorer-search-everywhere-bar"
+          data-search-everywhere-bar
+        >
+          <button
+            type="button"
+            class="btn-secondary"
+            data-search-everywhere-btn
+            @click="s2ScopeMode = 'global'"
+          >
+            {{ locale === 'ru' ? 'Искать везде' : 'Search everywhere' }}
+          </button>
+        </div>
       </section>
 
       <section
@@ -797,7 +807,7 @@
           :folder-options="folderOptions"
           :selected-keys="selectedKeys"
           @update:view-mode="setExplorerViewMode"
-          @update:selected-keys="selectedKeys = $event"
+          @update:selected-keys="onWorkspaceSelectionChange"
           @update:sort="onExplorerTableSort"
           @navigate-space-folder="onNavigateSpaceFolder"
           @open="openSpaceResource"
@@ -869,7 +879,7 @@
           :hide-albums="true"
           :external-sort-mode="sortMode"
           :external-sort-seq="sortSyncSeq"
-          @update:selected-keys="selectedKeys = $event"
+          @update:selected-keys="onWorkspaceSelectionChange"
           @update:sort="onExplorerTableSort"
           @open="openExplorerTableRow"
           @contextmenu="onTableRowContextMenu"
@@ -934,7 +944,7 @@
           :hide-albums="true"
           :external-sort-mode="sortMode"
           :external-sort-seq="sortSyncSeq"
-          @update:selected-keys="selectedKeys = $event"
+          @update:selected-keys="onWorkspaceSelectionChange"
           @update:sort="onExplorerTableSort"
           @open="openExplorerTableRow"
           @contextmenu="onTableRowContextMenu"
@@ -1014,7 +1024,7 @@
           :hide-albums="true"
           :external-sort-mode="sortMode"
           :external-sort-seq="sortSyncSeq"
-          @update:selected-keys="selectedKeys = $event"
+          @update:selected-keys="onWorkspaceSelectionChange"
           @update:sort="onExplorerTableSort"
           @open="openExplorerTableRow"
           @contextmenu="onTableRowContextMenu"
@@ -1146,6 +1156,8 @@
       :y="explorerCtxMenu.y"
       :items="explorerCtxMenu.items"
       :empty-area="explorerCtxMenu.emptyArea"
+      :can-share="explorerCtxMenu.canShare"
+      :can-favorite="explorerCtxMenu.canFavorite"
       :can-move="explorerCtxMenu.canMove"
       :can-album="contextMenuCanAlbum"
       :can-delete="explorerCtxMenu.canDelete"
@@ -1199,6 +1211,7 @@
       @share="onMediaViewerShare"
       @delete="onMediaViewerDelete"
       @panel-changed="onMediaViewerPanelChanged"
+      @select-tag="onMediaViewerSelectTag"
     />
 
     <MarkdownDocumentViewer
@@ -1229,7 +1242,7 @@
 </template>
 
 <script lang="ts">
-import { ChevronDown, ChevronUp, File as FileIcon, Folder, Plus, Share2, SlidersHorizontal, Users, UsersRound } from '@lucide/vue';
+import { ChevronDown, ChevronUp, File as FileIcon, Folder, Plus, SlidersHorizontal, Users, UsersRound } from '@lucide/vue';
 import { defineAsyncComponent, defineComponent, ref, reactive, onBeforeUnmount, onMounted, computed, nextTick, watch, type Ref } from 'vue';
 import { alertDialog, confirmDelete, confirmDialog, promptDialog } from '../composables/appDialog';
 import { selectAll, selectRange, selectionKey, toggleSelection } from '../dashboard/selection';
@@ -1331,6 +1344,7 @@ import {
   type YandexItem,
 } from '../api/yandexDisk';
 import { useYandexDisk } from '../composables/useYandexDisk';
+import { invalidateYandexMediaLibrary } from '../composables/useYandexMediaLibrary';
 import { importTitle, type ImportKind } from '../dashboard/import-files';
 import { marked } from 'marked';
 import type { CharacterImport } from '../dnd/importLongStoryShort';
@@ -1511,7 +1525,6 @@ export default defineComponent({
     FileIcon,
     Folder,
     Plus,
-    Share2,
     SlidersHorizontal,
     Users,
     UsersRound,
@@ -3749,6 +3762,13 @@ export default defineComponent({
       selectedKeys.value = toggleSelection(selectedKeys.value, key);
       selectionAnchor = key;
     };
+    const onWorkspaceSelectionChange = (keys: string[]) => {
+      selectedKeys.value = keys;
+      selectionAnchor = keys.length ? keys[keys.length - 1]! : '';
+      if (keys.length) {
+        sidebarRef.value?.clearTreeSelection?.();
+      }
+    };
     const selectAllOnScreen = () => {
       selectedKeys.value = selectAll(selectedKeys.value, selectableOnScreen());
     };
@@ -3853,6 +3873,7 @@ export default defineComponent({
       } else {
         selectedKeys.value = [key];
         selectionAnchor = key;
+        sidebarRef.value?.clearTreeSelection?.();
       }
     };
     // Android's Back clears the selection before it leaves the folder.
@@ -3993,6 +4014,10 @@ export default defineComponent({
     const openYandexPath = (path: string) => {
       selectDashboardSection({ kind: 'yandex', path });
     };
+    const onYandexDiskChanged = () => {
+      yandexRefreshKey.value += 1;
+      invalidateYandexMediaLibrary();
+    };
     const openYandexMove = (sources: string[]) => {
       closeCardMenu();
       const first = sources[0];
@@ -4021,6 +4046,7 @@ export default defineComponent({
       if (!moved) return;
       clearSelection();
       yandexRefreshKey.value += 1;
+      invalidateYandexMediaLibrary();
       // The open folder itself moved: follow it.
       const open = yandexPath.value;
       const followed = open && move.sources.find((source) => open === source || open.startsWith(`${source}/`));
@@ -4185,7 +4211,12 @@ export default defineComponent({
       if (state.source === 'yandex' || cur.noReferrer) return false;
       return Boolean(cur.fileId && !cur.fileId.startsWith('y:') && !cur.fileId.startsWith('/'));
     });
-    const mediaViewerCanFavorite = computed(() => mediaViewerIsQspaceFile.value);
+    const mediaViewerIsYandexFile = computed(() => {
+      const cur = mediaViewerCurrent.value;
+      if (!cur) return false;
+      return Boolean(cur.fileId && (cur.fileId.startsWith('yandex:') || cur.noReferrer));
+    });
+    const mediaViewerCanFavorite = computed(() => mediaViewerIsQspaceFile.value || mediaViewerIsYandexFile.value);
     const mediaViewerCanShare = computed(() => mediaViewerIsQspaceFile.value);
     const mediaViewerCanDelete = computed(() => mediaViewerIsQspaceFile.value);
     const mediaViewerCanInfo = computed(() => mediaViewerIsQspaceFile.value);
@@ -4203,7 +4234,7 @@ export default defineComponent({
       durationSec: null,
       bytes: file.size ?? 0,
       folderId: null,
-      favorite: false,
+      favorite: layoutPrefs.isFavorite(`yandex:${file.path}`),
       albumIds: [],
       thumbhash: null,
       share: null,
@@ -4299,7 +4330,9 @@ export default defineComponent({
           durationSec: null,
           bytes: item.sizeBytes ?? 0,
           folderId: null,
-          favorite: !isYandex && Boolean(fileId) && layoutPrefs.isFavorite(`drive-file:${fileId}`),
+          favorite: isYandex
+            ? Boolean(fileId && layoutPrefs.isFavorite(fileId.startsWith('yandex:') ? fileId : `yandex:${fileId}`))
+            : (Boolean(fileId) && layoutPrefs.isFavorite(`drive-file:${fileId}`)),
           albumIds: spaceId.value ? [spaceId.value] : [],
           thumbhash: null,
           share: null,
@@ -4336,7 +4369,17 @@ export default defineComponent({
     const onMediaViewerToggleFavorite = async () => {
       const state = mediaViewer.value;
       const cur = mediaViewerCurrent.value;
-      if (!state || !cur || !mediaViewerIsQspaceFile.value) return;
+      if (!state || !cur) return;
+      if (mediaViewerIsYandexFile.value) {
+        const favKey = cur.fileId.startsWith('yandex:') ? cur.fileId : `yandex:${cur.fileId}`;
+        const nextFav = !cur.favorite;
+        if (layoutPrefs.isFavorite(favKey) !== nextFav) {
+          layoutPrefs.toggleFavorite(favKey);
+        }
+        state.items[state.start] = { ...cur, favorite: nextFav };
+        return;
+      }
+      if (!mediaViewerIsQspaceFile.value) return;
       const nextFav = !cur.favorite;
       const key = `drive-file:${cur.fileId}`;
       rememberedFavoriteMeta[key] = { id: cur.fileId, name: cur.name, kind: 'drive-file' };
@@ -4362,11 +4405,18 @@ export default defineComponent({
         ...(change.albumIds !== undefined ? { albumIds: change.albumIds } : {}),
       };
       state.items[idx] = nextItem;
-      if (change.favorite !== undefined && !prev.noReferrer) {
-        const key = `drive-file:${change.fileId}`;
-        rememberedFavoriteMeta[key] = { id: change.fileId, name: prev.name, kind: 'drive-file' };
-        if (layoutPrefs.isFavorite(key) !== change.favorite) {
-          layoutPrefs.toggleFavorite(key);
+      if (change.favorite !== undefined) {
+        if (prev.noReferrer || change.fileId.startsWith('yandex:')) {
+          const favKey = change.fileId.startsWith('yandex:') ? change.fileId : `yandex:${change.fileId}`;
+          if (layoutPrefs.isFavorite(favKey) !== change.favorite) {
+            layoutPrefs.toggleFavorite(favKey);
+          }
+        } else {
+          const key = `drive-file:${change.fileId}`;
+          rememberedFavoriteMeta[key] = { id: change.fileId, name: prev.name, kind: 'drive-file' };
+          if (layoutPrefs.isFavorite(key) !== change.favorite) {
+            layoutPrefs.toggleFavorite(key);
+          }
         }
       }
       if (change.albumIds !== undefined) {
@@ -4378,6 +4428,10 @@ export default defineComponent({
       const cur = mediaViewerCurrent.value;
       if (!cur || !mediaViewerIsQspaceFile.value) return;
       await onGallerySharePhotos([cur.fileId]);
+    };
+    const onMediaViewerSelectTag = (tag: string) => {
+      mediaViewer.value = null;
+      onSearchSelectTag(tag);
     };
     const onMediaViewerDelete = async () => {
       const state = mediaViewer.value;
@@ -4544,6 +4598,7 @@ export default defineComponent({
         start: () => uploadYandexFile(joinYandexPath(path, file.name), file, (percent) => setUploadProgress(id, percent)),
       })));
       yandexRefreshKey.value += 1;
+      invalidateYandexMediaLibrary();
     };
     /** Back from Yandex's consent page: `?space=yandex&yandex=connected|error`. */
     const takeYandexReturn = (): boolean => {
@@ -5592,6 +5647,7 @@ export default defineComponent({
         router.push('/drive');
         return;
       }
+      clearSelection();
       const target = section.kind as FeedSection;
       if (!isLoggedIn || !(FEED_SIDEBAR_SECTIONS as readonly string[]).includes(section.kind)) {
         selectDashboardSection(section);
@@ -5799,6 +5855,10 @@ export default defineComponent({
     const s2ScopeLabel = computed<string | null>(() => {
       if (activeSection.value.kind === 'folder' && activeFolder.value) return activeFolder.value.name;
       if (activeSection.value.kind === 'home') return t('qSpace');
+      if (activeSection.value.kind === 'yandex') {
+        const p = activeSection.value.path || '/';
+        return p !== '/' ? (p.split('/').filter(Boolean).pop() || t('yandexDisk')) : t('yandexDisk');
+      }
       if (activeSection.value.kind === 'space' && activeSpace.value) {
         const subName = spaceView.value?.currentFolderName
           || (activeSpaceFolderId.value
@@ -5813,11 +5873,24 @@ export default defineComponent({
 
     watch(
       () => activeSection.value,
-      () => {
-        if (!searchQuery.value.trim()) {
+      (next) => {
+        if (next.kind === 'folder' || next.kind === 'space' || next.kind === 'home' || next.kind === 'yandex') {
+          s2ScopeMode.value = 'current';
+        } else if (!searchQuery.value.trim()) {
           s2ScopeMode.value = 'current';
         }
       },
+    );
+
+    const yandexLoadedItems = computed<YandexItem[]>(() => {
+      const exposed = (yandexView.value as { items?: YandexItem[] | Ref<YandexItem[]> } | null)?.items;
+      if (Array.isArray(exposed)) return exposed;
+      if (exposed && 'value' in exposed && Array.isArray(exposed.value)) return exposed.value;
+      return yandexFiles.value;
+    });
+
+    const isYandexScopedSearch = computed(
+      () => activeSection.value.kind === 'yandex' && s2ScopeMode.value === 'current',
     );
 
     const activeSubtreeFolderIds = computed<Set<string> | null>(() => {
@@ -5838,6 +5911,15 @@ export default defineComponent({
     });
 
     const s2SearchFolders = computed<InlineSearchFolder[]>(() => {
+      if (isYandexScopedSearch.value) {
+        return yandexLoadedItems.value
+          .filter((item) => item.type === 'dir')
+          .map((dir) => ({
+            id: `yandex:${dir.path}`,
+            name: dir.name,
+            path: dir.path,
+          }));
+      }
       const subtree = activeSubtreeFolderIds.value;
       const list = subtree
         ? allResourceFolders.value.filter((f) => subtree.has(f.id) && f.id !== activeFolder.value?.id)
@@ -5850,6 +5932,7 @@ export default defineComponent({
     });
 
     const s2SearchAlbums = computed<InlineSearchAlbum[]>(() => {
+      if (isYandexScopedSearch.value) return [];
       const list = s2ScopeMode.value === 'current' && activeSection.value.kind === 'space' && spaceId.value
         ? allSpaces.value.filter((s) => s.id === spaceId.value)
         : allSpaces.value;
@@ -5861,6 +5944,23 @@ export default defineComponent({
     });
 
     const s2SearchItems = computed<InlineSearchItem[]>(() => {
+      if (isYandexScopedSearch.value) {
+        const scopeName = s2ScopeLabel.value || t('yandexDisk');
+        return yandexLoadedItems.value
+          .filter((item) => item.type === 'file')
+          .map((file) => {
+            const lower = file.name.toLowerCase();
+            const isPdf = file.mime === 'application/pdf' || lower.endsWith('.pdf');
+            const isMedia = file.mediaType === 'image' || file.mediaType === 'video';
+            return {
+              id: `yandex:${file.path}`,
+              title: file.name,
+              type: isPdf ? 'pdf' : isMedia ? 'media' : isMarkdownFile(file) ? 'document' : 'other',
+              mimeType: file.mime ?? undefined,
+              folderName: scopeName,
+            };
+          });
+      }
       const subtree = activeSubtreeFolderIds.value;
       const inFolderScope = (fid?: string | null) => {
         if (!subtree) return true;
@@ -5934,6 +6034,10 @@ export default defineComponent({
     });
 
     const onSearchSelectFolder = (folderId: string) => {
+      if (folderId.startsWith('yandex:')) {
+        openYandexPath(folderId.slice('yandex:'.length) || '/');
+        return;
+      }
       selectFolder(folderId);
     };
 
@@ -5945,6 +6049,17 @@ export default defineComponent({
       const colonIdx = item.id.indexOf(':');
       const kind = colonIdx > 0 ? item.id.slice(0, colonIdx) : '';
       const rawId = colonIdx > 0 ? item.id.slice(colonIdx + 1) : item.id;
+      if (kind === 'yandex') {
+        const yItem = yandexLoadedItems.value.find((y) => y.path === rawId)
+          || yandexFiles.value.find((y) => y.path === rawId);
+        if (yItem) {
+          if (yItem.type === 'dir') openYandexPath(yItem.path);
+          else if (isYandexMedia(yItem)) openYandexImage(yItem);
+          else if (isMarkdownFile(yItem)) openYandexMarkdown(yItem);
+          else void downloadYandexFile(yItem);
+        }
+        return;
+      }
       if (kind === 'drive-file' || item.fileId) {
         const fid = item.fileId || rawId;
         const folderPool = item.folderId && sidebarDriveFiles.files[item.folderId]?.length
@@ -6149,6 +6264,12 @@ export default defineComponent({
       if (!searchQuery.value.trim() && s2TypeFilter.value === 'all') return false;
       if (activeSection.value.kind === 'home') return homeRootEmpty.value;
       if (activeSection.value.kind === 'folder') return activeFolderEmpty.value;
+      if (activeSection.value.kind === 'yandex') {
+        const needle = searchQuery.value.trim().toLocaleLowerCase();
+        if (!needle) return false;
+        const list = yandexLoadedItems.value;
+        return list.length > 0 && !list.some((item) => item.name.toLocaleLowerCase().includes(needle));
+      }
       return false;
     });
     const homeRootTableRows = computed<ExplorerTableRow[]>(() =>
@@ -6671,13 +6792,29 @@ export default defineComponent({
       }
     };
 
+    const normalizeYandexAlbumPath = (raw: string): string => {
+      const stripped = raw.replace(/^disk:/, '').trim();
+      if (!stripped || stripped === '/') return '/';
+      const withSlash = stripped.startsWith('/') ? stripped : `/${stripped}`;
+      return withSlash.replace(/\/+$/, '') || '/';
+    };
+
     const onDropGroupToAlbum = async (targetSpaceId: string, payload: GroupDragPayload) => {
       if (!targetSpaceId || !payload.items.length) return;
       let added = 0;
       const folderIds = new Set<string>();
+      const yandexPaths = new Set<string>();
       const fileIds: string[] = [];
       for (const entry of payload.items) {
-        if (entry.kind === 'folder' || entry.key.startsWith('folder:')) {
+        if (
+          entry.kind === 'yandex-folder'
+          || entry.kind === 'yandex-dir'
+          || entry.kind === 'yandex-root'
+          || entry.key.startsWith('yandex-folder:')
+        ) {
+          const rawPath = entry.path || entry.id || entry.key.replace(/^yandex-folder:/, '');
+          if (rawPath) yandexPaths.add(normalizeYandexAlbumPath(rawPath));
+        } else if (entry.kind === 'folder' || entry.key.startsWith('folder:')) {
           const fId = entry.id || entry.key.replace(/^folder:/, '');
           if (fId) folderIds.add(fId);
         } else if (
@@ -6692,7 +6829,7 @@ export default defineComponent({
           if (fileId && !entry.key.startsWith('y:')) fileIds.push(fileId);
         }
       }
-      if (!fileIds.length && !folderIds.size) {
+      if (!fileIds.length && !folderIds.size && !yandexPaths.size) {
         setFeedback('error', t('albumOnlyFilesAndFolders'));
         return;
       }
@@ -6712,13 +6849,24 @@ export default defineComponent({
           // Folder may already be attached or non-owned
         }
       }
+      for (const yPath of yandexPaths) {
+        try {
+          await spacesApi.addYandexFolder(targetSpaceId, yPath);
+          added += 1;
+        } catch {
+          // Folder may already be attached
+        }
+      }
       if (added > 0) {
         setFeedback('success', t('explorerAddToAlbum'));
         await loadSpaces(true);
         if (spaceId.value === targetSpaceId) {
-          void spaceView.value?.reload();
+          void spaceView.value?.reload?.();
         }
-        refreshGalleryView({ clearSelection: true, invalidateFolders: false });
+        if (activeAlbumIdForTree.value === targetSpaceId) {
+          void refreshActiveAlbumRelatedSources(targetSpaceId);
+        }
+        refreshGalleryView({ clearSelection: false, invalidateFolders: false });
       }
     };
 
@@ -6730,6 +6878,8 @@ export default defineComponent({
       y: number;
       items: ExplorerContextMenuItem[];
       emptyArea: boolean;
+      canShare: boolean;
+      canFavorite: boolean;
       canMove: boolean;
       canDelete: boolean;
       canRename: boolean;
@@ -6743,6 +6893,8 @@ export default defineComponent({
       y: 0,
       items: [],
       emptyArea: false,
+      canShare: true,
+      canFavorite: true,
       canMove: false,
       canDelete: false,
       canRename: false,
@@ -6751,6 +6903,14 @@ export default defineComponent({
       deleteLabel: '',
       isFavorite: false,
     });
+
+    const isYandexFolderContextItem = (item: ExplorerContextMenuItem): boolean => (
+      item.kind === 'yandex-dir'
+      || item.kind === 'yandex-folder'
+      || item.kind === 'yandex-root'
+      || item.key.startsWith('yandex-folder:')
+      || item.key === 'clouds:yandex'
+    );
 
     const isAlbumEligibleContextItem = (item: ExplorerContextMenuItem): boolean => {
       if (!item || item.key.startsWith('y:')) return false;
@@ -6761,6 +6921,9 @@ export default defineComponent({
         || item.key.startsWith('album:')
       ) {
         return false;
+      }
+      if (isYandexFolderContextItem(item)) {
+        return Boolean(item.id || item.key.replace(/^yandex-folder:/, ''));
       }
       if (item.kind === 'folder' || item.key.startsWith('folder:')) {
         return Boolean(item.id || item.key.replace(/^folder:/, ''));
@@ -6821,9 +6984,12 @@ export default defineComponent({
       const singleIsSpace = items.length === 1 && isSpaceContextItem(first);
       const singleSpace = singleIsSpace ? findSpaceForContextItem(first) : null;
       const allSpacesOnly = items.every(isSpaceContextItem);
-      const canRename = singleIsSpace
-        ? singleSpace?.role === 'owner'
-        : items.length === 1 && renamableKinds.has(first.kind || '');
+      const allYandexFoldersOnly = items.every(isYandexFolderContextItem);
+      const canRename = allYandexFoldersOnly
+        ? false
+        : singleIsSpace
+          ? singleSpace?.role === 'owner'
+          : items.length === 1 && renamableKinds.has(first.kind || '');
       const deleteLabel = singleIsSpace && singleSpace && singleSpace.role !== 'owner'
         ? t('spaceLeave')
         : '';
@@ -6833,13 +6999,15 @@ export default defineComponent({
         y,
         items,
         emptyArea: false,
-        canMove: items.some((i) => !isSpaceContextItem(i)),
-        canDelete: true,
+        canShare: !allYandexFoldersOnly,
+        canFavorite: !allYandexFoldersOnly,
+        canMove: !allYandexFoldersOnly && items.some((i) => !isSpaceContextItem(i)),
+        canDelete: !allYandexFoldersOnly,
         canRename,
-        canDownload: !allSpacesOnly,
-        canProperties: items.length === 1 && (first.kind === 'drive-file' || first.kind === 'file') && Boolean(first.id),
+        canDownload: !allSpacesOnly && !allYandexFoldersOnly,
+        canProperties: !allYandexFoldersOnly && items.length === 1 && (first.kind === 'drive-file' || first.kind === 'file') && Boolean(first.id),
         deleteLabel,
-        isFavorite: items.every((i) => layoutPrefs.isFavorite(i.key)),
+        isFavorite: !allYandexFoldersOnly && items.every((i) => layoutPrefs.isFavorite(i.key)),
       };
     };
 
@@ -6967,6 +7135,8 @@ export default defineComponent({
         y: event.clientY,
         items: [],
         emptyArea: true,
+        canShare: false,
+        canFavorite: false,
         canMove: false,
         canDelete: false,
         canRename: false,
@@ -7020,6 +7190,31 @@ export default defineComponent({
             name: (dashboardItemsByKey.value as ReadonlyMap<string, FolderItem>).get(canonicalKey)?.title || fileId,
           };
         }
+        if (
+          key === 'clouds:yandex'
+          || key.startsWith('yandex:/')
+          || key.startsWith('yandex-folder:')
+          || payload.kind === 'yandex-root'
+          || payload.kind === 'yandex-dir'
+        ) {
+          const rawPath = key === 'clouds:yandex'
+            ? '/'
+            : key.startsWith('yandex-folder:')
+              ? key.slice('yandex-folder:'.length)
+              : key.startsWith('yandex:')
+                ? key.slice('yandex:'.length)
+                : payload.targetId;
+          const yPath = normalizeYandexAlbumPath(rawPath || '/');
+          const yName = yPath === '/'
+            ? t('yandexDisk')
+            : (yPath.split('/').filter(Boolean).pop() || t('yandexDisk'));
+          return {
+            key: `yandex-folder:${yPath}`,
+            id: yPath,
+            kind: 'yandex-dir',
+            name: yName,
+          };
+        }
         const isSpace = key.startsWith('album:') || payload.kind === 'album';
         const isFolder = key.startsWith('folder:') || payload.kind === 'folder';
         const id = key === payload.nodeKey
@@ -7038,7 +7233,14 @@ export default defineComponent({
     };
 
     const onCtxMenuOpen = (item: ExplorerContextMenuItem) => {
-      if (item.kind === 'folder' && item.id) {
+      if (isYandexFolderContextItem(item)) {
+        const yPath = normalizeYandexAlbumPath(item.id || item.key.replace(/^yandex-folder:/, '') || '/');
+        if (activeSection.value.kind === 'gallery') {
+          onGallerySelectYandex(yPath);
+        } else {
+          openYandexPath(yPath);
+        }
+      } else if (item.kind === 'folder' && item.id) {
         selectFolder(item.id);
       } else if ((item.kind === 'space' || item.kind === 'album') && item.id) {
         selectDashboardSection({ kind: 'space', spaceId: item.id });
@@ -7143,14 +7345,26 @@ export default defineComponent({
       }
       await onDropGroupToAlbum(targetAlbumId, {
         source: 'explorer',
-        items: eligible.map((i) => ({
-          key: i.key,
-          id: i.id || '',
-          kind: i.kind || 'file',
-          folderId: (i.kind === 'folder' || i.key.startsWith('folder:'))
-            ? (i.id || i.key.replace(/^folder:/, ''))
-            : null,
-        })),
+        items: eligible.map((i) => {
+          if (isYandexFolderContextItem(i)) {
+            const yPath = normalizeYandexAlbumPath(i.id || i.key.replace(/^yandex-folder:/, '') || '/');
+            return {
+              key: `yandex-folder:${yPath}`,
+              id: yPath,
+              kind: 'yandex-folder',
+              name: i.name,
+              path: yPath,
+            };
+          }
+          return {
+            key: i.key,
+            id: i.id || '',
+            kind: i.kind || 'file',
+            folderId: (i.kind === 'folder' || i.key.startsWith('folder:'))
+              ? (i.id || i.key.replace(/^folder:/, ''))
+              : null,
+          };
+        }),
         keys: eligible.map((i) => i.key),
         count: eligible.length,
       });
@@ -7501,6 +7715,7 @@ export default defineComponent({
     const galleryYandexPath = ref<string | null>(null);
     const gallerySidebarCounts = ref<GallerySidebarCounts>({});
     const activeAlbumRelatedFolderIds = ref<Set<string>>(new Set());
+    const activeAlbumRelatedYandexPaths = ref<Set<string>>(new Set());
 
     const activeAlbumIdForTree = computed<string | null>(() => {
       if (activeSection.value.kind === 'gallery') return galleryAlbumId.value;
@@ -7529,13 +7744,15 @@ export default defineComponent({
     };
 
     let albumRelatedFoldersSeq = 0;
-    watch(activeAlbumIdForTree, async (albumId) => {
+    const refreshActiveAlbumRelatedSources = async (albumId: string | null) => {
       const seq = ++albumRelatedFoldersSeq;
       activeAlbumRelatedFolderIds.value = new Set();
+      activeAlbumRelatedYandexPaths.value = new Set();
       if (!albumId) {
         return;
       }
       const ids = new Set<string>();
+      const yPaths = new Set<string>();
       let hasItemFolderIds = false;
       try {
         if (typeof spacesApi.get === 'function') {
@@ -7544,6 +7761,8 @@ export default defineComponent({
           for (const src of details?.sources ?? []) {
             if (src.kind === 'qspace' && src.folderId) {
               ids.add(src.folderId);
+            } else if (src.kind === 'yandex' && src.yandexPath) {
+              yPaths.add(normalizeYandexAlbumPath(src.yandexPath));
             }
           }
           if (Array.isArray(details?.itemFolderIds)) {
@@ -7578,9 +7797,14 @@ export default defineComponent({
       }
       if (seq !== albumRelatedFoldersSeq) return;
       activeAlbumRelatedFolderIds.value = ids;
+      activeAlbumRelatedYandexPaths.value = yPaths;
       if (activeSection.value.kind === 'space' && activeSection.value.spaceId === albumId) {
         expandedTreeIds.value = computeFolderAncestorsForTree(ids);
       }
+    };
+
+    watch(activeAlbumIdForTree, (albumId) => {
+      void refreshActiveAlbumRelatedSources(albumId);
     }, { immediate: true });
 
     const galleryAlbumMembersCount = computed<number | null>(() => {
@@ -7694,10 +7918,18 @@ export default defineComponent({
     };
 
     const onGallerySelectFile = (fileId: string, folderId: string | null) => {
-      galleryYandexPath.value = null;
-      if (folderId) galleryFolderId.value = folderId;
-      galleryHighlightFolderId.value = folderId;
-      galleryHighlightFileId.value = fileId;
+      galleryAlbumId.value = null;
+      if (fileId.startsWith('yandex:')) {
+        galleryFolderId.value = null;
+        galleryHighlightFolderId.value = null;
+        galleryYandexPath.value = folderId || '/';
+        galleryHighlightFileId.value = fileId;
+      } else {
+        galleryYandexPath.value = null;
+        if (folderId) galleryFolderId.value = folderId;
+        galleryHighlightFolderId.value = folderId;
+        galleryHighlightFileId.value = fileId;
+      }
       void nextTick(() => {
         (galleryViewRef.value as { focusFile?: (id: string) => void } | null)?.focusFile?.(fileId);
       });
@@ -7723,6 +7955,28 @@ export default defineComponent({
         kind: 'folder',
         name: folder.name,
       }]);
+    };
+
+    const onGalleryYandexContextMenu = (payload: { event: MouseEvent; path: string; name: string }) => {
+      const yPath = normalizeYandexAlbumPath(payload.path || '/');
+      const yName = payload.name || (yPath === '/' ? t('yandexDisk') : yPath.split('/').filter(Boolean).pop() || t('yandexDisk'));
+      openContextMenuForItems(payload.event.clientX, payload.event.clientY, [{
+        key: `yandex-folder:${yPath}`,
+        id: yPath,
+        kind: 'yandex-folder',
+        name: yName,
+      }]);
+    };
+
+    const onGalleryAlbumSourcesChanged = async (albumId: string) => {
+      await loadSpaces(true);
+      if (spaceId.value === albumId) {
+        void spaceView.value?.reload?.();
+      }
+      if (activeAlbumIdForTree.value === albumId) {
+        void refreshActiveAlbumRelatedSources(albumId);
+      }
+      refreshGalleryView({ clearSelection: false, invalidateFolders: false });
     };
 
     const onGalleryDropFavorites = async (fileIds: string[]) => {
@@ -7837,7 +8091,11 @@ export default defineComponent({
         return `${t('searchInFolder')} ${activeSpace.value.name}…`;
       }
       if (kind === 'yandex') {
-        return `${t('searchInFolder')} ${locale.value === 'ru' ? 'Яндекс Диске' : 'Yandex Disk'}…`;
+        const path = activeSection.value.path || '/';
+        const scope = path !== '/'
+          ? (path.split('/').filter(Boolean).pop() || t('yandexDisk'))
+          : (locale.value === 'ru' ? 'Яндекс Диске' : 'Yandex Disk');
+        return `${t('searchInFolder')} ${scope}…`;
       }
       if (kind === 'shared') {
         return `${t('searchInFolder')} ${t('sharedWithMe')}…`;
@@ -8214,6 +8472,7 @@ export default defineComponent({
       galleryFolderId,
       galleryYandexPath,
       activeAlbumRelatedFolderIds,
+      activeAlbumRelatedYandexPaths,
       galleryHighlightFolderId,
       galleryHighlightFileId,
       galleryStorageFolders,
@@ -8229,6 +8488,10 @@ export default defineComponent({
       onGallerySelectFile,
       onGalleryFocusPhoto,
       onGalleryFolderContextMenu,
+      onGalleryYandexContextMenu,
+      onGalleryAlbumSourcesChanged,
+      onWorkspaceSelectionChange,
+      onYandexDiskChanged,
       onGalleryDropFavorites,
       onGalleryDropAlbum,
       onGalleryDropFolder,
@@ -8244,6 +8507,7 @@ export default defineComponent({
       onMediaViewerToggleFavorite,
       onMediaViewerPanelChanged,
       onMediaViewerShare,
+      onMediaViewerSelectTag,
       onMediaViewerDelete,
       onDashboardMainPointerDown,
       mobileSidebarOpen,

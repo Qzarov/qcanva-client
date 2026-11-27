@@ -367,7 +367,7 @@ describe('B-023: Album header members pill, Album ПКМ menu, and Editor return
     expect(wrapper.find('[data-headroom-space-actions]').exists()).toBe(false);
     expect(wrapper.find('[data-space-menu]').exists()).toBe(false);
     expect(wrapper.get('[data-headroom-space-members]').text().trim()).toBe('Участников: 1');
-    expect(wrapper.get('[data-headroom-space-share]').text().trim()).toBe('Поделиться');
+    expect(wrapper.find('[data-headroom-space-share]').exists()).toBe(false);
 
     // Click pill -> opens AlbumShareDialog, and inviting a member updates pill cleanly to Участников: 2 (never "12")
     await wrapper.get('[data-headroom-space-members]').trigger('click');

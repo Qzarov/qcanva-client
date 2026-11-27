@@ -251,6 +251,7 @@
         hide-open-folder
         @close="closeSideInfo"
         @changed="emit('panel-changed', $event)"
+        @select-tag="emit('select-tag', $event)"
       />
     </aside>
   </div>
@@ -323,6 +324,7 @@ const emit = defineEmits<{
   (e: 'share', item: ViewerMediaItem): void;
   (e: 'delete', item: ViewerMediaItem): void;
   (e: 'panel-changed', change: { fileId: string; favorite?: boolean; albumIds?: string[] }): void;
+  (e: 'select-tag', tag: string): void;
 }>();
 
 const { t, locale } = useI18n();

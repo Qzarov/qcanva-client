@@ -69,7 +69,7 @@
 
       <div class="pp-acts">
         <button
-          v-if="details && canFavorite"
+          v-if="showFavoriteBtn"
           type="button"
           class="pp-act"
           :aria-pressed="favorite"
@@ -175,6 +175,40 @@
           </ul>
         </section>
 
+        <section class="pp-sec pp-ml" data-testid="photo-panel-ml">
+          <div class="pp-sec-h">
+            <h4>{{ mlHeading }}</h4>
+            <span v-if="details.ai?.model" class="pp-ml-model" data-testid="photo-ml-model">{{ details.ai.model }}</span>
+          </div>
+          <p v-if="details.ai?.caption" class="pp-ml-caption" data-testid="photo-ml-caption">
+            {{ details.ai.caption }}
+          </p>
+          <div v-if="details.ai?.tags?.length" class="pp-ml-tags">
+            <button
+              v-for="tag in details.ai.tags"
+              :key="tag"
+              type="button"
+              class="pp-ml-tag"
+              data-testid="photo-ml-tag"
+              @click="emit('select-tag', tag)"
+            >
+              {{ tag }}
+            </button>
+          </div>
+          <details
+            v-if="details.ai?.ocrText"
+            class="pp-ml-ocr"
+            :open="details.ai.ocrText.length <= 160"
+            data-testid="photo-ml-ocr"
+          >
+            <summary class="pp-ml-ocr-summary">{{ mlOcrLabel }}</summary>
+            <pre class="pp-ml-ocr-text">{{ details.ai.ocrText }}</pre>
+          </details>
+          <p v-if="showMlEmpty" class="pp-muted pp-ml-empty" data-testid="photo-ml-empty">
+            {{ mlEmptyText }}
+          </p>
+        </section>
+
         <section class="pp-sec">
           <label class="pp-sec-h" :for="descId">{{ t('photosPanelDescription') }}</label>
           <textarea
@@ -205,6 +239,7 @@ import {
   type PhotoReplica,
 } from '../../api/photos';
 import { alertDialog, promptDialog } from '../../composables/appDialog';
+import { useExplorerLayoutPrefs } from '../../composables/useExplorerLayoutPrefs';
 import { useI18n } from '../../composables/useI18n';
 import type { ViewerMediaItem } from './PhotoViewer.vue';
 import {
@@ -232,6 +267,7 @@ const emit = defineEmits<{
   (e: 'close'): void;
   (e: 'open-folder', folderId: string): void;
   (e: 'open-album', albumId: string): void;
+  (e: 'select-tag', tag: string): void;
   (e: 'group-favorite'): void;
   (e: 'group-share'): void;
   (e: 'group-album'): void;
@@ -242,6 +278,7 @@ const emit = defineEmits<{
 }>();
 
 const { t, locale } = useI18n();
+const layoutPrefs = useExplorerLayoutPrefs();
 const headingId = useId();
 const descId = useId();
 
@@ -292,6 +329,29 @@ const favorite = ref(false);
 const albums = ref<{ id: string; name: string }[]>([]);
 const description = ref('');
 let savedDescription = '';
+
+const isYandexFallback = computed(
+  () => fallbackMode.value && Boolean(props.item?.fileId.startsWith('yandex:')),
+);
+const showFavoriteBtn = computed(
+  () => props.canFavorite && (Boolean(details.value) || isYandexFallback.value),
+);
+
+const mlHeading = computed(() => (locale.value === 'ru' ? 'ИИ-разметка' : 'AI & ML Info'));
+const mlOcrLabel = computed(() =>
+  locale.value === 'ru' ? 'Распознанный текст (OCR)' : 'Recognized text (OCR)',
+);
+const showMlEmpty = computed(() => {
+  const ai = details.value?.ai;
+  return !ai || ai.status === 'pending' || (!ai.caption && !ai.tags?.length && !ai.ocrText);
+});
+const mlEmptyText = computed(() => {
+  const pending = details.value?.ai?.status === 'pending';
+  if (locale.value === 'ru') {
+    return pending ? 'Ожидает ML-индексации' : 'ML-теги не определены';
+  }
+  return pending ? 'Pending ML indexing' : 'No ML tags detected';
+});
 
 const menuOpen = ref(false);
 const allAlbums = ref<Album[]>([]);
@@ -398,6 +458,7 @@ async function load(): Promise<void> {
   menuOpen.value = false;
   if (fileId.startsWith('yandex:') && props.item) {
     fallbackMode.value = true;
+    favorite.value = layoutPrefs.isFavorite(props.item.fileId);
     loading.value = false;
     void loadFallbackPreview(props.item, true);
     return;
@@ -415,6 +476,9 @@ async function load(): Promise<void> {
     if (my !== request) return;
     if (props.item) {
       fallbackMode.value = true;
+      if (props.item.fileId.startsWith('yandex:')) {
+        favorite.value = layoutPrefs.isFavorite(props.item.fileId);
+      }
       error.value = '';
       void loadFallbackPreview(props.item, true);
     } else {
@@ -424,6 +488,15 @@ async function load(): Promise<void> {
     if (my === request) loading.value = false;
   }
 }
+
+watch(
+  () => [isYandexFallback.value, props.item?.fileId, layoutPrefs.favorites.value] as const,
+  ([isYandex, fid]) => {
+    if (isYandex && fid) {
+      favorite.value = layoutPrefs.isFavorite(fid);
+    }
+  },
+);
 
 // The panel follows the current photo: opening the same photo again does not reload it.
 // Flush a pending description first: load() replaces the details it belongs to.
@@ -457,6 +530,13 @@ async function reportSaveError(e: unknown): Promise<void> {
 }
 
 async function toggleFavorite(): Promise<void> {
+  if (isYandexFallback.value && props.item) {
+    const fileId = props.item.fileId;
+    const next = layoutPrefs.toggleFavorite(fileId);
+    favorite.value = next;
+    emit('changed', { fileId, favorite: next });
+    return;
+  }
   const d = details.value;
   if (!d) return;
   const next = !favorite.value;
@@ -1027,5 +1107,80 @@ const storageRows = computed<StorageRow[]>(() => {
   background: var(--ui-glass-btn-bg);
   color: var(--ui-text);
   font: inherit;
+}
+
+.pp-ml-model {
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--ui-glass-btn-bg);
+  border: 1px solid var(--ui-glass-border);
+  color: var(--ui-text-muted);
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  max-width: 170px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-ml-caption {
+  margin: 0 0 8px;
+  color: var(--ui-text);
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.pp-ml-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.pp-ml-tag {
+  padding: 3px 9px;
+  border: 1px solid var(--ui-glass-accent-border);
+  border-radius: 999px;
+  background: var(--ui-glass-accent-bg);
+  color: var(--ui-glass-accent-text);
+  font-size: 12px;
+  line-height: 1.3;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.pp-ml-tag:hover {
+  background: var(--ui-glass-btn-hover);
+}
+
+.pp-ml-ocr {
+  margin-top: 6px;
+  padding: 6px 9px;
+  border-radius: 8px;
+  border: 1px solid var(--ui-border);
+  background: var(--ui-glass-btn-bg);
+  font-size: 12px;
+}
+
+.pp-ml-ocr-summary {
+  cursor: pointer;
+  color: var(--ui-text-secondary);
+  font-weight: 500;
+}
+
+.pp-ml-ocr-text {
+  margin: 6px 0 0;
+  padding: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font: inherit;
+  color: var(--ui-text);
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.pp-ml-empty {
+  margin: 0;
+  font-size: 12.5px;
 }
 </style>

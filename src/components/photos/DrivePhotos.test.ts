@@ -8,6 +8,8 @@ import { isPhotosMock, type FeedItem } from '../../api/photos';
 import { resetExplorerLayoutPrefs, useExplorerLayoutPrefs } from '../../composables/useExplorerLayoutPrefs';
 import { useI18n } from '../../composables/useI18n';
 import { resetSpaces } from '../../composables/useSpaces';
+import { resetYandexDiskStatus, useYandexDisk } from '../../composables/useYandexDisk';
+import { resetYandexMediaLibraryForTests } from '../../composables/useYandexMediaLibrary';
 import DrivePhotos from './DrivePhotos.vue';
 import { usePhotosView } from './usePhotosView';
 
@@ -15,6 +17,7 @@ const searchMock = vi.hoisted(() => vi.fn());
 const albumsMock = vi.hoisted(() => vi.fn());
 const spacesListMock = vi.hoisted(() => vi.fn());
 const spacesGetMock = vi.hoisted(() => vi.fn());
+const spacesFeedMock = vi.hoisted(() => vi.fn());
 const spacesAddItemsMock = vi.hoisted(() => vi.fn());
 const getTrashMock = vi.hoisted(() => vi.fn());
 const trashFileMock = vi.hoisted(() => vi.fn());
@@ -25,6 +28,7 @@ const feedPatch = vi.hoisted(() => vi.fn());
 const feedLoadMore = vi.hoisted(() => vi.fn(async () => false));
 const getDownloadLinkMock = vi.hoisted(() => vi.fn());
 const downloadDriveFileMock = vi.hoisted(() => vi.fn());
+const yandexStatusMock = vi.hoisted(() => vi.fn());
 const yandexListMediaMock = vi.hoisted(() => vi.fn());
 const yandexDownloadLinkMock = vi.hoisted(() => vi.fn());
 const yandexRemoveMock = vi.hoisted(() => vi.fn());
@@ -43,9 +47,11 @@ vi.mock('../../api/spaces', () => ({
   spacesApi: {
     list: spacesListMock,
     get: spacesGetMock,
+    feed: spacesFeedMock,
     addItems: spacesAddItemsMock,
     create: vi.fn().mockResolvedValue({ id: 'sp-new' }),
     removeItems: vi.fn().mockResolvedValue({ removed: 0 }),
+    yandexDownload: vi.fn().mockResolvedValue({ href: 'https://downloader.disk.yandex.ru/space-file' }),
   },
 }));
 
@@ -89,6 +95,7 @@ vi.mock('../../api/yandexDisk', async (importOriginal) => {
     downloadYandexLink: downloadYandexLinkMock,
     yandexDisk: {
       ...actual.yandexDisk,
+      status: yandexStatusMock,
       listMedia: yandexListMediaMock,
       downloadLink: yandexDownloadLinkMock,
       remove: yandexRemoveMock,
@@ -132,11 +139,14 @@ let extraFeedItems: FeedItem[] = [];
 
 const FeedStub = defineComponent({
   name: 'PhotosFeed',
-  props: ['params', 'captionOnTile', 'tile', 'tileHeight', 'aspectMode', 'folderFilterId', 'peopleFilter', 'recentLimit', 'selected', 'current', 'externalItems', 'externalLoading'],
+  props: ['params', 'captionOnTile', 'tile', 'tileHeight', 'aspectMode', 'folderFilterId', 'peopleFilter', 'recentLimit', 'selected', 'current', 'externalItems', 'externalLoading', 'supplementaryItems'],
   emits: ['open', 'focus-photo', 'activate', 'toggle-select', 'set-selection', 'contextmenu', 'toggle-favorite', 'units-loaded'],
   setup(props, { emit, expose }) {
-    const resolvedItems = (): FeedItem[] =>
-      Array.isArray(props.externalItems) ? (props.externalItems as FeedItem[]) : [...feedItems, ...extraFeedItems];
+    const resolvedItems = (): FeedItem[] => {
+      if (Array.isArray(props.externalItems)) return props.externalItems as FeedItem[];
+      const supp = Array.isArray(props.supplementaryItems) ? (props.supplementaryItems as FeedItem[]) : [];
+      return [...feedItems, ...extraFeedItems, ...supp];
+    };
     expose({
       orderedItems: resolvedItems,
       refresh: feedRefresh,
@@ -158,6 +168,7 @@ const FeedStub = defineComponent({
           'data-period': (props.params as { period?: string }).period ?? '',
           'data-external-count': Array.isArray(props.externalItems) ? String(props.externalItems.length) : 'none',
           'data-external-loading': String(Boolean(props.externalLoading)),
+          'data-supplementary-count': Array.isArray(props.supplementaryItems) ? String(props.supplementaryItems.length) : 'none',
         },
         [
           h('button', { 'data-stub-select': '', onClick: () => emit('set-selection', ['f0', 'f1']) }, 'select'),
@@ -187,7 +198,7 @@ const FeedStub = defineComponent({
 const PanelStub = defineComponent({
   name: 'PhotoPanel',
   props: ['fileId', 'item', 'canFavorite', 'selectedItems', 'hideOpenFolder'],
-  emits: ['close', 'open-folder', 'open-album', 'group-favorite', 'group-share', 'group-album', 'group-download', 'group-delete', 'changed'],
+  emits: ['close', 'open-folder', 'open-album', 'select-tag', 'group-favorite', 'group-share', 'group-album', 'group-download', 'group-delete', 'changed'],
   setup(props, { emit }) {
     return () =>
       h('aside', {
@@ -199,6 +210,7 @@ const PanelStub = defineComponent({
       }, [
         h('button', { 'data-stub-folder': '', onClick: () => emit('open-folder', 'fold1') }, 'folder'),
         h('button', { 'data-stub-album': '', onClick: () => emit('open-album', 'alb1') }, 'album'),
+        h('button', { 'data-stub-select-tag': '', onClick: () => emit('select-tag', 'горы') }, 'tag'),
         h('button', { 'data-stub-group-fav': '', onClick: () => emit('group-favorite') }, 'gfav'),
         h('button', { 'data-stub-group-share': '', onClick: () => emit('group-share') }, 'gshare'),
         h('button', { 'data-stub-group-del': '', onClick: () => emit('group-delete') }, 'gdel'),
@@ -225,7 +237,7 @@ const ViewBarStub = defineComponent({
 const ViewerStub = defineComponent({
   name: 'PhotoViewer',
   props: ['item', 'items', 'index', 'total', 'hasPrev', 'hasNext', 'canFavorite', 'canShare', 'canDelete', 'canInfo'],
-  emits: ['next', 'prev', 'jump', 'close', 'delete'],
+  emits: ['next', 'prev', 'jump', 'close', 'delete', 'select-tag'],
   setup: (p, { emit }) => () =>
     h(
       'div',
@@ -238,7 +250,16 @@ const ViewerStub = defineComponent({
         'data-can-info': String(p.canInfo ?? true),
         onClick: () => emit('next'),
       },
-      `${(p.item as FeedItem).fileId}`,
+      [
+        `${(p.item as FeedItem).fileId}`,
+        h('button', {
+          'data-stub-viewer-tag': '',
+          onClick: (e: MouseEvent) => {
+            e.stopPropagation();
+            emit('select-tag', 'закат');
+          },
+        }, ''),
+      ],
     ),
 });
 
@@ -267,6 +288,8 @@ describe('DrivePhotos', () => {
     localStorage.clear();
     resetExplorerLayoutPrefs(true);
     resetSpaces();
+    resetYandexDiskStatus();
+    resetYandexMediaLibraryForTests();
     useI18n().setLocale('ru');
     usePhotosView().reset();
     extraFeedItems = [];
@@ -284,8 +307,18 @@ describe('DrivePhotos', () => {
     spacesListMock.mockReset().mockResolvedValue({
       spaces: [{ id: 'alb1', name: 'Алтай', role: 'owner', ownerId: 'u1', memberCount: 4, sourceCount: 1, mediaCount: 2, coverFileIds: [], updatedAt: '' }],
     });
-    spacesGetMock.mockReset().mockResolvedValue({ id: 'alb1', name: 'Алтай' });
+    spacesGetMock.mockReset().mockResolvedValue({ id: 'alb1', name: 'Алтай', sources: [] });
+    spacesFeedMock.mockReset().mockResolvedValue({ items: [], offset: 0, limit: 200, nextOffset: null });
     spacesAddItemsMock.mockReset().mockResolvedValue({ added: 2 });
+    yandexStatusMock.mockReset().mockResolvedValue({
+      enabled: true,
+      connected: false,
+      reconnectRequired: false,
+      login: null,
+      displayName: null,
+      email: null,
+      avatarUrl: null,
+    });
     yandexListMediaMock.mockReset().mockResolvedValue([]);
     yandexDownloadLinkMock.mockReset().mockResolvedValue({ href: 'https://downloader.disk.yandex.ru/file' });
     yandexRemoveMock.mockReset().mockResolvedValue({ status: 'done' });
@@ -337,7 +370,7 @@ describe('DrivePhotos', () => {
     expect(w.get('[data-testid="feed-stub"]').attributes('data-period')).toBe('year');
   });
 
-  it('drives album feed when externalAlbumId is passed, renders clickable members pill + clean share pill, and emits clear-album', async () => {
+  it('drives album feed when externalAlbumId is passed, renders ONLY clickable Участников: N pill (no duplicate share pill), and emits clear-album', async () => {
     const w = mountIt({ externalAlbumId: 'alb1', externalAlbumMembersCount: 4 });
     await flushPromises();
     expect(w.get('[data-testid="feed-stub"]').attributes('data-album')).toBe('alb1');
@@ -347,10 +380,8 @@ describe('DrivePhotos', () => {
     await membersPill.trigger('click');
     expect(w.emitted('share-album')).toEqual([['alb1']]);
 
-    const sharePill = w.get('[data-testid="gallery-album-share"]');
-    expect(sharePill.text().trim()).toBe('Поделиться');
-    await sharePill.trigger('click');
-    expect(w.emitted('share-album')).toEqual([['alb1'], ['alb1']]);
+    // Item 6: duplicate Поделиться button is removed
+    expect(w.find('[data-testid="gallery-album-share"]').exists()).toBe(false);
 
     // Solo album (N = 1) still shows clickable Участников: 1 pill
     await w.setProps({ externalAlbumMembersCount: 1 });
@@ -857,32 +888,32 @@ describe('DrivePhotos', () => {
     await w.get('[data-s2-clear]').trigger('click');
     await flushPromises();
 
-    // Double-click opens PhotoViewer with canFavorite=false, canShare=false (for private item), canDelete=true, canInfo=true
+    // Double-click opens PhotoViewer with canFavorite=true, canShare=false (for private item), canDelete=true, canInfo=true
     await w.get('[data-file-id="yandex:/Фотокамера/sea.jpg"]').trigger('dblclick');
     const viewer = w.get('[data-testid="viewer-stub"]');
     expect(viewer.text()).toBe('yandex:/Фотокамера/sea.jpg');
-    expect(viewer.attributes('data-can-fav')).toBe('false');
+    expect(viewer.attributes('data-can-fav')).toBe('true');
     expect(viewer.attributes('data-can-share')).toBe('false');
     expect(viewer.attributes('data-can-del')).toBe('true');
     expect(viewer.attributes('data-can-info')).toBe('true');
     w.getComponent(ViewerStub).vm.$emit('close');
     await flushPromises();
 
-    // Right-click menu on Yandex tile: Свойства opens PhotoPanel with :item and canFavorite=false
+    // Right-click menu on Yandex tile: Favorite is enabled, Свойства opens PhotoPanel with :item and canFavorite=true
     await w.get('[data-file-id="yandex:/Фотокамера/sea.jpg"]').trigger('contextmenu');
     expect(w.find('[data-ctx-open]').exists()).toBe(true);
+    expect(w.find('[data-ctx-favorite]').exists()).toBe(true);
     expect(w.find('[data-ctx-show-folder]').exists()).toBe(true);
     expect(w.find('[data-ctx-download]').exists()).toBe(true);
     expect(w.find('[data-ctx-properties]').exists()).toBe(true);
     expect(w.find('[data-ctx-delete]').exists()).toBe(true);
-    expect(w.find('[data-ctx-favorite]').exists()).toBe(false);
     expect(w.find('[data-ctx-album]').exists()).toBe(false);
 
     await w.get('[data-ctx-properties]').trigger('click');
     const panel = w.get('[data-photo-panel]');
     expect(panel.attributes('data-panel-file')).toBe('yandex:/Фотокамера/sea.jpg');
     expect(panel.attributes('data-panel-has-item')).toBe('true');
-    expect(panel.attributes('data-panel-can-fav')).toBe('false');
+    expect(panel.attributes('data-panel-can-fav')).toBe('true');
 
     // Download calls yandexDisk.downloadLink + downloadYandexLink
     await w.get('[data-file-id="yandex:/Фотокамера/sea.jpg"]').trigger('contextmenu');
@@ -902,5 +933,114 @@ describe('DrivePhotos', () => {
     await flushPromises();
     expect(confirmDialogMock).toHaveBeenCalled();
     expect(yandexRemoveMock).toHaveBeenCalledWith('/Фотокамера/sea.jpg');
+  });
+
+  it('Batch8 Items 3, 4, 5: wires PhotoPanel select-tag, merges Yandex media in ФОТО counts/feed/favorites/global search, and loads Yandex sources inside albums', async () => {
+    const yPhoto = {
+      path: '/Фотокамера/alp.jpg',
+      name: 'alp.jpg',
+      type: 'file' as const,
+      size: 2048,
+      mime: 'image/jpeg',
+      mediaType: 'image',
+      md5: 'y-alp',
+      createdAt: '2026-10-18T10:00:00Z',
+      modifiedAt: '2026-10-18T10:00:00Z',
+      publicUrl: null,
+      previewUrl: '/api/yandex-disk/preview?path=/Фотокамера/alp.jpg&size=L',
+    };
+    const yVideo = {
+      path: '/Фотокамера/rafting.mp4',
+      name: 'rafting.mp4',
+      type: 'file' as const,
+      size: 8192,
+      mime: 'video/mp4',
+      mediaType: 'video',
+      md5: 'y-raft',
+      createdAt: '2026-10-19T10:00:00Z',
+      modifiedAt: '2026-10-19T10:00:00Z',
+      publicUrl: null,
+      previewUrl: '/api/yandex-disk/preview?path=/Фотокамера/rafting.mp4&size=L',
+    };
+
+    useYandexDisk().status.value = {
+      enabled: true,
+      connected: true,
+      reconnectRequired: false,
+      login: 'vlad',
+      displayName: 'Vlad',
+      email: null,
+      avatarUrl: null,
+    };
+    yandexStatusMock.mockResolvedValue(useYandexDisk().status.value);
+    yandexListMediaMock.mockResolvedValue([yPhoto, yVideo]);
+
+    const w = mountIt({ activeSection: 'library' });
+    await flushPromises();
+
+    // 1. Yandex items are passed as supplementaryItems to PhotosFeed and added to sidebar counts
+    expect(w.get('[data-testid="feed-stub"]').attributes('data-supplementary-count')).toBe('2');
+    const countsEmits = w.emitted('update:counts') ?? [];
+    const lastCounts = countsEmits[countsEmits.length - 1]?.[0] as {
+      library?: number;
+      favorites?: number;
+      recent?: number;
+      videos?: number;
+    };
+    // 2 Q Space feedItems + 2 Yandex items = 4 library, 1 video, 0 fav initially
+    expect(lastCounts.library).toBe(4);
+    expect(lastCounts.recent).toBe(4);
+    expect(lastCounts.videos).toBe(1);
+    expect(lastCounts.favorites).toBe(0);
+
+    // 2. Toggling favorite on Yandex item via context menu updates layoutPrefs & sidebar favorites count
+    await w.get('[data-file-id="yandex:/Фотокамера/alp.jpg"]').trigger('contextmenu');
+    await w.get('[data-ctx-favorite]').trigger('click');
+    await flushPromises();
+    expect(useExplorerLayoutPrefs().isFavorite('yandex:/Фотокамера/alp.jpg')).toBe(true);
+    const countsAfterList = w.emitted('update:counts') ?? [];
+    const countsAfterFav = countsAfterList[countsAfterList.length - 1]?.[0] as { favorites?: number };
+    expect(countsAfterFav?.favorites).toBe(1);
+
+    // 3. Global search in Медиатека merges matching Yandex items into scopedSearchItems
+    await typeQuery(w, 'rafting');
+    const searchIds = w.findAll('[data-testid="photos-search-grid"] [data-file-id]').map((n) => n.attributes('data-file-id'));
+    expect(searchIds).toContain('yandex:/Фотокамера/rafting.mp4');
+    await w.get('[data-s2-clear]').trigger('click');
+    await flushPromises();
+
+    // 4. PhotoPanel @select-tag runs search with that ML tag
+    await w.get('[data-file-id="f0"]').trigger('contextmenu');
+    await w.get('[data-ctx-properties]').trigger('click');
+    await w.get('[data-stub-select-tag]').trigger('click');
+    await flushPromises();
+    expect(searchMock).toHaveBeenCalledWith('горы', expect.any(Object));
+    await w.get('[data-s2-clear]').trigger('click');
+    await flushPromises();
+
+    // 4b. PhotoViewer @select-tag closes viewer and runs search with that ML tag
+    await w.get('[data-file-id="f0"]').trigger('dblclick');
+    await flushPromises();
+    expect(w.find('[data-testid="viewer-stub"]').exists()).toBe(true);
+    await w.get('[data-stub-viewer-tag]').trigger('click');
+    await flushPromises();
+    expect(w.find('[data-testid="viewer-stub"]').exists()).toBe(false);
+    expect(searchMock).toHaveBeenCalledWith('закат', expect.any(Object));
+    await w.get('[data-s2-clear]').trigger('click');
+    await flushPromises();
+
+    // 5. Album with kind:'yandex' source loads yandexDisk.listMedia(src.yandexPath) + passes supplementaryItems
+    spacesGetMock.mockResolvedValue({
+      id: 'alb-y',
+      name: 'С Яндекс',
+      sources: [{ id: 'src-y', kind: 'yandex', title: 'Фотокамера', folderId: null, yandexPath: '/Фотокамера' }],
+    });
+    yandexListMediaMock.mockResolvedValueOnce([yPhoto]);
+    await w.setProps({ externalAlbumId: 'alb-y' });
+    await flushPromises();
+
+    expect(yandexListMediaMock).toHaveBeenCalledWith('/Фотокамера');
+    expect(w.get('[data-testid="feed-stub"]').attributes('data-supplementary-count')).toBe('1');
+    expect(w.find('[data-file-id="yandex:/Фотокамера/alp.jpg"]').exists()).toBe(true);
   });
 });

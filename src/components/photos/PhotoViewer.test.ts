@@ -522,4 +522,37 @@ describe('PhotoViewer', () => {
       cafSpy.mockRestore();
     }
   });
+
+  it('forwards select-tag emitted by embedded PhotoPanel in fullscreen info drawer', async () => {
+    const detailsMock = vi.fn().mockResolvedValue({
+      item: mkItem(),
+      meta: null,
+      folderPath: [],
+      albums: [],
+      edit: { description: null, rating: null, favorite: false },
+      storage: { hubCopy: 'present', replicas: [] },
+      ai: {
+        status: 'ready',
+        caption: 'Горы на закате',
+        tags: ['закат', 'горы'],
+        ocrText: null,
+        model: 'gemini-2.5-flash',
+        source: 'provider',
+      },
+    });
+    vi.doMock('../../api/photos', () => ({
+      renditionUrl: renditionMock,
+      isPhotosMock: () => false,
+      photosApi: { details: detailsMock, edit: vi.fn() },
+    }));
+
+    const w = await setup(mkItem());
+    await w.get('[data-viewer-info]').trigger('click');
+    await flushPromises();
+
+    const tags = w.findAll('[data-testid="photo-ml-tag"]');
+    expect(tags.map((t) => t.text())).toEqual(['закат', 'горы']);
+    await tags[0]!.trigger('click');
+    expect(w.emitted('select-tag')).toEqual([['закат']]);
+  });
 });
