@@ -126,11 +126,11 @@ describe('DashboardSidebar', () => {
     expect(wrapper.find('[data-tree-key="root:qspace"]').exists()).toBe(true);
     expect(wrapper.find('[data-tree-key="root:clouds"]').exists()).toBe(true);
     expect(wrapper.find('[data-tree-key="root:albums"]').exists()).toBe(true);
-    expect(wrapper.find('[data-home-link]').text()).toContain('home');
+    expect(wrapper.find('[data-home-link]').text()).toContain('Home');
     expect(wrapper.get('[data-home-link]').attributes('aria-current')).toBe('page');
-    expect(wrapper.get('[data-dashboard-section="shared"]').text()).toContain('shared');
+    expect(wrapper.get('[data-dashboard-section="shared"]').text()).toContain('Shared with me');
     expect(wrapper.get('[data-dashboard-section="shared"]').attributes('aria-label')).toBe('Shared with me');
-    expect(wrapper.get('[data-dashboard-section="public"]').text()).toContain('public');
+    expect(wrapper.get('[data-dashboard-section="public"]').text()).toContain('Public');
     expect(wrapper.get('[data-dashboard-section="public"]').attributes('aria-label')).toBe('Public');
     expect(wrapper.findAll('[data-dashboard-folder]')).toHaveLength(3);
     expect(wrapper.get('[data-dashboard-folder="default"]').text()).toContain('default');

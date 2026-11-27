@@ -219,6 +219,7 @@
             :items="scopedSearchItems"
             :tile="view.state.value.tile"
             :current="currentId"
+            :selected="selected"
             :has-more="searchCursor !== null && !searchLoading"
             @open="onOpen"
             @activate="onActivate"
@@ -586,7 +587,12 @@ import PhotosFeed from './PhotosFeed.vue';
 import PhotosSearchGrid from './PhotosSearchGrid.vue';
 import PhotosViewBar from './PhotosViewBar.vue';
 import PhotoViewer from './PhotoViewer.vue';
-import type { GallerySection, GallerySidebarCounts, GalleryStorageFolder } from './GallerySidebar.vue';
+import {
+  invalidateGalleryFolderFilesCache,
+  type GallerySection,
+  type GallerySidebarCounts,
+  type GalleryStorageFolder,
+} from './GallerySidebar.vue';
 import { addGalleryAlbumItems, listGalleryAlbums, usePhotoSelectionActions } from './usePhotoSelectionActions';
 import { usePhotosView } from './usePhotosView';
 
@@ -628,9 +634,17 @@ const emit = defineEmits<{
   (e: 'open-trash'): void;
   (e: 'expand-sidebar'): void;
   (e: 'update:counts', counts: GallerySidebarCounts): void;
+  (e: 'drop-folder', folderId: string | null, fileIds: string[], folderIds: string[]): void;
+  (e: 'drop-album', albumId: string, fileIds: string[], folderIds: string[]): void;
+  (e: 'folder-contextmenu', payload: { event: MouseEvent; folderId: string }): void;
 }>();
 
 const { t, locale } = useI18n();
+const homeFolderLabel = computed(() => {
+  const translated = (t as (key: string) => string)('explorerHomeFolder');
+  if (translated && translated !== 'explorerHomeFolder') return translated;
+  return locale.value === 'ru' ? 'Домашняя' : 'Home';
+});
 const toast = useToast();
 const view = usePhotosView();
 const prefs = useExplorerLayoutPrefs();
@@ -783,7 +797,7 @@ const suggestedTags = computed<string[]>(() => [...(locale.value === 'ru' ? SUGG
 
 const scopeLabel = computed<string>(() => {
   if (effectiveAlbumId.value) return albumName.value || effectiveAlbumId.value;
-  if (props.externalFolderId) return folderName.value || t('home');
+  if (props.externalFolderId) return folderName.value || homeFolderLabel.value;
   return t('galleryLibrary');
 });
 
@@ -1047,7 +1061,7 @@ watch(
     if (!id) return;
     if (props.folders === undefined) void ensureStorageFolders();
     if (id === 'root') {
-      folderName.value = t('home');
+      folderName.value = homeFolderLabel.value;
       return;
     }
     const localMatch = allStorageFolders.value.find((f) => f.id === id);
@@ -1224,7 +1238,10 @@ const actions = usePhotoSelectionActions({
   folderOf,
   deselect: (ids) => onToggleSelect(ids, false),
   onMoved: (ids) => {
+    invalidateGalleryFolderFilesCache();
     void feedRef.value?.refresh();
+    void refreshSidebarCounts();
+    if (searchActive.value && searchQuery.value) void runSearch(searchQuery.value);
     if (panelId.value && ids.includes(panelId.value)) panelEpoch.value++;
   },
   onAlbumChanged: (kind, id, fileIds) => {
@@ -2171,7 +2188,21 @@ function getActiveFocusTransfer(): GalleryFocusTransfer | null {
   };
 }
 
-defineExpose({ focusFile, focusSearch, getActiveFocusTransfer });
+function refresh(opts?: { clearSelection?: boolean; invalidateFolders?: boolean }): void {
+  if (opts?.clearSelection !== false) {
+    selected.value = new Set();
+  }
+  if (opts?.invalidateFolders !== false) {
+    invalidateGalleryFolderFilesCache();
+  }
+  void feedRef.value?.refresh();
+  void refreshSidebarCounts();
+  if (searchActive.value && searchQuery.value) {
+    void runSearch(searchQuery.value);
+  }
+}
+
+defineExpose({ focusFile, focusSearch, getActiveFocusTransfer, refresh });
 
 function closePanel(restoreFocus = true): void {
   const id = panelId.value;

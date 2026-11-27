@@ -440,9 +440,15 @@ function onKeydown(event: KeyboardEvent): void {
     return;
   }
 
-  if (event.key === 'Enter' && focusIdx.value >= 0 && focusIdx.value < list.length) {
-    event.preventDefault();
-    emit('open', list[focusIdx.value]!);
+  if (event.key === 'Enter') {
+    let idx = focusIdx.value;
+    if ((idx < 0 || idx >= list.length) && effectiveSelected.value.length === 1) {
+      idx = list.findIndex((r) => r.key === effectiveSelected.value[0]);
+    }
+    if (idx >= 0 && idx < list.length) {
+      event.preventDefault();
+      emit('open', list[idx]!);
+    }
   }
 }
 

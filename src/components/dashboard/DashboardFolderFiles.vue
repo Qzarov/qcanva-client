@@ -18,6 +18,7 @@
     v-file-info="infoOf(file)"
     :aria-label="`${isMarkdown(file) ? t('openDocument') : t('folderFileDownload')}: ${file.name}`"
     @click="open(file)"
+    @dblclick.stop="open(file)"
     @keydown.enter.prevent="open(file)"
     @keydown.space.prevent="open(file)"
     @contextmenu.prevent.stop="emit('contextmenu', $event, file)"

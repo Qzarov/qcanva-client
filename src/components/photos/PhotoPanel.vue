@@ -5,11 +5,11 @@
     :aria-labelledby="headingId"
     :aria-busy="loading"
     data-photo-panel
-    @keydown.esc="close"
+    @keydown.esc.stop.prevent="close"
   >
     <div class="pp-top">
       <h3 :id="headingId" class="pp-title" data-panel-title>
-        {{ isGroup ? groupHeading : (details ? details.item.name : t('photosLoading')) }}
+        {{ isGroup ? groupHeading : (details ? details.item.name : (item ? item.name : t('photosLoading'))) }}
       </h3>
       <button type="button" class="pp-x" :aria-label="t('photosClose')" data-panel-close @click="close">
         <X :size="18" aria-hidden="true" />
@@ -55,14 +55,21 @@
       <button type="button" class="pp-act" @click="load">{{ t('photosRetry') }}</button>
     </div>
 
-    <template v-else-if="details">
+    <template v-else-if="details || (fallbackMode && item)">
       <div class="pp-prev" data-panel-preview>
-        <img v-if="previewSrc" :src="previewSrc" alt="" @error="onPreviewError" />
+        <img
+          v-if="previewSrc"
+          :referrerpolicy="item?.noReferrer ? 'no-referrer' : undefined"
+          :src="previewSrc"
+          alt=""
+          @error="onPreviewError"
+        />
         <span v-else class="pp-prev-ph">{{ t('photosThumbUnavailable') }}</span>
       </div>
 
       <div class="pp-acts">
         <button
+          v-if="details && canFavorite"
           type="button"
           class="pp-act"
           :aria-pressed="favorite"
@@ -77,7 +84,7 @@
         </button>
       </div>
 
-      <section class="pp-sec" :aria-label="t('photosPanelDetails')">
+      <section v-if="infoRows.length" class="pp-sec" :aria-label="t('photosPanelDetails')">
         <dl class="pp-kv" data-panel-info>
           <template v-for="row in infoRows" :key="row.key">
             <dt>{{ row.label }}</dt>
@@ -86,99 +93,101 @@
         </dl>
       </section>
 
-      <section v-if="details.folderPath.length" class="pp-sec" data-panel-folder>
-        <h4 class="pp-sec-h">{{ t('photosPanelFolder') }}</h4>
-        <nav class="pp-crumbs" :aria-label="t('photosPanelFolder')">
-          <template v-for="(part, i) in details.folderPath" :key="part.id + ':' + i">
-            <span v-if="i > 0" class="pp-sep" aria-hidden="true">/</span>
-            <span v-if="hideOpenFolder" class="pp-crumb-text">{{ part.name }}</span>
-            <button v-else type="button" class="pp-link" data-panel-crumb @click="emit('open-folder', part.id)">
-              {{ part.name }}
-            </button>
-          </template>
-        </nav>
-      </section>
+      <template v-if="details">
+        <section v-if="details.folderPath.length" class="pp-sec" data-panel-folder>
+          <h4 class="pp-sec-h">{{ t('photosPanelFolder') }}</h4>
+          <nav class="pp-crumbs" :aria-label="t('photosPanelFolder')">
+            <template v-for="(part, i) in details.folderPath" :key="part.id + ':' + i">
+              <span v-if="i > 0" class="pp-sep" aria-hidden="true">/</span>
+              <span v-if="hideOpenFolder" class="pp-crumb-text">{{ part.name }}</span>
+              <button v-else type="button" class="pp-link" data-panel-crumb @click="emit('open-folder', part.id)">
+                {{ part.name }}
+              </button>
+            </template>
+          </nav>
+        </section>
 
-      <section
-        class="pp-sec"
-        data-panel-albums
-        @keydown.esc="if (menuOpen) { $event.stopPropagation(); closeMenu(true); }"
-      >
-        <div class="pp-sec-h">
-          <h4>{{ t('photosPanelAlbums') }}</h4>
-          <button
-            ref="plusBtn"
-            type="button"
-            class="pp-plus"
-            :aria-label="t('photosPanelAddToAlbum')"
-            :aria-expanded="menuOpen"
-            data-panel-plus
-            @click="toggleMenu"
-          >
-            <Plus :size="15" aria-hidden="true" />
-          </button>
-        </div>
-        <div class="pp-chips">
-          <button
-            v-for="a in albums"
-            :key="a.id"
-            type="button"
-            class="pp-chip"
-            data-panel-chip
-            @click="emit('open-album', a.id)"
-          >
-            {{ a.name }}
-          </button>
-          <span v-if="albums.length === 0" class="pp-muted">{{ t('photosPanelNoAlbums') }}</span>
-        </div>
-        <div
-          v-if="menuOpen"
-          ref="menuEl"
-          class="pp-menu"
-          role="group"
-          :aria-label="t('photosPanelAddToAlbum')"
-          data-panel-menu
+        <section
+          class="pp-sec"
+          data-panel-albums
+          @keydown.esc="if (menuOpen) { $event.stopPropagation(); closeMenu(true); }"
         >
-          <button
-            v-for="a in allAlbums"
-            :key="a.id"
-            type="button"
-            :aria-pressed="isMember(a.id)"
-            data-panel-menu-item
-            @click="toggleAlbum(a.id, a.name)"
+          <div class="pp-sec-h">
+            <h4>{{ t('photosPanelAlbums') }}</h4>
+            <button
+              ref="plusBtn"
+              type="button"
+              class="pp-plus"
+              :aria-label="t('photosPanelAddToAlbum')"
+              :aria-expanded="menuOpen"
+              data-panel-plus
+              @click="toggleMenu"
+            >
+              <Plus :size="15" aria-hidden="true" />
+            </button>
+          </div>
+          <div class="pp-chips">
+            <button
+              v-for="a in albums"
+              :key="a.id"
+              type="button"
+              class="pp-chip"
+              data-panel-chip
+              @click="emit('open-album', a.id)"
+            >
+              {{ a.name }}
+            </button>
+            <span v-if="albums.length === 0" class="pp-muted">{{ t('photosPanelNoAlbums') }}</span>
+          </div>
+          <div
+            v-if="menuOpen"
+            ref="menuEl"
+            class="pp-menu"
+            role="group"
+            :aria-label="t('photosPanelAddToAlbum')"
+            data-panel-menu
           >
-            <span>{{ a.name }}</span>
-            <Check v-if="isMember(a.id)" :size="14" aria-hidden="true" />
-          </button>
-          <button type="button" data-panel-new-album @click="newAlbum">
-            <span>{{ t('photosPanelNewAlbum') }}</span>
-          </button>
-        </div>
-      </section>
+            <button
+              v-for="a in allAlbums"
+              :key="a.id"
+              type="button"
+              :aria-pressed="isMember(a.id)"
+              data-panel-menu-item
+              @click="toggleAlbum(a.id, a.name)"
+            >
+              <span>{{ a.name }}</span>
+              <Check v-if="isMember(a.id)" :size="14" aria-hidden="true" />
+            </button>
+            <button type="button" data-panel-new-album @click="newAlbum">
+              <span>{{ t('photosPanelNewAlbum') }}</span>
+            </button>
+          </div>
+        </section>
 
-      <section class="pp-sec" data-panel-storage>
-        <h4 class="pp-sec-h">{{ t('photosPanelStorage') }}</h4>
-        <ul class="pp-devs">
-          <li v-for="d in storageRows" :key="d.key" class="pp-dev" data-panel-dev>
-            <span class="pp-dot" :class="d.dot" aria-hidden="true"></span>
-            <span>{{ d.name }}</span>
-            <small>{{ d.label }}</small>
-          </li>
-        </ul>
-      </section>
+        <section class="pp-sec" data-panel-storage>
+          <h4 class="pp-sec-h">{{ t('photosPanelStorage') }}</h4>
+          <ul class="pp-devs">
+            <li v-for="d in storageRows" :key="d.key" class="pp-dev" data-panel-dev>
+              <span class="pp-dot" :class="d.dot" aria-hidden="true"></span>
+              <span>{{ d.name }}</span>
+              <small>{{ d.label }}</small>
+            </li>
+          </ul>
+        </section>
 
-      <section class="pp-sec">
-        <label class="pp-sec-h" :for="descId">{{ t('photosPanelDescription') }}</label>
-        <textarea
-          :id="descId"
-          v-model="description"
-          class="pp-desc"
-          maxlength="10000"
-          :placeholder="t('photosPanelDescriptionPlaceholder')"
-          data-panel-desc
-          @blur="flushDescription"
-        ></textarea>
-      </section>
+        <section class="pp-sec">
+          <label class="pp-sec-h" :for="descId">{{ t('photosPanelDescription') }}</label>
+          <textarea
+            :id="descId"
+            v-model="description"
+            class="pp-desc"
+            maxlength="10000"
+            :placeholder="t('photosPanelDescriptionPlaceholder')"
+            data-panel-desc
+            @blur="flushDescription"
+          ></textarea>
+        </section>
+      </template>
     </template>
   </aside>
 </template>
@@ -197,6 +206,7 @@ import {
 } from '../../api/photos';
 import { alertDialog, promptDialog } from '../../composables/appDialog';
 import { useI18n } from '../../composables/useI18n';
+import type { ViewerMediaItem } from './PhotoViewer.vue';
 import {
   addGalleryAlbumItems,
   createGalleryAlbum,
@@ -206,10 +216,14 @@ import {
 
 const props = withDefaults(defineProps<{
   fileId?: string;
+  item?: ViewerMediaItem | null;
+  canFavorite?: boolean;
   selectedItems?: readonly FeedItem[];
   hideOpenFolder?: boolean;
 }>(), {
   fileId: '',
+  item: null,
+  canFavorite: true,
   selectedItems: () => [],
   hideOpenFolder: false,
 });
@@ -271,6 +285,7 @@ const groupDateRange = computed(() => {
 });
 
 const details = ref<PhotoDetails | null>(null);
+const fallbackMode = ref(false);
 const loading = ref(false);
 const error = ref('');
 const favorite = ref(false);
@@ -280,6 +295,87 @@ let savedDescription = '';
 
 const menuOpen = ref(false);
 const allAlbums = ref<Album[]>([]);
+
+// ----- preview: preview rendition, then thumbnail, then fallback item preview/original, then placeholder -----
+
+const PREVIEW_SIZES = ['preview', 'thumbnail'] as const;
+type PreviewStep = (typeof PREVIEW_SIZES)[number] | 'previewSrc' | 'originalSrc' | 'resolveOriginal';
+const previewSrc = ref<string | null>(null);
+let previewStep: PreviewStep | null = null;
+let previewFailed = new Set<PreviewStep>();
+let previewRequest = 0;
+
+async function loadFallbackPreview(fallback: ViewerMediaItem, reset = false): Promise<void> {
+  if (reset) {
+    previewFailed = new Set();
+    previewSrc.value = null;
+    previewStep = null;
+  }
+  const my = ++previewRequest;
+  const steps: PreviewStep[] = [];
+  if (fallback.previewSrc) steps.push('previewSrc');
+  if (fallback.originalSrc) steps.push('originalSrc');
+  if (fallback.resolveOriginalUrl && fallback.kind !== 'video') steps.push('resolveOriginal');
+
+  for (const step of steps) {
+    if (previewFailed.has(step)) continue;
+    try {
+      let url: string | null = null;
+      if (step === 'previewSrc') url = fallback.previewSrc ?? null;
+      else if (step === 'originalSrc') url = fallback.originalSrc ?? null;
+      else if (step === 'resolveOriginal') url = (await fallback.resolveOriginalUrl?.()) || null;
+      if (my !== previewRequest) return;
+      if (!url) {
+        previewFailed.add(step);
+        continue;
+      }
+      previewSrc.value = url;
+      previewStep = step;
+      return;
+    } catch {
+      previewFailed.add(step);
+    }
+  }
+  if (my === previewRequest) {
+    previewSrc.value = null;
+    previewStep = null;
+  }
+}
+
+async function loadPreview(hash: string, reset = false): Promise<void> {
+  if (reset) {
+    previewFailed = new Set();
+    previewSrc.value = null;
+    previewStep = null;
+  }
+  const my = ++previewRequest;
+  for (const size of PREVIEW_SIZES) {
+    if (previewFailed.has(size)) continue;
+    try {
+      const url = await renditionUrl(hash, size);
+      if (my !== previewRequest) return;
+      previewSrc.value = url;
+      previewStep = size;
+      return;
+    } catch {
+      previewFailed.add(size);
+    }
+  }
+  if (props.item) {
+    await loadFallbackPreview(props.item, false);
+    return;
+  }
+  if (my === previewRequest) {
+    previewSrc.value = null;
+    previewStep = null;
+  }
+}
+
+function onPreviewError(): void {
+  if (previewStep) previewFailed.add(previewStep);
+  if (details.value) void loadPreview(details.value.item.hash);
+  else if (fallbackMode.value && props.item) void loadFallbackPreview(props.item, false);
+}
 
 // ----- loading -----
 
@@ -291,12 +387,14 @@ async function load(): Promise<void> {
   if (!fileId) {
     loading.value = false;
     details.value = null;
+    fallbackMode.value = false;
     error.value = '';
     return;
   }
   loading.value = true;
   error.value = '';
   details.value = null;
+  fallbackMode.value = false;
   menuOpen.value = false;
   try {
     const d = await photosApi.details(fileId);
@@ -309,7 +407,13 @@ async function load(): Promise<void> {
     void loadPreview(d.item.hash, true);
   } catch (e) {
     if (my !== request) return;
-    error.value = e instanceof Error && e.message ? e.message : t('photosPanelLoadError');
+    if (props.item) {
+      fallbackMode.value = true;
+      error.value = '';
+      void loadFallbackPreview(props.item, true);
+    } else {
+      error.value = e instanceof Error && e.message ? e.message : t('photosPanelLoadError');
+    }
   } finally {
     if (my === request) loading.value = false;
   }
@@ -337,43 +441,6 @@ onBeforeUnmount(() => {
   previewRequest++;
 });
 
-// ----- preview: preview rendition, then thumbnail, then a placeholder -----
-
-const PREVIEW_SIZES = ['preview', 'thumbnail'] as const;
-const previewSrc = ref<string | null>(null);
-let previewSize: (typeof PREVIEW_SIZES)[number] | null = null;
-let previewFailed = new Set<string>();
-let previewRequest = 0;
-
-async function loadPreview(hash: string, reset = false): Promise<void> {
-  if (reset) {
-    previewFailed = new Set();
-    previewSrc.value = null;
-  }
-  const my = ++previewRequest;
-  for (const size of PREVIEW_SIZES) {
-    if (previewFailed.has(size)) continue;
-    try {
-      const url = await renditionUrl(hash, size);
-      if (my !== previewRequest) return;
-      previewSrc.value = url;
-      previewSize = size;
-      return;
-    } catch {
-      previewFailed.add(size);
-    }
-  }
-  if (my === previewRequest) {
-    previewSrc.value = null;
-    previewSize = null;
-  }
-}
-
-function onPreviewError(): void {
-  if (previewSize) previewFailed.add(previewSize);
-  if (details.value) void loadPreview(details.value.item.hash);
-}
-
 // ----- favorite, download, description -----
 
 async function reportSaveError(e: unknown): Promise<void> {
@@ -399,9 +466,16 @@ async function toggleFavorite(): Promise<void> {
 
 async function download(): Promise<void> {
   const d = details.value;
-  if (!d) return;
+  const fallback = props.item;
+  if (!d && !fallback) return;
   try {
-    await downloadDriveFile(d.item.fileId, d.item.name);
+    if (fallback?.downloadAction) {
+      await fallback.downloadAction();
+      return;
+    }
+    const id = d ? d.item.fileId : fallback!.fileId;
+    const name = d ? d.item.name : fallback!.name;
+    await downloadDriveFile(id, name);
   } catch (e) {
     await alertDialog({
       title: t('photosDownloadOriginal'),
@@ -524,38 +598,70 @@ async function newAlbum(): Promise<void> {
 
 const infoRows = computed(() => {
   const d = details.value;
-  if (!d) return [];
-  const { item, meta } = d;
   const rows: { key: string; label: string; value: string }[] = [];
 
-  const iso = item.localTakenAt ?? item.takenAt;
-  const date = iso ? new Date(iso) : null;
-  if (date && !Number.isNaN(date.getTime())) {
-    rows.push({
-      key: 'taken',
-      label: t('photosTakenAt'),
-      value: new Intl.DateTimeFormat(locale.value === 'ru' ? 'ru-RU' : 'en-US', {
-        dateStyle: 'long',
-        timeStyle: 'short',
-        // A local wall-clock time is stored as if it were UTC.
-        ...(item.localTakenAt ? { timeZone: 'UTC' } : {}),
-      }).format(date),
-    });
+  if (d) {
+    const { item, meta } = d;
+
+    const iso = item.localTakenAt ?? item.takenAt;
+    const date = iso ? new Date(iso) : null;
+    if (date && !Number.isNaN(date.getTime())) {
+      rows.push({
+        key: 'taken',
+        label: t('photosTakenAt'),
+        value: new Intl.DateTimeFormat(locale.value === 'ru' ? 'ru-RU' : 'en-US', {
+          dateStyle: 'long',
+          timeStyle: 'short',
+          // A local wall-clock time is stored as if it were UTC.
+          ...(item.localTakenAt ? { timeZone: 'UTC' } : {}),
+        }).format(date),
+      });
+    }
+
+    const camera = [meta?.cameraMake, meta?.cameraModel].filter(Boolean).join(' ');
+    if (camera) rows.push({ key: 'camera', label: t('photosCamera'), value: camera });
+    if (item.width && item.height) {
+      rows.push({ key: 'res', label: t('photosResolution'), value: `${item.width} × ${item.height}` });
+    }
+    rows.push({ key: 'size', label: t('photosFileSize'), value: formatFileSize(item.bytes) });
+    if (meta?.gpsLat != null && meta.gpsLon != null) {
+      rows.push({
+        key: 'place',
+        label: t('photosPlace'),
+        value: `${meta.gpsLat.toFixed(4)}, ${meta.gpsLon.toFixed(4)}`,
+      });
+    }
+    return rows;
   }
 
-  const camera = [meta?.cameraMake, meta?.cameraModel].filter(Boolean).join(' ');
-  if (camera) rows.push({ key: 'camera', label: t('photosCamera'), value: camera });
-  if (item.width && item.height) {
-    rows.push({ key: 'res', label: t('photosResolution'), value: `${item.width} × ${item.height}` });
+  if (fallbackMode.value && props.item) {
+    const item = props.item;
+    const iso = item.localTakenAt ?? item.takenAt;
+    const date = iso ? new Date(iso) : null;
+    if (date && !Number.isNaN(date.getTime())) {
+      rows.push({
+        key: 'taken',
+        label: t('photosTakenAt'),
+        value: new Intl.DateTimeFormat(locale.value === 'ru' ? 'ru-RU' : 'en-US', {
+          dateStyle: 'long',
+          timeStyle: 'short',
+          ...(item.localTakenAt ? { timeZone: 'UTC' } : {}),
+        }).format(date),
+      });
+    }
+    if (item.width && item.height) {
+      rows.push({ key: 'res', label: t('photosResolution'), value: `${item.width} × ${item.height}` });
+    }
+    const bytes = item.sizeBytes ?? item.bytes;
+    if (typeof bytes === 'number' && Number.isFinite(bytes) && (item.sizeBytes != null || bytes > 0)) {
+      rows.push({ key: 'size', label: t('photosFileSize'), value: formatFileSize(bytes) });
+    }
+    const mime = item.mimeType || item.mime;
+    if (mime) {
+      rows.push({ key: 'mime', label: t('fileType'), value: mime });
+    }
   }
-  rows.push({ key: 'size', label: t('photosFileSize'), value: formatFileSize(item.bytes) });
-  if (meta?.gpsLat != null && meta.gpsLon != null) {
-    rows.push({
-      key: 'place',
-      label: t('photosPlace'),
-      value: `${meta.gpsLat.toFixed(4)}, ${meta.gpsLon.toFixed(4)}`,
-    });
-  }
+
   return rows;
 });
 

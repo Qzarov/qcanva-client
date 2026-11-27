@@ -60,6 +60,7 @@
       >
         <template #gallery-sidebar>
           <GallerySidebar
+            ref="gallerySidebarRef"
             :active-section="(gallerySection as GallerySection)"
             :active-album-id="galleryAlbumId"
             :active-folder-id="galleryFolderId"
@@ -78,6 +79,7 @@
             @drop-favorites="onGalleryDropFavorites"
             @drop-album="onGalleryDropAlbum"
             @drop-folder="onGalleryDropFolder"
+            @folder-contextmenu="onGalleryFolderContextMenu"
           />
         </template>
       </DashboardSidebar>
@@ -427,10 +429,13 @@
           :key="'recent-folder-' + folder.id"
           type="button"
           class="subfolder-card"
-          :class="{ 'subfolder-card-zero-match': folder.zeroMatch }"
+          :class="{ 'subfolder-card-zero-match': folder.zeroMatch, 'is-drop-target': recentFolderDropTargetId === folder.id }"
           :data-recent-folder-tile="folder.id"
           @click="selectFolder(folder.id)"
           @contextmenu.prevent.stop="onGridFolderContextMenu($event, folder)"
+          @dragover="onRecentFolderDragOver($event, folder.id)"
+          @dragleave="onRecentFolderDragLeave($event, folder.id)"
+          @drop="onRecentFolderDrop($event, folder.id)"
         >
           <span class="subfolder-card-icon" aria-hidden="true">▤</span>
           <span class="subfolder-card-name">{{ folder.name }}</span>
@@ -709,7 +714,6 @@
                     @contextmenu="(ev, item) => onGridItemContextMenu(ev, item)"
                   />
                   <DashboardFolderFiles
-                    v-if="activeFolder.id !== 'legacy-resource-inbox'"
                     :folder-id="activeFolder.id"
                     :query="searchQuery"
                     :filtered-out="(!typePasses(contentTypes, 'file') && !typePasses(contentTypes, 'text-document')) || selectedTags.length > 0"
@@ -785,8 +789,9 @@
           @update:sort="onExplorerTableSort"
           @navigate-space-folder="onNavigateSpaceFolder"
           @open="openSpaceResource"
-          @open-media="(items, start) => (mediaViewer = { items, start })"
+          @open-media="openSpaceMedia"
           @open-markdown="openSpaceMarkdown"
+          @drop-on-folder="(targetFolderId, payload) => onDropGroupToFolder(targetFolderId, payload)"
           @toggle-select="toggleSelected"
           @items="spaceFeedItems = $event"
           @space="activeSpace = $event"
@@ -1160,11 +1165,26 @@
 
     <ExplorerDragBadge />
 
-    <DashboardMediaViewer
-      v-if="mediaViewer"
+    <PhotoViewer
+      v-if="mediaViewer && mediaViewerCurrent"
+      :item="mediaViewerCurrent"
       :items="mediaViewer.items"
-      :start="mediaViewer.start"
+      :index="mediaViewer.start"
+      :total="mediaViewer.items.length"
+      :has-prev="mediaViewer.start > 0"
+      :has-next="mediaViewer.start < mediaViewer.items.length - 1"
+      :can-favorite="mediaViewerCanFavorite"
+      :can-share="mediaViewerCanShare"
+      :can-delete="mediaViewerCanDelete"
+      :can-info="mediaViewerCanInfo"
       @close="mediaViewer = null"
+      @prev="onMediaViewerPrev"
+      @next="onMediaViewerNext"
+      @jump="onMediaViewerJump"
+      @toggle-favorite="onMediaViewerToggleFavorite"
+      @share="onMediaViewerShare"
+      @delete="onMediaViewerDelete"
+      @panel-changed="onMediaViewerPanelChanged"
     />
 
     <MarkdownDocumentViewer
@@ -1270,10 +1290,10 @@ import { plansApi } from '../api/plans';
 import { uploadClientPreviewForItems } from '../api/clientMediaUpload';
 import DashboardYandexDisk from '../components/dashboard/DashboardYandexDisk.vue';
 import YandexFolderPicker from '../components/dashboard/YandexFolderPicker.vue';
-import DashboardMediaViewer, { type MediaViewerItem } from '../components/dashboard/DashboardMediaViewer.vue';
+import PhotoViewer, { type ViewerMediaItem } from '../components/photos/PhotoViewer.vue';
 import MarkdownDocumentViewer, { type MarkdownViewerItem } from '../components/MarkdownDocumentViewer.vue';
 import { fetchMarkdownTextFromUrl } from '../documents/markdown-viewer';
-import DashboardSpace from '../components/dashboard/DashboardSpace.vue';
+import DashboardSpace, { type SpaceMediaViewerItem } from '../components/dashboard/DashboardSpace.vue';
 import DashboardTrash from '../components/dashboard/DashboardTrash.vue';
 import { createUploadWakeLock, runUploadQueue, type UploadJob } from '../dashboard/upload-queue';
 import { nativeUploadAvailable } from '../api/native-upload';
@@ -1466,7 +1486,7 @@ export default defineComponent({
     DriveUploadOverlay,
     DashboardYandexDisk,
     YandexFolderPicker,
-    DashboardMediaViewer,
+    PhotoViewer,
     MarkdownDocumentViewer,
     DashboardSpace,
     DashboardTrash,
@@ -1633,11 +1653,8 @@ export default defineComponent({
     const activeFolderFileCount = ref(0);
     /** Files each folder holds (from the Drive), added to the folder tiles' counts. */
     const folderFiles = useFolderFileCounts();
-    watch(selectedFolderId, (id) => {
+    watch(selectedFolderId, () => {
       activeFolderFileCount.value = 0;
-      if (id === 'legacy-resource-inbox') {
-        folderDriveFiles.value = [];
-      }
     });
     const draggingResourceId = ref('');
     const draggingResourceType = ref<FolderItem['type']>('canvas');
@@ -2123,27 +2140,9 @@ export default defineComponent({
       });
     });
 
-    const legacyInboxSourceItems = computed<FolderItem[]>(() => [
-      ...unfiledCanvases.value,
-      ...unfiledHtmlDocuments.value,
-      ...unfiledTextDocuments.value,
-    ]);
-
-    const buildLegacyInboxFolder = (items: FolderItem[]): FolderSummary => ({
-      id: 'legacy-resource-inbox',
-      name: 'Inbox',
-      role: 'owner',
-      sortOrder: Number.MAX_SAFE_INTEGER,
-      canvasCount: unfiledCanvases.value.length,
-      htmlDocumentCount: unfiledHtmlDocuments.value.length,
-      textDocumentCount: unfiledTextDocuments.value.length,
-      interactiveTemplateCount: 0,
-      items,
-    });
-
     /**
      * The sidebar's folder tree. It is navigation, so search / type / tags
-     * leave it alone: filtering it made folders (and Inbox) blink in and out
+     * leave it alone: filtering it made folders blink in and out
      * of the sidebar as filters changed. The filters narrow what a folder
      * shows once opened, and the Folders tiles' counts on the feed.
      */
@@ -2187,9 +2186,6 @@ export default defineComponent({
         }
       }
 
-      if (legacyInboxSourceItems.value.length) {
-        folders.push(buildLegacyInboxFolder(sortFolderItems(legacyInboxSourceItems.value)));
-      }
       return buildFolderTree(folders);
     });
     const activeFolderEmpty = computed(() => Boolean(
@@ -2206,11 +2202,6 @@ export default defineComponent({
     };
     const activeFolder = computed(() => {
       const folder = allFolderSummaries.value.find((item) => item.id === selectedFolderId.value);
-      if (selectedFolderId.value === 'legacy-resource-inbox' && legacyInboxSourceItems.value.length) {
-        return buildLegacyInboxFolder(
-          sortFolderItems(legacyInboxSourceItems.value.filter((item) => matchesFolderItem(item, 'Inbox') && matchesS2ItemType(item.type))),
-        );
-      }
       if (!folder) return null;
       const isGlobalSearch = s2ScopeMode.value === 'global' && (Boolean(searchQuery.value.trim()) || s2TypeFilter.value !== 'all');
       if (isGlobalSearch) {
@@ -2271,7 +2262,7 @@ export default defineComponent({
       const known = new Set(allResourceFolders.value.map((folder) => folder.id));
       return folderSummaries.value
         .map((folder) => folder.id)
-        .filter((id) => id !== 'legacy-resource-inbox' && known.has(id));
+        .filter((id) => known.has(id));
     });
     watch(sidebarServerFolderIds, (ids) => {
       // Counts for every folder in view (so one holding only files can open);
@@ -2282,46 +2273,106 @@ export default defineComponent({
     watch(expandedTreeIds, (ids) => sidebarDriveFiles.want(ids.filter((id) => sidebarServerFolderIds.value.includes(id))));
     watch(layoutPrefs.showFilesInTree, (on) => {
       if (on) {
-        sidebarDriveFiles.want(expandedTreeIds.value.filter((id) => sidebarServerFolderIds.value.includes(id)));
+        sidebarDriveFiles.want(['root', ...expandedTreeIds.value.filter((id) => sidebarServerFolderIds.value.includes(id))]);
       }
-    });
+    }, { immediate: true });
     const sidebarFolders = computed<DashboardSidebarNavItem[]>(() => {
       const itemsById = new Map(folderSummaries.value.map((folder) => [folder.id, folder.items]));
-      return buildSidebarNavItems(
+      const mapDriveFile = (file: DriveItem) => ({
+        id: file.id,
+        title: file.name || t('untitled'),
+        type: 'drive-file' as const,
+        fileKind: file.kind === 'photo' || file.mime?.startsWith('image/') ? 'image' as const
+          : file.kind === 'video' || file.mime?.startsWith('video/') ? 'video' as const
+            : isMarkdownFile(file) ? 'markdown' as const
+              : 'file' as const,
+      });
+      const base = buildSidebarNavItems(
         sidebarFolderRows.value,
         (folderId) => [
           ...(itemsById.get(folderId) || []).map((item) => ({
             ...item,
             title: ('title' in item ? item.title : '') || ('name' in item ? (item as { name?: string }).name : '') || t('untitled'),
           })),
-          ...(sidebarDriveFiles.files[folderId] || []).map((file) => ({
-            id: file.id,
-            title: file.name || t('untitled'),
-            type: 'drive-file' as const,
-            fileKind: file.kind === 'photo' || file.mime?.startsWith('image/') ? 'image' as const
-              : file.kind === 'video' || file.mime?.startsWith('video/') ? 'video' as const
-                : isMarkdownFile(file) ? 'markdown' as const
-                  : 'file' as const,
-          })),
+          ...(sidebarDriveFiles.files[folderId] || []).map(mapDriveFile),
         ],
         SIDEBAR_FOLDER_CHILD_LIMIT,
         (folderId) => (itemsById.get(folderId)?.length || 0) + (folderFiles.counts[folderId] ?? 0),
       );
+      const rootResources: FolderItem[] = [
+        ...unfiledCanvases.value,
+        ...unfiledHtmlDocuments.value,
+        ...unfiledTextDocuments.value,
+        ...unfiledInteractiveTemplateItems.value,
+      ];
+      const rootDriveList = homeRootDriveFiles.value.length
+        ? homeRootDriveFiles.value
+        : (sidebarDriveFiles.files.root || []);
+      const rootEntries: DashboardFileNavItem[] = [
+        ...rootResources.map((item) => ({
+          kind: 'file' as const,
+          key: `root/${item.type}:${item.id}`,
+          id: item.id,
+          folderId: 'root',
+          type: item.type,
+          templateType: item.type === 'interactive-template' ? item.templateType : undefined,
+          title: ('title' in item ? item.title : '') || ('name' in item ? (item as { name?: string }).name : '') || t('untitled'),
+          depth: 0,
+        })),
+        ...rootDriveList.map((file) => {
+          const mapped = mapDriveFile(file);
+          return {
+            kind: 'file' as const,
+            key: `root/drive-file:${file.id}`,
+            id: file.id,
+            folderId: 'root',
+            type: 'drive-file' as const,
+            fileKind: mapped.fileKind,
+            title: mapped.title,
+            depth: 0,
+          };
+        }),
+      ];
+      const cappedRoot = rootEntries.slice(0, SIDEBAR_FOLDER_CHILD_LIMIT);
+      const overflowRoot = Math.max(0, rootEntries.length - cappedRoot.length);
+      if (overflowRoot > 0) {
+        return [
+          ...base,
+          ...cappedRoot,
+          { kind: 'more' as const, key: 'more:root', folderId: 'root', count: overflowRoot, depth: 0 },
+        ];
+      }
+      return [...base, ...cappedRoot];
     });
     const openSidebarFile = async (file: DashboardFileNavItem) => {
       if (file.type === 'drive-file' && (file.fileKind === 'image' || file.fileKind === 'video')) {
-        // As its card in the folder does: a picture or a video opens full screen.
         mobileSidebarOpen.value = false;
-        mediaViewer.value = { items: [driveViewerItem({ id: file.id, name: file.title || t('untitled'), kind: file.fileKind })], start: 0 };
+        const pool = file.folderId === 'root'
+          ? (homeRootDriveFiles.value.length ? homeRootDriveFiles.value : (sidebarDriveFiles.files.root || []))
+          : (activeSection.value.kind === 'folder' && activeFolder.value?.id === file.folderId && folderDriveFiles.value.length
+            ? folderDriveFiles.value
+            : (sidebarDriveFiles.files[file.folderId] || []));
+        const mediaSiblings = pool.filter(isDriveMedia);
+        const matchIdx = mediaSiblings.findIndex((f) => f.id === file.id);
+        if (mediaSiblings.length && matchIdx >= 0) {
+          openDriveMediaList(mediaSiblings, matchIdx);
+        } else {
+          const fallbackItem = driveViewerItem({
+            id: file.id,
+            name: file.title || t('untitled'),
+            kind: file.fileKind === 'video' ? 'video' : 'photo',
+            folderId: file.folderId === 'root' ? null : file.folderId,
+          });
+          mediaViewer.value = { items: [fallbackItem], start: 0, source: 'drive' };
+        }
         return;
       }
       if (file.type === 'drive-file' && (file.fileKind === 'markdown' || isMarkdownFile({ name: file.title }))) {
         mobileSidebarOpen.value = false;
-        openDriveMarkdown({ id: file.id, name: file.title || t('untitled'), folderId: file.folderId });
+        openDriveMarkdown({ id: file.id, name: file.title || t('untitled'), folderId: file.folderId === 'root' ? null : file.folderId });
         return;
       }
       if (file.type === 'drive-file') {
-        // As its card in the folder does: a Drive file downloads.
         try {
           await downloadDriveFile(file.id, file.title);
         } catch (error) {
@@ -2332,9 +2383,16 @@ export default defineComponent({
         }
         return;
       }
-      const item = folderSummaries.value
-        .find((folder) => folder.id === file.folderId)?.items
-        .find((candidate) => candidate.type === file.type && candidate.id === file.id);
+      const item = file.folderId === 'root'
+        ? [
+            ...unfiledCanvases.value,
+            ...unfiledHtmlDocuments.value,
+            ...unfiledTextDocuments.value,
+            ...unfiledInteractiveTemplateItems.value,
+          ].find((candidate) => candidate.type === file.type && candidate.id === file.id)
+        : folderSummaries.value
+            .find((folder) => folder.id === file.folderId)?.items
+            .find((candidate) => candidate.type === file.type && candidate.id === file.id);
       const routeId = (item && 'slug' in item && item.slug) || file.id;
       mobileSidebarOpen.value = false;
       if (file.type === 'canvas') openCanvas(routeId);
@@ -2818,25 +2876,27 @@ export default defineComponent({
     };
 
     // `folderId` is optional; a click handler may pass its event instead.
-    const createCanvas = async (folderId?: unknown, title = 'Untitled') => {
+    const createCanvas = async (folderId?: unknown, title?: string) => {
       openControlMenu.value = '';
+      const resolvedTitle = title ?? t('untitled');
       const targetFolderId = await resolveCreateFolderId(folderId);
-      const c = await runAction('create-canvas', () => canvas.create(title, undefined, targetFolderId), 'Canvas created');
+      const c = await runAction('create-canvas', () => canvas.create(resolvedTitle, undefined, targetFolderId), t('canvasCreated'));
       if (!c) return;
       rememberCreatedResource('canvas', c);
       recordDashboardReturnOrigin();
       router.push(`/canvas/${c.id}`);
     };
 
-    const createHtmlDocument = async (folderId?: unknown, title = 'Untitled HTML') => {
+    const createHtmlDocument = async (folderId?: unknown, title?: string) => {
       openControlMenu.value = '';
+      const resolvedTitle = title ?? t('untitledHtml');
       const targetFolderId = await resolveCreateFolderId(folderId);
       // The page starts with its name as the heading.
-      const heading = title.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const heading = resolvedTitle.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
       const doc = await runAction(
         'create-html-document',
-        () => htmlDocuments.create({ title, html: `<main><h1>${heading}</h1></main>`, folderId: targetFolderId }),
-        'HTML document created',
+        () => htmlDocuments.create({ title: resolvedTitle, html: `<main><h1>${heading}</h1></main>`, folderId: targetFolderId }),
+        t('htmlDocumentCreated'),
       );
       if (!doc) return;
       rememberCreatedResource('html-document', doc);
@@ -2844,13 +2904,14 @@ export default defineComponent({
       router.push(`/edit/html/${doc.id}`);
     };
 
-    const createTextDocument = async (folderId?: unknown, title = 'Untitled document') => {
+    const createTextDocument = async (folderId?: unknown, title?: string) => {
       openControlMenu.value = '';
+      const resolvedTitle = title ?? t('untitledDocument');
       const targetFolderId = await resolveCreateFolderId(folderId);
       const doc = await runAction(
         'create-text-document',
-        () => textDocuments.create({ title, folderId: targetFolderId }),
-        'Document created',
+        () => textDocuments.create({ title: resolvedTitle, folderId: targetFolderId }),
+        t('documentCreated'),
       );
       if (!doc) return;
       rememberCreatedResource('text-document', doc);
@@ -2983,7 +3044,7 @@ export default defineComponent({
       const normalizedName = name.trim() || 'Unsorted';
       const existing = ownResourceFolders.value.find((folder) => folder.name.toLowerCase() === normalizedName.toLowerCase());
       if (existing) return existing;
-      return runAction('create-folder', () => resourceFolders.create(normalizedName), `Folder ${normalizedName} created`);
+      return runAction('create-folder', () => resourceFolders.create(normalizedName), t('folderCreatedNamed').replace('{name}', normalizedName));
     };
 
     const runBulkMoveWithJournal = async (targetFolderName: string, ops: Array<() => Promise<unknown>>) => {
@@ -3097,10 +3158,12 @@ export default defineComponent({
       await runAction(
         'move-folder',
         () => resourceFolders.move(targetFolder.id, folderModal.value.resourceType, folderModal.value.resourceId),
-        `Moved to ${targetFolder.name}`,
+        t('movedToFolderNamed').replace('{folder}', targetFolder.name),
       );
       closeFolderModal();
       await load();
+      galleryViewRef.value?.refresh?.({ clearSelection: false, invalidateFolders: true });
+      gallerySidebarRef.value?.invalidateFolderFilesCache?.();
     };
 
     const moveResourceLocally = (resourceId: string, resourceType: FolderItem['type'], targetFolder: FolderSummary) => {
@@ -3252,7 +3315,7 @@ export default defineComponent({
       const previousOwn = own.value.map((item) => ({ ...item }));
       moveResourceLocally(resourceId, resourceType, folder);
       try {
-        await runAction('move-folder', () => resourceFolders.move(folder.id, resourceType, resourceId), `Moved to ${folder.name}`);
+        await runAction('move-folder', () => resourceFolders.move(folder.id, resourceType, resourceId), t('movedToFolderNamed').replace('{folder}', folder.name));
       } catch (error) {
         ownResourceFolders.value = previousOwnFolders;
         sharedResourceFolders.value = previousSharedFolders;
@@ -3288,6 +3351,18 @@ export default defineComponent({
       },
       dropResourceToFolder,
       reorderFoldersApi: async (ids) => { await resourceFolders.reorder(ids); },
+      canMoveFolderInto: (sourceId, targetId) => (
+        !isFolderAncestorOrSelf(sourceId, targetId)
+        && ownResourceFolders.value.some((f) => f.id === targetId && f.role === 'owner')
+      ),
+      moveFolderApi: async (sourceId, targetId) => {
+        await onDropGroupToFolder(targetId, {
+          source: 'tree',
+          items: [{ key: `folder:${sourceId}`, id: sourceId, kind: 'folder', folderId: sourceId }],
+          keys: [`folder:${sourceId}`],
+          count: 1,
+        });
+      },
       setFeedback,
     });
 
@@ -3330,10 +3405,12 @@ export default defineComponent({
       await runAction(
         'rename-folder',
         () => resourceFolders.rename(renameFolderModal.value.folderId, nextFolder),
-        `Folder renamed to ${nextFolder}`,
+        t('folderRenamedTo').replace('{name}', nextFolder),
       );
       closeRenameFolderModal();
       await load();
+      galleryViewRef.value?.refresh?.({ clearSelection: false, invalidateFolders: true });
+      gallerySidebarRef.value?.invalidateFolderFilesCache?.();
     };
 
     const deleteFolder = async (folder: FolderSummary) => {
@@ -3343,9 +3420,11 @@ export default defineComponent({
       await runAction(
         'delete-folder',
         () => resourceFolders.delete(folder.id),
-        `Folder ${folder.name} removed`,
+        t('folderRemovedNamed').replace('{name}', folder.name),
       );
       await load();
+      galleryViewRef.value?.refresh?.({ clearSelection: false, invalidateFolders: true });
+      gallerySidebarRef.value?.invalidateFolderFilesCache?.();
     };
 
     const loadFolderPermissions = async () => {
@@ -3385,7 +3464,7 @@ export default defineComponent({
       await runAction(
         'share-folder',
         () => resourceFolders.share(folderShareModal.value.folderId, email, folderShareModal.value.role),
-        `Shared folder with ${email}`,
+        t('folderSharedWith').replace('{email}', email),
       );
       folderShareModal.value.email = '';
       await loadFolderPermissions();
@@ -3396,7 +3475,7 @@ export default defineComponent({
       await runAction(
         'revoke-folder',
         () => resourceFolders.revoke(folderShareModal.value.folderId, userId),
-        'Folder access revoked',
+        t('folderAccessRevoked'),
       );
       await loadFolderPermissions();
     };
@@ -3438,7 +3517,7 @@ export default defineComponent({
         : tagsModal.value.resourceType === 'html-document'
           ? () => htmlDocuments.update(tagsModal.value.resourceId, { tags })
           : () => textDocuments.update(tagsModal.value.resourceId, { tags });
-      await runAction('save-tags', save, 'Tags saved');
+      await runAction('save-tags', save, t('tagsSaved'));
       closeTagsModal();
       await load();
     };
@@ -3460,56 +3539,56 @@ export default defineComponent({
         : transferModal.value.resourceType === 'html-document'
           ? () => htmlDocuments.transferOwnership(transferModal.value.resourceId, email)
           : () => textDocuments.transferOwnership(transferModal.value.resourceId, email);
-      await runAction('transfer-ownership', transfer, 'Ownership transferred');
+      await runAction('transfer-ownership', transfer, t('ownershipTransferred'));
       closeTransferModal();
       await load();
     };
 
     const duplicateCanvas = async (canvasRecord: CanvasRecord) => {
       closeCardMenu();
-      const title = canvasRecord.title?.trim() || 'Untitled';
-      await runAction('duplicate-canvas', () => canvas.duplicate(canvasRecord.id), `Duplicated "${title}"`);
+      const title = canvasRecord.title?.trim() || t('untitled');
+      await runAction('duplicate-canvas', () => canvas.duplicate(canvasRecord.id), t('duplicatedNamed').replace('{title}', title));
       await load();
     };
 
     const duplicateHtmlDocument = async (doc: HtmlDocumentRecord) => {
       closeCardMenu();
-      const title = doc.title?.trim() || 'Untitled HTML';
-      await runAction('duplicate-html-document', () => htmlDocuments.duplicate(doc.id), `Duplicated "${title}"`);
+      const title = doc.title?.trim() || t('untitledHtml');
+      await runAction('duplicate-html-document', () => htmlDocuments.duplicate(doc.id), t('duplicatedNamed').replace('{title}', title));
       await load();
     };
 
     const duplicateTextDocument = async (doc: TextDocumentRecord) => {
       closeCardMenu();
-      const title = doc.title?.trim() || 'Untitled document';
-      await runAction('duplicate-text-document', () => textDocuments.duplicate(doc.id), `Duplicated "${title}"`);
+      const title = doc.title?.trim() || t('untitledDocument');
+      await runAction('duplicate-text-document', () => textDocuments.duplicate(doc.id), t('duplicatedNamed').replace('{title}', title));
       await load();
     };
 
     const deleteCanvas = async (canvasRecord: CanvasRecord) => {
-      const title = canvasRecord.title?.trim() || 'Untitled';
+      const title = canvasRecord.title?.trim() || t('untitled');
       const confirmed = await confirmDelete('deleteCanvasTitle', title);
       if (!confirmed) return;
-      await runAction('delete-canvas', () => canvas.delete(canvasRecord.id), `Deleted ${title}`);
+      await runAction('delete-canvas', () => canvas.delete(canvasRecord.id), t('deletedNamed').replace('{title}', title));
       forgetResourceTab('canvas', canvasRecord.id);
       own.value = own.value.filter((c) => c.id !== canvasRecord.id);
       await load();
     };
 
     const deleteHtmlDocument = async (doc: HtmlDocumentRecord) => {
-      const title = doc.title?.trim() || 'Untitled HTML';
+      const title = doc.title?.trim() || t('untitledHtml');
       const confirmed = await confirmDelete('deleteHtmlDocumentTitle', title);
       if (!confirmed) return;
-      await runAction('delete-html-document', () => htmlDocuments.delete(doc.id), `Deleted ${title}`);
+      await runAction('delete-html-document', () => htmlDocuments.delete(doc.id), t('deletedNamed').replace('{title}', title));
       forgetResourceTab('html', doc.id);
       await load();
     };
 
     const deleteTextDocument = async (doc: TextDocumentRecord) => {
-      const title = doc.title?.trim() || 'Untitled document';
+      const title = doc.title?.trim() || t('untitledDocument');
       const confirmed = await confirmDelete('deleteDocumentTitle', title);
       if (!confirmed) return;
-      await runAction('delete-text-document', () => textDocuments.delete(doc.id), `Deleted ${title}`);
+      await runAction('delete-text-document', () => textDocuments.delete(doc.id), t('deletedNamed').replace('{title}', title));
       forgetResourceTab('doc', doc.id);
       await load();
     };
@@ -3705,6 +3784,12 @@ export default defineComponent({
         const el = dashboardMain.value?.querySelector<HTMLElement>(selector);
         if (el) {
           el.scrollIntoView?.({ block: 'nearest' });
+          if (explorerViewMode.value === 'table') {
+            const tableShell = el.closest<HTMLElement>('[data-explorer-table]');
+            tableShell?.focus?.({ preventScroll: true });
+          } else {
+            el.focus?.({ preventScroll: true });
+          }
           pendingScrollToSelectKey.value = null;
           transferredExplorerKeys.value = null;
         }
@@ -3735,7 +3820,8 @@ export default defineComponent({
       if (!card) return;
       const onBox = Boolean(target?.closest('[data-select-box]'));
       const withModifier = event.metaKey || event.ctrlKey || event.shiftKey;
-      if (!onBox && !withModifier && !selectedKeys.value.length) return;
+      // Only active multi-select mode (2+ items) intercepts plain clicks; a single highlighted item (e.g. after Media -> Files focus transfer) opens normally on click.
+      if (!onBox && !withModifier && selectedKeys.value.length < 2) return;
       // The card's own menu and rename field keep working.
       if (!onBox && target?.closest('.card-manage, .card-menu, .card-title-input')) return;
       event.preventDefault();
@@ -4066,55 +4152,262 @@ export default defineComponent({
       selectDashboardSection({ kind: 'recent' });
     };
 
-    // ----- pictures and videos full screen: the folder's, from the one clicked
-    const mediaViewer = ref<{ items: MediaViewerItem[]; start: number } | null>(null);
-    const yandexViewerItem = (file: YandexItem): MediaViewerItem => ({
-      key: `yandex:${file.path}`,
+    // ----- pictures and videos full screen: unified onto PhotoViewer.vue
+    const mediaViewer = ref<{ items: ViewerMediaItem[]; start: number; source: 'drive' | 'yandex' | 'space' } | null>(null);
+    const mediaViewerCurrent = computed<ViewerMediaItem | null>(() => {
+      const state = mediaViewer.value;
+      if (!state || !state.items.length) return null;
+      return state.items[Math.max(0, Math.min(state.start, state.items.length - 1))] ?? null;
+    });
+    const mediaViewerIsQspaceFile = computed(() => {
+      const state = mediaViewer.value;
+      const cur = mediaViewerCurrent.value;
+      if (!state || !cur) return false;
+      if (state.source === 'yandex' || cur.noReferrer) return false;
+      return Boolean(cur.fileId && !cur.fileId.startsWith('y:') && !cur.fileId.startsWith('/'));
+    });
+    const mediaViewerCanFavorite = computed(() => mediaViewerIsQspaceFile.value);
+    const mediaViewerCanShare = computed(() => mediaViewerIsQspaceFile.value);
+    const mediaViewerCanDelete = computed(() => mediaViewerIsQspaceFile.value);
+    const mediaViewerCanInfo = computed(() => mediaViewerIsQspaceFile.value);
+    const yandexViewerItem = (file: YandexItem): ViewerMediaItem => ({
+      fileId: `yandex:${file.path}`,
+      hash: '',
       name: file.name,
-      kind: file.mediaType === 'video' ? 'video' : 'image',
-      date: file.modifiedAt,
-      preview: yandexPreviewUrl(file),
-      loadFull: async () => (await yandexDisk.downloadLink(file.path)).href,
-      download: () => downloadYandexFile(file),
+      mime: file.mime || (file.mediaType === 'video' ? 'video/*' : 'image/*'),
+      kind: file.mediaType === 'video' ? 'video' : 'photo',
+      processed: false,
+      takenAt: file.modifiedAt ?? null,
+      localTakenAt: file.modifiedAt ?? null,
+      width: null,
+      height: null,
+      durationSec: null,
+      bytes: file.size ?? 0,
+      folderId: null,
+      favorite: false,
+      albumIds: [],
+      thumbhash: null,
+      share: null,
+      previewSrc: yandexPreviewUrl(file),
+      resolveOriginalUrl: async () => (await yandexDisk.downloadLink(file.path)).href,
+      downloadAction: () => downloadYandexFile(file),
+      noReferrer: true,
+      sizeBytes: file.size ?? undefined,
+      mimeType: file.mime ?? undefined,
     });
     /** Card pictures the folder's files found (hub-made for HEIC, RAW, videos): the viewer starts on them. */
     const folderDrivePreviews = ref<Readonly<Record<string, string>>>({});
-    const driveViewerItem = (file: { id: string; name: string; updatedAt?: string | null; kind?: 'image' | 'video' }): MediaViewerItem => ({
-      key: `drive-file:${file.id}`,
-      name: file.name,
-      kind: file.kind ?? 'image',
-      date: file.updatedAt ?? null,
-      preview: folderDrivePreviews.value[file.id] ?? null,
-      loadFull: async () => resolveDownloadUrl((await driveApi.getDownloadLink(file.id)).url),
-      download: async () => {
-        try {
-          await downloadDriveFile(file.id, file.name);
-        } catch (error) {
-          setFeedback('error', error instanceof Error && error.message ? error.message : t('driveDownloadLinkFailed'));
-        }
-      },
-    });
+    const driveViewerItem = (
+      file: Partial<DriveItem> & { id: string; name: string; updatedAt?: string | null; kind?: DriveItem['kind'] | 'image' | 'video' },
+    ): ViewerMediaItem => {
+      const kindStr = String(file.kind ?? '');
+      const isVid = kindStr === 'video' || (kindStr !== 'image' && kindStr !== 'photo' && isVideoFile(file as DriveItem));
+      const hash = file.hash || (file as { sha256?: string }).sha256 || '';
+      const takenAt = (file as { takenAt?: string | null }).takenAt ?? file.updatedAt ?? file.sortDate ?? null;
+      return {
+        fileId: file.id,
+        hash,
+        name: file.name,
+        mime: file.mime || (isVid ? 'video/*' : 'image/*'),
+        kind: isVid ? 'video' : 'photo',
+        processed: Boolean(hash),
+        takenAt,
+        localTakenAt: takenAt,
+        width: (file as { width?: number | null }).width ?? null,
+        height: (file as { height?: number | null }).height ?? null,
+        durationSec: (file as { durationSec?: number | null }).durationSec ?? null,
+        bytes: file.sizeBytes ?? 0,
+        folderId: file.folderId ?? file.parentId ?? null,
+        favorite: layoutPrefs.isFavorite(`drive-file:${file.id}`),
+        albumIds: [],
+        thumbhash: null,
+        share: null,
+        previewSrc: folderDrivePreviews.value[file.id] ?? null,
+        resolveOriginalUrl: async () => resolveDownloadUrl((await driveApi.getDownloadLink(file.id)).url),
+        downloadAction: async () => {
+          try {
+            await downloadDriveFile(file.id, file.name);
+          } catch (error) {
+            setFeedback('error', error instanceof Error && error.message ? error.message : t('driveDownloadLinkFailed'));
+          }
+        },
+        sizeBytes: file.sizeBytes ?? undefined,
+        mimeType: file.mime ?? undefined,
+      };
+    };
     const isDriveMedia = (file: DriveItem) => isPictureFile(file) || isVideoFile(file);
     const isYandexMedia = (item: YandexItem) => item.mediaType === 'image' || item.mediaType === 'video';
     /** A picture or a video of a Yandex folder: the folder's pictures and videos, from it. */
     const openYandexImage = (file: YandexItem) => {
       const media = yandexFiles.value.filter(isYandexMedia);
       const list = media.some((item) => item.path === file.path) ? media : [file];
-      mediaViewer.value = { items: list.map(yandexViewerItem), start: list.findIndex((item) => item.path === file.path) };
+      mediaViewer.value = {
+        items: list.map(yandexViewerItem),
+        start: Math.max(0, list.findIndex((item) => item.path === file.path)),
+        source: 'yandex',
+      };
+    };
+    const openDriveMediaList = (list: DriveItem[], startIndex: number) => {
+      if (!list.length) return;
+      mediaViewer.value = {
+        items: list.map((item) => driveViewerItem(item)),
+        start: Math.max(0, Math.min(startIndex, list.length - 1)),
+        source: 'drive',
+      };
     };
     /** A picture or a video of a QCanva folder: the folder's pictures and videos, from it. */
     const openDriveImage = (file: DriveItem) => {
       const media = activeDriveFiles.value.filter(isDriveMedia);
       const list = media.some((item) => item.id === file.id) ? media : [file];
+      openDriveMediaList(list, list.findIndex((item) => item.id === file.id));
+    };
+    const openSpaceMedia = (items: SpaceMediaViewerItem[], start: number) => {
+      if (!items.length) return;
+      const mapped: ViewerMediaItem[] = items.map((item) => {
+        const isYandex = Boolean(item.noReferrer || item.origin === 'yandex' || item.key.startsWith('y:'));
+        const fileId = item.fileId || (isYandex ? item.key : item.key.replace(/^q:file:/, ''));
+        return {
+          fileId,
+          hash: '',
+          name: item.name,
+          mime: item.mimeType || (item.kind === 'video' ? 'video/*' : 'image/*'),
+          kind: item.kind === 'video' ? 'video' : 'photo',
+          processed: false,
+          takenAt: item.date ?? null,
+          localTakenAt: item.date ?? null,
+          width: null,
+          height: null,
+          durationSec: null,
+          bytes: item.sizeBytes ?? 0,
+          folderId: null,
+          favorite: !isYandex && Boolean(fileId) && layoutPrefs.isFavorite(`drive-file:${fileId}`),
+          albumIds: spaceId.value ? [spaceId.value] : [],
+          thumbhash: null,
+          share: null,
+          previewSrc: item.preview ?? null,
+          resolveOriginalUrl: async () => (await item.loadFull()) ?? '',
+          downloadAction: item.download,
+          noReferrer: isYandex,
+          sizeBytes: item.sizeBytes ?? undefined,
+          mimeType: item.mimeType ?? undefined,
+        };
+      });
       mediaViewer.value = {
-        items: list.map((item) => driveViewerItem({ ...item, kind: isVideoFile(item) ? 'video' : 'image' })),
-        start: list.findIndex((item) => item.id === file.id),
+        items: mapped,
+        start: Math.max(0, Math.min(start, mapped.length - 1)),
+        source: 'space',
       };
+    };
+    const onMediaViewerPrev = () => {
+      if (mediaViewer.value && mediaViewer.value.start > 0) {
+        mediaViewer.value.start -= 1;
+      }
+    };
+    const onMediaViewerNext = () => {
+      if (mediaViewer.value && mediaViewer.value.start < mediaViewer.value.items.length - 1) {
+        mediaViewer.value.start += 1;
+      }
+    };
+    const onMediaViewerJump = (index: number) => {
+      if (!mediaViewer.value) return;
+      if (index >= 0 && index < mediaViewer.value.items.length) {
+        mediaViewer.value.start = index;
+      }
+    };
+    const onMediaViewerToggleFavorite = async () => {
+      const state = mediaViewer.value;
+      const cur = mediaViewerCurrent.value;
+      if (!state || !cur || !mediaViewerIsQspaceFile.value) return;
+      const nextFav = !cur.favorite;
+      const key = `drive-file:${cur.fileId}`;
+      rememberedFavoriteMeta[key] = { id: cur.fileId, name: cur.name, kind: 'drive-file' };
+      if (layoutPrefs.isFavorite(key) !== nextFav) {
+        layoutPrefs.toggleFavorite(key);
+      }
+      state.items[state.start] = { ...cur, favorite: nextFav };
+      try {
+        await photosApi.edit(cur.fileId, { favorite: nextFav });
+      } catch {
+        // Non-indexed files still persist favorite state in layoutPrefs.
+      }
+    };
+    const onMediaViewerPanelChanged = (change: { fileId: string; favorite?: boolean; albumIds?: string[] }) => {
+      const state = mediaViewer.value;
+      if (!state) return;
+      const idx = state.items.findIndex((item) => item.fileId === change.fileId);
+      if (idx < 0) return;
+      const prev = state.items[idx]!;
+      const nextItem: ViewerMediaItem = {
+        ...prev,
+        ...(change.favorite !== undefined ? { favorite: change.favorite } : {}),
+        ...(change.albumIds !== undefined ? { albumIds: change.albumIds } : {}),
+      };
+      state.items[idx] = nextItem;
+      if (change.favorite !== undefined && !prev.noReferrer) {
+        const key = `drive-file:${change.fileId}`;
+        rememberedFavoriteMeta[key] = { id: change.fileId, name: prev.name, kind: 'drive-file' };
+        if (layoutPrefs.isFavorite(key) !== change.favorite) {
+          layoutPrefs.toggleFavorite(key);
+        }
+      }
+      if (change.albumIds !== undefined) {
+        void loadSpaces(true);
+        void spaceView.value?.reload?.();
+      }
+    };
+    const onMediaViewerShare = async () => {
+      const cur = mediaViewerCurrent.value;
+      if (!cur || !mediaViewerIsQspaceFile.value) return;
+      await onGallerySharePhotos([cur.fileId]);
+    };
+    const onMediaViewerDelete = async () => {
+      const state = mediaViewer.value;
+      const cur = mediaViewerCurrent.value;
+      if (!state || !cur || !mediaViewerIsQspaceFile.value) return;
+      const confirmed = await confirmDialog({
+        title: t('yandexDeleteTitle').replace('{name}', cur.name || t('untitled')),
+        confirmLabel: t('delete'),
+        cancelLabel: t('cancel'),
+        danger: true,
+      });
+      if (!confirmed) return;
+      try {
+        await driveApi.trashFile(cur.fileId);
+        const nextItems = state.items.filter((_, idx) => idx !== state.start);
+        if (!nextItems.length) {
+          mediaViewer.value = null;
+        } else {
+          mediaViewer.value = {
+            ...state,
+            items: nextItems,
+            start: Math.min(state.start, nextItems.length - 1),
+          };
+        }
+        setFeedback('success', t('deletedNamed').replace('{title}', cur.name || t('untitled')));
+        folderFilesRefreshKey.value += 1;
+        sidebarDriveFiles.forget();
+        refreshFolderFileCounts();
+        void spaceView.value?.reload?.();
+        void loadSpaces(true);
+        (galleryViewRef.value as { refresh?: (opts?: { clearSelection?: boolean; invalidateFolders?: boolean }) => void } | null)?.refresh?.({ clearSelection: true, invalidateFolders: true });
+        gallerySidebarRef.value?.invalidateFolderFilesCache?.();
+        void load({ showLoading: false });
+      } catch (error) {
+        setFeedback('error', error instanceof Error && error.message ? error.message : t('spaceActionFailed'));
+      }
     };
     /** A file of the sidebar's Yandex tree: a picture or a video opens, a Markdown file opens as a document, anything else downloads. */
     const openYandexSidebarFile = (item: YandexItem) => {
       mobileSidebarOpen.value = false;
-      if (isYandexMedia(item)) mediaViewer.value = { items: [yandexViewerItem(item)], start: 0 };
+      if (isYandexMedia(item)) {
+        const siblings = yandexFiles.value.filter(isYandexMedia);
+        const list = siblings.some((s) => s.path === item.path) ? siblings : [item];
+        mediaViewer.value = {
+          items: list.map(yandexViewerItem),
+          start: Math.max(0, list.findIndex((s) => s.path === item.path)),
+          source: 'yandex',
+        };
+      }
       else if (isMarkdownFile(item)) openYandexMarkdown(item);
       else void downloadYandexFile(item);
     };
@@ -4450,18 +4743,18 @@ export default defineComponent({
         ? await runAction(
           `pin-canvas-${item.id}`,
           () => canvas.update(item.id, { pinned: nextPinned }),
-          nextPinned ? 'Canvas pinned' : 'Canvas unpinned',
+          nextPinned ? t('canvasPinned') : t('canvasUnpinned'),
         )
         : item.type === 'html-document'
           ? await runAction(
             `pin-html-document-${item.id}`,
             () => htmlDocuments.update(item.id, { pinned: nextPinned }),
-            nextPinned ? 'HTML pinned' : 'HTML unpinned',
+            nextPinned ? t('htmlPinned') : t('htmlUnpinned'),
           )
           : await runAction(
             `pin-text-document-${item.id}`,
             () => textDocuments.update(item.id, { pinned: nextPinned }),
-            nextPinned ? 'Document pinned' : 'Document unpinned',
+            nextPinned ? t('documentPinned') : t('documentUnpinned'),
           );
       if (!updated) return;
       if (item.type === 'canvas') {
@@ -4675,8 +4968,12 @@ export default defineComponent({
     /** A folder named in the dialog's Folder step: inside Where, or at the top. */
     const onAddCreateFolder = async (name: string, folderId: string) => {
       closeAddDialog();
-      const created = await runAction('create-folder', () => resourceFolders.create(name, folderId || null), `Folder ${name} created`);
-      if (created) await load({ showLoading: false });
+      const created = await runAction('create-folder', () => resourceFolders.create(name, folderId || null), t('folderCreatedNamed').replace('{name}', name));
+      if (created) {
+        await load({ showLoading: false });
+        galleryViewRef.value?.refresh?.({ clearSelection: false, invalidateFolders: true });
+        gallerySidebarRef.value?.invalidateFolderFilesCache?.();
+      }
     };
     /** An album named in the dialog's 6th Album tile: creates a unified space and opens it. */
     const onAddCreateAlbum = async (name: string) => {
@@ -4703,17 +5000,17 @@ export default defineComponent({
           const title = importTitle(file.name);
           const text = await file.text();
           if (kind === 'html') {
-            const doc = await runAction('import-html-document', () => htmlDocuments.create({ title, html: text, folderId: target }), `Imported ${title}`);
+            const doc = await runAction('import-html-document', () => htmlDocuments.create({ title, html: text, folderId: target }), t('importedNamed').replace('{title}', title));
             if (doc) opened.push(`/edit/html/${doc.id}`);
           } else if (kind === 'markdown') {
             const doc = await runAction('import-text-document', async () => {
               const created = await textDocuments.create({ title, folderId: target });
               await textDocuments.replaceContent(created.id, { html: marked.parse(text, { async: false }) as string });
               return created;
-            }, `Imported ${title}`);
+            }, t('importedNamed').replace('{title}', title));
             if (doc) opened.push(`/docs/${doc.slug || doc.id}`);
           } else {
-            const created = await runAction('import-canvas', () => canvas.create(title, JSON.stringify(JSON.parse(text)), target), `Imported ${title}`);
+            const created = await runAction('import-canvas', () => canvas.create(title, JSON.stringify(JSON.parse(text)), target), t('importedNamed').replace('{title}', title));
             if (created) opened.push(`/canvas/${created.id}`);
           }
         }
@@ -4912,7 +5209,7 @@ export default defineComponent({
       await runAction(
         `access-request-${id}`,
         () => accessRequests.resolve(id, status),
-        status === 'approved' ? 'Access approved' : 'Access declined',
+        status === 'approved' ? t('accessApproved') : t('accessDeclined'),
       );
       await load();
     };
@@ -5107,6 +5404,7 @@ export default defineComponent({
       closeFolderParentModal();
       if (parentId) expandTree(parentId);
       await load();
+      refreshGalleryView({ clearSelection: false, invalidateFolders: true });
     };
 
     // ---- resource descriptions ----
@@ -5203,10 +5501,7 @@ export default defineComponent({
      */
     const restoreSelectedFolder = () => {
       const isKnown = (id: string) =>
-        Boolean(id) && (
-          allResourceFolders.value.some((folder) => folder.id === id)
-          || (id === 'legacy-resource-inbox' && legacyInboxSourceItems.value.length > 0)
-        );
+        Boolean(id) && allResourceFolders.value.some((folder) => folder.id === id);
       const syncActiveFolderSection = () => {
         if (activeSection.value.kind !== 'folder') return;
         activeSection.value = selectedFolderId.value
@@ -5227,7 +5522,7 @@ export default defineComponent({
         syncActiveFolderSection();
         return;
       }
-      const fallback = allFolderSummaries.value[0]?.id || (legacyInboxSourceItems.value.length ? 'legacy-resource-inbox' : '');
+      const fallback = allFolderSummaries.value[0]?.id || '';
       selectedFolderId.value = fallback;
       syncActiveFolderSection();
       // A stale pointer is cleared so it cannot keep losing the race with the
@@ -5246,8 +5541,7 @@ export default defineComponent({
     };
 
     const isTechnicalFolder = (folder: { id: string; name: string }) =>
-      folder.id === 'legacy-resource-inbox'
-      || folder.name === 'Unsorted'
+      folder.name === 'Unsorted'
       || folder.name.toLowerCase() === 'default';
 
     const selectDashboardSection = (section: DashboardSection) => {
@@ -5381,7 +5675,7 @@ export default defineComponent({
     const addDialogTargetFolderName = computed(() => {
       if (activeSection.value.kind === 'folder' && activeFolder.value) return activeFolder.value.name;
       const found = folderOptions.value.find((f) => f.id === addDialog.value.folderId);
-      return found?.name || t('home');
+      return found?.name || t('explorerHomeFolder');
     });
 
     const onToggleMobileDrawer = () => {
@@ -5620,12 +5914,49 @@ export default defineComponent({
       const rawId = colonIdx > 0 ? item.id.slice(colonIdx + 1) : item.id;
       if (kind === 'drive-file' || item.fileId) {
         const fid = item.fileId || rawId;
-        const file = folderDriveFiles.value.find((f) => f.id === fid)
+        const folderPool = item.folderId && sidebarDriveFiles.files[item.folderId]?.length
+          ? sidebarDriveFiles.files[item.folderId]!
+          : null;
+        const knownPool = folderDriveFiles.value.some((f) => f.id === fid)
+          ? folderDriveFiles.value
+          : homeRootDriveFiles.value.some((f) => f.id === fid)
+            ? homeRootDriveFiles.value
+            : folderPool;
+        const file = knownPool?.find((f) => f.id === fid)
+          || folderDriveFiles.value.find((f) => f.id === fid)
           || homeRootDriveFiles.value.find((f) => f.id === fid);
         if (file) {
-          if (isDriveMedia(file)) openDriveImage(file);
-          else if (isMarkdownFile(file)) openDriveMarkdown(file);
-          else void downloadDriveFile(file.id, file.name);
+          if (isDriveMedia(file)) {
+            const mediaSiblings = (knownPool || [file]).filter(isDriveMedia);
+            const idx = mediaSiblings.findIndex((f) => f.id === file.id);
+            openDriveMediaList(mediaSiblings.length ? mediaSiblings : [file], idx >= 0 ? idx : 0);
+          } else if (isMarkdownFile(file)) {
+            openDriveMarkdown(file);
+          } else {
+            void downloadDriveFile(file.id, file.name);
+          }
+        } else if (item.type === 'media' || isPictureFile({ name: item.title, mime: item.mimeType }) || isVideoFile({ name: item.title, mime: item.mimeType })) {
+          const siblingSearchMedia = s2SearchItems.value.filter(
+            (candidate) => candidate.type === 'media' || isPictureFile({ name: candidate.title, mime: candidate.mimeType }) || isVideoFile({ name: candidate.title, mime: candidate.mimeType }),
+          );
+          const list = siblingSearchMedia.some((s) => (s.fileId || s.id.replace(/^drive-file:/, '')) === fid)
+            ? siblingSearchMedia
+            : [item];
+          const mapped = list.map((entry) => {
+            const entryId = entry.fileId || entry.id.replace(/^drive-file:/, '');
+            const isVid = isVideoFile({ name: entry.title, mime: entry.mimeType });
+            return driveViewerItem({
+              id: entryId,
+              name: entry.title,
+              mime: entry.mimeType,
+              kind: isVid ? 'video' : 'photo',
+              folderId: entry.folderId ?? null,
+            });
+          });
+          const startIdx = mapped.findIndex((m) => m.fileId === fid);
+          mediaViewer.value = { items: mapped, start: startIdx >= 0 ? startIdx : 0, source: 'drive' };
+        } else if (isMarkdownFile({ name: item.title })) {
+          openDriveMarkdown({ id: fid, name: item.title, folderId: item.folderId ?? null });
         } else {
           void downloadDriveFile(fid, item.title);
         }
@@ -5708,7 +6039,11 @@ export default defineComponent({
           else if (isMarkdownFile(file)) openDriveMarkdown(file);
           else void downloadDriveFile(file.id, file.name);
         } else if (isPictureFile({ name: fav.name }) || isVideoFile({ name: fav.name })) {
-          mediaViewer.value = { items: [driveViewerItem({ id: fav.id, name: fav.name, kind: isVideoFile({ name: fav.name }) ? 'video' : 'image' })], start: 0 };
+          mediaViewer.value = {
+            items: [driveViewerItem({ id: fav.id, name: fav.name, kind: isVideoFile({ name: fav.name }) ? 'video' : 'photo' })],
+            start: 0,
+            source: 'drive',
+          };
         } else if (isMarkdownFile({ name: fav.name })) {
           openDriveMarkdown({ id: fav.id, name: fav.name });
         } else {
@@ -5768,7 +6103,7 @@ export default defineComponent({
           ...unfiledHtmlDocuments.value,
           ...unfiledTextDocuments.value,
           ...unfiledInteractiveTemplateItems.value,
-        ].filter((item) => matchesFolderItem(item, t('home')) && matchesS2ItemType(item.type)),
+        ].filter((item) => matchesFolderItem(item, t('explorerHomeFolder')) && matchesS2ItemType(item.type)),
       );
     });
     const homeRootEmpty = computed(() => Boolean(
@@ -5788,7 +6123,7 @@ export default defineComponent({
         homeRootSubfolders.value,
         homeRootItems.value,
         homeRootDriveFiles.value,
-        { sourceLabel: `${t('qSpace')}/home`, t, selectionKey },
+        { sourceLabel: `${t('qSpace')}/${t('explorerHomeFolder')}`, t, selectionKey },
       ),
     );
 
@@ -5821,7 +6156,7 @@ export default defineComponent({
         [],
         feedItems(sharedFiltered.value, 'shared'),
         [],
-        { sourceLabel: 'Q Space/shared', t, selectionKey },
+        { sourceLabel: `${t('qSpace')}/${t('sharedWithMe')}`, t, selectionKey },
       ),
     );
     const interactiveTableRows = computed<ExplorerTableRow[]>(() =>
@@ -5837,7 +6172,7 @@ export default defineComponent({
         [],
         feedItems(publicFiltered.value, 'public'),
         [],
-        { sourceLabel: 'Q Space/public', t, selectionKey },
+        { sourceLabel: `${t('qSpace')}/${t('public')}`, t, selectionKey },
       ),
     );
     const openExplorerTableRow = (row: ExplorerTableRow) => {
@@ -6184,25 +6519,72 @@ export default defineComponent({
     };
 
     // Group Drag-and-Drop handlers (folders & albums)
+    const recentFolderDropTargetId = ref<string | null>(null);
+    const resolveGroupDragPayloadFromEvent = (event: DragEvent): GroupDragPayload | null => {
+      const raw = groupDnd.activeDrag.value ?? groupDnd.readGroupDragFromEvent(event);
+      if (!raw) return null;
+      return {
+        source: raw.source,
+        items: raw.items.map((item) => ({ ...item })),
+        keys: [...raw.keys],
+        count: raw.count,
+      };
+    };
+    const onRecentFolderDragOver = (event: DragEvent, folderId: string) => {
+      const payload = resolveGroupDragPayloadFromEvent(event);
+      if (!payload || payload.keys.includes(`folder:${folderId}`)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+      recentFolderDropTargetId.value = folderId;
+    };
+    const onRecentFolderDragLeave = (event: DragEvent, folderId: string) => {
+      const current = event.currentTarget as HTMLElement | null;
+      const related = event.relatedTarget as Node | null;
+      if (current && related && current.contains(related)) return;
+      if (recentFolderDropTargetId.value === folderId) recentFolderDropTargetId.value = null;
+    };
+    const onRecentFolderDrop = (event: DragEvent, folderId: string) => {
+      if (recentFolderDropTargetId.value === folderId) recentFolderDropTargetId.value = null;
+      const payload = resolveGroupDragPayloadFromEvent(event);
+      if (!payload) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (!payload.keys.includes(`folder:${folderId}`)) {
+        void onDropGroupToFolder(folderId, payload);
+      }
+      groupDnd.endGroupDrag();
+    };
+
     const onDropGroupToFolder = async (folderId: string | null, payload: GroupDragPayload) => {
       if (!payload?.items?.length) return;
       const target = folderId !== null ? allResourceFolders.value.find((f) => f.id === folderId) : null;
       if (folderId !== null && !target) return;
       if (target && target.role !== 'owner') return;
-      const targetName = folderId === null ? `${t('qSpace')}/home` : target!.name;
+      const targetName = folderId === null ? `${t('qSpace')}/${t('explorerHomeFolder')}` : target!.name;
       let moved = 0;
       let failed = 0;
+      let skippedTemplateToRoot = 0;
       let lastError: unknown = null;
       for (const entry of payload.items) {
         try {
-          if (entry.kind === 'drive-file' || entry.kind === 'file' || entry.key.startsWith('drive-file:')) {
-            const fileId = entry.id || entry.key.replace(/^drive-file:/, '');
-            if (!fileId) continue;
+          if (
+            entry.kind === 'drive-file'
+            || entry.kind === 'file'
+            || entry.kind === 'photo'
+            || entry.kind === 'video'
+            || entry.key.startsWith('drive-file:')
+            || entry.key.startsWith('photo:')
+          ) {
+            const fileId = entry.id || entry.key.replace(/^(drive-file:|photo:)/, '');
+            if (!fileId || entry.key.startsWith('y:')) continue;
             await driveApi.moveFile(fileId, folderId);
             moved += 1;
           } else if (entry.kind === 'folder' || entry.key.startsWith('folder:')) {
             const fId = entry.id || entry.key.replace(/^folder:/, '');
             if (!fId || isFolderAncestorOrSelf(fId, folderId)) continue;
+            const currentFolder = allResourceFolders.value.find((f) => f.id === fId);
+            if (currentFolder && (currentFolder.parentId ?? null) === folderId) continue;
             await resourceFolders.moveFolder(fId, folderId);
             moved += 1;
           } else if (entry.kind === 'canvas') {
@@ -6214,9 +6596,13 @@ export default defineComponent({
           } else if (entry.kind === 'text-document') {
             await textDocuments.update(entry.id, { folderId });
             moved += 1;
-          } else if (entry.kind === 'interactive-template' && folderId !== null) {
-            await resourceFolders.move(folderId, 'interactive-template', entry.id);
-            moved += 1;
+          } else if (entry.kind === 'interactive-template' || entry.kind === 'board' || entry.kind === 'sheet') {
+            if (folderId !== null) {
+              await resourceFolders.move(folderId, 'interactive-template', entry.id);
+              moved += 1;
+            } else {
+              skippedTemplateToRoot += 1;
+            }
           }
         } catch (err) {
           failed += 1;
@@ -6233,11 +6619,22 @@ export default defineComponent({
         }
         clearSelection();
         folderFilesRefreshKey.value += 1;
+        sidebarDriveFiles.forget();
         refreshFolderFileCounts();
+        void spaceView.value?.reload?.();
+        void loadSpaces(true);
+        refreshGalleryView({ clearSelection: true, invalidateFolders: true });
         await load({ showLoading: false });
       } else if (failed > 0) {
         const reason = lastError instanceof Error && lastError.message ? lastError.message : t('spaceActionFailed');
         setFeedback('error', reason);
+      } else if (skippedTemplateToRoot > 0) {
+        setFeedback(
+          'error',
+          locale.value === 'ru'
+            ? 'Перемещение шаблонов в корень «Домашняя» не поддерживается — выберите папку'
+            : 'Moving templates to Home root is not supported — drop onto a folder',
+        );
       }
     };
 
@@ -6250,12 +6647,21 @@ export default defineComponent({
         if (entry.kind === 'folder' || entry.key.startsWith('folder:')) {
           const fId = entry.id || entry.key.replace(/^folder:/, '');
           if (fId) folderIds.add(fId);
-        } else if (entry.kind === 'drive-file' || entry.kind === 'file' || entry.key.startsWith('drive-file:')) {
-          const fileId = entry.id || entry.key.replace(/^drive-file:/, '');
+        } else if (
+          entry.kind === 'drive-file'
+          || entry.kind === 'file'
+          || entry.kind === 'photo'
+          || entry.kind === 'video'
+          || entry.key.startsWith('drive-file:')
+          || entry.key.startsWith('photo:')
+        ) {
+          const fileId = entry.id || entry.key.replace(/^(drive-file:|photo:)/, '');
           if (fileId && !entry.key.startsWith('y:')) fileIds.push(fileId);
-        } else if (entry.folderId) {
-          folderIds.add(entry.folderId);
         }
+      }
+      if (!fileIds.length && !folderIds.size) {
+        setFeedback('error', t('albumOnlyFilesAndFolders'));
+        return;
       }
       if (fileIds.length) {
         try {
@@ -6275,10 +6681,11 @@ export default defineComponent({
       }
       if (added > 0) {
         setFeedback('success', t('explorerAddToAlbum'));
-        void loadSpaces(true);
+        await loadSpaces(true);
         if (spaceId.value === targetSpaceId) {
           void spaceView.value?.reload();
         }
+        refreshGalleryView({ clearSelection: true, invalidateFolders: false });
       }
     };
 
@@ -6603,13 +7010,43 @@ export default defineComponent({
       } else if ((item.kind === 'space' || item.kind === 'album') && item.id) {
         selectDashboardSection({ kind: 'space', spaceId: item.id });
       } else if ((item.kind === 'drive-file' || item.kind === 'file') && item.id) {
-        const file = activeDriveFiles.value.find((f) => f.id === item.id)
+        let matchedPool: DriveItem[] | null = null;
+        let file = activeDriveFiles.value.find((f) => f.id === item.id)
           || folderDriveFiles.value.find((f) => f.id === item.id)
           || homeRootDriveFiles.value.find((f) => f.id === item.id);
+        if (!file) {
+          for (const list of Object.values(sidebarDriveFiles.files)) {
+            const found = list.find((f) => f.id === item.id);
+            if (found) {
+              file = found;
+              matchedPool = list;
+              break;
+            }
+          }
+        }
         if (file) {
-          if (isDriveMedia(file)) openDriveImage(file);
-          else if (isMarkdownFile(file)) openDriveMarkdown(file);
-          else void downloadDriveFile(file.id, file.name);
+          if (isDriveMedia(file)) {
+            if (matchedPool) {
+              const siblings = matchedPool.filter(isDriveMedia);
+              const idx = siblings.findIndex((f) => f.id === file!.id);
+              openDriveMediaList(siblings.length ? siblings : [file], idx >= 0 ? idx : 0);
+            } else {
+              openDriveImage(file);
+            }
+          } else if (isMarkdownFile(file)) {
+            openDriveMarkdown(file);
+          } else {
+            void downloadDriveFile(file.id, file.name);
+          }
+        } else if (isPictureFile({ name: item.name || '' }) || isVideoFile({ name: item.name || '' })) {
+          const itemName = item.name || t('untitled');
+          mediaViewer.value = {
+            items: [driveViewerItem({ id: item.id, name: itemName, kind: isVideoFile({ name: item.name || '' }) ? 'video' : 'photo' })],
+            start: 0,
+            source: 'drive',
+          };
+        } else if (isMarkdownFile({ name: item.name || '' })) {
+          openDriveMarkdown({ id: item.id, name: item.name || t('untitled') });
         } else {
           void downloadDriveFile(item.id, item.name);
         }
@@ -6735,7 +7172,7 @@ export default defineComponent({
         return;
       }
       if (item.kind === 'canvas') {
-        const updated = await runAction('rename-canvas', () => canvas.update(item.id!, { title: nextName }), 'Canvas renamed');
+        const updated = await runAction('rename-canvas', () => canvas.update(item.id!, { title: nextName }), t('canvasRenamed'));
         if (updated) applyCanvasUpdate(updated);
         return;
       }
@@ -6910,20 +7347,112 @@ export default defineComponent({
         event.preventDefault();
       }
     };
-    onMounted(() => window.addEventListener('keydown', onExplorerEscapeKeydown));
+    const openSingleSelectedKey = (key: string): boolean => {
+      if (!key) return false;
+      if (key.startsWith('folder:')) {
+        selectFolder(key.slice('folder:'.length));
+        return true;
+      }
+      if (key.startsWith('space:') || key.startsWith('album:')) {
+        selectDashboardSection({ kind: 'space', spaceId: key.replace(/^(space:|album:)/, '') });
+        return true;
+      }
+      if (key.startsWith('drive-file:')) {
+        const fid = key.slice('drive-file:'.length);
+        const file = activeDriveFiles.value.find((f) => f.id === fid)
+          || folderDriveFiles.value.find((f) => f.id === fid)
+          || homeRootDriveFiles.value.find((f) => f.id === fid);
+        if (file) {
+          if (isDriveMedia(file)) openDriveImage(file);
+          else if (isMarkdownFile(file)) openDriveMarkdown(file);
+          else void downloadDriveFile(file.id, file.name);
+          return true;
+        }
+        // Fallback for transferred shared photo not mounted in Drive files list
+        mediaViewer.value = {
+          items: [driveViewerItem({ id: fid, name: t('untitled'), kind: 'photo' })],
+          start: 0,
+          source: 'drive',
+        };
+        return true;
+      }
+      const res = (dashboardItemsByKey.value as ReadonlyMap<string, FolderItem>).get(key);
+      if (res) {
+        const routeId = ('slug' in res && res.slug) || res.id;
+        openSpaceResource(res.type, routeId);
+        return true;
+      }
+      const spaceItem = spaceItemsByKey.value.get(key);
+      if (spaceItem) {
+        if (spaceItem.kind === 'file' && spaceItem.id) {
+          const media = spaceFeedItems.value.filter((other) => other.kind === 'file' && (isPictureFile({ name: other.name, mime: other.mime }) || isVideoFile({ name: other.name, mime: other.mime })));
+          if (media.some((m) => m.key === spaceItem.key)) {
+            openSpaceMedia(
+              media.map((m) => ({
+                key: m.key,
+                name: m.name,
+                kind: isVideoFile({ name: m.name, mime: m.mime }) ? 'video' : 'image',
+                date: m.updatedAt,
+                preview: null,
+                loadFull: async () => (m.origin === 'yandex' && spaceId.value && m.sourceId && m.path
+                  ? (await spacesApi.yandexDownload(spaceId.value, m.sourceId, m.path)).href
+                  : resolveDownloadUrl((await driveApi.getDownloadLink(m.id!)).url)),
+                download: async () => { await downloadDriveFile(m.id!, m.name); },
+                fileId: m.origin === 'qspace' ? m.id : null,
+                noReferrer: m.origin === 'yandex',
+                sizeBytes: m.size ?? null,
+                mimeType: m.mime ?? null,
+                origin: m.origin,
+              })),
+              Math.max(0, media.findIndex((m) => m.key === spaceItem.key)),
+            );
+            return true;
+          }
+        } else if (spaceItem.id) {
+          openSpaceResource(spaceItem.kind, spaceItem.id);
+          return true;
+        }
+      }
+      return false;
+    };
+
+    const onExplorerEnterKeydown = (event: KeyboardEvent) => {
+      if (event.key !== 'Enter' || event.defaultPrevented) return;
+      if (!isLoggedIn || activeSection.value.kind === 'gallery' || mediaViewer.value) return;
+      if (selectedKeys.value.length !== 1) return;
+      if (explorerCtxMenu.value.open || addDialog.value.open || folderModal.value.open || renameFolderModal.value.open || subfolderModal.value.open || folderParentModal.value.open) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest('input, textarea, select, [contenteditable="true"], [role="dialog"], [data-explorer-context-menu], [data-explorer-table], [data-folder-file], .canvas-card, .subfolder-card, button, a')) {
+        return;
+      }
+      if (openSingleSelectedKey(selectedKeys.value[0]!)) {
+        event.preventDefault();
+      }
+    };
+    onMounted(() => {
+      window.addEventListener('keydown', onExplorerEscapeKeydown);
+      window.addEventListener('keydown', onExplorerEnterKeydown);
+    });
     onBeforeUnmount(() => {
       window.removeEventListener('keydown', onExplorerEscapeKeydown);
+      window.removeEventListener('keydown', onExplorerEnterKeydown);
     });
 
     // Gallery mode state & handlers
     const galleryViewRef = ref<InstanceType<typeof DrivePhotos> | null>(null);
+    const gallerySidebarRef = ref<{ invalidateFolderFilesCache?: () => void } | null>(null);
     const galleryRefreshKey = ref(0);
-    const refreshGalleryView = () => {
-      const view = galleryViewRef.value as { refresh?: () => void } | null;
+    const refreshGalleryView = (opts?: { clearSelection?: boolean; invalidateFolders?: boolean }) => {
+      const view = galleryViewRef.value as { refresh?: (options?: { clearSelection?: boolean; invalidateFolders?: boolean }) => void } | null;
       if (typeof view?.refresh === 'function') {
-        view.refresh();
-      } else if (activeSection.value.kind === 'gallery') {
-        galleryRefreshKey.value += 1;
+        view.refresh(opts);
+      } else {
+        if (activeSection.value.kind === 'gallery') {
+          galleryRefreshKey.value += 1;
+        }
+        if (opts?.invalidateFolders !== false) {
+          gallerySidebarRef.value?.invalidateFolderFilesCache?.();
+        }
       }
     };
     const galleryHighlightFolderId = ref<string | null>(null);
@@ -7022,31 +7551,95 @@ export default defineComponent({
       galleryHighlightFileId.value = item.fileId;
     };
 
+    const onGalleryFolderContextMenu = (payload: { event: MouseEvent; folderId: string }) => {
+      const folder = allFolderSummaries.value.find((f) => f.id === payload.folderId)
+        || allResourceFolders.value.find((f) => f.id === payload.folderId);
+      if (!folder) return;
+      openContextMenuForItems(payload.event.clientX, payload.event.clientY, [{
+        key: `folder:${folder.id}`,
+        id: folder.id,
+        kind: 'folder',
+        name: folder.name,
+      }]);
+    };
+
     const onGalleryDropFavorites = async (fileIds: string[]) => {
       for (const fileId of fileIds) {
         try { await photosApi.edit(fileId, { favorite: true }); } catch { /* continue */ }
       }
-      if (fileIds.length) setFeedback('success', `${t('explorerAddToFavorites')} (${fileIds.length})`);
-    };
-
-    const onGalleryDropAlbum = async (albumId: string, fileIds: string[]) => {
-      if (!fileIds.length) return;
-      try {
-        await spacesApi.addItems(albumId, fileIds);
-        setFeedback('success', `${t('explorerAddToAlbum')} (${fileIds.length})`);
-        void loadSpaces(true);
-      } catch (err) {
-        setFeedback('error', err instanceof Error && err.message ? err.message : t('spaceActionFailed'));
+      if (fileIds.length) {
+        setFeedback('success', `${t('explorerAddToFavorites')} (${fileIds.length})`);
+        refreshGalleryView({ clearSelection: true, invalidateFolders: false });
       }
     };
 
-    const onGalleryDropFolder = async (folderId: string, fileIds: string[]) => {
-      if (!fileIds.length) return;
+    const onGalleryDropAlbum = async (albumId: string, fileIds: string[], folderIds: string[] = []) => {
+      if (!fileIds.length && !folderIds.length) return;
+      let added = 0;
+      let lastErr: unknown = null;
+      if (fileIds.length) {
+        try {
+          await spacesApi.addItems(albumId, fileIds);
+          added += fileIds.length;
+        } catch (err) {
+          lastErr = err;
+        }
+      }
+      for (const fId of folderIds) {
+        try {
+          await spacesApi.addQspaceFolder(albumId, fId);
+          added += 1;
+        } catch (err) {
+          lastErr = err;
+        }
+      }
+      if (added > 0) {
+        setFeedback('success', `${t('explorerAddToAlbum')} (${added})`);
+        await loadSpaces(true);
+        refreshGalleryView({ clearSelection: true, invalidateFolders: false });
+      } else if (lastErr) {
+        setFeedback('error', lastErr instanceof Error && lastErr.message ? lastErr.message : t('spaceActionFailed'));
+      }
+    };
+
+    const onGalleryDropFolder = async (folderId: string | null, fileIds: string[], folderIds: string[] = []) => {
+      if (!fileIds.length && !folderIds.length) return;
+      const targetName = folderId === null
+        ? t('explorerHomeFolder')
+        : (allFolderSummaries.value.find((f) => f.id === folderId)?.name
+          || allResourceFolders.value.find((f) => f.id === folderId)?.name
+          || t('explorerHomeFolder'));
       let moved = 0;
+      let lastErr: unknown = null;
       for (const fileId of fileIds) {
-        try { await driveApi.moveFile(fileId, folderId); moved += 1; } catch { /* continue */ }
+        try {
+          await driveApi.moveFile(fileId, folderId);
+          moved += 1;
+        } catch (err) {
+          lastErr = err;
+        }
       }
-      if (moved > 0) setFeedback('success', t('bulkMovedTo').replace('{folder}', '').replace('{n}', String(moved)));
+      for (const fId of folderIds) {
+        if (!fId || isFolderAncestorOrSelf(fId, folderId)) continue;
+        const currentFolder = allResourceFolders.value.find((f) => f.id === fId);
+        if (currentFolder && (currentFolder.parentId ?? null) === folderId) continue;
+        try {
+          await resourceFolders.moveFolder(fId, folderId);
+          moved += 1;
+        } catch (err) {
+          lastErr = err;
+        }
+      }
+      if (moved > 0) {
+        setFeedback('success', t('bulkMovedTo').replace('{folder}', targetName).replace('{n}', String(moved)));
+        refreshGalleryView({ clearSelection: true, invalidateFolders: true });
+        sidebarDriveFiles.forget();
+        folderFilesRefreshKey.value += 1;
+        await Promise.all([load({ showLoading: false }), refreshFolderFileCounts()]);
+        void loadSpaces(true);
+      } else if (lastErr) {
+        setFeedback('error', lastErr instanceof Error && lastErr.message ? lastErr.message : t('spaceActionFailed'));
+      }
     };
 
     const onAppClickCapture = (event: MouseEvent) => {
@@ -7076,7 +7669,7 @@ export default defineComponent({
         return `${t('searchInFolder')} ${activeFolder.value.name}…`;
       }
       if (kind === 'home') {
-        return `${t('searchInFolder')} home…`;
+        return `${t('searchInFolder')} ${t('explorerHomeFolder')}…`;
       }
       if (kind === 'space' && activeSpace.value) {
         return `${t('searchInFolder')} ${activeSpace.value.name}…`;
@@ -7085,10 +7678,10 @@ export default defineComponent({
         return `${t('searchInFolder')} ${locale.value === 'ru' ? 'Яндекс Диске' : 'Yandex Disk'}…`;
       }
       if (kind === 'shared') {
-        return `${t('searchInFolder')} shared…`;
+        return `${t('searchInFolder')} ${t('sharedWithMe')}…`;
       }
       if (kind === 'public') {
-        return `${t('searchInFolder')} public…`;
+        return `${t('searchInFolder')} ${t('public')}…`;
       }
       if (kind === 'recent') {
         return locale.value === 'ru' ? 'Поиск на Главной…' : 'Search Home…';
@@ -7106,7 +7699,7 @@ export default defineComponent({
       const newTitle = (e.target as HTMLInputElement).value.trim();
       renamingId.value = '';
       if (newTitle && newTitle !== c.title) {
-        const updated = await runAction('rename-canvas', () => canvas.update(c.id, { title: newTitle }), 'Canvas renamed');
+        const updated = await runAction('rename-canvas', () => canvas.update(c.id, { title: newTitle }), t('canvasRenamed'));
         if (!updated) return;
         applyCanvasUpdate(updated);
       }
@@ -7417,6 +8010,10 @@ export default defineComponent({
       onDropGroupToFolder,
       onDropGroupToAlbum,
       onDropExternalFilesToFolder,
+      recentFolderDropTargetId,
+      onRecentFolderDragOver,
+      onRecentFolderDragLeave,
+      onRecentFolderDrop,
       buildGroupDragEntriesForKeys,
       propertiesFile,
       explorerCtxMenu,
@@ -7446,6 +8043,7 @@ export default defineComponent({
       shareSelectedGroup,
       openAddSelectionToAlbum,
       galleryViewRef,
+      gallerySidebarRef,
       galleryRefreshKey,
       gallerySection,
       galleryAlbumId,
@@ -7464,9 +8062,23 @@ export default defineComponent({
       onGalleryShowFolder,
       onGallerySelectFile,
       onGalleryFocusPhoto,
+      onGalleryFolderContextMenu,
       onGalleryDropFavorites,
       onGalleryDropAlbum,
       onGalleryDropFolder,
+      mediaViewerCurrent,
+      mediaViewerCanFavorite,
+      mediaViewerCanShare,
+      mediaViewerCanDelete,
+      mediaViewerCanInfo,
+      openSpaceMedia,
+      onMediaViewerPrev,
+      onMediaViewerNext,
+      onMediaViewerJump,
+      onMediaViewerToggleFavorite,
+      onMediaViewerPanelChanged,
+      onMediaViewerShare,
+      onMediaViewerDelete,
       onDashboardMainPointerDown,
       mobileSidebarOpen,
       sidebarFolders,

@@ -33,7 +33,6 @@
           <span class="sb-title dashboard-sidebar-label" data-sidebar-title>{{ sidebarTitle }}</span>
           <div class="sb-header-actions" data-sidebar-header-actions>
             <button
-              v-if="mode !== 'media'"
               type="button"
               class="icon-btn"
               :aria-label="t('explorerNewFolder')"
@@ -1015,7 +1014,7 @@ const visibleRows = computed<TreeRow[]>(() => {
       key: 'qspace:shared',
       parentKey: 'root:qspace',
       kind: 'section',
-      label: 'shared',
+      label: t('sharedWithMe'),
       ariaLabel: t('sharedWithMe'),
       title: t('sharedWithMe'),
       depth: 1,
@@ -1030,7 +1029,7 @@ const visibleRows = computed<TreeRow[]>(() => {
       key: 'qspace:public',
       parentKey: 'root:qspace',
       kind: 'section',
-      label: 'public',
+      label: t('public'),
       ariaLabel: t('public'),
       title: t('public'),
       depth: 1,
@@ -1055,7 +1054,9 @@ const visibleRows = computed<TreeRow[]>(() => {
       key: 'qspace:home',
       parentKey: 'root:qspace',
       kind: 'section',
-      label: 'home',
+      label: t('explorerHomeFolder'),
+      ariaLabel: t('explorerHomeFolder'),
+      title: t('explorerHomeFolder'),
       depth: 1,
       expandable: homeExpandable,
       expanded: homeOpen,
@@ -1355,6 +1356,49 @@ function appendQspaceFolderRows(rows: TreeRow[], parentRowKey: string, baseDepth
   };
 
   walk(null, parentRowKey, baseDepth);
+
+  if (showFilesInTree.value) {
+    const rootFiles = [...(childFiles.get('root') ?? []), ...(childFiles.get('') ?? [])];
+    if (rootFiles.length) {
+      const resolveFileName = (file: DashboardFileNavItem) => (
+        file.title || (file as unknown as { name?: string }).name || ''
+      ).trim();
+      const sortedRootFiles = [...rootFiles].sort((a, b) => (
+        resolveFileName(a).localeCompare(resolveFileName(b), undefined, { sensitivity: 'base' })
+      ));
+      for (const file of sortedRootFiles) {
+        rows.push({
+          key: `file:${file.key}`,
+          parentKey: parentRowKey,
+          kind: 'file',
+          label: resolveFileName(file) || t('untitled'),
+          depth: baseDepth,
+          expandable: false,
+          expanded: false,
+          active: false,
+          draggable: true,
+          folderId: 'root',
+          fileKey: file.key,
+          fileItem: file,
+        });
+      }
+      const rootMore = childMore.get('root') ?? childMore.get('');
+      if (rootMore) {
+        rows.push({
+          key: `more:${rootMore.key}`,
+          parentKey: parentRowKey,
+          kind: 'more',
+          label: t('sidebarMoreItems').replace('{n}', String(rootMore.count)),
+          depth: baseDepth,
+          expandable: false,
+          expanded: false,
+          active: false,
+          draggable: false,
+          folderId: 'root',
+        });
+      }
+    }
+  }
 }
 
 function appendYandexRows(rows: TreeRow[], path: string, parentKey: string, depth: number) {
@@ -1793,8 +1837,11 @@ function onRowDragEnter(event: DragEvent, row: TreeRow) {
   if (payload) {
     if (row.kind === 'folder' && row.folderId) {
       if (isSingleTreeFolderDrag(event, payload)) {
-        dnd.setGroupDropTarget({ kind: 'folder', id: row.folderId });
-        scheduleSpringIfExpandable(row);
+        if (canDropGroupOnFolder(row.folderId, payload)) {
+          event.preventDefault();
+          dnd.setGroupDropTarget({ kind: 'folder', id: row.folderId });
+          scheduleSpringIfExpandable(row);
+        }
         emit('folder-drag-enter', event, row.folderId);
       } else if (canDropGroupOnFolder(row.folderId, payload)) {
         event.preventDefault();
@@ -1853,10 +1900,12 @@ function onRowDragOver(event: DragEvent, row: TreeRow) {
   if (payload) {
     if (row.kind === 'folder' && row.folderId) {
       if (isSingleTreeFolderDrag(event, payload)) {
-        event.preventDefault();
-        if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
-        dnd.setGroupDropTarget({ kind: 'folder', id: row.folderId });
-        scheduleSpringIfExpandable(row);
+        if (canDropGroupOnFolder(row.folderId, payload)) {
+          event.preventDefault();
+          if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+          dnd.setGroupDropTarget({ kind: 'folder', id: row.folderId });
+          scheduleSpringIfExpandable(row);
+        }
         emit('folder-drag-over', event, row.folderId);
       } else if (canDropGroupOnFolder(row.folderId, payload)) {
         event.preventDefault();

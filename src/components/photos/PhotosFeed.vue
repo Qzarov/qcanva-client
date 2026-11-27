@@ -1188,7 +1188,7 @@ function orderedItems(): FeedItem[] {
   return out;
 }
 
-function patchItem(fileId: string, patch: Partial<Pick<FeedItem, 'favorite' | 'albumIds'>>): void {
+function patchItem(fileId: string, patch: Partial<Pick<FeedItem, 'favorite' | 'albumIds' | 'folderId'>>): void {
   let touched = false;
   const next = new Map<string, FeedItem[]>();
   for (const [key, list] of items.value) {

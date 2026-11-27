@@ -127,9 +127,9 @@ const resolvedShowAdmin = computed(() => {
     return false;
   }
 });
-const userLabel = computed(() => currentUser?.name || currentUser?.email || 'User');
+const userLabel = computed(() => currentUser?.name || currentUser?.email || (locale.value === 'ru' ? 'Пользователь' : 'User'));
 const userTitle = computed(() => currentUser?.email || currentUser?.name || userLabel.value);
-const avatarLabel = computed(() => userLabel.value.trim().slice(0, 1).toUpperCase() || 'U');
+const avatarLabel = computed(() => userLabel.value.trim().slice(0, 1).toUpperCase() || (locale.value === 'ru' ? 'П' : 'U'));
 const compact = computed(() => props.compact);
 const placement = computed(() => props.placement);
 const showPlugins = computed(() => props.showPlugins);

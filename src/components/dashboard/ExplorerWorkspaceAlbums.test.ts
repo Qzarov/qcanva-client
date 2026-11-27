@@ -821,7 +821,7 @@ describe('AlbumShareDialog', () => {
       props: { space: baseSpace, meId: 'u-1' },
     });
 
-    expect(wrapper.text()).toContain('Q Space/shared');
+    expect(wrapper.text()).toContain('Q Space/Поделились со мной');
     expect(wrapper.find('[data-album-public-toggle]').exists()).toBe(false);
     expect(wrapper.find('[data-album-public-url]').exists()).toBe(false);
 

@@ -259,7 +259,7 @@ describe('DashboardView external drag-and-drop file upload', () => {
 
     await wrapper.get('[data-dashboard-folder="folder-target"]').trigger('drop', { dataTransfer: folderTransfer });
     await flushPromises();
-    expect(resourceFolders.reorder).toHaveBeenCalledWith(['folder-unsorted', 'folder-archive', 'folder-target']);
+    expect(resourceFolders.moveFolder).toHaveBeenCalledWith('folder-archive', 'folder-target');
     expect(driveApi.uploadFile).not.toHaveBeenCalled();
 
     // Internal card/resource drag between folders

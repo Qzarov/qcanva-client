@@ -15,6 +15,8 @@ import AlbumShareDialog from '../dashboard/AlbumShareDialog.vue';
 import DrivePhotos from './DrivePhotos.vue';
 import drivePhotosSource from './DrivePhotos.vue?raw';
 import GallerySidebar from './GallerySidebar.vue';
+import gallerySidebarSource from './GallerySidebar.vue?raw';
+import { useExplorerGroupDnd } from '../../composables/useExplorerGroupDnd';
 import photosFeedSource from './PhotosFeed.vue?raw';
 import photosGroupHeadSource from './PhotosGroupHead.vue?raw';
 import photosViewBarSource from './PhotosViewBar.vue?raw';
@@ -1485,6 +1487,259 @@ describe('Gallery UX v2 & B-009/B-011/B-014 regressions', () => {
     await settle();
     expect(spacesRemoveMemberMock).toHaveBeenCalledWith('alb-shared', 'u1');
     expect(sb.emitted('select-section')?.[1]).toEqual(['library']);
+    sb.unmount();
+  });
+
+  it('Item 8: GallerySidebar renders single-pill active/highlighted selection on .gs-row-wrap only (zero inner .active/.is-highlighted, zero .photo-linked::after dot)', async () => {
+    expect(gallerySidebarSource).not.toContain('photo-linked');
+    expect(gallerySidebarSource).toMatch(/\.gs-row-wrap\s+\.gs-row-main\s*\{[^}]*border:\s*0\s*!important;[^}]*background:\s*transparent\s*!important;[^}]*box-shadow:\s*none\s*!important;[^}]*outline:\s*none;/);
+    expect(gallerySidebarSource).toMatch(/border-radius:\s*7px;/);
+
+    resetYandexDiskStatus();
+    useYandexDisk().status.value = {
+      enabled: true,
+      connected: true,
+      reconnectRequired: false,
+      login: 'vlad',
+      displayName: 'Vlad',
+      email: null,
+      avatarUrl: null,
+    };
+
+    const sb = mount(GallerySidebar, {
+      attachTo: document.body,
+      props: {
+        activeSection: 'library',
+        activeFolderId: 'f-1',
+        highlightedFolderId: 'f-2',
+        activeAlbumId: 'alb-1',
+        activeYandexPath: '/',
+        folders: [
+          { id: 'f-1', name: 'Q Disk', parentId: null, role: 'owner' },
+          { id: 'f-2', name: 'Отпуск', parentId: null, role: 'owner' },
+        ],
+        albums: [
+          { id: 'alb-1', name: 'Море', role: 'owner', ownerId: 'u1', memberCount: 1, sourceCount: 0, mediaCount: 2, updatedAt: '' },
+        ],
+      },
+    });
+    await settle();
+
+    // Active folder: outer .gs-row-wrap has .active, inner .gs-row-main has NEITHER .active nor .is-highlighted
+    const activeWrap = sb.get('[data-gallery-folder="f-1"]');
+    expect(activeWrap.classes()).toContain('active');
+    expect(activeWrap.classes()).not.toContain('photo-linked');
+    const activeInner = activeWrap.get('.gs-row-main');
+    expect(activeInner.classes()).not.toContain('active');
+    expect(activeInner.classes()).not.toContain('is-highlighted');
+
+    // Highlighted folder: outer .gs-row-wrap has .is-highlighted (no .photo-linked), inner .gs-row-main has neither
+    const hlWrap = sb.get('[data-gallery-folder="f-2"]');
+    expect(hlWrap.classes()).toContain('is-highlighted');
+    expect(hlWrap.classes()).not.toContain('photo-linked');
+    const hlInner = hlWrap.get('.gs-row-main');
+    expect(hlInner.classes()).not.toContain('active');
+    expect(hlInner.classes()).not.toContain('is-highlighted');
+
+    // Album & Yandex & home-root inner buttons never carry .active
+    expect(sb.get('[data-gallery-album="alb-1"]').classes()).toContain('active');
+    expect(sb.get('[data-gallery-album="alb-1"] .gs-row-main').classes()).not.toContain('active');
+    expect(sb.get('[data-gallery-yandex="/"]').classes()).toContain('active');
+    expect(sb.get('[data-gallery-yandex="/"] .gs-row-main').classes()).not.toContain('active');
+
+    await sb.setProps({ activeFolderId: 'root' });
+    await nextTick();
+    expect(sb.get('[data-gallery-tree-root="home"]').classes()).toContain('active');
+    expect(sb.get('[data-gallery-tree-root="home"] .gs-row-main').classes()).not.toContain('active');
+    sb.unmount();
+  });
+
+  it('Items 5, 6, 9: GallerySidebar folder DnD (folder->folder with cycle guard, ->home root, ->album), folder ПКМ, and PhotosSearchGrid draggable tiles', async () => {
+    const sb = mount(GallerySidebar, {
+      attachTo: document.body,
+      props: {
+        activeSection: 'library',
+        activeFolderId: 'f-parent',
+        folders: [
+          { id: 'f-unsorted', name: 'Unsorted', parentId: null, role: 'owner' },
+          { id: 'f-parent', name: 'Путешествия', parentId: null, role: 'owner' },
+          { id: 'f-child', name: 'Алтай', parentId: 'f-parent', role: 'owner' },
+          { id: 'f-target', name: 'Q Disk', parentId: null, role: 'owner' },
+          { id: 'f-shared', name: 'Чужая', parentId: null, role: 'read' },
+        ],
+        albums: [
+          { id: 'alb-1', name: 'Отпуск', role: 'owner', ownerId: 'u1', memberCount: 1, sourceCount: 0, mediaCount: 2, updatedAt: '' },
+        ],
+      },
+    });
+    await settle();
+
+    // Owned non-technical folders are draggable; Unsorted is not
+    expect(sb.get('[data-gallery-folder="f-parent"]').attributes('draggable')).toBe('true');
+    expect(sb.get('[data-gallery-folder="f-target"]').attributes('draggable')).toBe('true');
+    expect(sb.get('[data-gallery-folder="f-unsorted"]').attributes('draggable')).toBeUndefined();
+
+    // 1. Dragging f-parent onto f-target emits drop-folder('f-target', [], ['f-parent'])
+    await sb.get('[data-gallery-folder="f-parent"]').trigger('dragstart');
+    await sb.get('[data-gallery-folder="f-target"]').trigger('dragover');
+    await nextTick();
+    expect(sb.get('[data-gallery-folder="f-target"]').classes()).toContain('drop-over');
+    await sb.get('[data-gallery-folder="f-target"]').trigger('drop');
+    await nextTick();
+    expect(sb.emitted('drop-folder')?.[0]).toEqual(['f-target', [], ['f-parent']]);
+
+    // 2. Cycle guard: dragging f-parent onto its own child f-child (or itself) is blocked
+    await sb.get('[data-gallery-folder="f-parent"]').trigger('dragstart');
+    await sb.get('[data-gallery-folder="f-child"]').trigger('dragover');
+    await nextTick();
+    expect(sb.get('[data-gallery-folder="f-child"]').classes()).not.toContain('drop-over');
+    await sb.get('[data-gallery-folder="f-child"]').trigger('drop');
+    await nextTick();
+    expect(sb.emitted('drop-folder')).toHaveLength(1);
+
+    await sb.get('[data-gallery-folder="f-parent"]').trigger('dragstart');
+    await sb.get('[data-gallery-folder="f-parent"]').trigger('drop');
+    await nextTick();
+    expect(sb.emitted('drop-folder')).toHaveLength(1);
+
+    // 3. Dragging f-child onto home root emits drop-folder(null, [], ['f-child'])
+    await sb.get('[data-gallery-folder="f-child"]').trigger('dragstart');
+    await sb.get('[data-gallery-tree-root="home"]').trigger('dragover');
+    await nextTick();
+    expect(sb.get('[data-gallery-tree-root="home"]').classes()).toContain('drop-over');
+    await sb.get('[data-gallery-tree-root="home"]').trigger('drop');
+    await nextTick();
+    expect(sb.emitted('drop-folder')?.[1]).toEqual([null, [], ['f-child']]);
+
+    // 4. Dragging photos onto home root emits drop-folder(null, ['p1', 'p2'], [])
+    const dnd = useExplorerGroupDnd();
+    dnd.startGroupDrag({
+      source: 'gallery',
+      items: [
+        { key: 'photo:p1', id: 'p1', kind: 'photo', name: 'p1.jpg', folderId: 'f-unsorted' },
+        { key: 'photo:p2', id: 'p2', kind: 'photo', name: 'p2.jpg', folderId: 'f-unsorted' },
+      ],
+    });
+    await sb.get('[data-gallery-tree-root="home"]').trigger('drop');
+    await nextTick();
+    expect(sb.emitted('drop-folder')?.[2]).toEqual([null, ['p1', 'p2'], []]);
+
+    // 5. Dragging folder f-parent onto album alb-1 emits drop-album('alb-1', [], ['f-parent'])
+    await sb.get('[data-gallery-folder="f-parent"]').trigger('dragstart');
+    await sb.get('[data-gallery-album="alb-1"]').trigger('dragover');
+    await nextTick();
+    expect(sb.get('[data-gallery-album="alb-1"]').classes()).toContain('drop-over');
+    await sb.get('[data-gallery-album="alb-1"]').trigger('drop');
+    await nextTick();
+    expect(sb.emitted('drop-album')?.[0]).toEqual(['alb-1', [], ['f-parent']]);
+
+    // 6. Folder ПКМ emits folder-contextmenu({ event, folderId })
+    await sb.get('[data-gallery-folder="f-target"]').trigger('contextmenu', { clientX: 60, clientY: 140 });
+    await nextTick();
+    const ctxEmit = sb.emitted('folder-contextmenu')?.[0]?.[0] as { event: MouseEvent; folderId: string } | undefined;
+    expect(ctxEmit?.folderId).toBe('f-target');
+    expect(ctxEmit?.event).toBeInstanceOf(MouseEvent);
+    sb.unmount();
+
+    // 7. PhotosSearchGrid tiles are draggable and start group drag
+    const dp = mountDrivePhotos();
+    await settle();
+    const input = dp.get('[data-s2-input]');
+    await input.setValue('горы');
+    await input.trigger('keydown', { key: 'Enter' });
+    await settle();
+
+    const searchTile = dp.get('[data-testid="photos-search-grid"] [data-file-id="f1"]');
+    expect(searchTile.attributes('draggable')).toBe('true');
+    await searchTile.trigger('dragstart');
+    expect(dnd.activeDrag.value?.items).toEqual([
+      expect.objectContaining({ key: 'photo:f1', id: 'f1', kind: 'photo' }),
+    ]);
+    await searchTile.trigger('dragend');
+    expect(dnd.activeDrag.value).toBeNull();
+    dp.unmount();
+  });
+
+  it('Item 9: DrivePhotos.refresh({ clearSelection: true, invalidateFolders: true }) clears selection, refreshes PhotosFeed, and invalidates GallerySidebar folder file cache', async () => {
+    const layoutPrefs = useExplorerLayoutPrefs();
+    layoutPrefs.setShowFilesInTree(true);
+
+    getFolderItemsMock.mockImplementation(async (folderId: string) => {
+      if (folderId === 'f-qdisk') {
+        return {
+          items: [{ id: 'f1', name: 'p1.jpg', kind: 'photo', deletedAt: null }],
+          nextCursor: null,
+        };
+      }
+      return { items: [], nextCursor: null };
+    });
+
+    const sb = mount(GallerySidebar, {
+      attachTo: document.body,
+      props: {
+        activeSection: 'library',
+        activeFolderId: 'f-qdisk',
+        folders: [{ id: 'f-qdisk', name: 'Q Disk', parentId: null, role: 'owner' }],
+        albums: [],
+      },
+    });
+    const dp = mountDrivePhotos();
+    await settle();
+
+    // Multi-select f1 + f2 in DrivePhotos
+    await dp.get('[data-file-id="f1"]').trigger('click');
+    await dp.get('[data-file-id="f2"]').trigger('click', { ctrlKey: true });
+    await nextTick();
+    expect(dp.find('[data-testid="selection-badge"]').exists()).toBe(true);
+
+    const summaryCallsBefore = summaryMock.mock.calls.length;
+    const itemsCallsBefore = itemsMock.mock.calls.length;
+    const folderItemsCallsBefore = getFolderItemsMock.mock.calls.length;
+
+    // Trigger live refresh
+    (dp.vm as unknown as { refresh: (opts?: { clearSelection?: boolean; invalidateFolders?: boolean }) => void }).refresh({
+      clearSelection: true,
+      invalidateFolders: true,
+    });
+    await settle();
+
+    expect(dp.find('[data-testid="selection-badge"]').exists()).toBe(false);
+    expect(summaryMock.mock.calls.length).toBeGreaterThan(summaryCallsBefore);
+    expect(itemsMock.mock.calls.length).toBeGreaterThan(itemsCallsBefore);
+    expect(getFolderItemsMock.mock.calls.length).toBeGreaterThan(folderItemsCallsBefore);
+
+    // Direct GallerySidebar invalidateFolderFilesCache() also re-fetches
+    const beforeDirect = getFolderItemsMock.mock.calls.length;
+    (sb.vm as unknown as { invalidateFolderFilesCache: () => void }).invalidateFolderFilesCache();
+    await settle();
+    expect(getFolderItemsMock.mock.calls.length).toBeGreaterThan(beforeDirect);
+
+    dp.unmount();
+    sb.unmount();
+  });
+
+  it('Item 7: GallerySidebar renders Russian labels (Домашняя, Поделились со мной, Публичные, Облака) with zero hardcoded English tree labels', async () => {
+    useI18n().setLocale('ru');
+    const sb = mount(GallerySidebar, {
+      attachTo: document.body,
+      props: {
+        activeSection: 'library',
+        folders: [{ id: 'f-1', name: 'Q Disk', parentId: null, role: 'owner' }],
+        albums: [],
+      },
+    });
+    await settle();
+
+    expect(sb.get('[data-gallery-tree-root="home"] .gs-name').text().trim()).toBe('Домашняя');
+    expect(sb.get('[data-gallery-tree-root="shared"] .gs-name').text().trim()).toBe('Поделились со мной');
+    expect(sb.get('[data-gallery-tree-root="public"] .gs-name').text().trim()).toBe('Публичные');
+    expect(sb.get('[data-gallery-tree-group="clouds"] .gs-name').text().trim()).toBe('Облака');
+
+    const treeNames = sb.findAll('.gs-tree-row .gs-name').map((n) => n.text().trim());
+    expect(treeNames).not.toContain('home');
+    expect(treeNames).not.toContain('shared');
+    expect(treeNames).not.toContain('public');
+    expect(treeNames).not.toContain('Clouds');
     sb.unmount();
   });
 });

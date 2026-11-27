@@ -1289,8 +1289,8 @@ describe('dashboard sidebar navigation', () => {
     wrapper.unmount();
   });
 
-  it('forwards folder drag events to the existing reorder behavior', async () => {
-    const reorder = vi.mocked(resourceFolders.reorder);
+  it('nests a single dragged sidebar folder inside the target folder via moveFolder', async () => {
+    const moveFolder = vi.mocked(resourceFolders.moveFolder);
     const transfer = {
       types: [] as string[],
       effectAllowed: '',
@@ -1306,7 +1306,7 @@ describe('dashboard sidebar navigation', () => {
     await wrapper.get('[data-dashboard-folder="folder-b"]').trigger('drop', { dataTransfer: transfer });
     await flushPromises();
 
-    expect(reorder).toHaveBeenCalledWith(['folder-a', 'folder-c', 'folder-b']);
+    expect(moveFolder).toHaveBeenCalledWith('folder-c', 'folder-b');
   });
 });
 
@@ -1686,7 +1686,9 @@ describe('DashboardView groups', () => {
     expect((wrapper.vm as any).activeFolder?.id).toBe('folder-b');
     expect((wrapper.vm as any).activeFolder?.items.map((item: any) => item.type)).toContain('html-document');
     expect(wrapper.find('[data-resource-icon="html-document"]').exists()).toBe(true);
-    (wrapper.vm as any).selectFolder('legacy-resource-inbox');
+    // Unfiled personal documents appear directly in Home (no synthetic Inbox folder).
+    expect((wrapper.vm as any).folderSummaries.some((folder: any) => folder.id === 'legacy-resource-inbox')).toBe(false);
+    (wrapper.vm as any).selectDashboardSection({ kind: 'home' });
     await wrapper.vm.$nextTick();
     expect(wrapper.find('[data-resource-icon="text-document"]').exists()).toBe(true);
     expect(wrapper.findAll('.badge').map((badge) => badge.text())).not.toContain('HTML');

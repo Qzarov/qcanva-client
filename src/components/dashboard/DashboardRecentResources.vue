@@ -1,6 +1,20 @@
 <template>
   <div v-if="items.length" class="dashboard-recents-layout" :class="recentViewMode === 'grid' ? 'dashboard-recents-grid' : 'dashboard-recents-list'" :aria-label="t('recentResources')" data-recent-layout>
-    <button v-for="item in items" :key="`${item.type}-${item.id}`" :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="dashboard-recent-card" type="button" @click="emit('open', item)" @contextmenu.prevent.stop="emit('contextmenu', $event, item)">
+    <button
+      v-for="item in items"
+      :key="`${item.type}-${item.id}`"
+      :data-select-key="isLoggedIn ? selectionKey(item) : undefined"
+      :data-selected="isSelected(item) || undefined"
+      :draggable="isLoggedIn || undefined"
+      class="dashboard-recent-card"
+      :class="{ 'is-dragging-group': Boolean(dnd.activeDrag.value?.keys.includes(selectionKey(item))) }"
+      type="button"
+      @click="emit('open', item)"
+      @contextmenu.prevent.stop="emit('contextmenu', $event, item)"
+      @dragstart="onDragStart($event, item)"
+      @drag="onDragMove"
+      @dragend="onDragEnd"
+    >
       <ResourceThumb v-if="recentViewMode === 'grid'" :kind="item.type" :id="item.id" :version="item.updatedAt || undefined" />
       <ResourceIcon :kind="item.type" :template-type="item.templateType" :data-resource-icon="item.type" aria-hidden="true" />
       <span class="dashboard-recent-title">{{ item.title || t('untitled') }}</span>
@@ -17,11 +31,12 @@
 import { Folder } from '@lucide/vue';
 import ResourceIcon from '../ResourceIcon.vue';
 import ResourceThumb from './ResourceThumb.vue';
+import { useExplorerGroupDnd, type GroupDragEntry } from '../../composables/useExplorerGroupDnd';
 import { useI18n } from '../../composables/useI18n';
 
 type RecentResourceItem = any;
 
-defineProps<{
+const props = defineProps<{
   items: RecentResourceItem[];
   recentViewMode: 'grid' | 'list';
   isLoggedIn: boolean;
@@ -34,4 +49,36 @@ defineProps<{
 
 const emit = defineEmits<{ open: [item: RecentResourceItem]; toggle: [item: RecentResourceItem]; contextmenu: [event: MouseEvent, item: RecentResourceItem] }>();
 const { t } = useI18n();
+const dnd = useExplorerGroupDnd();
+
+function toDragEntry(item: RecentResourceItem): GroupDragEntry {
+  return {
+    key: props.selectionKey(item),
+    id: item.id,
+    kind: item.type,
+    name: item.title || t('untitled'),
+    folderId: item.folderId ?? null,
+  };
+}
+
+function onDragStart(event: DragEvent, item: RecentResourceItem): void {
+  if (!props.isLoggedIn) return;
+  const dragged = props.isSelected(item)
+    ? props.items.filter((candidate) => props.isSelected(candidate))
+    : [item];
+  dnd.startGroupDrag({
+    source: 'explorer',
+    items: (dragged.length ? dragged : [item]).map(toDragEntry),
+  }, event);
+}
+
+function onDragMove(event: DragEvent): void {
+  if (event.clientX || event.clientY) {
+    dnd.updateGroupDragPosition(event.clientX, event.clientY);
+  }
+}
+
+function onDragEnd(): void {
+  dnd.endGroupDrag();
+}
 </script>

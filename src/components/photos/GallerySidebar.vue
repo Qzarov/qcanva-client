@@ -1,3 +1,13 @@
+<script lang="ts">
+import { ref as vueRef } from 'vue';
+
+const galleryFolderCacheEpoch = vueRef(0);
+
+export function invalidateGalleryFolderFilesCache(): void {
+  galleryFolderCacheEpoch.value += 1;
+}
+</script>
+
 <script setup lang="ts">
 import {
   ChevronDown,
@@ -43,6 +53,7 @@ export interface GalleryStorageFolder {
   parentId?: string | null;
   sortOrder?: number;
   role?: 'owner' | 'edit' | 'read';
+  shared?: boolean;
 }
 
 export interface GallerySidebarCounts {
@@ -90,11 +101,17 @@ const emit = defineEmits<{
   (e: 'create-album'): void;
   (e: 'open-trash'): void;
   (e: 'drop-favorites', fileIds: string[]): void;
-  (e: 'drop-album', albumId: string, fileIds: string[]): void;
-  (e: 'drop-folder', folderId: string, fileIds: string[]): void;
+  (e: 'drop-album', albumId: string, fileIds: string[], folderIds: string[]): void;
+  (e: 'drop-folder', folderId: string | null, fileIds: string[], folderIds: string[]): void;
+  (e: 'folder-contextmenu', payload: { event: MouseEvent; folderId: string }): void;
 }>();
 
 const { t, locale } = useI18n();
+const homeFolderLabel = computed(() => {
+  const translated = (t as (key: string) => string)('explorerHomeFolder');
+  if (translated && translated !== 'explorerHomeFolder') return translated;
+  return locale.value === 'ru' ? 'Домашняя' : 'Home';
+});
 const toast = useToast();
 const rootEl = ref<HTMLElement | null>(null);
 const prefs = useExplorerLayoutPrefs();
@@ -233,6 +250,27 @@ async function ensureFolderFiles(folderId: string): Promise<void> {
     loadingFolderFiles.delete(folderId);
   }
 }
+
+function invalidateFolderFilesCache(): void {
+  for (const key of Object.keys(folderFiles)) {
+    delete folderFiles[key];
+  }
+  loadingFolderFiles.clear();
+  if (!showFilesInTree.value) return;
+  if (openGroups.value.has('home')) {
+    void ensureFolderFiles('root');
+  }
+  for (const id of expandedFolders.value) {
+    void ensureFolderFiles(id);
+  }
+  for (const folder of allFolders.value) {
+    void ensureFolderFiles(folder.id);
+  }
+}
+
+watch(galleryFolderCacheEpoch, () => {
+  invalidateFolderFilesCache();
+});
 
 /** Auto-collapse accordion: keep only the active/focused folder's branch expanded. */
 function collapseUnrelatedFolders(targetId: string | null, expandSelf: boolean): void {
@@ -448,10 +486,67 @@ async function toggleYandexRoot(): Promise<void> {
 }
 
 // ----- Group DnD Helpers -----
-function extractDroppedFileIds(e: DragEvent): string[] {
+function isTechnicalFolder(folder: GalleryStorageFolder): boolean {
+  const lower = (folder.name || '').trim().toLowerCase();
+  return lower === 'unsorted' || lower === 'default';
+}
+
+function isFolderDraggable(folder: GalleryStorageFolder): boolean {
+  if (folder.shared) return false;
+  const role = folder.role ?? 'owner';
+  return role === 'owner' && !isTechnicalFolder(folder);
+}
+
+function isDescendantOrSelf(targetFolderId: string, draggedFolderId: string): boolean {
+  if (targetFolderId === draggedFolderId) return true;
+  const visited = new Set<string>();
+  let cur = folderMap.value.get(targetFolderId);
+  while (cur) {
+    if (cur.id === draggedFolderId) return true;
+    if (visited.has(cur.id)) break;
+    visited.add(cur.id);
+    cur = cur.parentId ? folderMap.value.get(cur.parentId) : undefined;
+  }
+  return false;
+}
+
+function extractDroppedItems(e: DragEvent): { fileIds: string[]; folderIds: string[] } {
   const payload = dnd.readGroupDragFromEvent(e);
-  if (!payload || payload.items.length === 0) return [];
-  return payload.items.map((it) => it.id).filter(Boolean);
+  if (!payload || payload.items.length === 0) return { fileIds: [], folderIds: [] };
+  const fileIds: string[] = [];
+  const folderIds: string[] = [];
+  for (const it of payload.items) {
+    if (!it.id) continue;
+    if (it.kind === 'folder' || it.key?.startsWith('folder:')) {
+      if (!folderIds.includes(it.id)) folderIds.push(it.id);
+    } else {
+      if (!fileIds.includes(it.id)) fileIds.push(it.id);
+    }
+  }
+  return { fileIds, folderIds };
+}
+
+function canDropOnFolder(targetFolderId: string | null, e?: DragEvent): boolean {
+  if (targetFolderId !== null) {
+    const target = folderMap.value.get(targetFolderId);
+    if (target && (target.role === 'read' || target.shared)) return false;
+  }
+  const payload = dnd.activeDrag.value ?? (e ? dnd.readGroupDragFromEvent(e) : null);
+  if (!payload || payload.items.length === 0) return true;
+  if (targetFolderId !== null) {
+    for (const it of payload.items) {
+      if (it.kind === 'folder' || it.key?.startsWith('folder:')) {
+        if (isDescendantOrSelf(targetFolderId, it.id)) return false;
+      }
+    }
+  }
+  return true;
+}
+
+function isLeavingRow(e: DragEvent): boolean {
+  const current = e.currentTarget as HTMLElement | null;
+  const related = e.relatedTarget as Node | null;
+  return !(current && related && current.contains(related));
 }
 
 function isDropActive(kind: 'favorites' | 'album' | 'folder', id: string): boolean {
@@ -468,41 +563,113 @@ function onFavDragLeave(): void {
 }
 
 function onFavDrop(e: DragEvent): void {
-  const ids = extractDroppedFileIds(e);
+  const { fileIds } = extractDroppedItems(e);
   dnd.endGroupDrag();
-  if (ids.length > 0) emit('drop-favorites', ids);
+  if (fileIds.length > 0) emit('drop-favorites', fileIds);
 }
 
-function onAlbumDragOver(albumId: string): void {
+function onAlbumDragOver(e: DragEvent, albumId: string): void {
+  e.preventDefault();
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
   dnd.setGroupDropTarget({ kind: 'album', id: albumId });
 }
 
-function onAlbumDragLeave(albumId: string): void {
+function onAlbumDragLeave(e: DragEvent, albumId: string): void {
+  if (!isLeavingRow(e)) return;
   if (isDropActive('album', albumId)) dnd.setGroupDropTarget(null);
 }
 
 function onAlbumDrop(e: DragEvent, albumId: string): void {
-  const ids = extractDroppedFileIds(e);
+  const { fileIds, folderIds } = extractDroppedItems(e);
   dnd.endGroupDrag();
-  if (ids.length > 0) emit('drop-album', albumId, ids);
+  if (fileIds.length > 0 || folderIds.length > 0) emit('drop-album', albumId, fileIds, folderIds);
 }
 
-function onFolderDragOver(folderId: string): void {
+function onHomeDragOver(e: DragEvent): void {
+  e.preventDefault();
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+  dnd.setGroupDropTarget({ kind: 'folder', id: 'root' });
+  if (homeHasChildren.value && !openGroups.value.has('home')) {
+    dnd.scheduleSpringExpand('home', () => {
+      const next = new Set(openGroups.value);
+      next.add('home');
+      openGroups.value = next;
+    });
+  }
+}
+
+function onHomeDragLeave(e: DragEvent): void {
+  if (!isLeavingRow(e)) return;
+  if (isDropActive('folder', 'root')) dnd.setGroupDropTarget(null);
+  dnd.cancelSpringExpand();
+}
+
+function onHomeDrop(e: DragEvent): void {
+  const { fileIds, folderIds } = extractDroppedItems(e);
+  dnd.endGroupDrag();
+  if (fileIds.length > 0 || folderIds.length > 0) emit('drop-folder', null, fileIds, folderIds);
+}
+
+function onFolderDragStart(e: DragEvent, folder: GalleryStorageFolder): void {
+  if (!isFolderDraggable(folder)) {
+    e.preventDefault();
+    return;
+  }
+  dnd.startGroupDrag(
+    {
+      source: 'tree',
+      items: [
+        {
+          key: `folder:${folder.id}`,
+          id: folder.id,
+          kind: 'folder',
+          name: treeFolderName(folder),
+          folderId: folder.parentId ?? null,
+        },
+      ],
+    },
+    e,
+  );
+}
+
+function onFolderDragEnd(): void {
+  dnd.endGroupDrag();
+}
+
+function onFolderDragOver(e: DragEvent, folderId: string): void {
+  if (!canDropOnFolder(folderId, e)) {
+    if (isDropActive('folder', folderId)) dnd.setGroupDropTarget(null);
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'none';
+    return;
+  }
+  e.preventDefault();
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
   dnd.setGroupDropTarget({ kind: 'folder', id: folderId });
   dnd.scheduleSpringExpand(folderId, () => {
     collapseUnrelatedFolders(folderId, true);
   });
 }
 
-function onFolderDragLeave(folderId: string): void {
+function onFolderDragLeave(e: DragEvent, folderId: string): void {
+  if (!isLeavingRow(e)) return;
   if (isDropActive('folder', folderId)) dnd.setGroupDropTarget(null);
   dnd.cancelSpringExpand();
 }
 
 function onFolderDrop(e: DragEvent, folderId: string): void {
-  const ids = extractDroppedFileIds(e);
+  const { fileIds, folderIds } = extractDroppedItems(e);
   dnd.endGroupDrag();
-  if (ids.length > 0) emit('drop-folder', folderId, ids);
+  const target = folderMap.value.get(folderId);
+  if (target && (target.role === 'read' || target.shared)) return;
+  const validFolderIds = folderIds.filter((fid) => !isDescendantOrSelf(folderId, fid));
+  if (fileIds.length > 0 || validFolderIds.length > 0) {
+    emit('drop-folder', folderId, fileIds, validFolderIds);
+  }
+}
+
+function onFolderContextMenu(event: MouseEvent, folder: GalleryStorageFolder): void {
+  closeAlbumCtxMenu();
+  emit('folder-contextmenu', { event, folderId: folder.id });
 }
 
 function onSelectSection(section: GallerySection): void {
@@ -787,6 +954,8 @@ async function ctxLeaveAlbum(): Promise<void> {
   }
 }
 
+defineExpose({ invalidateFolderFilesCache });
+
 onBeforeUnmount(() => {
   alive = false;
   closeAlbumCtxMenu();
@@ -870,18 +1039,18 @@ onBeforeUnmount(() => {
         :class="{
           active: effectiveActiveAlbumId === alb.id,
           'drag-over': isDropActive('album', alb.id),
+          'drop-over': isDropActive('album', alb.id),
         }"
         :data-gallery-album="alb.id"
         @contextmenu.prevent="openAlbumCtxMenu($event, alb)"
-        @dragenter.prevent="onAlbumDragOver(alb.id)"
-        @dragover.prevent="onAlbumDragOver(alb.id)"
-        @dragleave="onAlbumDragLeave(alb.id)"
+        @dragenter.prevent="onAlbumDragOver($event, alb.id)"
+        @dragover.prevent="onAlbumDragOver($event, alb.id)"
+        @dragleave="onAlbumDragLeave($event, alb.id)"
         @drop.prevent="onAlbumDrop($event, alb.id)"
       >
         <button
           type="button"
           class="gs-row gs-row-main"
-          :class="{ active: effectiveActiveAlbumId === alb.id }"
           :aria-current="effectiveActiveAlbumId === alb.id ? 'page' : undefined"
           :title="compact ? alb.name : undefined"
           @click="onSelectAlbum(alb.id)"
@@ -964,7 +1133,7 @@ onBeforeUnmount(() => {
             @click="sharedFolders.length > 0 ? toggleGroup('shared') : onSelectSection('library')"
           >
             <span class="gs-icon" aria-hidden="true"><Users :size="15" /></span>
-            <span class="gs-name">shared</span>
+            <span class="gs-name">{{ t('sharedWithMe') }}</span>
           </button>
         </div>
 
@@ -984,7 +1153,7 @@ onBeforeUnmount(() => {
             @click="onSelectSection('library')"
           >
             <span class="gs-icon" aria-hidden="true"><Globe2 :size="15" /></span>
-            <span class="gs-name">public</span>
+            <span class="gs-name">{{ t('public') }}</span>
           </button>
         </div>
 
@@ -994,9 +1163,17 @@ onBeforeUnmount(() => {
           role="treeitem"
           :aria-expanded="homeHasChildren ? openGroups.has('home') : undefined"
           class="gs-row-wrap gs-tree-row"
-          :class="{ active: activeFolderId === 'root' }"
+          :class="{
+            active: activeFolderId === 'root',
+            'drag-over': isDropActive('folder', 'root'),
+            'drop-over': isDropActive('folder', 'root'),
+          }"
           :style="rowIndent(1)"
           data-gallery-tree-root="home"
+          @dragenter.prevent="onHomeDragOver($event)"
+          @dragover.prevent="onHomeDragOver($event)"
+          @dragleave="onHomeDragLeave($event)"
+          @drop.prevent="onHomeDrop($event)"
         >
           <button
             v-if="homeHasChildren"
@@ -1012,13 +1189,12 @@ onBeforeUnmount(() => {
           <button
             type="button"
             class="gs-row gs-row-main"
-            :class="{ active: activeFolderId === 'root' }"
             :aria-current="activeFolderId === 'root' ? 'page' : undefined"
-            :title="t('home')"
+            :title="homeFolderLabel"
             @click="onSelectFolder('root')"
           >
             <span class="gs-icon" aria-hidden="true"><House :size="15" /></span>
-            <span class="gs-name">home</span>
+            <span class="gs-name">{{ homeFolderLabel }}</span>
           </button>
         </div>
 
@@ -1030,14 +1206,18 @@ onBeforeUnmount(() => {
           :class="{
             active: activeFolderId === row.folder.id,
             'is-highlighted': highlightedFolderId === row.folder.id,
-            'photo-linked': highlightedFolderId === row.folder.id,
             'drag-over': isDropActive('folder', row.folder.id),
+            'drop-over': isDropActive('folder', row.folder.id),
           }"
           :style="rowIndent(row.depth)"
           :data-gallery-folder="row.folder.id"
-          @dragenter.prevent="onFolderDragOver(row.folder.id)"
-          @dragover.prevent="onFolderDragOver(row.folder.id)"
-          @dragleave="onFolderDragLeave(row.folder.id)"
+          :draggable="isFolderDraggable(row.folder) ? 'true' : undefined"
+          @contextmenu.prevent.stop="onFolderContextMenu($event, row.folder)"
+          @dragstart="onFolderDragStart($event, row.folder)"
+          @dragend="onFolderDragEnd"
+          @dragenter="onFolderDragOver($event, row.folder.id)"
+          @dragover="onFolderDragOver($event, row.folder.id)"
+          @dragleave="onFolderDragLeave($event, row.folder.id)"
           @drop.prevent="onFolderDrop($event, row.folder.id)"
         >
           <button
@@ -1055,10 +1235,6 @@ onBeforeUnmount(() => {
           <button
             type="button"
             class="gs-row gs-row-main"
-            :class="{
-              active: activeFolderId === row.folder.id,
-              'is-highlighted': highlightedFolderId === row.folder.id,
-            }"
             :aria-current="activeFolderId === row.folder.id ? 'page' : undefined"
             :title="compact ? treeFolderName(row.folder) : undefined"
             @click="onSelectFolder(row.folder.id)"
@@ -1143,7 +1319,7 @@ onBeforeUnmount(() => {
             <button
               type="button"
               class="gs-row gs-row-main"
-              :class="{ active: activeYandexPath === '/' }"
+              :aria-current="activeYandexPath === '/' ? 'page' : undefined"
               @click="emit('select-yandex', '/')"
             >
               <span class="gs-icon" aria-hidden="true"><Cloud :size="15" /></span>
@@ -1164,7 +1340,7 @@ onBeforeUnmount(() => {
               <button
                 type="button"
                 class="gs-row gs-row-main"
-                :class="{ active: activeYandexPath === dir.path }"
+                :aria-current="activeYandexPath === dir.path ? 'page' : undefined"
                 @click="emit('select-yandex', dir.path)"
               >
                 <span class="gs-icon" aria-hidden="true"><Folder :size="15" /></span>
@@ -1301,48 +1477,64 @@ onBeforeUnmount(() => {
 .gs-list {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
 }
 .gs-row,
 .gs-row-wrap {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   width: 100%;
-  border-radius: 9px;
-  transition: background 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
+  min-height: 29px;
+  height: 30px;
+  box-sizing: border-box;
+  border-radius: 7px;
+  font-size: 12.5px;
+  transition: background 0.1s ease, border-color 0.1s ease, color 0.1s ease, box-shadow 0.1s ease;
 }
 .gs-row {
   border: 1px solid transparent;
   background: transparent;
   color: var(--ui-text-secondary);
   font: inherit;
-  padding: 6px 8px;
+  padding: 4px 8px;
   text-align: left;
   cursor: pointer;
   min-width: 0;
 }
 .gs-row-wrap {
-  padding: 0 4px 0 0;
+  padding: 0 6px;
   border: 1px solid transparent;
+  color: var(--ui-text-secondary);
+  cursor: pointer;
+  user-select: none;
 }
-.gs-row-main {
+.gs-row-wrap .gs-row-main {
   flex: 1;
-  padding: 5px 6px;
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
+  padding: 0 2px;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  outline: none;
+  color: inherit;
+  border-radius: 0;
+}
+.gs-row-wrap .gs-row-main:hover {
+  background: transparent !important;
+  box-shadow: none !important;
+  color: inherit;
 }
 .gs-tree-row {
-  padding-left: calc(var(--gs-depth, 0) * 14px);
+  padding-left: calc(6px + var(--gs-depth, 0) * 14px);
 }
-.gs-row:hover,
-.gs-row-wrap:hover {
+.gs-row:hover:not(.gs-row-soon),
+.gs-row-wrap:hover:not(.gs-row-disabled) {
   background: var(--ui-glass-btn-hover);
   color: var(--ui-text);
-}
-.gs-row.active,
-.gs-row-wrap.active {
-  background: var(--ui-glass-accent-tint), var(--ui-glass-accent-bg);
-  border-color: var(--ui-glass-accent-border);
-  color: var(--ui-glass-accent-text);
+  box-shadow: var(--ui-glass-inset-highlight);
 }
 .gs-row.is-highlighted,
 .gs-row-wrap.is-highlighted {
@@ -1350,18 +1542,18 @@ onBeforeUnmount(() => {
   border-color: var(--ui-glass-accent-border);
   color: var(--ui-text);
 }
-.gs-row-wrap.photo-linked::after {
-  content: '';
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  flex: none;
-  background: var(--ui-brand);
-  box-shadow: 0 0 8px var(--ui-brand);
-  margin-right: 4px;
+.gs-row.active,
+.gs-row-wrap.active {
+  background: var(--ui-glass-accent-tint), var(--ui-glass-accent-bg);
+  border-color: var(--ui-glass-accent-border);
+  box-shadow: var(--ui-glass-accent-shadow);
+  color: var(--ui-glass-accent-text);
+  font-weight: 600;
 }
 .gs-row.drag-over,
-.gs-row-wrap.drag-over {
+.gs-row.drop-over,
+.gs-row-wrap.drag-over,
+.gs-row-wrap.drop-over {
   border-color: var(--ui-brand);
   background: var(--ui-glass-accent-bg);
   box-shadow: var(--ui-glass-accent-shadow);
@@ -1433,16 +1625,17 @@ onBeforeUnmount(() => {
 }
 .gs-caret-btn,
 .gs-caret-spacer {
-  width: 18px;
-  height: 22px;
+  width: 16px;
+  height: 16px;
   flex: none;
 }
 .gs-caret-btn {
   border: 0;
-  border-radius: 5px;
+  border-radius: 4px;
+  padding: 0;
   background: transparent;
   color: var(--ui-text-muted);
-  display: grid;
+  display: inline-grid;
   place-items: center;
   cursor: pointer;
 }
@@ -1491,7 +1684,8 @@ onBeforeUnmount(() => {
 .gs.compact .gs-soon-pill {
   display: none;
 }
-.gs button:focus-visible {
+.gs button:not(.gs-row-main):focus-visible,
+.gs-row-wrap:has(> .gs-row-main:focus-visible) {
   outline: 2px solid var(--ui-focus);
   outline-offset: 1px;
 }

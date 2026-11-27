@@ -222,10 +222,10 @@ describe('macOS Photos Gallery (T-021)', () => {
     await wrapper.get('[data-share-album="sp-1"]').trigger('click');
     expect(wrapper.emitted('share-album')![0]).toEqual(['sp-1']);
 
-    // Real hierarchy: Q Space -> shared, public, home; Clouds -> Yandex Disk, Telegram (soon)
-    expect(wrapper.get('[data-gallery-tree-root="shared"]').text()).toContain('shared');
-    expect(wrapper.get('[data-gallery-tree-root="public"]').text()).toContain('public');
-    expect(wrapper.get('[data-gallery-tree-root="home"]').text()).toContain('home');
+    // Real hierarchy: Q Space -> Поделились со мной, Публичные, Домашняя; Clouds -> Yandex Disk, Telegram (soon)
+    expect(wrapper.get('[data-gallery-tree-root="shared"]').text()).toContain('Поделились со мной');
+    expect(wrapper.get('[data-gallery-tree-root="public"]').text()).toContain('Публичные');
+    expect(wrapper.get('[data-gallery-tree-root="home"]').text()).toContain('Домашняя');
     expect(wrapper.get('[data-gallery-yandex="/"]').text()).toContain('Яндекс Диск');
     expect(wrapper.get('[data-gallery-cloud="telegram"]').text()).toContain('Telegram');
     expect(wrapper.get('[data-gallery-cloud="telegram"]').text()).toContain('скоро');
@@ -283,14 +283,14 @@ describe('macOS Photos Gallery (T-021)', () => {
       items: [{ key: 'photo:f3', id: 'f3', kind: 'photo' }],
     });
     await wrapper.get('[data-gallery-album="sp-1"]').trigger('drop');
-    expect(wrapper.emitted('drop-album')![0]).toEqual(['sp-1', ['f3']]);
+    expect(wrapper.emitted('drop-album')![0]).toEqual(['sp-1', ['f3'], []]);
 
     dnd.startGroupDrag({
       source: 'gallery',
       items: [{ key: 'photo:f4', id: 'f4', kind: 'photo' }],
     });
     await wrapper.get('[data-gallery-folder="fold-b"]').trigger('drop');
-    expect(wrapper.emitted('drop-folder')![0]).toEqual(['fold-b', ['f4']]);
+    expect(wrapper.emitted('drop-folder')![0]).toEqual(['fold-b', ['f4'], []]);
   });
 
   it('GalleryPeopleGrid renders empty state and supports Click vs Ctrl+Click selection', async () => {

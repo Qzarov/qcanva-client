@@ -139,6 +139,7 @@
           @open="onTableRowOpen"
           @contextmenu="onTableRowContextMenu"
           @empty-contextmenu="openEmptyContextMenu"
+          @drop-on-folder="onTableDropOnFolder"
         />
 
         <template v-else>
@@ -148,9 +149,17 @@
               :key="folder.key"
               type="button"
               class="subfolder-card"
+              :class="{ 'is-drop-target': dropTargetFolderKey === folder.key }"
               :data-space-folder="folder.id"
+              :draggable="Boolean(folder.folderId) || undefined"
               @click="enterSpaceFolder(folder)"
               @contextmenu.prevent.stop="openFolderContextMenu($event, folder)"
+              @dragstart="onSpaceFolderDragStart($event, folder)"
+              @drag="onFeedDragMove"
+              @dragend="onSpaceFolderDragEnd"
+              @dragover="onSpaceFolderDragOver($event, folder)"
+              @dragleave="onSpaceFolderDragLeave($event, folder)"
+              @drop="onSpaceFolderDrop($event, folder)"
             >
               <span class="subfolder-card-icon" aria-hidden="true">
                 <Folder :size="20" />
@@ -345,7 +354,7 @@ import { LAYOUT, matchesMedia } from '../../composables/layoutMedia';
 import { downloadDriveFile, driveApi, getFileExtension, resolveDownloadUrl, type DriveItem } from '../../api/drive';
 import { downloadYandexLink } from '../../api/yandexDisk';
 import { confirmDialog, promptDialog } from '../../composables/appDialog';
-import { useExplorerGroupDnd, type GroupDragEntry } from '../../composables/useExplorerGroupDnd';
+import { useExplorerGroupDnd, type GroupDragEntry, type GroupDragPayload } from '../../composables/useExplorerGroupDnd';
 import { useExplorerLayoutPrefs } from '../../composables/useExplorerLayoutPrefs';
 import { useI18n } from '../../composables/useI18n';
 import { useSpaces } from '../../composables/useSpaces';
@@ -370,6 +379,14 @@ import SpaceAddDialog from './SpaceAddDialog.vue';
 import SpaceFolderDialog from './SpaceFolderDialog.vue';
 import YandexFolderPicker from './YandexFolderPicker.vue';
 import type { MediaViewerItem } from './DashboardMediaViewer.vue';
+
+export type SpaceMediaViewerItem = MediaViewerItem & {
+  fileId?: string | null;
+  noReferrer?: boolean;
+  sizeBytes?: number | null;
+  mimeType?: string | null;
+  origin?: 'qspace' | 'yandex';
+};
 
 type ViewMode = 'grid' | 'table' | 'list';
 
@@ -446,7 +463,7 @@ const emit = defineEmits<{
   /** A QCanva document: the dashboard opens it as it opens any. */
   open: [kind: string, id: string];
   /** Pictures full screen, from the one clicked. */
-  'open-media': [items: MediaViewerItem[], start: number];
+  'open-media': [items: SpaceMediaViewerItem[], start: number];
   /** A Markdown file of the space: opened as a document in the viewer. */
   'open-markdown': [item: MarkdownViewerItem];
   'toggle-select': [key: string];
@@ -458,6 +475,7 @@ const emit = defineEmits<{
   gone: [];
   move: [keys: string[]];
   delete: [keys: string[]];
+  'drop-on-folder': [folderId: string, payload: GroupDragPayload];
   feedback: [type: 'success' | 'error', message: string];
 }>();
 
@@ -465,7 +483,8 @@ const { t, locale } = useI18n();
 const { spaces: allSpaces, load: loadSpaces } = useSpaces();
 const { status: yandexStatus, load: loadYandexStatus } = useYandexDisk();
 const { albumView, setAlbumView, isFavorite, toggleFavorite } = useExplorerLayoutPrefs();
-const { startGroupDrag, updateGroupDragPosition, endGroupDrag } = useExplorerGroupDnd();
+const { activeDrag, readGroupDragFromEvent, startGroupDrag, updateGroupDragPosition, endGroupDrag } = useExplorerGroupDnd();
+const dropTargetFolderKey = ref<string | null>(null);
 
 const isTableView = computed(() => (
   props.viewMode !== undefined
@@ -1277,7 +1296,74 @@ function onFeedDragMove(event: DragEvent): void {
 }
 
 function onFeedDragEnd(): void {
+  dropTargetFolderKey.value = null;
   endGroupDrag();
+}
+
+function resolveGroupPayload(event: DragEvent): GroupDragPayload | null {
+  const raw = activeDrag.value ?? readGroupDragFromEvent(event);
+  if (!raw) return null;
+  return {
+    source: raw.source,
+    items: raw.items.map((item) => ({ ...item })),
+    keys: [...raw.keys],
+    count: raw.count,
+  };
+}
+
+function onSpaceFolderDragStart(event: DragEvent, folder: SpaceFolderEntry): void {
+  if (!folder.folderId) return;
+  const entry: GroupDragEntry = {
+    key: `folder:${folder.folderId}`,
+    id: folder.folderId,
+    kind: 'folder',
+    name: folder.name,
+    folderId: folder.folderId,
+  };
+  startGroupDrag({ source: 'explorer', items: [entry] }, event);
+}
+
+function onSpaceFolderDragEnd(): void {
+  dropTargetFolderKey.value = null;
+  endGroupDrag();
+}
+
+function onSpaceFolderDragOver(event: DragEvent, folder: SpaceFolderEntry): void {
+  if (!folder.folderId) return;
+  const payload = resolveGroupPayload(event);
+  if (!payload || payload.keys.includes(`folder:${folder.folderId}`)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+  dropTargetFolderKey.value = folder.key;
+}
+
+function onSpaceFolderDragLeave(event: DragEvent, folder: SpaceFolderEntry): void {
+  const current = event.currentTarget as HTMLElement | null;
+  const related = event.relatedTarget as Node | null;
+  if (current && related && current.contains(related)) return;
+  if (dropTargetFolderKey.value === folder.key) dropTargetFolderKey.value = null;
+}
+
+function onSpaceFolderDrop(event: DragEvent, folder: SpaceFolderEntry): void {
+  if (dropTargetFolderKey.value === folder.key) dropTargetFolderKey.value = null;
+  if (!folder.folderId) return;
+  const payload = resolveGroupPayload(event);
+  if (!payload) return;
+  event.preventDefault();
+  event.stopPropagation();
+  if (!payload.keys.includes(`folder:${folder.folderId}`)) {
+    emit('drop-on-folder', folder.folderId, payload);
+  }
+  endGroupDrag();
+}
+
+function onTableDropOnFolder(targetRow: ExplorerTableRow, payload: GroupDragPayload): void {
+  const targetFolderId = targetRow.folderId || (targetRow.raw && typeof targetRow.raw === 'object' && '__spaceFolder' in (targetRow.raw as object)
+    ? (targetRow.raw as SpaceTableFolderRaw).folder.folderId
+    : null);
+  if (!targetFolderId) return;
+  emit('drop-on-folder', targetFolderId, payload);
 }
 
 // ----- Context menu
@@ -1566,7 +1652,7 @@ const markdownViewerItem = (item: SpaceFeedItem): MarkdownViewerItem => ({
   download: () => download(item),
 });
 
-const viewerItem = (item: SpaceFeedItem): MediaViewerItem => ({
+const viewerItem = (item: SpaceFeedItem): SpaceMediaViewerItem => ({
   key: item.key,
   name: item.name,
   kind: isVideo(item) ? 'video' : 'image',
@@ -1576,6 +1662,11 @@ const viewerItem = (item: SpaceFeedItem): MediaViewerItem => ({
     ? (await spacesApi.yandexDownload(props.spaceId, item.sourceId!, item.path!)).href
     : resolveDownloadUrl((await driveApi.getDownloadLink(item.id!)).url)),
   download: () => download(item),
+  fileId: item.origin === 'qspace' ? item.id : null,
+  noReferrer: item.origin === 'yandex',
+  sizeBytes: item.size ?? null,
+  mimeType: item.mime ?? null,
+  origin: item.origin,
 });
 
 async function download(item: SpaceFeedItem) {

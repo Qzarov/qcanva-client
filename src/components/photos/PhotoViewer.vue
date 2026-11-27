@@ -38,6 +38,7 @@
 
         <div class="pv-actions" @click.stop>
           <button
+            v-if="canFavorite"
             type="button"
             class="pv-icon-btn"
             :class="{ active: item.favorite }"
@@ -50,6 +51,7 @@
             <Heart :size="17" :fill="item.favorite ? 'currentColor' : 'none'" aria-hidden="true" />
           </button>
           <button
+            v-if="canShare"
             type="button"
             class="pv-icon-btn"
             :aria-label="t('galleryShare')"
@@ -70,6 +72,7 @@
             <Download :size="17" aria-hidden="true" />
           </button>
           <button
+            v-if="canDelete"
             type="button"
             class="pv-icon-btn pv-icon-btn-danger"
             :aria-label="t('delete')"
@@ -80,6 +83,7 @@
             <Trash2 :size="17" aria-hidden="true" />
           </button>
           <button
+            v-if="canInfo"
             type="button"
             class="pv-icon-btn"
             :class="{ active: sideInfoOpen }"
@@ -121,6 +125,7 @@
             v-if="videoSrc"
             :key="`${item.fileId}:${videoSource}`"
             class="pv-media"
+            :referrerpolicy="item.noReferrer ? 'no-referrer' : undefined"
             :src="videoSrc"
             :poster="imgSrc ?? undefined"
             controls
@@ -131,7 +136,14 @@
             @error="onVideoError"
           />
           <div v-else class="pv-ph" data-viewer-video-unavailable @click.stop>
-            <img v-if="imgSrc" class="pv-media pv-dim" :src="imgSrc" alt="" @error="onImgError" />
+            <img
+              v-if="imgSrc"
+              class="pv-media pv-dim"
+              :referrerpolicy="item.noReferrer ? 'no-referrer' : undefined"
+              :src="imgSrc"
+              alt=""
+              @error="onImgError"
+            />
             <p role="status">{{ videoFailed ? t('photosVideoOffline') : t('photosVideoLoading') }}</p>
           </div>
         </template>
@@ -142,12 +154,13 @@
           class="pv-media"
           :class="{ 'is-zoomed': zoom.scale > 1, 'is-gesturing': gesturing }"
           :style="zoomStyle"
+          :referrerpolicy="item.noReferrer ? 'no-referrer' : undefined"
           :src="imgSrc"
           :alt="item.name"
           draggable="false"
           data-viewer-image
           :data-viewer-zoom="zoom.scale > 1 ? zoom.scale.toFixed(2) : '1.00'"
-          @click.stop="suppressBackdropClick = false"
+          @click.stop="suppressBackdropClick = false; suppressFilmstripClick = false"
           @dblclick.stop="onImageDblClick"
           @error="onImgError"
         />
@@ -156,12 +169,13 @@
         </div>
         <div v-else class="pv-ph" data-viewer-not-processed @click.stop>
           <Hourglass :size="40" aria-hidden="true" />
-          <p>{{ item.processed ? t('photosThumbUnavailable') : t('photosNotProcessedHint') }}</p>
+          <p>{{ item.processed || hasCustomImageFallback(item) ? t('photosThumbUnavailable') : t('photosNotProcessedHint') }}</p>
         </div>
         <img
           v-if="item.kind !== 'video' && fullPreloadSrc && fullPreloadSrc !== imgSrc"
           :key="item.fileId"
           class="pv-full-preload"
+          :referrerpolicy="item.noReferrer ? 'no-referrer' : undefined"
           :src="fullPreloadSrc"
           alt=""
           aria-hidden="true"
@@ -185,12 +199,13 @@
         v-if="filmstripItems.length > 0"
         ref="filmstripEl"
         class="pv-filmstrip"
+        :class="{ 'is-dragging': filmstripDragging }"
         role="listbox"
         :aria-label="t('galleryFilmstrip')"
         data-viewer-filmstrip
         @click="onBackdropClick"
         @wheel="onFilmstripWheel"
-        @pointerdown="stopFilmstripInertia"
+        @pointerdown="onFilmstripPointerDown"
         @touchstart.passive="stopFilmstripInertia"
       >
         <button
@@ -207,27 +222,34 @@
           @click.stop="onFilmstripClick(i, m)"
         >
           <img
-            v-if="filmstripThumbs[m.hash]"
-            :src="filmstripThumbs[m.hash]"
+            v-if="filmstripThumbSrc(m)"
+            :referrerpolicy="m.noReferrer ? 'no-referrer' : undefined"
+            :src="filmstripThumbSrc(m)!"
             :alt="m.name"
             draggable="false"
             loading="lazy"
+            @error="onFilmstripThumbError(m)"
           />
-          <span v-else class="pv-thumb-ph"></span>
+          <span v-else class="pv-thumb-ph" aria-hidden="true">
+            <Film v-if="m.kind === 'video'" :size="16" />
+            <ImageIcon v-else :size="16" />
+          </span>
         </button>
       </div>
     </div>
 
     <aside
-      v-if="sideInfoOpen"
+      v-if="canInfo && sideInfoOpen"
       class="pv-side"
       data-viewer-side-panel
       @click.stop
     >
       <PhotoPanel
         :file-id="item.fileId"
+        :item="item"
+        :can-favorite="canFavorite"
         hide-open-folder
-        @close="sideInfoOpen = false"
+        @close="closeSideInfo"
         @changed="emit('panel-changed', $event)"
       />
     </aside>
@@ -237,11 +259,32 @@
 <script lang="ts">
 import type { FeedItem } from '../../api/photos';
 
-export type PhotoViewerItem = FeedItem;
+export type ViewerMediaItem = FeedItem & {
+  previewSrc?: string | null;
+  originalSrc?: string | null;
+  resolveOriginalUrl?: () => Promise<string>;
+  downloadAction?: () => Promise<void> | void;
+  noReferrer?: boolean;
+  sizeBytes?: number;
+  mimeType?: string;
+};
+
+export type PhotoViewerItem = ViewerMediaItem;
 </script>
 
 <script setup lang="ts">
-import { ChevronLeft, ChevronRight, Download, Heart, Hourglass, Info, Share2, Trash2 } from '@lucide/vue';
+import {
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  Film,
+  Heart,
+  Hourglass,
+  Image as ImageIcon,
+  Info,
+  Share2,
+  Trash2,
+} from '@lucide/vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { downloadDriveFile, driveApi, resolveDownloadUrl } from '../../api/drive';
 import { isPhotosMock, renditionUrl } from '../../api/photos';
@@ -250,27 +293,35 @@ import { useI18n } from '../../composables/useI18n';
 import PhotoPanel from './PhotoPanel.vue';
 
 const props = withDefaults(defineProps<{
-  item: FeedItem;
+  item: ViewerMediaItem;
   /** Surrounding items for the bottom filmstrip; falls back to `[item]`. */
-  items?: FeedItem[];
+  items?: ViewerMediaItem[];
   /** Zero-based position in the feed order and the feed length; `total` 0 hides the counter. */
   index: number;
   total: number;
   hasPrev: boolean;
   hasNext: boolean;
+  canFavorite?: boolean;
+  canShare?: boolean;
+  canDelete?: boolean;
+  canInfo?: boolean;
 }>(), {
   items: undefined,
+  canFavorite: true,
+  canShare: true,
+  canDelete: true,
+  canInfo: true,
 });
 
 const emit = defineEmits<{
   (e: 'close'): void;
   (e: 'prev'): void;
   (e: 'next'): void;
-  (e: 'jump', index: number, item: FeedItem): void;
-  (e: 'info', item: FeedItem): void;
-  (e: 'toggle-favorite', item: PhotoViewerItem): void;
-  (e: 'share', item: PhotoViewerItem): void;
-  (e: 'delete', item: PhotoViewerItem): void;
+  (e: 'jump', index: number, item: ViewerMediaItem): void;
+  (e: 'info', item: ViewerMediaItem): void;
+  (e: 'toggle-favorite', item: ViewerMediaItem): void;
+  (e: 'share', item: ViewerMediaItem): void;
+  (e: 'delete', item: ViewerMediaItem): void;
   (e: 'panel-changed', change: { fileId: string; favorite?: boolean; albumIds?: string[] }): void;
 }>();
 
@@ -281,7 +332,14 @@ const imgEl = ref<HTMLImageElement | null>(null);
 const filmstripEl = ref<HTMLElement | null>(null);
 const sideInfoOpen = ref(false);
 
-const filmstripItems = computed<FeedItem[]>(() => (props.items && props.items.length > 0 ? props.items : [props.item]));
+watch(
+  () => props.canInfo,
+  (allowed) => {
+    if (!allowed) sideInfoOpen.value = false;
+  },
+);
+
+const filmstripItems = computed<ViewerMediaItem[]>(() => (props.items && props.items.length > 0 ? props.items : [props.item]));
 
 const formattedDate = computed(() => {
   const iso = props.item.localTakenAt ?? props.item.takenAt;
@@ -297,37 +355,108 @@ const formattedDate = computed(() => {
 
 // ----- filmstrip thumbnails -----
 const filmstripThumbs = reactive<Record<string, string>>({});
+const failedFilmstripSrcs = reactive<Record<string, Record<string, boolean>>>({});
 const requestedFilmstrip = new Set<string>();
+const requestedFilmstripFallback = new Set<string>();
 let alive = true;
 
+function isFilmstripSrcFailed(fileId: string, src: string): boolean {
+  return Boolean(failedFilmstripSrcs[fileId]?.[src]);
+}
+
+function filmstripThumbSrc(m: ViewerMediaItem): string | null {
+  const candidates = [filmstripThumbs[m.fileId], m.previewSrc, m.originalSrc];
+  for (const src of candidates) {
+    if (src && !isFilmstripSrcFailed(m.fileId, src)) return src;
+  }
+  return null;
+}
+
+function onFilmstripThumbError(m: ViewerMediaItem): void {
+  const current = filmstripThumbSrc(m);
+  if (!current) return;
+  if (!failedFilmstripSrcs[m.fileId]) failedFilmstripSrcs[m.fileId] = {};
+  failedFilmstripSrcs[m.fileId]![current] = true;
+}
+
+function tryLazyFilmstripOriginal(m: ViewerMediaItem): void {
+  if (m.kind === 'video' || !m.resolveOriginalUrl || requestedFilmstripFallback.has(m.fileId)) return;
+  requestedFilmstripFallback.add(m.fileId);
+  m.resolveOriginalUrl()
+    .then((u) => {
+      if (alive && u && !filmstripThumbs[m.fileId]) {
+        filmstripThumbs[m.fileId] = u;
+      }
+    })
+    .catch(() => {
+      // Keep clean icon placeholder
+    });
+}
+
 watch(
-  filmstripItems,
-  (list) => {
-    for (const m of list) {
-      if (!m.processed || filmstripThumbs[m.hash] || requestedFilmstrip.has(m.hash)) continue;
-      requestedFilmstrip.add(m.hash);
-      renditionUrl(m.hash, 'thumbnail')
-        .then((u) => {
-          if (alive && u) filmstripThumbs[m.hash] = u;
-        })
-        .catch(() => {
-          // Keep placeholder
-        });
+  [filmstripItems, () => props.index],
+  ([list, activeIdx]) => {
+    for (let i = 0; i < list.length; i++) {
+      const m = list[i]!;
+      const nearby = Math.abs(i - activeIdx) <= 12;
+      if (m.processed && m.hash) {
+        if (filmstripThumbs[m.fileId] || requestedFilmstrip.has(m.fileId)) continue;
+        requestedFilmstrip.add(m.fileId);
+        renditionUrl(m.hash, 'thumbnail')
+          .then((u) => {
+            if (alive && u) filmstripThumbs[m.fileId] = u;
+          })
+          .catch(() => {
+            if (alive && nearby && !m.previewSrc && !m.originalSrc) {
+              tryLazyFilmstripOriginal(m);
+            }
+          });
+      } else if (nearby && !m.previewSrc && !m.originalSrc && !filmstripThumbs[m.fileId]) {
+        tryLazyFilmstripOriginal(m);
+      }
     }
   },
   { immediate: true },
 );
 
-function onFilmstripClick(index: number, item: FeedItem): void {
+let suppressFilmstripClick = false;
+
+function onFilmstripClick(index: number, item: ViewerMediaItem): void {
+  if (suppressFilmstripClick) {
+    suppressFilmstripClick = false;
+    suppressBackdropClick = false;
+    return;
+  }
   if (item.fileId === props.item.fileId) return;
   emit('jump', index, item);
 }
 
-// ----- filmstrip inertial horizontal wheel scrolling -----
+// ----- filmstrip inertial horizontal wheel & LMB drag-to-scroll -----
+
+const FILMSTRIP_DRAG_THRESHOLD = 4;
+const FILMSTRIP_STALE_RELEASE_MS = 80;
+const FILMSTRIP_FRAME_MS = 16.67;
 
 let filmstripVel = 0;
 let filmstripRafId: number | null = null;
 let filmstripLastTs = 0;
+
+const filmstripDragging = ref(false);
+let filmstripDragActive = false;
+let filmstripDragListenersBound = false;
+let filmstripDragPointerId: number | null = null;
+let filmstripDragStartX = 0;
+let filmstripDragLastX = 0;
+let filmstripDragLastTs = 0;
+let filmstripDragLastMoveTs = 0;
+let filmstripDragVx = 0;
+let filmstripDragHasVelocity = false;
+let filmstripDragMoved = false;
+let filmstripDragHasButtons = false;
+
+function nowMs(): number {
+  return typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now();
+}
 
 function stopFilmstripInertia(): void {
   if (filmstripRafId !== null && typeof cancelAnimationFrame === 'function') {
@@ -345,7 +474,7 @@ function stepFilmstripInertia(now: number): void {
     stopFilmstripInertia();
     return;
   }
-  const dtFactor = filmstripLastTs ? Math.min(2.5, Math.max(0.5, (now - filmstripLastTs) / 16.67)) : 1;
+  const dtFactor = filmstripLastTs ? Math.min(2.5, Math.max(0.5, (now - filmstripLastTs) / FILMSTRIP_FRAME_MS)) : 1;
   filmstripLastTs = now;
 
   const prev = el.scrollLeft;
@@ -365,6 +494,145 @@ function stepFilmstripInertia(now: number): void {
   if (typeof requestAnimationFrame === 'function') {
     filmstripRafId = requestAnimationFrame(stepFilmstripInertia);
   }
+}
+
+function unbindFilmstripDragListeners(): void {
+  if (!filmstripDragListenersBound || typeof window === 'undefined') return;
+  filmstripDragListenersBound = false;
+  window.removeEventListener('pointermove', onFilmstripWindowPointerMove);
+  window.removeEventListener('pointerup', onFilmstripWindowPointerUp);
+  window.removeEventListener('pointercancel', onFilmstripWindowPointerCancel);
+  window.removeEventListener('blur', onFilmstripWindowBlur);
+}
+
+function cleanupFilmstripDrag(): void {
+  unbindFilmstripDragListeners();
+  filmstripDragActive = false;
+  filmstripDragPointerId = null;
+  filmstripDragMoved = false;
+  filmstripDragVx = 0;
+  filmstripDragHasVelocity = false;
+  filmstripDragHasButtons = false;
+  filmstripDragging.value = false;
+}
+
+function finishFilmstripDrag(allowInertia: boolean): void {
+  if (!filmstripDragActive) return;
+  const moved = filmstripDragMoved;
+  const vx = filmstripDragVx;
+  const staleMs = nowMs() - filmstripDragLastMoveTs;
+
+  cleanupFilmstripDrag();
+
+  if (moved) {
+    suppressFilmstripClick = true;
+    suppressBackdropClick = true;
+    if (
+      allowInertia &&
+      Math.abs(vx) >= 0.35 &&
+      staleMs <= FILMSTRIP_STALE_RELEASE_MS &&
+      !matchesMedia('(prefers-reduced-motion: reduce)')
+    ) {
+      filmstripVel = Math.max(-95, Math.min(95, vx));
+      if (filmstripRafId === null && typeof requestAnimationFrame === 'function') {
+        filmstripLastTs = 0;
+        filmstripRafId = requestAnimationFrame(stepFilmstripInertia);
+      }
+    }
+  }
+}
+
+function onFilmstripPointerDown(event: PointerEvent): void {
+  stopFilmstripInertia();
+  suppressFilmstripClick = false;
+  suppressBackdropClick = false;
+
+  if (event.button !== 0 || event.pointerType === 'touch') return;
+  if (!filmstripEl.value || typeof window === 'undefined') return;
+
+  const ts = nowMs();
+  filmstripDragActive = true;
+  filmstripDragPointerId = event.pointerId ?? null;
+  filmstripDragStartX = event.clientX;
+  filmstripDragLastX = event.clientX;
+  filmstripDragLastTs = ts;
+  filmstripDragLastMoveTs = ts;
+  filmstripDragVx = 0;
+  filmstripDragHasVelocity = false;
+  filmstripDragMoved = false;
+  filmstripDragHasButtons = typeof event.buttons === 'number' && (event.buttons & 1) !== 0;
+
+  if (!filmstripDragListenersBound) {
+    filmstripDragListenersBound = true;
+    window.addEventListener('pointermove', onFilmstripWindowPointerMove);
+    window.addEventListener('pointerup', onFilmstripWindowPointerUp);
+    window.addEventListener('pointercancel', onFilmstripWindowPointerCancel);
+    window.addEventListener('blur', onFilmstripWindowBlur);
+  }
+}
+
+function onFilmstripWindowPointerMove(event: PointerEvent): void {
+  if (!filmstripDragActive) return;
+  if (filmstripDragPointerId !== null && event.pointerId != null && event.pointerId !== filmstripDragPointerId) {
+    return;
+  }
+  if (event.pointerType === 'mouse' && filmstripDragHasButtons && (event.buttons & 1) === 0) {
+    finishFilmstripDrag(false);
+    return;
+  }
+  const el = filmstripEl.value;
+  if (!el) {
+    cleanupFilmstripDrag();
+    return;
+  }
+
+  if (!filmstripDragMoved) {
+    if (Math.abs(event.clientX - filmstripDragStartX) <= FILMSTRIP_DRAG_THRESHOLD) {
+      return;
+    }
+    filmstripDragMoved = true;
+    filmstripDragging.value = true;
+  }
+
+  event.preventDefault();
+  const ts = nowMs();
+  const dx = event.clientX - filmstripDragLastX;
+  if (dx !== 0) {
+    el.scrollLeft -= dx;
+    const rawDt = ts - filmstripDragLastTs;
+    const dt = rawDt > 0 ? Math.max(4, rawDt) : FILMSTRIP_FRAME_MS;
+    const instantVx = (-dx / dt) * FILMSTRIP_FRAME_MS;
+    if (!filmstripDragHasVelocity || rawDt > FILMSTRIP_STALE_RELEASE_MS) {
+      filmstripDragVx = instantVx;
+      filmstripDragHasVelocity = true;
+    } else {
+      filmstripDragVx = filmstripDragVx * 0.45 + instantVx * 0.55;
+    }
+    filmstripDragLastMoveTs = ts;
+  }
+  filmstripDragLastX = event.clientX;
+  filmstripDragLastTs = ts;
+}
+
+function onFilmstripWindowPointerUp(event: PointerEvent): void {
+  if (!filmstripDragActive) return;
+  if (filmstripDragPointerId !== null && event.pointerId != null && event.pointerId !== filmstripDragPointerId) {
+    return;
+  }
+  finishFilmstripDrag(true);
+}
+
+function onFilmstripWindowPointerCancel(event: PointerEvent): void {
+  if (!filmstripDragActive) return;
+  if (filmstripDragPointerId !== null && event.pointerId != null && event.pointerId !== filmstripDragPointerId) {
+    return;
+  }
+  finishFilmstripDrag(false);
+}
+
+function onFilmstripWindowBlur(): void {
+  if (!filmstripDragActive) return;
+  finishFilmstripDrag(false);
 }
 
 function onFilmstripWheel(event: WheelEvent): void {
@@ -397,47 +665,106 @@ function onFilmstripWheel(event: WheelEvent): void {
   }
 }
 
-// ----- still image: preview, then thumbnail -----
+// ----- still image: renditions, or previewSrc / originalSrc / resolveOriginalUrl / downloadLink -----
 
-const SIZES = ['preview', 'thumbnail'] as const;
-type Size = (typeof SIZES)[number];
+type ImageStep = 'preview' | 'thumbnail' | 'previewSrc' | 'originalSrc' | 'resolveOriginal' | 'downloadLink';
 
 const imgSrc = ref<string | null>(null);
 const imgLoading = ref(true);
-let imgSize: Size | null = null;
-let failedSizes = new Set<Size>();
+let imgStep: ImageStep | null = null;
+let failedImgSteps = new Set<ImageStep>();
 let imgRequest = 0;
+
+function hasCustomImageFallback(item: ViewerMediaItem): boolean {
+  return Boolean(item.previewSrc || item.originalSrc || item.resolveOriginalUrl || !item.hash);
+}
+
+async function resolveOriginalMediaUrl(item: ViewerMediaItem): Promise<string | null> {
+  if (item.originalSrc) return item.originalSrc;
+  if (item.resolveOriginalUrl) {
+    const url = await item.resolveOriginalUrl();
+    return url || null;
+  }
+  if (!isPhotosMock() && item.fileId) {
+    const link = await driveApi.getDownloadLink(item.fileId);
+    return resolveDownloadUrl(link.url);
+  }
+  return null;
+}
 
 async function loadImage(): Promise<void> {
   const request = ++imgRequest;
-  if (!props.item.processed) {
+  const item = props.item;
+  const useRenditions = Boolean(item.processed && item.hash);
+  const allowFallback = hasCustomImageFallback(item);
+
+  if (!useRenditions && !allowFallback) {
     imgSrc.value = null;
-    imgSize = null;
+    imgStep = null;
     imgLoading.value = false;
     return;
   }
+
   imgLoading.value = true;
-  for (const size of SIZES) {
-    if (failedSizes.has(size)) continue;
+
+  const steps: ImageStep[] = [];
+  if (useRenditions) {
+    steps.push('preview', 'thumbnail');
+  }
+  if (allowFallback) {
+    if (item.previewSrc) steps.push('previewSrc');
+    if (item.originalSrc) steps.push('originalSrc');
+    if (item.resolveOriginalUrl) steps.push('resolveOriginal');
+    if (!item.hash && !item.resolveOriginalUrl && item.fileId && !isPhotosMock()) {
+      steps.push('downloadLink');
+    }
+  }
+
+  for (const step of steps) {
+    if (failedImgSteps.has(step)) continue;
     try {
-      const url = await renditionUrl(props.item.hash, size);
+      let url: string | null = null;
+      if (step === 'preview' || step === 'thumbnail') {
+        url = await renditionUrl(item.hash, step);
+      } else if (step === 'previewSrc') {
+        url = item.previewSrc ?? null;
+      } else if (step === 'originalSrc') {
+        url = item.originalSrc ?? null;
+      } else if (step === 'resolveOriginal') {
+        url = (await item.resolveOriginalUrl?.()) || null;
+      } else if (step === 'downloadLink') {
+        const link = await driveApi.getDownloadLink(item.fileId);
+        url = resolveDownloadUrl(link.url);
+      }
       if (request !== imgRequest) return;
+      if (!url) {
+        failedImgSteps.add(step);
+        continue;
+      }
       imgSrc.value = url;
-      imgSize = size;
+      imgStep = step;
       imgLoading.value = false;
+      if (
+        step === 'previewSrc' &&
+        item.kind !== 'video' &&
+        !fullRequestedForCurrent &&
+        (item.originalSrc || item.resolveOriginalUrl)
+      ) {
+        void preloadOriginalForFallback(item);
+      }
       return;
     } catch {
-      failedSizes.add(size);
+      failedImgSteps.add(step);
     }
   }
   if (request !== imgRequest) return;
   imgSrc.value = null;
-  imgSize = null;
+  imgStep = null;
   imgLoading.value = false;
 }
 
 function onImgError(): void {
-  if (imgSize) failedSizes.add(imgSize);
+  if (imgStep) failedImgSteps.add(imgStep);
   void loadImage();
 }
 
@@ -449,11 +776,17 @@ const videoFailed = ref(false);
 let videoRequest = 0;
 
 async function loadOriginal(request: number): Promise<void> {
+  const item = props.item;
   try {
-    const link = await driveApi.getDownloadLink(props.item.fileId);
+    const url = await resolveOriginalMediaUrl(item);
     if (request !== videoRequest) return;
-    videoSrc.value = resolveDownloadUrl(link.url);
-    videoSource.value = 'original';
+    if (url) {
+      videoSrc.value = url;
+      videoSource.value = 'original';
+    } else {
+      videoSrc.value = null;
+      videoFailed.value = true;
+    }
   } catch {
     if (request !== videoRequest) return;
     videoSrc.value = null;
@@ -466,19 +799,24 @@ async function loadVideo(): Promise<void> {
   videoSrc.value = null;
   videoSource.value = null;
   videoFailed.value = false;
-  if (props.item.kind !== 'video') return;
-  if (isPhotosMock()) {
+  const item = props.item;
+  if (item.kind !== 'video') return;
+  if (isPhotosMock() && !item.originalSrc && !item.resolveOriginalUrl) {
     videoFailed.value = true;
     return;
   }
-  try {
-    const url = await renditionUrl(props.item.hash, 'video');
-    if (request !== videoRequest) return;
-    videoSrc.value = url;
-    videoSource.value = 'rendition';
-  } catch {
-    await loadOriginal(request);
+  if (item.processed && item.hash && !isPhotosMock()) {
+    try {
+      const url = await renditionUrl(item.hash, 'video');
+      if (request !== videoRequest) return;
+      videoSrc.value = url;
+      videoSource.value = 'rendition';
+      return;
+    } catch {
+      // Fall through to original video URL
+    }
   }
+  await loadOriginal(request);
 }
 
 function onVideoError(): void {
@@ -505,12 +843,34 @@ const fullPreloadSrc = ref<string | null>(null);
 let fullRequestedForCurrent = false;
 let fullRequest = 0;
 
+async function preloadOriginalForFallback(item: ViewerMediaItem): Promise<void> {
+  const fileId = item.fileId;
+  if (fullRequestedForCurrent || item.kind === 'video') return;
+  fullRequestedForCurrent = true;
+  const req = ++fullRequest;
+  try {
+    const url = item.originalSrc || (await item.resolveOriginalUrl?.()) || null;
+    if (!alive || req !== fullRequest || props.item.fileId !== fileId) {
+      if (props.item.fileId === fileId) fullRequestedForCurrent = false;
+      return;
+    }
+    if (url && url !== imgSrc.value) {
+      fullPreloadSrc.value = url;
+    }
+  } catch {
+    if (req === fullRequest && props.item.fileId === fileId) {
+      fullRequestedForCurrent = false;
+    }
+  }
+}
+
 async function maybeUpgradeFullRes(): Promise<void> {
-  const fileId = props.item.fileId;
+  const item = props.item;
+  const fileId = item.fileId;
   if (
     zoom.scale <= 1.05 ||
-    isPhotosMock() ||
-    props.item.kind === 'video' ||
+    (isPhotosMock() && !item.originalSrc && !item.resolveOriginalUrl) ||
+    item.kind === 'video' ||
     !imgSrc.value ||
     fullRequestedForCurrent
   ) {
@@ -519,12 +879,14 @@ async function maybeUpgradeFullRes(): Promise<void> {
   fullRequestedForCurrent = true;
   const req = ++fullRequest;
   try {
-    const link = await driveApi.getDownloadLink(fileId);
+    const url = await resolveOriginalMediaUrl(item);
     if (!alive || req !== fullRequest || props.item.fileId !== fileId) {
       if (props.item.fileId === fileId) fullRequestedForCurrent = false;
       return;
     }
-    fullPreloadSrc.value = resolveDownloadUrl(link.url);
+    if (url && url !== imgSrc.value) {
+      fullPreloadSrc.value = url;
+    }
   } catch {
     if (req === fullRequest && props.item.fileId === fileId) {
       fullRequestedForCurrent = false;
@@ -536,6 +898,7 @@ async function maybeUpgradeFullRes(): Promise<void> {
 function onFullPreloadLoad(): void {
   if (fullPreloadSrc.value) {
     imgSrc.value = fullPreloadSrc.value;
+    imgStep = props.item.originalSrc ? 'originalSrc' : props.item.resolveOriginalUrl ? 'resolveOriginal' : 'downloadLink';
   }
 }
 
@@ -686,6 +1049,7 @@ function onStagePointerDown(event: PointerEvent): void {
   pointers.set(id, { x: event.clientX, y: event.clientY, startX: event.clientX, startY: event.clientY, hasButtons });
   bindWindowPointerListeners();
   suppressBackdropClick = false;
+  suppressFilmstripClick = false;
   if (pointers.size === 2) {
     const dist = pinchDistance();
     pinch = { distance: dist, scale: zoom.scale, startDistance: dist };
@@ -779,9 +1143,9 @@ function stageCenter(): { x: number; y: number } {
 }
 
 function loadItem(): void {
-  failedSizes = new Set();
+  failedImgSteps = new Set();
   imgSrc.value = null;
-  imgSize = null;
+  imgStep = null;
   fullRequest++;
   fullPreloadSrc.value = null;
   fullRequestedForCurrent = false;
@@ -792,6 +1156,8 @@ function loadItem(): void {
 watch(() => props.item.fileId, async () => {
   resetZoom();
   suppressBackdropClick = false;
+  suppressFilmstripClick = false;
+  cleanupFilmstripDrag();
   stopFilmstripInertia();
   loadItem();
   await nextTick();
@@ -803,8 +1169,10 @@ watch(() => props.item.fileId, async () => {
 });
 
 function onBackdropClick(e: MouseEvent): void {
-  if (suppressBackdropClick) {
+  if (suppressBackdropClick || suppressFilmstripClick) {
     suppressBackdropClick = false;
+    suppressFilmstripClick = false;
+    e.stopPropagation();
     return;
   }
   if (e.target === e.currentTarget) {
@@ -812,13 +1180,29 @@ function onBackdropClick(e: MouseEvent): void {
   }
 }
 
+function closeSideInfo(): void {
+  sideInfoOpen.value = false;
+  void nextTick(() => {
+    if (!rootEl.value?.contains(document.activeElement)) rootEl.value?.focus();
+  });
+}
+
 function toggleSideInfo(): void {
-  sideInfoOpen.value = !sideInfoOpen.value;
+  if (!props.canInfo) return;
+  if (sideInfoOpen.value) {
+    closeSideInfo();
+  } else {
+    sideInfoOpen.value = true;
+  }
   emit('info', props.item);
 }
 
 async function downloadCurrent(): Promise<void> {
   try {
+    if (props.item.downloadAction) {
+      await props.item.downloadAction();
+      return;
+    }
     await downloadDriveFile(props.item.fileId, props.item.name);
   } catch {
     // Ignore transient download errors here
@@ -836,8 +1220,19 @@ function focusables(): HTMLElement[] {
 }
 
 function onKeydown(event: KeyboardEvent): void {
+  if (event.key === 'Enter' || event.key === ' ') {
+    suppressFilmstripClick = false;
+    return;
+  }
   if (event.key === 'Escape') {
+    event.stopPropagation();
+    event.preventDefault();
+    if (sideInfoOpen.value) {
+      closeSideInfo();
+      return;
+    }
     emit('close');
+    return;
   } else if (
     (event.ctrlKey || event.metaKey) &&
     (event.key === '+' || event.key === '=' || event.key === '-' || event.key === '_' || event.key === '0')
@@ -852,7 +1247,7 @@ function onKeydown(event: KeyboardEvent): void {
         zoomAt(zoom.scale / 1.25, center.x, center.y);
       }
     }
-  } else if (event.key.toLowerCase() === 'i' && !['INPUT', 'TEXTAREA'].includes((event.target as HTMLElement | null)?.tagName ?? '')) {
+  } else if (props.canInfo && event.key.toLowerCase() === 'i' && !['INPUT', 'TEXTAREA'].includes((event.target as HTMLElement | null)?.tagName ?? '')) {
     toggleSideInfo();
   } else if (event.key === 'Tab') {
     const list = focusables();
@@ -879,6 +1274,10 @@ function onKeydown(event: KeyboardEvent): void {
 
 let touchX: number | null = null;
 function onTouchStart(event: TouchEvent): void {
+  if ((event.target as Element | null)?.closest?.('[data-viewer-filmstrip]')) {
+    touchX = null;
+    return;
+  }
   if (event.touches.length === 1) touchUsedForZoom = false;
   if (zoom.scale > 1 || event.touches.length > 1) {
     touchX = null;
@@ -910,6 +1309,7 @@ onBeforeUnmount(() => {
   videoRequest++;
   fullRequest++;
   unbindWindowPointerListeners();
+  cleanupFilmstripDrag();
   stopFilmstripInertia();
   if (opener?.isConnected) opener.focus();
 });
@@ -1139,6 +1539,15 @@ onBeforeUnmount(() => {
   scrollbar-width: none;
   flex: none;
   background: linear-gradient(transparent, rgba(6, 10, 8, 0.58));
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.pv-filmstrip.is-dragging {
+  cursor: grabbing;
+}
+.pv-filmstrip.is-dragging .pv-thumb {
+  cursor: grabbing;
 }
 .pv-filmstrip::-webkit-scrollbar {
   display: none;
@@ -1179,10 +1588,13 @@ onBeforeUnmount(() => {
   display: block;
 }
 .pv-thumb-ph {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 100%;
   height: 100%;
   background: rgba(255, 255, 255, 0.1);
+  color: rgba(220, 245, 220, 0.65);
 }
 .pv-side {
   width: 310px;

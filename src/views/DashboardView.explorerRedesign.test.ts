@@ -466,7 +466,7 @@ describe('DashboardView T-021 + T-018 Explorer Redesign Integration', () => {
     expect(resolveExplorerPath('Q Space/home/Поездки/Грузия', ctx)).toEqual({ kind: 'folder', folderId: 'f2' });
 
     const builtYandex = buildExplorerPath({ kind: 'yandex', path: '/Photos/2026' }, ctx);
-    expect(builtYandex.editablePath).toBe('Clouds/Yandex Disk/Photos/2026');
+    expect(builtYandex.editablePath).toBe('Облака/Yandex Disk/Photos/2026');
     expect(resolveExplorerPath('Clouds/Yandex Disk/Photos/2026', ctx)).toEqual({ kind: 'yandex', path: '/Photos/2026' });
 
     const builtAlbum = buildExplorerPath({ kind: 'space', spaceId: 'alb-1' }, ctx);
@@ -1130,10 +1130,12 @@ describe('DashboardView T-021 + T-018 Explorer Redesign Integration', () => {
     const wrapper = mountDashboard();
     await flushPromises();
 
-    // Virtual Inbox does NOT fire driveApi.getFolderItems('legacy-resource-inbox', ...)
+    // Synthetic Inbox folder is removed: unfiled items live directly in Home (Домашняя) without any legacy-resource-inbox entry.
+    expect((wrapper.vm as any).folderSummaries.some((f: any) => f.id === 'legacy-resource-inbox' || f.name === 'Inbox')).toBe(false);
     vi.mocked(driveApi.getFolderItems).mockClear();
-    (wrapper.vm as any).selectFolder('legacy-resource-inbox');
+    (wrapper.vm as any).selectDashboardSection({ kind: 'home' });
     await flushPromises();
+    expect(wrapper.text()).toContain('Входящий канвас');
     const calledWithInbox = vi.mocked(driveApi.getFolderItems).mock.calls.some(([id]) => id === 'legacy-resource-inbox');
     expect(calledWithInbox).toBe(false);
 
