@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
-import { onUpdated } from 'vue';
+import { nextTick, onUpdated } from 'vue';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FeedGroup, FeedItem, FeedParams } from '../../api/photos';
 
@@ -114,6 +114,7 @@ async function scrollTo(w: Wrapper, v: number): Promise<void> {
   const el = scroller(w);
   el.scrollTop = v;
   el.dispatchEvent(new Event('scroll'));
+  await new Promise((r) => setTimeout(r, 95));
   await settle();
 }
 
@@ -1034,8 +1035,8 @@ describe('PhotosFeed', () => {
 
     const media = await yandexDisk.listMedia('/');
     expect(media.map((m) => m.path)).toEqual(['/root.jpg', '/Фото/clip.mp4']);
-    expect(listSpy).toHaveBeenCalledWith('/', expect.objectContaining({ limit: 200, previewSize: 'L' }));
-    expect(listSpy).toHaveBeenCalledWith('/Фото', expect.objectContaining({ limit: 200, previewSize: 'L' }));
+    expect(listSpy).toHaveBeenCalledWith('/', expect.objectContaining({ limit: 200, previewSize: 'M' }));
+    expect(listSpy).toHaveBeenCalledWith('/Фото', expect.objectContaining({ limit: 200, previewSize: 'M' }));
 
     const ac = new AbortController();
     ac.abort();
@@ -1294,6 +1295,7 @@ describe('PhotosFeed', () => {
     const targetScroll = Math.max(400, totalH1 - 900);
     scrollerEl.scrollTop = targetScroll;
     await w.get('.pf-scroller').trigger('scroll');
+    await new Promise((r) => requestAnimationFrame(() => r(undefined)));
     await flushPromises();
     expect(w.emitted('reach-end')?.length).toBe(1);
 
@@ -1483,6 +1485,7 @@ describe('PhotosFeed', () => {
       'ОКО ЗА ОКУ / Финал',
       'Фотокамера',
     ];
+    await scrollTo(w, 80);
     expect(w.findAll('.pgh-title').map((n) => n.text())).toEqual(expectedAsc);
     expect(w.findAll('.pgh-path')).toHaveLength(0);
 
@@ -1494,6 +1497,7 @@ describe('PhotosFeed', () => {
       }),
     });
     await settle();
+    await scrollTo(w, 80);
     expect(w.findAll('.pgh-title').map((n) => n.text())).toEqual(expectedAsc);
 
     // Folder size descending: 100 MB > 60 MB > 10 MB, and ОКО ЗА ОКУ subfolders remain strictly contiguous
@@ -1504,7 +1508,7 @@ describe('PhotosFeed', () => {
       }),
     });
     await settle();
-    await scrollTo(w, 0);
+    await scrollTo(w, 80);
     expect(w.findAll('.pgh-title').map((n) => n.text())).toEqual([
       'Фотокамера',
       'ОКО ЗА ОКУ',
@@ -1548,6 +1552,7 @@ describe('PhotosFeed', () => {
       }),
     });
     await settle();
+    await scrollTo(wq, 80);
     expect(wq.findAll('.pgh-title').map((n) => n.text())).toEqual(expectedAsc);
     wq.unmount();
   });
@@ -1610,7 +1615,7 @@ describe('PhotosFeed', () => {
     w.unmount();
   });
 
-  it('B-046: gates /yandex-disk/preview loads to max 6 concurrent slots in LIFO viewport order and clears src on switch/unmount', async () => {
+  it('B-046: gates /yandex-disk/preview loads to max 8 concurrent slots in LIFO viewport order and clears src on switch/unmount', async () => {
     const Feed = await load();
     const extItems = Array.from({ length: 50 }, (_, i) => ({
       ...mkItem(i, {
@@ -1636,10 +1641,10 @@ describe('PhotosFeed', () => {
     const activeImgs = () =>
       w.findAll('img.pf-img:not(.is-loaded)').filter((img) => Boolean(img.attributes('src')));
 
-    // At most 6 concurrent /yandex-disk/preview imgs have src set at once
+    // At most 8 concurrent /yandex-disk/preview imgs have src set at once
     const initialActive = activeImgs();
-    expect(initialActive.length).toBeLessThanOrEqual(6);
-    expect(initialActive.length).toBe(6);
+    expect(initialActive.length).toBeLessThanOrEqual(8);
+    expect(initialActive.length).toBe(8);
 
     const visibleTileIdsBefore = w.findAll('.pf-tile').map((t) => t.attributes('data-file-id')!);
 
@@ -1651,14 +1656,14 @@ describe('PhotosFeed', () => {
 
     // Complete one active load -> the freed slot MUST pick a newly visible URL (LIFO!), not an older queued one
     const activeBeforeLoad = activeImgs();
-    expect(activeBeforeLoad.length).toBeLessThanOrEqual(6);
+    expect(activeBeforeLoad.length).toBeLessThanOrEqual(8);
     const toComplete = activeBeforeLoad[0]!;
     const activeSetBefore = new Set(activeBeforeLoad.map((i) => i.attributes('src')!));
     await toComplete.trigger('load');
     await settle();
 
     const activeAfterLoad = activeImgs();
-    expect(activeAfterLoad.length).toBeLessThanOrEqual(6);
+    expect(activeAfterLoad.length).toBeLessThanOrEqual(8);
     const startedSrc = activeAfterLoad
       .map((i) => i.attributes('src')!)
       .find((s) => !activeSetBefore.has(s));
@@ -1975,5 +1980,161 @@ describe('PhotosFeed', () => {
       if (origNaturalWidth) Object.defineProperty(HTMLImageElement.prototype, 'naturalWidth', origNaturalWidth);
       else delete (HTMLImageElement.prototype as unknown as Record<string, unknown>).naturalWidth;
     }
+  });
+
+  it('B-055: zoomed-out 1500-item feed (tileHeight=72) uses static .pf-nothumb, compact tile DOM (inline svg, 0 Heart components), and adaptive overscan', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { resolve } = await import('node:path');
+    const sfcSource = readFileSync(resolve(process.cwd(), 'src/components/photos/PhotosFeed.vue'), 'utf8');
+    const nothumbCss = sfcSource.match(/\.pf-nothumb\s*\{[^}]*\}/)?.[0] ?? '';
+    expect(nothumbCss).not.toContain('pf-shimmer');
+    expect(nothumbCss).not.toContain('animation:');
+    expect(sfcSource).toContain('contain: strict;');
+    expect(sfcSource).toContain('contain: layout style;');
+
+    const Feed = await load();
+    const extItems = Array.from({ length: 1500 }, (_, i) => ({
+      ...mkItem(i, {
+        fileId: `yd:/Zoom/p${String(i).padStart(4, '0')}.jpg`,
+        hash: `z-${i}`,
+        name: `p${String(i).padStart(4, '0')}.jpg`,
+        processed: false,
+        width: 1000,
+        height: 1000,
+        folderId: '/Zoom',
+        favorite: i === 0,
+        bytes: 1_500_000,
+      }),
+      previewSrc: `/api/yandex-disk/preview?path=/Zoom/p${String(i).padStart(4, '0')}.jpg&size=M`,
+      noReferrer: true,
+    }));
+
+    const w = mountFeed(Feed, {
+      externalItems: extItems,
+      externalFeedKey: '/Zoom',
+      tileHeight: 72,
+      captionOnTile: ['folder', 'size'],
+      params: params({ levels: ['date'], sort: [{ key: 'date', desc: true }] }),
+    });
+    await settle();
+
+    // Adaptive overscan at tileHeight=72: Math.round(72 * 2.4) = 173px -> viewport 600 + 173*2 = 946px (~13 rows max)
+    const renderedRows = w.findAll('.pf-row[data-kind="tiles"]');
+    expect(renderedRows.length).toBeGreaterThan(0);
+    expect(renderedRows.length).toBeLessThanOrEqual(16);
+
+    // Compact tile DOM (row.height < 104): omit .pf-cap and non-favorite .pf-fav-btn
+    expect(w.findAll('.pf-cap')).toHaveLength(0);
+    const favBtns = w.findAll('.pf-fav-btn');
+    expect(favBtns).toHaveLength(1);
+    expect(favBtns[0]!.element.closest('[data-file-id]')?.getAttribute('data-file-id')).toBe('yd:/Zoom/p0000.jpg');
+    expect(favBtns[0]!.find('svg').exists()).toBe(true);
+    // 0 child Heart components from @lucide/vue
+    expect(w.findAllComponents({ name: 'Heart' })).toHaveLength(0);
+
+    // At tileHeight >= 104, captions and hover fav buttons render normally
+    await w.setProps({ tileHeight: 120 });
+    await settle();
+    expect(w.findAll('.pf-cap').length).toBeGreaterThan(0);
+    expect(w.findAll('.pf-fav-btn').length).toBeGreaterThan(1);
+
+    w.unmount();
+  });
+
+  it('B-055: fast scroll cancels off-screen active external previews immediately and debounces new starts by 80ms', async () => {
+    const Feed = await load();
+    const extItems = Array.from({ length: 300 }, (_, i) => ({
+      ...mkItem(i, {
+        fileId: `yd:/Fast/p${String(i).padStart(3, '0')}.jpg`,
+        hash: `fast-${i}`,
+        name: `p${String(i).padStart(3, '0')}.jpg`,
+        processed: false,
+        width: 1000,
+        height: 1000,
+        folderId: '/Fast',
+      }),
+      previewSrc: `/api/yandex-disk/preview?path=/Fast/p${String(i).padStart(3, '0')}.jpg&size=M`,
+      noReferrer: true,
+    }));
+
+    const w = mountFeed(Feed, {
+      externalItems: extItems,
+      externalFeedKey: '/Fast',
+      tileHeight: 72,
+      params: params({ levels: ['date'], sort: [{ key: 'date', desc: true }] }),
+    });
+    await settle();
+
+    const activeImgs = () =>
+      w.findAll('img.pf-img:not(.is-loaded)').filter((img) => Boolean(img.attributes('src')));
+
+    const initialActive = activeImgs();
+    expect(initialActive).toHaveLength(8);
+    const initialEls = initialActive.map((img) => img.element as HTMLImageElement);
+
+    // Fast scroll (> 72 * 1.5 = 108px) far down the wall
+    const sc = scroller(w);
+    sc.scrollTop = 2000;
+    sc.dispatchEvent(new Event('scroll'));
+    await nextTick();
+
+    // Immediately after fast scroll (before 80ms debounce): off-screen active imgs have src cleared
+    for (const el of initialEls) {
+      expect(el.getAttribute('src')).toBeNull();
+    }
+
+    // Flush rAF (~25ms < 80ms): new viewport rows mount, but NO new external previews start yet
+    await new Promise((r) => setTimeout(r, 25));
+    await settle();
+    expect(activeImgs()).toHaveLength(0);
+
+    // After 80ms idle debounce settles: new viewport external previews start up to 8 concurrent slots
+    await new Promise((r) => setTimeout(r, 75));
+    await settle();
+    expect(activeImgs()).toHaveLength(8);
+
+    w.unmount();
+  });
+
+  it('B-055: cancelling and re-queuing the same external URL on params change keeps img src intact', async () => {
+    const Feed = await load();
+    const extItems = Array.from({ length: 12 }, (_, i) => ({
+      ...mkItem(i, {
+        fileId: `yd:/Filter/p${String(i).padStart(2, '0')}.jpg`,
+        hash: `flt-${i}`,
+        name: `p${String(i).padStart(2, '0')}.jpg`,
+        processed: false,
+        width: 1000,
+        height: 1000,
+        folderId: '/Filter',
+      }),
+      previewSrc: `/api/yandex-disk/preview?path=/Filter/p${String(i).padStart(2, '0')}.jpg&size=M`,
+      noReferrer: true,
+    }));
+
+    const w = mountFeed(Feed, {
+      externalItems: extItems,
+      externalFeedKey: '/Filter',
+      params: params({ levels: ['date'], sort: [{ key: 'date', desc: true }] }),
+    });
+    await settle();
+
+    const activeImgs = () =>
+      w.findAll('img.pf-img:not(.is-loaded)').filter((img) => Boolean(img.attributes('src')));
+    const initialActive = activeImgs();
+    expect(initialActive).toHaveLength(8);
+    const urlsBefore = new Set(initialActive.map((img) => img.attributes('src')!));
+
+    // Changing params cancels all active external thumbs and synchronously re-queues the same URLs before Vue patches.
+    await w.setProps({
+      params: params({ period: 'month', levels: ['date'], sort: [{ key: 'date', desc: true }] }),
+    });
+    await settle();
+
+    const activeAfter = activeImgs();
+    expect(activeAfter).toHaveLength(8);
+    expect(new Set(activeAfter.map((img) => img.attributes('src')!))).toEqual(urlsBefore);
+
+    w.unmount();
   });
 });

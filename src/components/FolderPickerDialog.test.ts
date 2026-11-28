@@ -149,4 +149,16 @@ describe('FolderPickerDialog', () => {
     await flushPromises();
     expect(w.findAll('[role="treeitem"]').map((n) => n.text())).toEqual(['Корень диска', 'Работа']);
   });
+
+  it('shows Yandex Disk export button only when showYandexExport is true and emits select-yandex', async () => {
+    const wDefault = await setup();
+    expect(wDefault.find('[data-testid="folder-picker-yandex-btn"]').exists()).toBe(false);
+    wDefault.unmount();
+
+    const w = await setup({ showYandexExport: true });
+    const yandexBtn = w.get('[data-testid="folder-picker-yandex-btn"]');
+    expect(yandexBtn.text()).toBe('На Яндекс Диск…');
+    await yandexBtn.trigger('click');
+    expect(w.emitted('select-yandex')).toHaveLength(1);
+  });
 });

@@ -108,7 +108,7 @@ describe('useYandexMediaLibrary', () => {
     expect(listPageSpy).toHaveBeenCalledTimes(1);
     expect(listPageSpy).toHaveBeenCalledWith(
       '/',
-      expect.objectContaining({ limit: 120, signal: expect.any(AbortSignal) }),
+      expect.objectContaining({ limit: 120, previewSize: 'M', signal: expect.any(AbortSignal) }),
     );
     expect(listPageSpy.mock.calls[0]![1]).not.toHaveProperty('refresh');
 
@@ -138,7 +138,7 @@ describe('useYandexMediaLibrary', () => {
 
     expect(listPageSpy).toHaveBeenCalledWith(
       '/',
-      expect.objectContaining({ limit: 120, refresh: '1', signal: expect.any(AbortSignal) }),
+      expect.objectContaining({ limit: 120, previewSize: 'M', refresh: '1', signal: expect.any(AbortSignal) }),
     );
     expect(getYandexCacheMemory('/')?.items.map((i) => i.path)).toEqual(['/forced.jpg']);
   });
@@ -210,7 +210,7 @@ describe('useYandexMediaLibrary', () => {
     await lib.loadMore();
     expect(listPageSpy).toHaveBeenLastCalledWith(
       '/',
-      expect.objectContaining({ limit: 120, cursor: 'cur-2', signal: expect.any(AbortSignal) }),
+      expect.objectContaining({ limit: 120, previewSize: 'M', cursor: 'cur-2', signal: expect.any(AbortSignal) }),
     );
     expect(lib.items.value.map((i) => i.yandexPath)).toEqual(['/p1.jpg', '/p2.mp4']);
     expect(lib.hasMore.value).toBe(false);
@@ -279,7 +279,7 @@ describe('useYandexMediaLibrary', () => {
     expect(listPageSpy).toHaveBeenNthCalledWith(
       2,
       '/',
-      expect.objectContaining({ limit: 120, cursor: 'fresh-cur-2', signal: expect.any(AbortSignal) }),
+      expect.objectContaining({ limit: 120, previewSize: 'M', cursor: 'fresh-cur-2', signal: expect.any(AbortSignal) }),
     );
     expect(lib.items.value.map((i) => i.yandexPath)).toEqual(['/fresh-p1.jpg', '/fresh-p2.jpg']);
     expect(lib.hasMore.value).toBe(false);

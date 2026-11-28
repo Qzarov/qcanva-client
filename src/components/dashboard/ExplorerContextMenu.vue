@@ -193,6 +193,18 @@
       ></div>
 
       <button
+        v-if="canImportToQspace"
+        type="button"
+        class="explorer-ctx-item"
+        role="menuitem"
+        data-ctx-action="import-to-qspace"
+        @click="onImportToQspace"
+      >
+        <HardDrive :size="15" aria-hidden="true" />
+        <span>{{ t('yandexImportToQspaceAction') }}</span>
+      </button>
+
+      <button
         v-if="canMove"
         type="button"
         class="explorer-ctx-item"
@@ -202,6 +214,18 @@
       >
         <FolderInput :size="15" aria-hidden="true" />
         <span>{{ moveLabel }}</span>
+      </button>
+
+      <button
+        v-if="canExportToYandex"
+        type="button"
+        class="explorer-ctx-item"
+        role="menuitem"
+        data-ctx-action="export-to-yandex"
+        @click="onExportToYandex"
+      >
+        <Cloud :size="15" aria-hidden="true" />
+        <span>{{ t('yandexExportToYandexAction') }}</span>
       </button>
 
       <button
@@ -295,6 +319,7 @@
             <FileCode2 v-else-if="opt.icon === 'html'" :size="14" aria-hidden="true" />
             <SquareKanban v-else-if="opt.icon === 'board'" :size="14" aria-hidden="true" />
             <Swords v-else-if="opt.icon === 'sheet'" :size="14" aria-hidden="true" />
+            <Upload v-else-if="opt.icon === 'upload'" :size="15" aria-hidden="true" />
             <Plus v-else :size="14" aria-hidden="true" />
             <span class="explorer-ctx-sub-name">{{ opt.label }}</span>
           </button>
@@ -377,7 +402,7 @@ export interface ExplorerContextMenuAlbum {
   active?: boolean;
 }
 
-export type ExplorerContextCreateIcon = 'folder' | 'markdown' | 'canvas' | 'html' | 'board' | 'sheet';
+export type ExplorerContextCreateIcon = 'folder' | 'markdown' | 'canvas' | 'html' | 'board' | 'sheet' | 'upload';
 
 export interface ExplorerContextMenuCreateOption {
   id: string;
@@ -391,6 +416,7 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import {
   Check,
   ChevronRight,
+  Cloud,
   Download,
   Eye,
   FileCode2,
@@ -399,6 +425,7 @@ import {
   FolderInput,
   FolderMinus,
   FolderPlus,
+  HardDrive,
   Heart,
   Info,
   Pencil,
@@ -408,6 +435,7 @@ import {
   SquareKanban,
   Swords,
   Trash2,
+  Upload,
   Workflow,
 } from '@lucide/vue';
 import { useI18n } from '../../composables/useI18n';
@@ -427,7 +455,9 @@ const props = withDefaults(defineProps<{
   canAlbum?: boolean;
   canRemoveFromAlbum?: boolean;
   canFavorite?: boolean;
+  canImportToQspace?: boolean;
   canMove?: boolean;
+  canExportToYandex?: boolean;
   canDelete?: boolean;
   canRename?: boolean;
   canDownload?: boolean;
@@ -447,7 +477,9 @@ const props = withDefaults(defineProps<{
   canAlbum: true,
   canRemoveFromAlbum: false,
   canFavorite: true,
+  canImportToQspace: false,
   canMove: true,
+  canExportToYandex: false,
   canDelete: true,
   canRename: true,
   canDownload: true,
@@ -464,7 +496,9 @@ const emit = defineEmits<{
   'add-to-album': [albumId: string | undefined, items: ReadonlyArray<ExplorerContextMenuItem>];
   'remove-from-album': [items: ReadonlyArray<ExplorerContextMenuItem>];
   'toggle-favorite': [items: ReadonlyArray<ExplorerContextMenuItem>];
+  'import-to-qspace': [items: ReadonlyArray<ExplorerContextMenuItem>];
   move: [items: ReadonlyArray<ExplorerContextMenuItem>];
+  'export-to-yandex': [items: ReadonlyArray<ExplorerContextMenuItem>];
   rename: [item: ExplorerContextMenuItem];
   download: [items: ReadonlyArray<ExplorerContextMenuItem>];
   properties: [item: ExplorerContextMenuItem];
@@ -514,7 +548,14 @@ const downloadLabel = computed(() => withCount(t('download')));
 const effectiveDeleteLabel = computed(() => withCount(props.deleteLabel || t('delete')));
 const removeFromAlbumLabel = computed(() => withCount(t('photosSelRemoveFromAlbum')));
 const hasSecondaryActions = computed(() =>
-  Boolean(props.canMove || (count.value === 1 && props.canRename) || props.canDownload || (count.value === 1 && props.canProperties)),
+  Boolean(
+    props.canImportToQspace
+    || props.canMove
+    || props.canExportToYandex
+    || (count.value === 1 && props.canRename)
+    || props.canDownload
+    || (count.value === 1 && props.canProperties),
+  ),
 );
 
 const positionStyle = computed(() => {
@@ -977,8 +1018,18 @@ function onToggleFavorite(): void {
   emit('close');
 }
 
+function onImportToQspace(): void {
+  emit('import-to-qspace', props.items);
+  emit('close');
+}
+
 function onMove(): void {
   emit('move', props.items);
+  emit('close');
+}
+
+function onExportToYandex(): void {
+  emit('export-to-yandex', props.items);
   emit('close');
 }
 

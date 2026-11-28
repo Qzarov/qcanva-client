@@ -2187,4 +2187,94 @@ describe('Gallery UX v2 & B-009/B-011/B-014 regressions', () => {
     expect(dp.find('[data-file-id="yandex:/Фотокамера/lake.jpg"]').exists()).toBe(true);
     dp.unmount();
   });
+
+  it('B-052/B-053: GallerySidebar rejects Yandex drops when disconnected and stops propagation on handled Yandex dragover/drop', async () => {
+    yandexStatusMock.mockResolvedValue({
+      enabled: true,
+      connected: false,
+      reconnectRequired: true,
+      login: null,
+      displayName: null,
+    });
+    const outerHost = document.createElement('div');
+    document.body.appendChild(outerHost);
+    const outerDragOver = vi.fn();
+    const outerDrop = vi.fn();
+    outerHost.addEventListener('dragover', outerDragOver);
+    outerHost.addEventListener('drop', outerDrop);
+
+    const sbDisconnected = mount(GallerySidebar, {
+      attachTo: outerHost,
+      props: {
+        activeSection: 'library',
+        folders: [],
+        albums: [],
+      },
+    });
+    await settle();
+
+    const emptyDataTransfer = (extra: Record<string, unknown>) => ({
+      getData: () => '',
+      ...extra,
+    });
+    const osFile = new File(['z'], 'photo.jpg', { type: 'image/jpeg' });
+    const rootRow = sbDisconnected.get('[data-gallery-yandex-root]');
+    const dragOverDisconnected = new Event('dragover', { bubbles: true, cancelable: true }) as DragEvent;
+    Object.defineProperty(dragOverDisconnected, 'dataTransfer', {
+      value: emptyDataTransfer({ types: ['Files'], files: [osFile], dropEffect: 'none' }),
+    });
+    rootRow.element.dispatchEvent(dragOverDisconnected);
+    expect(dragOverDisconnected.defaultPrevented).toBe(false);
+
+    const dropDisconnected = new Event('drop', { bubbles: true, cancelable: true }) as DragEvent;
+    Object.defineProperty(dropDisconnected, 'dataTransfer', {
+      value: emptyDataTransfer({ types: ['Files'], files: [osFile] }),
+    });
+    rootRow.element.dispatchEvent(dropDisconnected);
+    await settle();
+    expect(sbDisconnected.emitted('drop-external-files-yandex')).toBeUndefined();
+    sbDisconnected.unmount();
+
+    // Connected: dragover and drop on Yandex row call stopPropagation so outer dropzones do not double-handle
+    resetYandexDiskStatus();
+    yandexStatusMock.mockResolvedValue({
+      enabled: true,
+      connected: true,
+      reconnectRequired: false,
+      login: 'vlad',
+      displayName: 'Vlad',
+    });
+    const sbConnected = mount(GallerySidebar, {
+      attachTo: outerHost,
+      props: {
+        activeSection: 'library',
+        folders: [],
+        albums: [],
+      },
+    });
+    await settle();
+    outerDragOver.mockClear();
+    outerDrop.mockClear();
+
+    const connectedRoot = sbConnected.get('[data-gallery-yandex-root]');
+    const dragOverConnected = new Event('dragover', { bubbles: true, cancelable: true }) as DragEvent;
+    Object.defineProperty(dragOverConnected, 'dataTransfer', {
+      value: emptyDataTransfer({ types: ['Files'], files: [osFile], dropEffect: 'none' }),
+    });
+    connectedRoot.element.dispatchEvent(dragOverConnected);
+    expect(dragOverConnected.defaultPrevented).toBe(true);
+    expect(outerDragOver).not.toHaveBeenCalled();
+
+    const dropConnected = new Event('drop', { bubbles: true, cancelable: true }) as DragEvent;
+    Object.defineProperty(dropConnected, 'dataTransfer', {
+      value: emptyDataTransfer({ types: ['Files'], files: [osFile] }),
+    });
+    connectedRoot.element.dispatchEvent(dropConnected);
+    await settle();
+    expect(outerDrop).not.toHaveBeenCalled();
+    expect(sbConnected.emitted('drop-external-files-yandex')?.[0]).toEqual(['/', [osFile]]);
+
+    sbConnected.unmount();
+    outerHost.remove();
+  });
 });

@@ -386,7 +386,7 @@ import {
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch, type CSSProperties } from 'vue';
 import { driveApi } from '../../api/drive';
 import { spacesApi, type SpaceDetails } from '../../api/spaces';
-import { isYandexVideoItem, yandexDisk, type YandexItem } from '../../api/yandexDisk';
+import { isYandexVideoItem, yandexDisk, yandexParentPath, type YandexItem } from '../../api/yandexDisk';
 import { SOURCE_CODE_URL } from '../../app-info';
 import { LAYOUT, matchesMedia } from '../../composables/layoutMedia';
 import { hasDataTransferFiles } from '../../composables/useDriveDropzone';
@@ -532,7 +532,9 @@ const emit = defineEmits<{
   'tree-contextmenu': [payload: TreeContextMenuPayload];
   'drop-group-to-folder': [payload: { folderId: string | null; drag: GroupDragPayload }];
   'drop-group-to-album': [payload: { albumId: string; drag: GroupDragPayload }];
+  'drop-group-to-yandex': [payload: { path: string; drag: GroupDragPayload }];
   'drop-external-files': [payload: { folderId: string | null; files: File[] }];
+  'drop-external-files-yandex': [payload: { path: string; files: File[] }];
   'folder-drag-start': [event: DragEvent, folderId: string];
   'folder-drag-end': [event: DragEvent, folderId: string];
   'folder-drag-enter': [event: DragEvent, folderId: string];
@@ -1954,6 +1956,58 @@ function canDropGroupOnFolder(targetFolderId: string, payload: GroupDragPayload)
   return payload.items.length > 0;
 }
 
+function isYandexDropTargetRow(row: TreeRow): boolean {
+  if (!yandexStatus.value?.connected) return false;
+  return (row.kind === 'yandex-root' || row.kind === 'yandex-dir') && Boolean(row.yandexPath);
+}
+
+function extractYandexPathFromEntry(entry: GroupDragEntry): { isDir: boolean; path: string } | null {
+  if (
+    entry.kind === 'yandex-folder'
+    || entry.kind === 'yandex-dir'
+    || entry.kind === 'yandex-root'
+    || entry.key.startsWith('yandex-folder:')
+    || entry.key === 'clouds:yandex'
+  ) {
+    const raw = entry.path
+      || (entry.key === 'clouds:yandex' ? '/' : entry.id)
+      || entry.key.replace(/^yandex-folder:/, '');
+    if (!raw) return null;
+    return { isDir: true, path: normalizeYandexTreePath(raw) };
+  }
+  if (
+    entry.kind === 'yandex-file'
+    || entry.key.startsWith('yandex:')
+    || entry.key.startsWith('yandex-file:')
+  ) {
+    const raw = entry.path || entry.id || entry.key.replace(/^(yandex-file:|yandex:)/, '');
+    if (!raw) return null;
+    return { isDir: false, path: normalizeYandexTreePath(raw) };
+  }
+  return null;
+}
+
+function canDropGroupOnYandex(targetYandexPath: string, payload: GroupDragPayload): boolean {
+  if (!yandexStatus.value?.connected || payload.items.length === 0) return false;
+  const target = normalizeYandexTreePath(targetYandexPath);
+  let hasActionable = false;
+  for (const entry of payload.items) {
+    const yEntry = extractYandexPathFromEntry(entry);
+    if (!yEntry) {
+      hasActionable = true;
+      continue;
+    }
+    if (yEntry.path === '/') return false;
+    if (yEntry.isDir && (target === yEntry.path || target.startsWith(`${yEntry.path}/`))) {
+      return false;
+    }
+    if (yandexParentPath(yEntry.path) !== target) {
+      hasActionable = true;
+    }
+  }
+  return hasActionable;
+}
+
 function isSingleTreeFolderDrag(event: DragEvent, payload: GroupDragPayload | null): boolean {
   if (payload) {
     return payload.source === 'tree' && payload.items.length === 1 && payload.items[0]?.kind === 'folder';
@@ -1970,6 +2024,9 @@ function isDropHighlight(row: TreeRow): boolean {
   if (row.folderItem?.dropActive) return true;
   if (row.kind === 'folder' && row.folderId) {
     return dnd.dropTarget.value?.kind === 'folder' && dnd.dropTarget.value.id === row.folderId;
+  }
+  if ((row.kind === 'yandex-root' || row.kind === 'yandex-dir') && row.yandexPath) {
+    return dnd.dropTarget.value?.kind === 'yandex' && dnd.dropTarget.value.id === row.yandexPath;
   }
   if (row.kind === 'album' && row.albumId) {
     return dnd.dropTarget.value?.kind === 'album' && dnd.dropTarget.value.id === row.albumId;
@@ -2012,7 +2069,8 @@ function scheduleSpringIfExpandable(row: TreeRow) {
 }
 
 function resolveGroupDragPayload(event: DragEvent): GroupDragPayload | null {
-  const raw = dnd.activeDrag.value ?? dnd.readGroupDragFromEvent(event);
+  const raw = dnd.activeDrag.value
+    ?? (typeof event.dataTransfer?.getData === 'function' ? dnd.readGroupDragFromEvent(event) : null);
   if (!raw) return null;
   return {
     source: raw.source,
@@ -2046,6 +2104,10 @@ function onRowDragEnter(event: DragEvent, row: TreeRow) {
       event.preventDefault();
       dnd.setGroupDropTarget({ kind: 'album', id: row.albumId });
       scheduleSpringIfExpandable(row);
+    } else if (isYandexDropTargetRow(row) && canDropGroupOnYandex(row.yandexPath!, payload)) {
+      event.preventDefault();
+      dnd.setGroupDropTarget({ kind: 'yandex', id: row.yandexPath! });
+      scheduleSpringIfExpandable(row);
     } else if (row.expandable && !row.expanded) {
       scheduleSpringIfExpandable(row);
     }
@@ -2061,6 +2123,10 @@ function onRowDragEnter(event: DragEvent, row: TreeRow) {
       dnd.setGroupDropTarget({ kind: 'folder', id: row.folderId });
       scheduleSpringIfExpandable(row);
       emit('folder-drag-enter', event, row.folderId);
+    } else if (isYandexDropTargetRow(row)) {
+      event.preventDefault();
+      dnd.setGroupDropTarget({ kind: 'yandex', id: row.yandexPath! });
+      scheduleSpringIfExpandable(row);
     } else if (row.expandable && !row.expanded) {
       scheduleSpringIfExpandable(row);
     }
@@ -2068,7 +2134,7 @@ function onRowDragEnter(event: DragEvent, row: TreeRow) {
   }
 
   if (hasDataTransferFiles(event)) {
-    if ((row.kind === 'folder' && row.folderId) || row.key === 'qspace:home') {
+    if ((row.kind === 'folder' && row.folderId) || row.key === 'qspace:home' || isYandexDropTargetRow(row)) {
       event.preventDefault();
       event.stopPropagation();
       if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
@@ -2116,6 +2182,13 @@ function onRowDragOver(event: DragEvent, row: TreeRow) {
       if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
       dnd.setGroupDropTarget({ kind: 'album', id: row.albumId });
       scheduleSpringIfExpandable(row);
+    } else if (isYandexDropTargetRow(row) && canDropGroupOnYandex(row.yandexPath!, payload)) {
+      event.preventDefault();
+      event.stopPropagation();
+      const hasQspaceItems = payload.items.some((entry) => !extractYandexPathFromEntry(entry));
+      if (event.dataTransfer) event.dataTransfer.dropEffect = hasQspaceItems ? 'copy' : 'move';
+      dnd.setGroupDropTarget({ kind: 'yandex', id: row.yandexPath! });
+      scheduleSpringIfExpandable(row);
     }
     return;
   }
@@ -2130,12 +2203,18 @@ function onRowDragOver(event: DragEvent, row: TreeRow) {
       dnd.setGroupDropTarget({ kind: 'folder', id: row.folderId });
       scheduleSpringIfExpandable(row);
       emit('folder-drag-over', event, row.folderId);
+    } else if (isYandexDropTargetRow(row)) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+      dnd.setGroupDropTarget({ kind: 'yandex', id: row.yandexPath! });
+      scheduleSpringIfExpandable(row);
     }
     return;
   }
 
   if (hasDataTransferFiles(event)) {
-    if ((row.kind === 'folder' && row.folderId) || row.key === 'qspace:home') {
+    if ((row.kind === 'folder' && row.folderId) || row.key === 'qspace:home' || isYandexDropTargetRow(row)) {
       event.preventDefault();
       event.stopPropagation();
       if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
@@ -2161,6 +2240,10 @@ function onRowDragLeave(event: DragEvent, row: TreeRow) {
       dnd.setGroupDropTarget(null);
     }
     emit('folder-drag-leave', event, row.folderId);
+  } else if ((row.kind === 'yandex-root' || row.kind === 'yandex-dir') && row.yandexPath) {
+    if (dnd.dropTarget.value?.kind === 'yandex' && dnd.dropTarget.value.id === row.yandexPath) {
+      dnd.setGroupDropTarget(null);
+    }
   } else if (row.kind === 'album' && row.albumId) {
     if (dnd.dropTarget.value?.kind === 'album' && dnd.dropTarget.value.id === row.albumId) {
       dnd.setGroupDropTarget(null);
@@ -2195,6 +2278,11 @@ function onRowDrop(event: DragEvent, row: TreeRow) {
       event.stopPropagation();
       emit('drop-group-to-album', { albumId: row.albumId, drag: payload });
       treeSelectedKeys.value = new Set();
+    } else if (isYandexDropTargetRow(row) && canDropGroupOnYandex(row.yandexPath!, payload)) {
+      event.preventDefault();
+      event.stopPropagation();
+      emit('drop-group-to-yandex', { path: row.yandexPath!, drag: payload });
+      treeSelectedKeys.value = new Set();
     }
     dnd.endGroupDrag();
     return;
@@ -2208,6 +2296,29 @@ function onRowDrop(event: DragEvent, row: TreeRow) {
     if (row.kind === 'folder' && row.folderId) {
       event.preventDefault();
       emit('folder-drop', event, row.folderId);
+    } else if (isYandexDropTargetRow(row)) {
+      const legacyFolderId = props.folderDragId || event.dataTransfer?.getData('application/x-qcanva-folder') || '';
+      if (legacyFolderId) {
+        event.preventDefault();
+        event.stopPropagation();
+        const folder = folderLookup.value.get(legacyFolderId);
+        const key = `folder:${legacyFolderId}`;
+        emit('drop-group-to-yandex', {
+          path: row.yandexPath!,
+          drag: {
+            source: 'tree',
+            items: [{
+              key,
+              id: legacyFolderId,
+              kind: 'folder',
+              name: folder?.name,
+              folderId: folder?.parentId ?? null,
+            }],
+            keys: [key],
+            count: 1,
+          },
+        });
+      }
     }
     dnd.endGroupDrag();
     return;
@@ -2221,6 +2332,16 @@ function onRowDrop(event: DragEvent, row: TreeRow) {
       if (files.length > 0) {
         emit('drop-external-files', {
           folderId: row.kind === 'folder' ? row.folderId! : null,
+          files,
+        });
+      }
+    } else if (isYandexDropTargetRow(row)) {
+      event.preventDefault();
+      event.stopPropagation();
+      const files = Array.from(event.dataTransfer?.files || []);
+      if (files.length > 0) {
+        emit('drop-external-files-yandex', {
+          path: row.yandexPath!,
           files,
         });
       }

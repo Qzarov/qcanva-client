@@ -68,6 +68,21 @@ export type YandexImportToQspaceResult = {
   truncated?: boolean;
 };
 
+export type YandexExportFromQspacePayload = {
+  fileIds?: string[];
+  folderIds?: string[];
+  resources?: Array<{ kind: string; id: string }>;
+  targetPath?: string;
+  overwrite?: boolean;
+};
+
+export type YandexExportFromQspaceResult = {
+  exportedFiles: number;
+  exportedFolders: number;
+  paths: string[];
+  truncated: boolean;
+};
+
 export const YANDEX_PAGE = 200;
 const YANDEX_MEDIA_MAX_ITEMS = 1000;
 const YANDEX_MEDIA_BFS_CONCURRENCY = 4;
@@ -264,7 +279,7 @@ export const yandexDisk = {
   ): Promise<YandexMediaPage> {
     const rootPath = path || '/';
     const limit = opts.limit ?? 100;
-    const previewSize = opts.previewSize ?? 'L';
+    const previewSize = opts.previewSize ?? 'M';
     const { signal } = opts;
     if (signal?.aborted) throw createAbortError();
 
@@ -334,7 +349,7 @@ export const yandexDisk = {
     opts: { previewSize?: YandexPreviewSize; signal?: AbortSignal } = {},
   ): Promise<YandexItem[]> => {
     const rootPath = path || '/';
-    const previewSize = opts.previewSize ?? 'L';
+    const previewSize = opts.previewSize ?? 'M';
     const { signal } = opts;
     if (signal?.aborted) throw createAbortError();
 
@@ -403,9 +418,11 @@ export const yandexDisk = {
   },
   importToQspace: (paths: readonly string[], targetFolderId?: string | null) =>
     request<YandexImportToQspaceResult>(
-      '/yandex-disk/import-to-qspace',
+      '/drive/yandex-import',
       json({ paths: [...paths], targetFolderId: targetFolderId ?? null }),
     ),
+  exportFromQspace: (body: YandexExportFromQspacePayload) =>
+    request<YandexExportFromQspaceResult>('/drive/yandex-export', json(body)),
   createFolder: (path: string) => request<YandexItem>('/yandex-disk/folders', json({ path })),
   rename: (path: string, name: string) => request<YandexOutcome & { path: string }>('/yandex-disk/rename', json({ path, name })),
   move: (from: string, to: string) => request<YandexOutcome>('/yandex-disk/move', json({ from, to })),
@@ -500,7 +517,7 @@ export function uploadYandexFile(
 ): YandexUploadHandle {
   const onProgress = typeof onProgressOrOptions === 'function' ? onProgressOrOptions : onProgressOrOptions?.onProgress;
   const overwrite = typeof onProgressOrOptions === 'object' ? Boolean(onProgressOrOptions?.overwrite) : false;
-  const url = `${(API_BASE || '').replace(/\/+$/, '')}/yandex-disk/files${q({ path, overwrite: overwrite ? true : undefined })}`;
+  const url = `${(API_BASE || '').replace(/\/+$/, '')}/drive/yandex-upload${q({ path, overwrite: overwrite ? true : undefined, disambiguate: !overwrite ? true : undefined })}`;
   const token = getAccessToken();
   return uploadNativelyOr(
     file,

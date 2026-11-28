@@ -16,12 +16,12 @@ function touchLoadedExternalThumb(url: string): void {
 </script>
 
 <script setup lang="ts">
-import { Heart } from '@lucide/vue';
 import {
   computed,
   nextTick,
   onBeforeUnmount,
   onMounted,
+  onUpdated,
   reactive,
   ref,
   shallowReactive,
@@ -147,7 +147,6 @@ const emit = defineEmits<{
 const TILE_ROW_HEIGHT = { s: 110, m: 170, l: 250 } as const;
 const GALLERY_WALL_GAP = 2;
 const PAGE_SIZE = 200;
-const OVERSCAN = 600;
 /** Header band the sticky group title covers; the anchor line sits right below it. */
 const STICKY_OFFSET = H1_HEIGHT;
 /** Height of the floating gallery topbar (.dp-top, matches --dp-top-h: 50px). */
@@ -155,6 +154,7 @@ const TOP_BAR_H = 50;
 const MAX_PENDING_PAGES = 25;
 const MAX_CONCURRENT = 4;
 const JUMP_DEBOUNCE_MS = 80;
+const SCROLL_IDLE_DEBOUNCE_MS = 80;
 
 const { t, locale } = useI18n();
 const view = usePhotosView();
@@ -191,7 +191,7 @@ const unitEnd = new Map<string, number>();
 const h1Rows = shallowRef<Row[]>([]);
 const groupTopList = shallowRef<Array<{ key: string; top: number; height: number }>>([]);
 
-const MAX_EXTERNAL_THUMB_CONCURRENCY = 6;
+const MAX_EXTERNAL_THUMB_CONCURRENCY = 8;
 const MAX_LOADED_TILE_IMG_IDS = 4000;
 
 const thumbs = shallowReactive(new Map<string, string | null>());
@@ -199,7 +199,6 @@ const thumbRequested = new Set<string>();
 const externalThumbFailed = shallowReactive(new Set<string>());
 const activeExternalThumbs = reactive(new Set<string>());
 let externalThumbQueue: string[] = [];
-const externalImgEls = new Map<string, { url: string; el: HTMLImageElement }>();
 const loadedTileImgIds = reactive(new Set<string>());
 const folderNames = shallowReactive(new Map<string, string>());
 const folderRequested = new Set<string>();
@@ -253,6 +252,8 @@ const rowHeight = computed(() => {
   }
   return prefs.photoTileH.value;
 });
+
+const effectiveOverscan = computed(() => Math.max(160, Math.min(440, Math.round(rowHeight.value * 2.4))));
 
 const resolvedAspectMode = computed<'square' | 'ratio'>(
   () => props.aspectMode ?? prefs.galleryAspectMode.value,
@@ -437,7 +438,13 @@ function buildLayoutGroups(): LayoutGroup[] {
     const info = groupTitle(l1, g, p.period, locale.value);
     headInfo.set(g.key, info);
     unitCount.set(g.key, g.count);
-    if (g.folder) folderNames.set(g.key, g.folder.name || info.title);
+    if (g.folder) {
+      const fname = g.folder.name || info.title;
+      if (folderNames.get(g.key) !== fname) {
+        resetTileCaptionCache();
+        folderNames.set(g.key, fname);
+      }
+    }
     const subs =
       l2 && g.subs && g.subs.length > 0
         ? g.subs.map((s) => {
@@ -445,7 +452,13 @@ function buildLayoutGroups(): LayoutGroup[] {
             const k = unitKey(g.key, s.key);
             headInfo.set(k, sInfo);
             unitCount.set(k, s.count);
-            if (s.folder) folderNames.set(s.key, s.folder.name || sInfo.title);
+            if (s.folder) {
+              const sname = s.folder.name || sInfo.title;
+              if (folderNames.get(s.key) !== sname) {
+                resetTileCaptionCache();
+                folderNames.set(s.key, sname);
+              }
+            }
             return { key: s.key, title: sInfo.title, count: s.count };
           })
         : undefined;
@@ -588,8 +601,10 @@ function relayout(): void {
       }
     }
   }
-  layout.value = next;
-  rebuildIndexes(next);
+  if (old.rows.length > 0 || next.rows.length > 0 || old.totalHeight !== next.totalHeight) {
+    layout.value = next;
+    rebuildIndexes(next);
+  }
   if (next.rows.length === 0) {
     maybeEmitReachEnd();
     return;
@@ -738,8 +753,9 @@ function ensureLoaded(): void {
     wanted = new Map();
     return;
   }
-  const rows = visibleRows(layout.value.rows, lastScrollTop, viewportH.value, OVERSCAN);
-  const bottom = lastScrollTop + viewportH.value + OVERSCAN;
+  const overscan = effectiveOverscan.value;
+  const rows = visibleRows(layout.value.rows, lastScrollTop, viewportH.value, overscan);
+  const bottom = lastScrollTop + viewportH.value + overscan;
   const next = new Map<string, Task>();
   const wantFolders = props.captionOnTile.includes('folder') && !isPhotosMock();
   for (const row of rows) {
@@ -781,17 +797,28 @@ function requestThumb(item: FeedItem): void {
 
 function requestFolder(id: string): Promise<void> {
   if (id === '/') {
-    folderNames.set('/', t('yandexDisk'));
+    const label = t('yandexDisk');
+    if (folderNames.get('/') !== label) {
+      resetTileCaptionCache();
+      folderNames.set('/', label);
+    }
     return Promise.resolve();
   }
   if (id.startsWith('/')) {
     const info = externalFolderInfo(id);
-    folderNames.set(id, info?.name ?? t('yandexDisk'));
+    const label = info?.name ?? t('yandexDisk');
+    if (folderNames.get(id) !== label) {
+      resetTileCaptionCache();
+      folderNames.set(id, label);
+    }
     return Promise.resolve();
   }
   const fromStorage = storageFolderMap.value.get(id);
   if (fromStorage) {
-    folderNames.set(id, fromStorage.name);
+    if (folderNames.get(id) !== fromStorage.name) {
+      resetTileCaptionCache();
+      folderNames.set(id, fromStorage.name);
+    }
     return Promise.resolve();
   }
   if (folderNames.has(id) || folderRequested.has(id)) return Promise.resolve();
@@ -799,9 +826,11 @@ function requestFolder(id: string): Promise<void> {
   return driveApi
     .getFolder(id)
     .then((r) => {
+      resetTileCaptionCache();
       folderNames.set(id, r.folder.name ?? '');
     })
     .catch(() => {
+      resetTileCaptionCache();
       folderNames.set(id, '');
     });
 }
@@ -888,10 +917,15 @@ function targetUnits(
 }
 
 const SIZE_ORDER: Record<string, number> = { gt50: 0, '10to50': 1, '3to10': 2, lt3: 3 };
+const itemTimestampCache = new WeakMap<FeedItem, number>();
 
-function itemTimestamp(item: FeedItem): number {
+function itemTimestampMs(item: FeedItem): number {
+  const cached = itemTimestampCache.get(item);
+  if (cached !== undefined) return cached;
   const ts = Date.parse(item.localTakenAt ?? item.takenAt ?? '');
-  return Number.isNaN(ts) ? 0 : ts;
+  const ms = Number.isNaN(ts) ? 0 : ts;
+  itemTimestampCache.set(item, ms);
+  return ms;
 }
 
 function externalItemGroupKeys(item: FeedItem, level: SortKey, period: FeedParams['period']): string[] {
@@ -954,17 +988,24 @@ function folderPathForKey(key: string, existing?: FeedGroup['folder']): string[]
 }
 
 function populateExternalFolderNames(list: readonly FeedItem[]): void {
+  let changed = false;
   for (const item of list) {
     const fid = item.folderId;
     if (!fid) continue;
+    let nextName: string | undefined;
     if (fid === '/') {
-      folderNames.set('/', t('yandexDisk'));
+      nextName = t('yandexDisk');
     } else if (fid.startsWith('/')) {
-      const info = externalFolderInfo(fid);
-      if (info) folderNames.set(fid, info.name);
+      nextName = externalFolderInfo(fid)?.name;
     } else {
-      const fromStorage = storageFolderMap.value.get(fid);
-      if (fromStorage) folderNames.set(fid, fromStorage.name);
+      nextName = storageFolderMap.value.get(fid)?.name;
+    }
+    if (nextName && folderNames.get(fid) !== nextName) {
+      if (!changed) {
+        changed = true;
+        resetTileCaptionCache();
+      }
+      folderNames.set(fid, nextName);
     }
   }
 }
@@ -975,7 +1016,7 @@ function compareFeedItems(a: FeedItem, b: FeedItem, sort: SortSpec[]): number {
     const dir = spec.desc ? -1 : 1;
     let cmp = 0;
     if (spec.key === 'date') {
-      cmp = itemTimestamp(a) - itemTimestamp(b);
+      cmp = itemTimestampMs(a) - itemTimestampMs(b);
     } else if (spec.key === 'size') {
       cmp = a.bytes - b.bytes;
     } else if (spec.key === 'folder') {
@@ -989,7 +1030,7 @@ function compareFeedItems(a: FeedItem, b: FeedItem, sort: SortSpec[]): number {
     }
     if (cmp !== 0) return cmp * dir;
   }
-  const timeDiff = itemTimestamp(b) - itemTimestamp(a);
+  const timeDiff = itemTimestampMs(b) - itemTimestampMs(a);
   if (timeDiff !== 0) return timeDiff;
   return a.name.localeCompare(b.name);
 }
@@ -1018,7 +1059,7 @@ function sortExternalBucketEntries(
         const sum = list.reduce((s, it) => s + it.bytes, 0);
         rootMetrics.set(rk, (rootMetrics.get(rk) ?? 0) + sum);
       } else if (sub === 'created' || sub === 'added') {
-        const maxTs = list.reduce((m, it) => Math.max(m, itemTimestamp(it)), 0);
+        const maxTs = list.reduce((m, it) => Math.max(m, itemTimestampMs(it)), 0);
         rootMetrics.set(rk, Math.max(rootMetrics.get(rk) ?? 0, maxTs));
       }
     }
@@ -1058,8 +1099,8 @@ function sortExternalBucketEntries(
       const sumB = listB.reduce((s, it) => s + it.bytes, 0);
       if (sumA !== sumB) return (sumA - sumB) * dir;
     } else if (sub === 'created' || sub === 'added') {
-      const maxA = listA.reduce((m, it) => Math.max(m, itemTimestamp(it)), 0);
-      const maxB = listB.reduce((m, it) => Math.max(m, itemTimestamp(it)), 0);
+      const maxA = listA.reduce((m, it) => Math.max(m, itemTimestampMs(it)), 0);
+      const maxB = listB.reduce((m, it) => Math.max(m, itemTimestampMs(it)), 0);
       if (maxA !== maxB) return (maxA - maxB) * dir;
     }
     const nameA = externalFolderInfo(keyA)?.name ?? keyA;
@@ -1227,7 +1268,7 @@ function sortMergedGroups(
           if (sub === 'size') {
             for (const it of loaded) entry.value += it.bytes;
           } else {
-            for (const it of loaded) entry.value = Math.max(entry.value, itemTimestamp(it));
+            for (const it of loaded) entry.value = Math.max(entry.value, itemTimestampMs(it));
           }
         }
       }
@@ -1375,6 +1416,7 @@ function syncExternalFeed(preserveScroll = false): void {
   const built = buildClientBuckets(raw, params);
 
   if (!preserveScroll) {
+    clearScrollTimers();
     keptAnchor = null;
     lastScrollTop = 0;
     scrollTop.value = 0;
@@ -1495,16 +1537,63 @@ function cancelPending(): void {
 // ----- scrolling & Ctrl+wheel zoom -----
 
 let jumpTimer: ReturnType<typeof setTimeout> | null = null;
+let scrollRaf = 0;
+let flushedScrollTop = 0;
+let scrollIdleTimer: ReturnType<typeof setTimeout> | null = null;
+
+function clearScrollTimers(): void {
+  if (scrollIdleTimer !== null) {
+    clearTimeout(scrollIdleTimer);
+    scrollIdleTimer = null;
+  }
+  if (scrollRaf && typeof cancelAnimationFrame === 'function') {
+    cancelAnimationFrame(scrollRaf);
+    scrollRaf = 0;
+  }
+}
+
+function flushScrollFrame(): void {
+  flushedScrollTop = lastScrollTop;
+  scrollTop.value = lastScrollTop;
+  maybeEmitReachEnd();
+}
 
 function onScroll(): void {
   const el = scroller.value;
   if (!el) return;
   if (sizer.value && sizer.value.clientWidth === 0) return;
-  lastScrollTop = el.scrollTop;
-  scrollTop.value = lastScrollTop;
-  onHeadroomScroll(lastScrollTop);
-  if (jumpTimer === null) ensureLoaded();
-  maybeEmitReachEnd();
+  const nextTop = el.scrollTop;
+  const delta = nextTop - lastScrollTop;
+  lastScrollTop = nextTop;
+  onHeadroomScroll(nextTop);
+
+  if (Math.abs(delta) > rowHeight.value * 1.5) {
+    cancelOutOfViewportExternalThumbs();
+    if (scrollIdleTimer !== null) clearTimeout(scrollIdleTimer);
+    scrollIdleTimer = setTimeout(() => {
+      scrollIdleTimer = null;
+      if (jumpTimer === null) ensureLoaded();
+      syncVisibleExternalThumbs();
+    }, SCROLL_IDLE_DEBOUNCE_MS);
+  } else if (scrollIdleTimer === null) {
+    if (jumpTimer === null) ensureLoaded();
+    syncVisibleExternalThumbs();
+  }
+
+  if (typeof requestAnimationFrame !== 'function') {
+    flushScrollFrame();
+    return;
+  }
+
+  if (!scrollRaf) {
+    flushScrollFrame();
+    scrollRaf = requestAnimationFrame(() => {
+      scrollRaf = 0;
+      if (lastScrollTop !== flushedScrollTop) {
+        flushScrollFrame();
+      }
+    });
+  }
 }
 
 function onWheel(e: WheelEvent): void {
@@ -1528,8 +1617,11 @@ function onJump(key: string, frac: number): void {
   }, JUMP_DEBOUNCE_MS);
 }
 
+const EMPTY_ROWS: Row[] = [];
 const visible = computed(() =>
-  visibleRows(layout.value.rows, scrollTop.value, viewportH.value, OVERSCAN),
+  layout.value.rows.length === 0
+    ? EMPTY_ROWS
+    : visibleRows(layout.value.rows, scrollTop.value, viewportH.value, effectiveOverscan.value),
 );
 
 const stuck = computed(() => {
@@ -1598,7 +1690,21 @@ function hoverLabel(key: string, frac: number): string {
 
 // ----- tiles -----
 
+const EMPTY_CAPTION: string[] = [];
+let tileCaptionCache = new WeakMap<FeedItem, string[]>();
+let tileLabelCache = new WeakMap<FeedItem, string>();
+
+function resetTileCaptionCache(): void {
+  tileCaptionCache = new WeakMap<FeedItem, string[]>();
+}
+
 function tileCaption(item: FeedItem): string[] {
+  if (props.captionOnTile.length === 0) return EMPTY_CAPTION;
+  // Touch reactive dependencies so Vue keeps tracking them even on WeakMap hits.
+  void folderNames.size;
+  void albumNames.value;
+  const cached = tileCaptionCache.get(item);
+  if (cached !== undefined) return cached;
   const out: string[] = [];
   for (const key of props.captionOnTile) {
     if (key === 'folder') {
@@ -1617,12 +1723,17 @@ function tileCaption(item: FeedItem): string[] {
       }
     }
   }
+  tileCaptionCache.set(item, out);
   return out;
 }
 
 function tileLabel(item: FeedItem): string {
+  const cached = tileLabelCache.get(item);
+  if (cached !== undefined) return cached;
   const day = groupKeysForItem(item, 'date', 'day')[0];
-  return day ? `${item.name}, ${dateGroupTitle(day, 'day', locale.value)}` : item.name;
+  const label = day ? `${item.name}, ${dateGroupTitle(day, 'day', locale.value)}` : item.name;
+  tileLabelCache.set(item, label);
+  return label;
 }
 
 const retriedThumbs = new Set<string>();
@@ -1669,46 +1780,60 @@ function tileNoReferrer(item: FeedItem): boolean {
   return Boolean((item as ExternalFeedItem).noReferrer);
 }
 
-function setTileImgRef(item: FeedItem, el: HTMLImageElement | null): void {
-  if (el === null) {
-    externalImgEls.delete(item.fileId);
-    return;
-  }
-  const url = (item as ExternalFeedItem).previewSrc;
-  if (isGatedExternalPreviewUrl(url)) {
-    const prev = externalImgEls.get(item.fileId);
-    if (!prev || prev.el !== el || prev.url !== url) {
-      externalImgEls.set(item.fileId, { url, el });
-    }
-  } else {
-    externalImgEls.delete(item.fileId);
-  }
-  if (!loadedTileImgIds.has(item.fileId) && el.complete && el.naturalWidth > 0) {
-    markTileImgLoaded(item.fileId);
-    if (isGatedExternalPreviewUrl(url)) {
-      touchLoadedExternalThumb(url);
-      if (activeExternalThumbs.delete(url)) {
-        pumpExternalThumbQueue();
-      }
-    }
+function cancelExternalThumbsBatch(urls: ReadonlySet<string>): void {
+  if (urls.size === 0) return;
+  for (const url of urls) {
+    activeExternalThumbs.delete(url);
   }
 }
 
-function cancelExternalThumb(url: string): void {
-  activeExternalThumbs.delete(url);
-  for (const entry of externalImgEls.values()) {
-    if (entry.url === url) {
-      entry.el.removeAttribute('src');
-    }
+function onThumbBeforeUnmount(vnode: { el?: unknown }): void {
+  const el = vnode.el as HTMLImageElement | null | undefined;
+  if (!el || typeof el.getAttribute !== 'function') return;
+  const src = el.getAttribute('src');
+  if (src && isGatedExternalPreviewUrl(src) && !loadedExternalThumbs.has(src)) {
+    el.removeAttribute('src');
   }
 }
 
 function cancelAllExternalThumbs(): void {
   externalThumbQueue = [];
-  for (const url of [...activeExternalThumbs]) {
-    cancelExternalThumb(url);
+  if (activeExternalThumbs.size === 0) return;
+  cancelExternalThumbsBatch(new Set(activeExternalThumbs));
+}
+
+function collectViewportExternalUrls(): Set<string> {
+  const rows = visibleRows(layout.value.rows, lastScrollTop, viewportH.value, effectiveOverscan.value);
+  const visibleUrls = new Set<string>();
+  for (const row of rows) {
+    if (row.kind !== 'tiles' || !row.tiles) continue;
+    for (const tl of row.tiles) {
+      const url = rawTileThumbSrc(tl.item);
+      if (isGatedExternalPreviewUrl(url)) {
+        visibleUrls.add(url);
+      }
+    }
   }
-  activeExternalThumbs.clear();
+  return visibleUrls;
+}
+
+function cancelOutOfViewportExternalThumbs(): void {
+  if (activeExternalThumbs.size === 0 && externalThumbQueue.length === 0) return;
+  const visibleUrls = collectViewportExternalUrls();
+  if (activeExternalThumbs.size > 0) {
+    const toCancel = new Set<string>();
+    for (const url of activeExternalThumbs) {
+      if (!visibleUrls.has(url)) {
+        toCancel.add(url);
+      }
+    }
+    if (toCancel.size > 0) {
+      cancelExternalThumbsBatch(toCancel);
+    }
+  }
+  if (externalThumbQueue.length > 0) {
+    externalThumbQueue = externalThumbQueue.filter((url) => visibleUrls.has(url));
+  }
 }
 
 function pumpExternalThumbQueue(): void {
@@ -1721,21 +1846,16 @@ function pumpExternalThumbQueue(): void {
 }
 
 function syncVisibleExternalThumbs(): void {
-  const visibleUrls = new Set<string>();
-  for (const row of visible.value) {
-    if (row.kind !== 'tiles' || !row.tiles) continue;
-    for (const tl of row.tiles) {
-      const url = rawTileThumbSrc(tl.item);
-      if (isGatedExternalPreviewUrl(url)) {
-        visibleUrls.add(url);
-      }
+  const visibleUrls = collectViewportExternalUrls();
+
+  const toCancel = new Set<string>();
+  for (const url of activeExternalThumbs) {
+    if (!visibleUrls.has(url)) {
+      toCancel.add(url);
     }
   }
-
-  for (const url of [...activeExternalThumbs]) {
-    if (!visibleUrls.has(url)) {
-      cancelExternalThumb(url);
-    }
+  if (toCancel.size > 0) {
+    cancelExternalThumbsBatch(toCancel);
   }
 
   const queuedSet = new Set<string>();
@@ -1767,12 +1887,36 @@ function syncVisibleExternalThumbs(): void {
   pumpExternalThumbQueue();
 }
 
+function syncCompletedTileImgs(): void {
+  const sc = scroller.value;
+  if (!sc) return;
+  const imgs = sc.querySelectorAll<HTMLImageElement>('img.pf-img:not(.is-loaded)');
+  if (imgs.length === 0) return;
+  let pumped = false;
+  for (const el of imgs) {
+    if (!el.complete || el.naturalWidth <= 0) continue;
+    const fileId = el.closest('[data-file-id]')?.getAttribute('data-file-id');
+    if (!fileId || loadedTileImgIds.has(fileId)) continue;
+    markTileImgLoaded(fileId);
+    const src = el.getAttribute('src');
+    if (isGatedExternalPreviewUrl(src)) {
+      touchLoadedExternalThumb(src);
+      if (activeExternalThumbs.delete(src)) {
+        pumped = true;
+      }
+    }
+  }
+  if (pumped && scrollIdleTimer === null) {
+    pumpExternalThumbQueue();
+  }
+}
+
 function onThumbLoad(_e: Event, item: FeedItem): void {
   markTileImgLoaded(item.fileId);
   const url = rawTileThumbSrc(item);
   if (isGatedExternalPreviewUrl(url)) {
     touchLoadedExternalThumb(url);
-    if (activeExternalThumbs.delete(url)) {
+    if (activeExternalThumbs.delete(url) && scrollIdleTimer === null) {
       pumpExternalThumbQueue();
     }
   }
@@ -1793,7 +1937,9 @@ function onThumbError(item: FeedItem): void {
     if (isGatedExternalPreviewUrl(rawUrl)) {
       loadedExternalThumbs.delete(rawUrl);
       activeExternalThumbs.delete(rawUrl);
-      pumpExternalThumbQueue();
+      if (scrollIdleTimer === null) {
+        pumpExternalThumbQueue();
+      }
     }
     return;
   }
@@ -2175,10 +2321,22 @@ watch(
   },
 );
 watch(collapsedShares, () => relayout());
-watch(locale, () => relayout());
-watch(visible, () => syncVisibleExternalThumbs(), { immediate: true });
+watch(locale, () => {
+  tileLabelCache = new WeakMap<FeedItem, string>();
+  resetTileCaptionCache();
+  relayout();
+});
+watch(albumNames, () => resetTileCaptionCache());
+watch(visible, () => {
+  if (scrollIdleTimer !== null) {
+    cancelOutOfViewportExternalThumbs();
+    return;
+  }
+  syncVisibleExternalThumbs();
+}, { immediate: true });
 watch(storageFoldersSig, (next, prev) => {
   if (next === prev) return;
+  resetTileCaptionCache();
   if (isExternalMode.value) {
     if (wasExternalReady) syncExternalFeed(true);
     return;
@@ -2190,6 +2348,7 @@ watch(storageFoldersSig, (next, prev) => {
 watch(
   () => JSON.stringify(props.params),
   () => {
+    clearScrollTimers();
     cancelAllExternalThumbs();
     void refresh();
   },
@@ -2198,6 +2357,7 @@ watch(
   () => props.externalFeedKey,
   (next, prev) => {
     if (next === prev || !isExternalMode.value) return;
+    clearScrollTimers();
     cancelAllExternalThumbs();
     wasExternalReady = false;
     externalThumbFailed.clear();
@@ -2223,6 +2383,7 @@ watch(
       }
       return;
     }
+    clearScrollTimers();
     cancelAllExternalThumbs();
     wasExternalReady = false;
     externalThumbFailed.clear();
@@ -2278,7 +2439,13 @@ watch(
   },
   { immediate: true },
 );
-watch(() => props.captionOnTile.join(','), () => ensureLoaded());
+watch(
+  () => props.captionOnTile.join(','),
+  () => {
+    resetTileCaptionCache();
+    ensureLoaded();
+  },
+);
 
 onMounted(() => {
   measure();
@@ -2289,6 +2456,11 @@ onMounted(() => {
   }
   window.addEventListener('resize', measure);
   void refresh();
+  syncCompletedTileImgs();
+});
+
+onUpdated(() => {
+  syncCompletedTileImgs();
 });
 
 function orderedItems(): FeedItem[] {
@@ -2458,8 +2630,8 @@ defineExpose({ orderedItems, refresh, refreshAlbums, patchItem, removeItems, loa
 onBeforeUnmount(() => {
   epoch++;
   stopMarquee?.();
+  clearScrollTimers();
   cancelAllExternalThumbs();
-  externalImgEls.clear();
   if (jumpTimer !== null) clearTimeout(jumpTimer);
   if (roRaf && typeof cancelAnimationFrame === 'function') {
     cancelAnimationFrame(roRaf);
@@ -2590,7 +2762,6 @@ onBeforeUnmount(() => {
               >
                 <img
                   v-if="rawTileThumbSrc(tl.item)"
-                  :ref="(el) => setTileImgRef(tl.item, el as HTMLImageElement | null)"
                   class="pf-img"
                   :class="{ 'is-loaded': loadedTileImgIds.has(tl.item.fileId) }"
                   :src="tileThumbSrc(tl.item) ?? undefined"
@@ -2600,6 +2771,7 @@ onBeforeUnmount(() => {
                   decoding="async"
                   @load="onThumbLoad($event, tl.item)"
                   @error="onThumbError(tl.item)"
+                  @vue:before-unmount="onThumbBeforeUnmount"
                 />
                 <div
                   v-if="!loadedTileImgIds.has(tl.item.fileId)"
@@ -2616,10 +2788,11 @@ onBeforeUnmount(() => {
                   :aria-checked="selected.has(tl.item.fileId)"
                   :aria-label="`${t('photosSelectPhoto')}: ${tl.item.name}`"
                 ></button>
-                <span v-if="tileCaption(tl.item).length" class="pf-cap">
+                <span v-if="row.height >= 104 && tileCaption(tl.item).length" class="pf-cap">
                   <span v-for="(part, i) in tileCaption(tl.item)" :key="i">{{ part }}</span>
                 </span>
                 <button
+                  v-if="row.height >= 104 || tl.item.favorite"
                   type="button"
                   class="pf-fav-btn"
                   :class="{ 'is-fav': tl.item.favorite, 'pf-fav': tl.item.favorite }"
@@ -2627,7 +2800,7 @@ onBeforeUnmount(() => {
                   :aria-label="t('photosFavorite')"
                   @click.stop="emit('toggle-favorite', tl.item)"
                 >
-                  <Heart :size="18" :fill="tl.item.favorite ? 'currentColor' : 'none'" aria-hidden="true" />
+                  <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" :fill="tl.item.favorite ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" /></svg>
                 </button>
                 <span v-if="tl.item.kind === 'video'" class="pf-badge">▶ {{ formatDuration(tl.item.durationSec) }}</span>
               </div>
@@ -2732,6 +2905,7 @@ onBeforeUnmount(() => {
   position: absolute;
   left: 0;
   right: 0;
+  contain: layout style;
 }
 .pf-h1 {
   display: flex;
@@ -2882,6 +3056,7 @@ onBeforeUnmount(() => {
   border-radius: 2px;
   overflow: hidden;
   background: var(--ui-surface-subtle);
+  contain: strict;
   cursor: pointer;
   user-select: none;
   transition: box-shadow 0.12s ease, opacity 0.14s ease, transform 0.14s ease;
@@ -2913,14 +3088,7 @@ onBeforeUnmount(() => {
   z-index: 0;
   width: 100%;
   height: 100%;
-  background: linear-gradient(
-    110deg,
-    var(--ui-surface-subtle, rgba(255, 255, 255, 0.04)) 25%,
-    color-mix(in srgb, var(--ui-surface-subtle, rgba(255, 255, 255, 0.04)) 72%, rgba(255, 255, 255, 0.12)) 50%,
-    var(--ui-surface-subtle, rgba(255, 255, 255, 0.04)) 75%
-  );
-  background-size: 200% 100%;
-  animation: pf-shimmer 1.6s ease-in-out infinite;
+  background: var(--ui-surface-subtle, rgba(255, 255, 255, 0.05));
 }
 @keyframes pf-shimmer {
   0% { background-position: 200% 0; }
@@ -2953,7 +3121,6 @@ onBeforeUnmount(() => {
   .pf-img {
     transition: none;
   }
-  .pf-nothumb,
   .pf-feed-skeleton-tile {
     animation: none;
   }

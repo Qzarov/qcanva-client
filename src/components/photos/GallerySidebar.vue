@@ -47,6 +47,7 @@ import {
   type YandexItem,
 } from '../../api/yandexDisk';
 import { confirmDialog, promptDialog } from '../../composables/appDialog';
+import { hasDataTransferFiles } from '../../composables/useDriveDropzone';
 import { useExplorerGroupDnd } from '../../composables/useExplorerGroupDnd';
 import { useExplorerLayoutPrefs } from '../../composables/useExplorerLayoutPrefs';
 import { useI18n } from '../../composables/useI18n';
@@ -119,6 +120,8 @@ const emit = defineEmits<{
   (e: 'drop-favorites', fileIds: string[]): void;
   (e: 'drop-album', albumId: string, fileIds: string[], folderIds: string[]): void;
   (e: 'drop-folder', folderId: string | null, fileIds: string[], folderIds: string[], yandexPaths?: string[]): void;
+  (e: 'drop-yandex', targetPath: string, fileIds: string[], folderIds: string[]): void;
+  (e: 'drop-external-files-yandex', targetPath: string, files: File[]): void;
   (e: 'folder-contextmenu', payload: { event: MouseEvent; folderId: string }): void;
   (e: 'yandex-contextmenu', payload: { event: MouseEvent; path: string; name: string }): void;
   (e: 'album-sources-changed', albumId: string): void;
@@ -994,15 +997,55 @@ function canDropOnAlbum(albumId: string, e?: DragEvent): boolean {
   return payload.items.some((it) => Boolean(it.id || it.path));
 }
 
+function isYandexDescendantOrSelf(targetPath: string, draggedPath: string): boolean {
+  const target = normalizeYandexPath(targetPath);
+  const dragged = normalizeYandexPath(draggedPath);
+  if (dragged === '/') return true;
+  if (target === dragged) return true;
+  return target.startsWith(`${dragged}/`);
+}
+
+function isYandexDragEntry(it: { kind?: string; id?: string; key?: string }): boolean {
+  return (
+    it.kind === 'yandex-folder'
+    || it.kind === 'yandex-dir'
+    || it.kind === 'yandex-root'
+    || it.kind === 'yandex-file'
+    || Boolean(it.id?.startsWith('yandex:'))
+    || Boolean(it.key?.startsWith('yandex-folder:'))
+    || Boolean(it.key?.startsWith('yandex-file:'))
+    || Boolean(it.key?.startsWith('yandex:'))
+  );
+}
+
 function canDropOnYandex(targetPath: string, e?: DragEvent): boolean {
+  if (!yandexStatus.value?.connected) return false;
+  const normTarget = normalizeYandexPath(targetPath);
   const payload = dnd.activeDrag.value ?? (e ? dnd.readGroupDragFromEvent(e) : null);
-  if (!payload || payload.items.length === 0) return false;
+  if (!payload) {
+    return Boolean(e && hasDataTransferFiles(e));
+  }
+  if (payload.items.length === 0) return false;
   return payload.items.some((it) => {
-    if (it.kind === 'yandex-file' || it.id?.startsWith('yandex:') || it.key?.startsWith('yandex-file:')) {
-      const srcPath = it.path || (it.id?.startsWith('yandex:') ? it.id.slice('yandex:'.length) : it.id);
-      return Boolean(srcPath && yandexParentPath(srcPath) !== targetPath);
+    if (
+      it.kind === 'yandex-folder'
+      || it.kind === 'yandex-dir'
+      || it.kind === 'yandex-root'
+      || it.key?.startsWith('yandex-folder:')
+    ) {
+      const srcPath = it.path || it.id;
+      if (!srcPath) return false;
+      const normSrc = normalizeYandexPath(srcPath);
+      if (normSrc === '/') return false;
+      return normalizeYandexPath(yandexParentPath(normSrc)) !== normTarget && !isYandexDescendantOrSelf(normTarget, normSrc);
     }
-    return false;
+    if (it.kind === 'yandex-file' || it.id?.startsWith('yandex:') || it.key?.startsWith('yandex-file:') || it.key?.startsWith('yandex:')) {
+      const srcPath = it.path || (it.id?.startsWith('yandex:') ? it.id.slice('yandex:'.length) : it.id);
+      if (!srcPath) return false;
+      const normSrc = normalizeYandexPath(srcPath);
+      return normalizeYandexPath(yandexParentPath(normSrc)) !== normTarget;
+    }
+    return Boolean(!isYandexDragEntry(it) && it.id);
   });
 }
 
@@ -1159,7 +1202,10 @@ function onYandexDragOver(e: DragEvent, targetPath: string): void {
     return;
   }
   e.preventDefault();
-  if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+  e.stopPropagation();
+  const payload = dnd.activeDrag.value ?? dnd.readGroupDragFromEvent(e);
+  const isInternalYandexMove = Boolean(payload?.items.some((it) => isYandexDragEntry(it)));
+  if (e.dataTransfer) e.dataTransfer.dropEffect = isInternalYandexMove ? 'move' : 'copy';
   dnd.setGroupDropTarget({ kind: 'yandex', id: targetPath });
   if (yandexNodeHasChildren(targetPath) && !isYandexPathExpanded(targetPath)) {
     dnd.scheduleSpringExpand(`yandex:${targetPath}`, () => {
@@ -1175,36 +1221,78 @@ function onYandexDragLeave(e: DragEvent, targetPath: string): void {
 }
 
 async function onYandexDrop(e: DragEvent, targetPath: string): Promise<void> {
-  const { yandexFilePaths } = extractDroppedItems(e);
+  if (!yandexStatus.value?.connected) return;
+  if (!canDropOnYandex(targetPath, e)) {
+    dnd.endGroupDrag();
+    return;
+  }
+  e.stopPropagation();
+  const normTarget = normalizeYandexPath(targetPath);
+  const hasInternalPayload = Boolean(dnd.activeDrag.value ?? dnd.readGroupDragFromEvent(e));
+  const externalFiles = !hasInternalPayload ? Array.from(e.dataTransfer?.files ?? []) : [];
+  if (externalFiles.length > 0) {
+    dnd.endGroupDrag();
+    emit('drop-external-files-yandex', normTarget, externalFiles);
+    return;
+  }
+
+  const { fileIds, folderIds, yandexFolderPaths, yandexFilePaths } = extractDroppedItems(e);
   dnd.endGroupDrag();
-  const valid = yandexFilePaths.filter((p) => yandexParentPath(p) !== targetPath);
-  if (valid.length === 0) return;
-  const affectedParents = new Set<string>([targetPath]);
+
+  if (fileIds.length > 0 || folderIds.length > 0) {
+    emit('drop-yandex', normTarget, fileIds, folderIds);
+  }
+
+  const validFiles = yandexFilePaths
+    .map((p) => normalizeYandexPath(p))
+    .filter((p) => normalizeYandexPath(yandexParentPath(p)) !== normTarget);
+  const validFolders = yandexFolderPaths
+    .map((p) => normalizeYandexPath(p))
+    .filter((p) => p !== '/' && normalizeYandexPath(yandexParentPath(p)) !== normTarget && !isYandexDescendantOrSelf(normTarget, p));
+  const validYandexPaths = [...new Set([...validFiles, ...validFolders])];
+  if (validYandexPaths.length === 0) return;
+
+  const affectedParents = new Set<string>([normTarget]);
+  const movedFolders: string[] = [];
   let moved = 0;
-  for (const fromPath of valid) {
-    const fileName = fromPath.split('/').filter(Boolean).pop();
-    if (!fileName) continue;
-    const toPath = joinYandexPath(targetPath, fileName);
-    affectedParents.add(yandexParentPath(fromPath));
+  for (const fromPath of validYandexPaths) {
+    const itemName = fromPath.split('/').filter(Boolean).pop();
+    if (!itemName) continue;
+    const toPath = joinYandexPath(normTarget, itemName);
+    affectedParents.add(normalizeYandexPath(yandexParentPath(fromPath)));
     try {
       const outcome = await yandexDisk.move(fromPath, toPath);
       if (outcome && outcome.status === 'pending') {
         await settleYandexOutcome(outcome);
       }
       moved++;
+      if (validFolders.includes(fromPath)) movedFolders.push(fromPath);
     } catch (err) {
       noteYandexError(err);
     }
   }
+  for (const movedDir of movedFolders) {
+    const dirPrefix = `${movedDir}/`;
+    for (const key of Object.keys(yandexNodes)) {
+      if (key === movedDir || key.startsWith(dirPrefix)) {
+        delete yandexNodes[key];
+      }
+    }
+    const nextExpanded = new Set<string>();
+    for (const exp of yandexExpandedPaths.value) {
+      if (exp !== movedDir && !exp.startsWith(dirPrefix)) nextExpanded.add(exp);
+    }
+    yandexExpandedPaths.value = nextExpanded;
+  }
   for (const p of affectedParents) {
-    if (yandexNodes[p]) {
+    if (yandexNodes[p] || p === normTarget) {
       void readYandexNode(p);
     }
   }
   if (moved > 0) {
     invalidateYandexMediaLibrary();
-    void invalidateYandexFolderCache([...affectedParents]);
-    const folderLabel = targetPath === '/' ? t('yandexDisk') : (targetPath.split('/').filter(Boolean).pop() ?? targetPath);
+    void invalidateYandexFolderCache([...affectedParents, ...movedFolders]);
+    const folderLabel = normTarget === '/' ? t('yandexDisk') : (normTarget.split('/').filter(Boolean).pop() ?? normTarget);
     toast.show(
       t('bulkMovedTo').replace('{folder}', folderLabel).replace('{n}', String(moved)),
       'success',

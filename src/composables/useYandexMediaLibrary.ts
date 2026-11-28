@@ -150,8 +150,9 @@ function startRootFetch(
   let promise: Promise<YandexMediaLibraryItem[]> | null = null;
   promise = (async (): Promise<YandexMediaLibraryItem[]> => {
     try {
-      const fetchOpts: { limit: number; signal: AbortSignal; refresh?: '1' } = {
+      const fetchOpts: { limit: number; previewSize: 'M'; signal: AbortSignal; refresh?: '1' } = {
         limit: YANDEX_MEDIA_PAGE_LIMIT,
+        previewSize: 'M',
         signal: controller.signal,
       };
       if (opts.force) {
@@ -255,6 +256,7 @@ async function loadMore(): Promise<void> {
     try {
       const page = await yandexDisk.listMediaPage('/', {
         limit: YANDEX_MEDIA_PAGE_LIMIT,
+        previewSize: 'M',
         cursor,
         signal: controller.signal,
       });

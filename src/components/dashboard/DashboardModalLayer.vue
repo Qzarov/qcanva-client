@@ -70,6 +70,14 @@
       </button>
     </div>
     <div class="dashboard-modal-actions dashboard-modal-actions-row" data-folder-modal-actions>
+      <UiButton
+        v-if="canBulkMoveToYandex"
+        class="btn-ghost"
+        variant="ghost"
+        data-bulk-move-to-yandex
+        :disabled="isBusy"
+        @click="switchBulkMoveToYandex"
+      >{{ t('yandexExportToYandexShort') }}</UiButton>
       <UiButton class="btn-ghost" variant="ghost" @click="closeFolderModal" :disabled="isBusy">{{ t('cancel') }}</UiButton>
       <UiButton class="btn-primary" variant="primary" @click="saveFolderModal" :disabled="isBusy || !canSaveFolderModal">
         {{ actionLabel(folderModalMoves ? 'move-folder' : 'create-folder', folderModalMoves ? t('move') : t('create')) }}
@@ -327,6 +335,8 @@ const subfolderModalInput = ref<HTMLInputElement | null>(null);
 const folderOptions = read('folderOptions');
 const canSaveFolderModal = read('canSaveFolderModal');
 const saveFolderModal = read('saveFolderModal');
+const canBulkMoveToYandex = read('canBulkMoveToYandex');
+const switchBulkMoveToYandex = read('switchBulkMoveToYandex');
 const subfolderModal = read('subfolderModal');
 const closeSubfolderModal = read('closeSubfolderModal');
 const saveSubfolderModal = read('saveSubfolderModal');

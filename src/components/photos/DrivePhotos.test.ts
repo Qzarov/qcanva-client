@@ -33,6 +33,7 @@ const yandexStatusMock = vi.hoisted(() => vi.fn());
 const yandexListMediaMock = vi.hoisted(() => vi.fn());
 const yandexDownloadLinkMock = vi.hoisted(() => vi.fn());
 const yandexRemoveMock = vi.hoisted(() => vi.fn());
+const yandexImportToQspaceMock = vi.hoisted(() => vi.fn());
 const downloadYandexLinkMock = vi.hoisted(() => vi.fn());
 const confirmDialogMock = vi.hoisted(() => vi.fn());
 
@@ -100,6 +101,7 @@ vi.mock('../../api/yandexDisk', async (importOriginal) => {
       listMedia: yandexListMediaMock,
       downloadLink: yandexDownloadLinkMock,
       remove: yandexRemoveMock,
+      importToQspace: yandexImportToQspaceMock,
     },
   };
 });
@@ -232,9 +234,39 @@ const PanelStub = defineComponent({
 
 const PickerStub = defineComponent({
   name: 'FolderPickerDialog',
-  props: ['title', 'confirmLabel', 'excludeIds', 'excludeRoot'],
-  emits: ['select', 'close'],
-  setup: (p) => () => h('div', { 'data-testid': 'picker-stub', 'data-excl': JSON.stringify(p.excludeIds), 'data-root': String(p.excludeRoot) }, p.title as string),
+  props: ['title', 'confirmLabel', 'excludeIds', 'excludeRoot', 'showYandexExport'],
+  emits: ['select', 'select-yandex', 'close'],
+  setup: (p, { emit }) => () =>
+    h(
+      'div',
+      {
+        'data-testid': 'picker-stub',
+        'data-excl': JSON.stringify(p.excludeIds),
+        'data-root': String(p.excludeRoot),
+        'data-show-yandex': String(Boolean(p.showYandexExport)),
+      },
+      [
+        p.title as string,
+        p.showYandexExport
+          ? h(
+              'button',
+              {
+                'data-testid': 'folder-picker-yandex-btn',
+                onClick: () => emit('select-yandex'),
+              },
+              'На Яндекс Диск…',
+            )
+          : null,
+        h(
+          'button',
+          {
+            'data-stub-pick-folder': '',
+            onClick: () => emit('select', { id: 'fold-target', name: 'Отпуск' }),
+          },
+          'pick',
+        ),
+      ],
+    ),
 });
 
 const ViewBarStub = defineComponent({
@@ -330,6 +362,7 @@ describe('DrivePhotos', () => {
     yandexListMediaMock.mockReset().mockResolvedValue([]);
     yandexDownloadLinkMock.mockReset().mockResolvedValue({ href: 'https://downloader.disk.yandex.ru/file' });
     yandexRemoveMock.mockReset().mockResolvedValue({ status: 'done' });
+    yandexImportToQspaceMock.mockReset().mockResolvedValue({ importedFiles: 1, importedFolders: 0 });
     downloadYandexLinkMock.mockReset();
     confirmDialogMock.mockReset().mockResolvedValue(true);
   });
@@ -1543,5 +1576,152 @@ describe('DrivePhotos', () => {
 
     listPageSpy.mockRestore();
     resetYandexMediaCacheForTests();
+  });
+
+  it('B-052: renders gallery-upload-btn (hidden in trash/read-only folder), opens file input, emits upload-files and resets input', async () => {
+    const w = mountIt({
+      activeSection: 'library',
+      folders: [
+        { id: 'f-own', name: 'Личное', parentId: null, role: 'owner' },
+        { id: 'f-ro', name: 'Чужое', parentId: null, role: 'read', shared: true },
+      ],
+    });
+    await flushPromises();
+
+    const btn = w.get('[data-testid="gallery-upload-btn"]');
+    const input = w.get<HTMLInputElement>('[data-testid="gallery-upload-input"]');
+    const clickSpy = vi.spyOn(input.element, 'click').mockImplementation(() => {});
+    await btn.trigger('click');
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+    clickSpy.mockRestore();
+
+    const file = new File(['abc'], 'photo.jpg', { type: 'image/jpeg' });
+    Object.defineProperty(input.element, 'files', { value: [file], configurable: true });
+    await input.trigger('change');
+    expect(w.emitted('upload-files')?.[0]).toEqual([[file]]);
+
+    // Hidden in trash and in read-only shared folder
+    await w.setProps({ activeSection: 'trash' });
+    expect(w.find('[data-testid="gallery-upload-btn"]').exists()).toBe(false);
+    await w.setProps({ activeSection: 'library', externalFolderId: 'f-ro' });
+    expect(w.find('[data-testid="gallery-upload-btn"]').exists()).toBe(false);
+    await w.setProps({ externalFolderId: 'f-own' });
+    expect(w.find('[data-testid="gallery-upload-btn"]').exists()).toBe(true);
+
+    // Hidden in read-only shared album (role: 'viewer'), visible in editable album (role: 'editor')
+    spacesListMock.mockResolvedValueOnce({
+      spaces: [
+        { id: 'alb-ro', name: 'Read Only', role: 'viewer', ownerId: 'u2', memberCount: 1, sourceCount: 0, updatedAt: '' },
+        { id: 'alb-ed', name: 'Editable', role: 'editor', ownerId: 'u2', memberCount: 1, sourceCount: 0, updatedAt: '' },
+      ],
+    });
+    spacesGetMock.mockResolvedValueOnce({
+      id: 'alb-ro',
+      name: 'Read Only',
+      role: 'viewer',
+      owner: { id: 'u2', name: 'U2', email: 'u2@test' },
+      members: [],
+      sources: [],
+      createdAt: '',
+      updatedAt: '',
+    });
+    spacesFeedMock.mockResolvedValueOnce({ items: [], offset: 0, limit: 200, nextOffset: null });
+    await w.setProps({ externalFolderId: null, externalAlbumId: 'alb-ro' });
+    await flushPromises();
+    expect(w.find('[data-testid="gallery-upload-btn"]').exists()).toBe(false);
+
+    spacesGetMock.mockResolvedValueOnce({
+      id: 'alb-ed',
+      name: 'Editable',
+      role: 'editor',
+      owner: { id: 'u2', name: 'U2', email: 'u2@test' },
+      members: [],
+      sources: [],
+      createdAt: '',
+      updatedAt: '',
+    });
+    spacesFeedMock.mockResolvedValueOnce({ items: [], offset: 0, limit: 200, nextOffset: null });
+    await w.setProps({ externalAlbumId: 'alb-ed' });
+    await flushPromises();
+    expect(w.find('[data-testid="gallery-upload-btn"]').exists()).toBe(true);
+  });
+
+  it('B-053 & B-054: Q Space context menu & FolderPickerDialog emit export-to-yandex when connected; Yandex context menu offers ctx-import-qspace and ctx-move-yandex', async () => {
+    const wDisconnected = mountIt({ yandexConnected: false });
+    await flushPromises();
+    await wDisconnected.get('[data-file-id="f0"]').trigger('contextmenu');
+    expect(wDisconnected.find('[data-testid="ctx-export-yandex"]').exists()).toBe(false);
+    await wDisconnected.get('[data-ctx-move]').trigger('click');
+    expect(wDisconnected.get('[data-testid="picker-stub"]').attributes('data-show-yandex')).toBe('false');
+    wDisconnected.unmount();
+
+    const w = mountIt({ yandexConnected: true });
+    await flushPromises();
+
+    // Q Space tile context menu -> Скопировать на Яндекс Диск… emits export-to-yandex(['f0'])
+    await w.get('[data-file-id="f0"]').trigger('contextmenu');
+    const exportBtn = w.get('[data-testid="ctx-export-yandex"]');
+    expect(exportBtn.text()).toContain('Скопировать на Яндекс Диск…');
+    await exportBtn.trigger('click');
+    expect(w.emitted('export-to-yandex')?.[0]).toEqual([['f0']]);
+
+    // Q Space tile -> Переместить… -> FolderPickerDialog "На Яндекс Диск…" closes picker and emits export-to-yandex(['f0'])
+    await w.get('[data-file-id="f0"]').trigger('contextmenu');
+    await w.get('[data-ctx-move]').trigger('click');
+    const picker = w.get('[data-testid="picker-stub"]');
+    expect(picker.attributes('data-show-yandex')).toBe('true');
+    await w.get('[data-testid="folder-picker-yandex-btn"]').trigger('click');
+    expect(w.find('[data-testid="picker-stub"]').exists()).toBe(false);
+    expect(w.emitted('export-to-yandex')?.[1]).toEqual([['f0']]);
+    w.unmount();
+
+    // Yandex tile context menu -> ctx-import-qspace & ctx-move-yandex
+    yandexListMediaMock.mockResolvedValueOnce([
+      {
+        path: '/Фотокамера/p1.jpg',
+        name: 'p1.jpg',
+        type: 'file',
+        size: 1024,
+        mime: 'image/jpeg',
+        mediaType: 'image',
+        md5: 'y1',
+        createdAt: '2026-10-18T10:00:00Z',
+        modifiedAt: '2026-10-18T10:00:00Z',
+        publicUrl: null,
+        previewUrl: '/api/yandex-disk/preview?path=/Фотокамера/p1.jpg&size=L',
+      },
+    ]);
+    useYandexDisk().status.value = {
+      enabled: true,
+      connected: true,
+      reconnectRequired: false,
+      login: 'vlad',
+      displayName: 'Vlad',
+      email: null,
+      avatarUrl: null,
+    };
+    const wy = mountIt({ externalYandexPath: '/Фотокамера' });
+    await flushPromises();
+
+    await wy.get('[data-file-id="yandex:/Фотокамера/p1.jpg"]').trigger('contextmenu');
+    const importBtn = wy.get('[data-testid="ctx-import-qspace"]');
+    const moveYandexBtn = wy.get('[data-testid="ctx-move-yandex"]');
+    expect(importBtn.text()).toContain('Перенести в Q Space…');
+    expect(moveYandexBtn.text()).toContain('Переместить на Яндекс Диске…');
+
+    // Move on Yandex Disk -> emits move-yandex-items
+    await moveYandexBtn.trigger('click');
+    expect(wy.emitted('move-yandex-items')?.[0]).toEqual([['/Фотокамера/p1.jpg']]);
+
+    // Transfer to Q Space -> opens FolderPickerDialog (no Yandex button) and calls yandexDisk.importToQspace
+    await wy.get('[data-file-id="yandex:/Фотокамера/p1.jpg"]').trigger('contextmenu');
+    await wy.get('[data-testid="ctx-import-qspace"]').trigger('click');
+    const yPicker = wy.get('[data-testid="picker-stub"]');
+    expect(yPicker.attributes('data-show-yandex')).toBe('false');
+    expect(yPicker.attributes('data-excl')).toBe('[]');
+    expect(yPicker.attributes('data-root')).toBe('false');
+    await wy.get('[data-stub-pick-folder]').trigger('click');
+    await flushPromises();
+    expect(yandexImportToQspaceMock).toHaveBeenCalledWith(['/Фотокамера/p1.jpg'], 'fold-target');
   });
 });

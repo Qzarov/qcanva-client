@@ -160,6 +160,27 @@
           <span aria-hidden="true">✕</span>
         </button>
 
+        <button
+          v-if="activeSection !== 'trash' && !isReadOnlyFolder && !isReadOnlyAlbum"
+          type="button"
+          class="dp-icon-pill"
+          data-testid="gallery-upload-btn"
+          :title="t('driveUploadFiles')"
+          :aria-label="t('driveUploadFiles')"
+          @click="onGalleryUploadClick"
+        >
+          <Upload :size="15" aria-hidden="true" />
+        </button>
+        <input
+          ref="galleryUploadInputEl"
+          type="file"
+          accept="image/*,video/*"
+          multiple
+          style="display:none"
+          data-testid="gallery-upload-input"
+          @change="onGalleryUploadInputChange"
+        />
+
         <ExplorerInlineSearch
           ref="inlineSearchRef"
           v-model="query"
@@ -402,11 +423,33 @@
             <span>{{ t('photosShowFolder') }}</span>
           </button>
 
-          <button type="button" role="menuitem" class="dp-ctx-item" data-ctx-move @click="ctxOpenMove">
+          <button
+            type="button"
+            role="menuitem"
+            class="dp-ctx-item"
+            data-ctx-import-qspace
+            data-testid="ctx-import-qspace"
+            @click="ctxImportToQspace"
+          >
             <FolderInput :size="14" aria-hidden="true" />
             <span>
-              {{ t('photosMoveAction') }}
-              <template v-if="ctxTargetIds.length > 1">({{ ctxTargetIds.length }})</template>…
+              {{ t('yandexImportToQspaceAction') }}
+              <template v-if="ctxTargetIds.length > 1">({{ ctxTargetIds.length }})</template>
+            </span>
+          </button>
+
+          <button
+            type="button"
+            role="menuitem"
+            class="dp-ctx-item"
+            data-ctx-move
+            data-testid="ctx-move-yandex"
+            @click="ctxOpenMove"
+          >
+            <FolderInput :size="14" aria-hidden="true" />
+            <span>
+              {{ t('yandexMoveOnYandexAction') }}
+              <template v-if="ctxTargetIds.length > 1">({{ ctxTargetIds.length }})</template>
             </span>
           </button>
 
@@ -503,6 +546,22 @@
             <span>
               {{ t('photosMoveAction') }}
               <template v-if="ctxTargetIds.length > 1">({{ ctxTargetIds.length }})</template>…
+            </span>
+          </button>
+
+          <button
+            v-if="isYandexAvailable"
+            type="button"
+            role="menuitem"
+            class="dp-ctx-item"
+            data-ctx-export-yandex
+            data-testid="ctx-export-yandex"
+            @click="ctxExportToYandex"
+          >
+            <CloudUpload :size="14" aria-hidden="true" />
+            <span>
+              {{ t('yandexExportToYandexAction') }}
+              <template v-if="ctxTargetIds.length > 1">({{ ctxTargetIds.length }})</template>
             </span>
           </button>
 
@@ -607,11 +666,13 @@
 
     <FolderPickerDialog
       v-if="moveOpen"
-      :title="fmt('photosMoveTitle', { n: moveTargetIds.length })"
+      :title="isYandexMovePicker ? t('yandexImportToQspaceAction') : fmt('photosMoveTitle', { n: moveTargetIds.length })"
       :confirm-label="t('photosMoveAction')"
-      :exclude-ids="moveExcl.ids"
-      :exclude-root="moveExcl.root"
+      :exclude-ids="isYandexMovePicker ? [] : moveExcl.ids"
+      :exclude-root="isYandexMovePicker ? false : moveExcl.root"
+      :show-yandex-export="!isYandexMovePicker && isYandexAvailable"
       @select="onMovePickedFolder($event)"
+      @select-yandex="onMoveSelectYandex"
       @close="actions.closeMove()"
     />
 
@@ -660,6 +721,7 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  CloudUpload,
   Download,
   Eye,
   FolderInput,
@@ -673,6 +735,7 @@ import {
   RectangleHorizontal,
   Share2,
   Trash2,
+  Upload,
   Users,
   X,
 } from '@lucide/vue';
@@ -707,6 +770,7 @@ import {
 import { useI18n, type MessageKey } from '../../composables/useI18n';
 import { useSpaces } from '../../composables/useSpaces';
 import { useToast } from '../../composables/useToast';
+import { useYandexDisk } from '../../composables/useYandexDisk';
 import {
   getCachedYandexFolder,
   getYandexCacheMemory,
@@ -751,6 +815,7 @@ const props = withDefaults(defineProps<{
   externalAlbumMembersCount?: number | null;
   externalFolderId?: string | null;
   externalYandexPath?: string | null;
+  yandexConnected?: boolean;
   folders?: readonly GalleryStorageFolder[];
   hideInternalTabs?: boolean;
   showSidebarExpand?: boolean;
@@ -761,6 +826,7 @@ const props = withDefaults(defineProps<{
   externalAlbumMembersCount: null,
   externalFolderId: null,
   externalYandexPath: null,
+  yandexConnected: false,
   folders: undefined,
   hideInternalTabs: false,
   showSidebarExpand: false,
@@ -790,6 +856,8 @@ const emit = defineEmits<{
   (e: 'drop-album', albumId: string, fileIds: string[], folderIds: string[]): void;
   (e: 'folder-contextmenu', payload: { event: MouseEvent; folderId: string }): void;
   (e: 'move-yandex-items', paths: string[]): void;
+  (e: 'export-to-yandex', ids: string[]): void;
+  (e: 'upload-files', files: File[]): void;
 }>();
 
 const { t, locale } = useI18n();
@@ -802,8 +870,31 @@ const toast = useToast();
 const view = usePhotosView();
 const prefs = useExplorerLayoutPrefs();
 const { spaces, load: loadSpaces } = useSpaces();
+const { status: yandexStatus } = useYandexDisk();
 const yandexLib = useYandexMediaLibrary();
 const mockMode = isPhotosMock();
+const isYandexAvailable = computed(() => props.yandexConnected || Boolean(yandexStatus.value?.connected));
+const isReadOnlyFolder = computed(() =>
+  Boolean(props.externalFolderId && allStorageFolders.value.find((f) => f.id === props.externalFolderId)?.role === 'read'),
+);
+const albumRole = ref<string | null>(null);
+const isReadOnlyAlbum = computed(() => {
+  const id = effectiveAlbumId.value;
+  if (!id) return false;
+  const role = (spaces.value.find((s) => s.id === id)?.role ?? albumRole.value) as string | null | undefined;
+  return role === 'viewer' || role === 'read';
+});
+
+const galleryUploadInputEl = ref<HTMLInputElement | null>(null);
+function onGalleryUploadClick(): void {
+  galleryUploadInputEl.value?.click();
+}
+function onGalleryUploadInputChange(e: Event): void {
+  const input = e.target as HTMLInputElement | null;
+  const files = Array.from(input?.files ?? []);
+  if (input) input.value = '';
+  if (files.length > 0) emit('upload-files', files);
+}
 
 const fmt = (key: MessageKey, vars: Record<string, string | number>): string =>
   t(key).replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m));
@@ -1732,6 +1823,7 @@ watch(
       focusedItemCache.value = null;
     }
     albumName.value = '';
+    albumRole.value = null;
     albumSourceFolderIds.value = new Set();
     albumYandexRawItems.value = [];
     albumYandexSpaceFeedItems.value = null;
@@ -1827,10 +1919,12 @@ async function loadAlbumName(id: string): Promise<void> {
       if (seq !== albumLoadSeq || effectiveAlbumId.value !== id) return;
       let resolvedName = found?.name ?? '';
       if (resolvedName) albumName.value = resolvedName;
+      albumRole.value = found?.role ?? null;
 
       if (typeof spacesApi?.get === 'function') {
         const details = await spacesApi.get(id);
         if (seq !== albumLoadSeq || effectiveAlbumId.value !== id) return;
+        if (details?.role) albumRole.value = details.role;
         if (!resolvedName && details?.name) resolvedName = details.name;
         const sources = details?.sources ?? [];
         albumSourceFolderIds.value = new Set(
@@ -2019,6 +2113,7 @@ const moveTargetIds = computed(() =>
   ?? ctxActionTargets.value
   ?? (selected.value.size >= 2 ? [...selected.value] : activeTargetIds.value),
 );
+const isYandexMovePicker = computed(() => moveTargetIds.value.some(isYandexFileId));
 
 const actions = usePhotoSelectionActions({
   selected: () => moveTargetIds.value,
@@ -2702,6 +2797,28 @@ function ctxShowFolder(): void {
   });
 }
 
+function ctxImportToQspace(): void {
+  const ids = [...ctxTargetIds.value];
+  closeCtxMenu();
+  if (ids.length === 0) return;
+  ctxActionTargets.value = ids;
+  actions.openMove();
+}
+
+function ctxExportToYandex(): void {
+  const ids = ctxTargetIds.value.filter((id) => !isYandexFileId(id));
+  closeCtxMenu();
+  if (ids.length === 0) return;
+  emit('export-to-yandex', ids);
+}
+
+function onMoveSelectYandex(): void {
+  const ids = moveTargetIds.value.filter((id) => !isYandexFileId(id));
+  actions.closeMove();
+  if (ids.length === 0) return;
+  emit('export-to-yandex', ids);
+}
+
 function ctxOpenMove(): void {
   const ids = [...ctxTargetIds.value];
   closeCtxMenu();
@@ -2738,7 +2855,7 @@ async function onMovePickedFolder(folder: PickedFolder): Promise<void> {
     void feedRef.value?.refresh();
     void refreshSidebarCounts();
     toast.show(
-      fmt('photosMovedToast', { n: total || yandexPaths.length, folder: folder.name }),
+      fmt('yandexImportedToFolder', { n: total || yandexPaths.length, folder: folder.name }),
       'success',
     );
   } catch {
@@ -4081,7 +4198,8 @@ onBeforeUnmount(() => {
     padding: 0 7px;
     font-size: 11px;
   }
-  .dp-icon-pill[data-testid='aspect-toggle'] {
+  .dp-icon-pill[data-testid='aspect-toggle'],
+  .dp-icon-pill[data-testid='gallery-upload-btn'] {
     height: 26px;
     padding: 0 7px;
   }

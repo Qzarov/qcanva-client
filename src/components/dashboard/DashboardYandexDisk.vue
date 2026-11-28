@@ -31,6 +31,17 @@
       </div>
       <template v-if="connected">
         <DashboardViewToggle v-if="!hideViewToggle" class="folder-view-toggle" :mode="viewMode" @update:mode="emit('update:viewMode', $event)" />
+        <button
+          type="button"
+          class="btn-primary btn-sm yandex-upload-btn"
+          data-yandex-upload-btn
+          :title="t('driveUploadFiles')"
+          :aria-label="t('driveUpload')"
+          @click.stop="pickFiles"
+        >
+          <Upload :size="15" aria-hidden="true" />
+          <span>{{ t('driveUpload') }}</span>
+        </button>
         <div class="folder-manager-menu folder-create-menu">
           <button
             class="folder-manager-trigger folder-create-trigger"
@@ -223,6 +234,7 @@
       :albums="editableAlbums"
       :can-favorite="ctxCanFavorite"
       :is-favorite="ctxAllFavorite"
+      :can-import-to-qspace="true"
       :can-move="true"
       :can-rename="ctxMenu.items.length === 1"
       :can-download="ctxCanDownload"
@@ -233,6 +245,7 @@
       @share="onCtxShare"
       @add-to-album="onCtxAddToAlbum"
       @toggle-favorite="onCtxToggleFavorite"
+      @import-to-qspace="onCtxImportToQspace"
       @move="onCtxMove"
       @rename="onCtxRename"
       @download="onCtxDownload"
@@ -243,7 +256,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { ArrowLeft, Cloud, File as FileIcon, Image as ImageIcon, Play, Plus, Video } from '@lucide/vue';
+import { ArrowLeft, Cloud, File as FileIcon, Image as ImageIcon, Play, Plus, Upload, Video } from '@lucide/vue';
 import {
   downloadYandexLink,
   isYandexMediaItem,
@@ -303,6 +316,7 @@ const emit = defineEmits<{
   'open-image': [file: YandexItem];
   /** A Markdown file was clicked: the dashboard opens it as a document. */
   'open-markdown': [file: YandexItem];
+  'import-to-qspace': [paths: string[]];
   move: [paths: string[]];
   /** Something changed on the Disk: the sidebar tree reads again. */
   changed: [];
@@ -556,6 +570,7 @@ async function loadMore() {
 watch(() => props.path, () => {
   localSelectedKeys.value = [];
   selectionAnchorKey.value = '';
+  uploadTargetPath.value = null;
 });
 watch(() => [props.path, serverSort.value, connected.value] as const, () => { brokenPreviews.clear(); void load(); });
 watch(() => props.refreshKey, () => { void load(); });
@@ -618,6 +633,7 @@ const ctxCanCreate = computed(() => ctxMenu.raw.length === 1 && ctxMenu.raw[0]?.
 const yandexCreateOptions = computed<ExplorerContextMenuCreateOption[]>(() => [
   { id: 'folder', label: t('createOptionFolder'), icon: 'folder' },
   { id: 'markdown', label: t('createOptionMarkdown'), icon: 'markdown' },
+  { id: 'upload', label: t('driveUploadFiles'), icon: 'upload' },
 ]);
 const ctxCanShare = computed(() => ctxMenu.raw.length === 1 && ctxMenu.raw[0]?.type === 'file');
 const ctxCanDownload = computed(() => ctxMenu.raw.length > 0 && ctxMenu.raw.every((item) => item.type === 'file'));
@@ -679,6 +695,8 @@ function onCtxCreateItem(kind: string, entries: ReadonlyArray<ExplorerContextMen
     void createFolderAt(targetPath);
   } else if (kind === 'markdown') {
     void createMarkdownAt(targetPath);
+  } else if (kind === 'upload') {
+    pickFilesAt(targetPath);
   }
 }
 
@@ -737,6 +755,11 @@ function onCtxToggleFavorite(entries: ReadonlyArray<ExplorerContextMenuItem>): v
       layoutPrefs.toggleFavorite(k);
     }
   }
+}
+
+function onCtxImportToQspace(entries: ReadonlyArray<ExplorerContextMenuItem>): void {
+  const paths = entries.map((entry) => findCtxRaw(entry)?.path).filter((p): p is string => Boolean(p));
+  if (paths.length) emit('import-to-qspace', paths);
 }
 
 function onCtxMove(entries: ReadonlyArray<ExplorerContextMenuItem>): void {
@@ -898,15 +921,22 @@ async function createFolder() {
 }
 
 // ----- uploading: the dashboard's upload panel shows the progress
-function pickFiles() {
+const uploadTargetPath = ref<string | null>(null);
+function pickFilesAt(targetPath: string) {
   menu.value = '';
+  uploadTargetPath.value = targetPath;
   fileInput.value?.click();
+}
+function pickFiles() {
+  pickFilesAt(props.path);
 }
 function onFilesPicked(event: Event) {
   const input = event.target as HTMLInputElement;
   const files = Array.from(input.files || []);
   input.value = '';
-  if (files.length) emit('upload', files, props.path);
+  const targetPath = uploadTargetPath.value ?? props.path;
+  uploadTargetPath.value = null;
+  if (files.length) emit('upload', files, targetPath);
 }
 const dropActive = ref(false);
 let dragDepth = 0;
@@ -987,3 +1017,13 @@ onBeforeUnmount(() => {
 
 defineExpose({ reload, pickFiles, items });
 </script>
+
+<style scoped>
+.yandex-upload-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+</style>

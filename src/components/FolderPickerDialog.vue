@@ -24,12 +24,15 @@ const props = withDefaults(
     excludeIds?: string[];
     /** The disk root cannot be chosen. */
     excludeRoot?: boolean;
+    /** Show an action button to copy to Yandex Disk instead of a Q Space folder. */
+    showYandexExport?: boolean;
   }>(),
-  { title: undefined, confirmLabel: undefined, excludeIds: () => [], excludeRoot: false },
+  { title: undefined, confirmLabel: undefined, excludeIds: () => [], excludeRoot: false, showYandexExport: false },
 );
 
 const emit = defineEmits<{
   (e: 'select', folder: PickedFolder): void;
+  (e: 'select-yandex'): void;
   (e: 'close'): void;
 }>();
 
@@ -332,6 +335,15 @@ onBeforeUnmount(() => {
       </div>
 
       <footer class="fpd-foot">
+        <button
+          v-if="showYandexExport"
+          type="button"
+          class="fpd-btn fpd-btn-yandex"
+          data-testid="folder-picker-yandex-btn"
+          @click="emit('select-yandex')"
+        >
+          {{ t('yandexExportToYandexShort') }}
+        </button>
         <button type="button" class="fpd-btn" data-fpd-cancel @click="emit('close')">{{ t('cancel') }}</button>
         <button type="button" class="fpd-btn fpd-btn-main" data-fpd-confirm :disabled="!canConfirm" @click="confirm">
           {{ confirmLabel ?? t('cupPickFolderAction') }}
@@ -529,5 +541,9 @@ onBeforeUnmount(() => {
 .fpd-btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+.fpd-btn-yandex {
+  margin-right: auto;
+  background: transparent;
 }
 </style>

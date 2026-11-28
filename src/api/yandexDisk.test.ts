@@ -72,7 +72,7 @@ describe('Yandex Disk calls', () => {
     expect(isYandexReconnectError(new Error('x'))).toBe(false);
   });
 
-  it('sends overwrite=true query param on uploadYandexFile when requested', async () => {
+  it('uploads via /drive/yandex-upload with disambiguate=true by default and overwrite=true when requested', async () => {
     const opened: Array<{ method: string; url: string }> = [];
     const OriginalXhr = window.XMLHttpRequest;
     class FakeXhr {
@@ -103,15 +103,19 @@ describe('Yandex Disk calls', () => {
     expect(opened).toHaveLength(2);
     const overwriteUrl = new URL(opened[0]!.url, 'http://x');
     expect(opened[0]!.method).toBe('PUT');
+    expect(overwriteUrl.pathname.endsWith('/drive/yandex-upload')).toBe(true);
     expect(overwriteUrl.searchParams.get('path')).toBe('/notes.md');
     expect(overwriteUrl.searchParams.get('overwrite')).toBe('true');
+    expect(overwriteUrl.searchParams.get('disambiguate')).toBeNull();
 
     const defaultUrl = new URL(opened[1]!.url, 'http://x');
+    expect(defaultUrl.pathname.endsWith('/drive/yandex-upload')).toBe(true);
     expect(defaultUrl.searchParams.get('path')).toBe('/notes.md');
     expect(defaultUrl.searchParams.get('overwrite')).toBeNull();
+    expect(defaultUrl.searchParams.get('disambiguate')).toBe('true');
   });
 
-  it('listMediaPage queries /yandex-disk/media with cursor, limit, previewSize and returns nextCursor/hasMore', async () => {
+  it('listMediaPage queries /yandex-disk/media with cursor, limit, previewSize=M and returns nextCursor/hasMore', async () => {
     mockedRequest.mockResolvedValueOnce({
       items: [
         { path: '/Фотокамера/a.jpg', name: 'a.jpg', type: 'file', size: 100, mime: 'image/jpeg', mediaType: 'image', md5: 'm1', createdAt: null, modifiedAt: null, publicUrl: null, previewUrl: null },
@@ -131,7 +135,7 @@ describe('Yandex Disk calls', () => {
       path: '/Фотокамера',
       limit: '100',
       cursor: 'cur-1',
-      previewSize: 'L',
+      previewSize: 'M',
     });
     expect(page.items.map((i) => i.path)).toEqual(['/Фотокамера/a.jpg']);
     expect(page.hasMore).toBe(true);
@@ -159,7 +163,7 @@ describe('Yandex Disk calls', () => {
     expect(secondUrl.searchParams.get('offset')).toBeNull();
   });
 
-  it('importToQspace posts paths and targetFolderId to /yandex-disk/import-to-qspace', async () => {
+  it('importToQspace posts paths and targetFolderId to /drive/yandex-import', async () => {
     mockedRequest.mockResolvedValueOnce({
       importedFiles: 2,
       importedFolders: 1,
@@ -170,7 +174,7 @@ describe('Yandex Disk calls', () => {
 
     const res = await yandexDisk.importToQspace(['/Фотокамера/a.jpg', '/Отпуск'], 'folder-1');
     expect(mockedRequest).toHaveBeenCalledWith(
-      '/yandex-disk/import-to-qspace',
+      '/drive/yandex-import',
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({ paths: ['/Фотокамера/a.jpg', '/Отпуск'], targetFolderId: 'folder-1' }),
@@ -181,12 +185,43 @@ describe('Yandex Disk calls', () => {
     mockedRequest.mockResolvedValueOnce({ importedFiles: 1, importedFolders: 0, fileIds: ['f3'], folderIds: [] });
     await yandexDisk.importToQspace(['/a.jpg']);
     expect(mockedRequest).toHaveBeenLastCalledWith(
-      '/yandex-disk/import-to-qspace',
+      '/drive/yandex-import',
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({ paths: ['/a.jpg'], targetFolderId: null }),
       }),
     );
+  });
+
+  it('exportFromQspace posts payload to /drive/yandex-export', async () => {
+    mockedRequest.mockResolvedValueOnce({
+      exportedFiles: 2,
+      exportedFolders: 1,
+      paths: ['/Экспорт/a.jpg', '/Экспорт/b.png'],
+      truncated: false,
+    });
+
+    const payload = {
+      fileIds: ['f1'],
+      folderIds: ['d1'],
+      resources: [{ kind: 'canvas', id: 'c1' }],
+      targetPath: '/Экспорт',
+      overwrite: true,
+    };
+    const res = await yandexDisk.exportFromQspace(payload);
+    expect(mockedRequest).toHaveBeenCalledWith(
+      '/drive/yandex-export',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }),
+    );
+    expect(res).toEqual({
+      exportedFiles: 2,
+      exportedFolders: 1,
+      paths: ['/Экспорт/a.jpg', '/Экспорт/b.png'],
+      truncated: false,
+    });
   });
 
   it('spacesApi.addItems and removeItems preserve array compat and support yandexPaths + resources objects', async () => {

@@ -542,14 +542,14 @@ describe('Batch 9: B-040 Create submenu, B-041 Yandex->QSpace transfer, B-042 Fi
     await nextTick();
     expect(wrapper.find('[data-ctx-action="create-submenu"]').exists()).toBe(false);
 
-    // 3) Yandex Disk folder -> 2 create options (folder, markdown)
+    // 3) Yandex Disk folder -> 3 create options (folder, markdown, upload)
     vm.onGalleryYandexContextMenu({ event: new MouseEvent('contextmenu', { clientX: 80, clientY: 80 }), path: '/Фото', name: 'Фото' });
     await nextTick();
     expect(wrapper.find('[data-ctx-action="create-submenu"]').exists()).toBe(true);
     await wrapper.get('[data-ctx-action="create-submenu"]').trigger('mouseenter');
     await nextTick();
     const yOptionIds = Array.from(document.body.querySelectorAll('[data-ctx-create-option]')).map((el) => el.getAttribute('data-ctx-create-option'));
-    expect(yOptionIds).toEqual(['folder', 'markdown']);
+    expect(yOptionIds).toEqual(['folder', 'markdown', 'upload']);
 
     vi.mocked(promptDialog).mockResolvedValueOnce('Альбом2026');
     await vm.onCtxMenuCreateItem('folder', [{ key: 'yandex-folder:/Фото', id: '/Фото', kind: 'yandex-folder', name: 'Фото' }]);
@@ -661,9 +661,16 @@ describe('Batch 9: B-040 Create submenu, B-041 Yandex->QSpace transfer, B-042 Fi
     await flushPromises();
     expect(yandexDisk.importToQspace).toHaveBeenCalledWith(['/cat.jpg', '/Фото'], null);
 
-    // Move modal from DrivePhotos @move-yandex-items -> choose Q Space folder -> importToQspace
-    vi.mocked(yandexDisk.importToQspace).mockClear();
+    // DrivePhotos @move-yandex-items opens YandexFolderPicker directly for internal Yandex moves
     vm.onDrivePhotosMoveYandexItems(['/cat.jpg']);
+    await nextTick();
+    expect(vm.yandexMove).toEqual({ sources: ['/cat.jpg'], start: '/' });
+    vm.yandexMove = null;
+    await nextTick();
+
+    // Transfer modal (Перенести в Q Space…) -> choose Q Space folder -> importToQspace
+    vi.mocked(yandexDisk.importToQspace).mockClear();
+    vm.openYandexMove(['/cat.jpg']);
     await nextTick();
     expect(wrapper.find('[data-yandex-transfer-modal]').exists()).toBe(true);
     await wrapper.get('[data-yandex-transfer-folder="folder-home"]').trigger('click');
@@ -888,12 +895,13 @@ describe('Batch 9: B-040 Create submenu, B-041 Yandex->QSpace transfer, B-042 Fi
     expect(vm.galleryYandexPath).toBe('/');
     expect(galleryRefreshSpy).toHaveBeenCalledWith({ clearSelection: true, invalidateFolders: false });
 
-    // Yandex root '/': allows open/create/album/move/download, disables rename/delete
+    // Yandex root '/': allows open/create/album/import-to-qspace/download, disables internal move/rename/delete
     vm.onGalleryYandexContextMenu({ event: new MouseEvent('contextmenu'), path: '/', name: 'Яндекс Диск' });
     await nextTick();
-    for (const action of ['open', 'create-submenu', 'add-to-album', 'move', 'download']) {
+    for (const action of ['open', 'create-submenu', 'add-to-album', 'import-to-qspace', 'download']) {
       expect(wrapper.find(`[data-ctx-action="${action}"]`).exists(), `root action ${action}`).toBe(true);
     }
+    expect(wrapper.find('[data-ctx-action="move"]').exists()).toBe(false);
     expect(wrapper.find('[data-ctx-action="rename"]').exists()).toBe(false);
     expect(wrapper.find('[data-ctx-action="delete"]').exists()).toBe(false);
   });

@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { resetExplorerGroupDnd } from '../../composables/useExplorerGroupDnd';
+import { yandexDisk } from '../../api/yandexDisk';
+import { resetExplorerGroupDnd, useExplorerGroupDnd } from '../../composables/useExplorerGroupDnd';
 import { resetExplorerLayoutPrefs, useExplorerLayoutPrefs } from '../../composables/useExplorerLayoutPrefs';
 import { useI18n } from '../../composables/useI18n';
 import type { DashboardFolderNavItem } from '../../dashboard/navigation';
@@ -460,5 +461,204 @@ describe('DashboardSidebar', () => {
     expect(wrapper.get('[data-sidebar-file="f-open/drive-file:1"]').text()).toBe('photo.jpg');
     expect(wrapper.get('[data-sidebar-file="f-open/drive-file:2"]').text()).toBe('Untitled');
     expect(wrapper.emitted('toggle-folder')?.filter(([id]) => id === 'f-closed')).toHaveLength(2);
+  });
+
+  it('supports OS file drops on Yandex rows, Q Space -> Yandex DnD, Yandex -> Yandex DnD, and Yandex -> Q Space DnD', async () => {
+    const { useYandexDisk, resetYandexDiskStatus } = await import('../../composables/useYandexDisk');
+    const { resetSpaces } = await import('../../composables/useSpaces');
+    resetYandexDiskStatus();
+    resetSpaces();
+    useYandexDisk().status.value = {
+      enabled: true,
+      connected: true,
+      reconnectRequired: false,
+      login: 'ivan',
+      displayName: 'Ivan',
+      email: 'ivan@yandex.ru',
+      avatarUrl: null,
+    };
+
+    const listSpy = vi.spyOn(yandexDisk, 'list').mockImplementation(async (path: string) => {
+      if (path === '/') {
+        return {
+          item: {
+            path: '/',
+            name: 'Yandex Disk',
+            type: 'dir',
+            size: null,
+            mime: null,
+            mediaType: null,
+            md5: null,
+            createdAt: null,
+            modifiedAt: null,
+            publicUrl: null,
+            previewUrl: null,
+          },
+          total: 2,
+          offset: 0,
+          limit: 50,
+          items: [
+            {
+              path: '/Docs',
+              name: 'Docs',
+              type: 'dir',
+              size: null,
+              mime: null,
+              mediaType: null,
+              md5: null,
+              createdAt: null,
+              modifiedAt: null,
+              publicUrl: null,
+              previewUrl: null,
+            },
+            {
+              path: '/report.pdf',
+              name: 'report.pdf',
+              type: 'file',
+              size: 128,
+              mime: 'application/pdf',
+              mediaType: null,
+              md5: null,
+              createdAt: null,
+              modifiedAt: null,
+              publicUrl: null,
+              previewUrl: null,
+            },
+          ],
+        };
+      }
+      return {
+        item: {
+          path,
+          name: path,
+          type: 'dir',
+          size: null,
+          mime: null,
+          mediaType: null,
+          md5: null,
+          createdAt: null,
+          modifiedAt: null,
+          publicUrl: null,
+          previewUrl: null,
+        },
+        total: 0,
+        offset: 0,
+        limit: 50,
+        items: [],
+      };
+    });
+
+    try {
+      useExplorerLayoutPrefs().setShowFilesInTree(true);
+      const wrapper = mountSidebar({
+        folders: [
+          ...folders,
+          { kind: 'file', key: 'project/canvas:c1', id: 'c1', type: 'canvas', title: 'Board', folderId: 'project', depth: 1 },
+        ],
+      });
+
+      await wrapper.get('[data-yandex-toggle="/"]').trigger('click');
+      await flushPromises();
+
+      const yandexRoot = wrapper.get('[data-space="yandex"]');
+      const yandexDir = wrapper.get('[data-yandex-folder="/Docs"]');
+      const yandexFile = wrapper.get('[data-yandex-file="/report.pdf"]');
+      expect(yandexDir.attributes('draggable')).toBe('true');
+      expect(yandexFile.attributes('draggable')).toBe('true');
+
+      // 1. OS external files dropped onto Yandex root and Yandex subfolder
+      const externalFile = new File(['video'], 'clip.mp4', { type: 'video/mp4' });
+      const fileDataTransfer = {
+        types: ['Files'],
+        files: [externalFile],
+        dropEffect: 'none',
+        getData: () => '',
+        setData: () => {},
+      };
+      await yandexRoot.trigger('dragover', { dataTransfer: fileDataTransfer });
+      expect(yandexRoot.classes()).toContain('drag-over');
+      await yandexRoot.trigger('drop', { dataTransfer: fileDataTransfer });
+      expect(wrapper.emitted('drop-external-files-yandex')?.[0]).toEqual([
+        { path: '/', files: [externalFile] },
+      ]);
+
+      await yandexDir.trigger('dragover', { dataTransfer: fileDataTransfer });
+      expect(yandexDir.classes()).toContain('drag-over');
+      await yandexDir.trigger('drop', { dataTransfer: fileDataTransfer });
+      expect(wrapper.emitted('drop-external-files-yandex')?.[1]).toEqual([
+        { path: '/Docs', files: [externalFile] },
+      ]);
+
+      // 2. Q Space item (canvas & folder) dropped onto Yandex root and Yandex subfolder
+      await wrapper.get('[data-sidebar-file="project/canvas:c1"]').trigger('dragstart');
+      await yandexRoot.trigger('dragover');
+      expect(yandexRoot.classes()).toContain('drag-over');
+      await yandexRoot.trigger('drop');
+      expect(wrapper.emitted('drop-group-to-yandex')?.[0]).toMatchObject([
+        {
+          path: '/',
+          drag: {
+            items: [expect.objectContaining({ id: 'c1', kind: 'canvas' })],
+          },
+        },
+      ]);
+
+      await wrapper.get('[data-dashboard-folder="project"]').trigger('dragstart');
+      await yandexDir.trigger('dragover');
+      expect(yandexDir.classes()).toContain('drag-over');
+      await yandexDir.trigger('drop');
+      expect(wrapper.emitted('drop-group-to-yandex')?.[1]).toMatchObject([
+        {
+          path: '/Docs',
+          drag: {
+            items: [expect.objectContaining({ id: 'project', kind: 'folder' })],
+          },
+        },
+      ]);
+
+      // 3. Yandex-to-Yandex move works and self-drop is rejected
+      await yandexFile.trigger('dragstart');
+      await yandexDir.trigger('drop');
+      expect(wrapper.emitted('drop-group-to-yandex')?.[2]).toMatchObject([
+        {
+          path: '/Docs',
+          drag: {
+            items: [expect.objectContaining({ kind: 'yandex-file', path: '/report.pdf' })],
+          },
+        },
+      ]);
+
+      await yandexDir.trigger('dragstart');
+      await yandexDir.trigger('drop');
+      expect(wrapper.emitted('drop-group-to-yandex')).toHaveLength(3);
+      useExplorerGroupDnd().endGroupDrag();
+
+      // 4. Yandex file -> Q Space Home & Yandex folder -> Q Space folder
+      await yandexFile.trigger('dragstart');
+      await wrapper.get('[data-home-link]').trigger('drop');
+      expect(wrapper.emitted('drop-group-to-folder')?.[0]).toMatchObject([
+        {
+          folderId: null,
+          drag: {
+            items: [expect.objectContaining({ kind: 'yandex-file', path: '/report.pdf' })],
+          },
+        },
+      ]);
+
+      await yandexDir.trigger('dragstart');
+      await wrapper.get('[data-dashboard-folder="project"]').trigger('drop');
+      expect(wrapper.emitted('drop-group-to-folder')?.[1]).toMatchObject([
+        {
+          folderId: 'project',
+          drag: {
+            items: [expect.objectContaining({ kind: 'yandex-folder', path: '/Docs' })],
+          },
+        },
+      ]);
+    } finally {
+      listSpy.mockRestore();
+      resetYandexDiskStatus();
+      resetSpaces();
+    }
   });
 });
